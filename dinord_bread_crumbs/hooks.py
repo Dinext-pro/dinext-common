@@ -26,7 +26,7 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/dinord_bread_crumbs/css/dinord_bread_crumbs.css"
-# app_include_js = "/assets/dinord_bread_crumbs/js/dinord_bread_crumbs.js"
+app_include_js = ["/assets/dinord_bread_crumbs/js/breadcrumbs_update.js"]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/dinord_bread_crumbs/css/dinord_bread_crumbs.css"
