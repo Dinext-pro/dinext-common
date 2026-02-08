@@ -8,7 +8,7 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        files: "dinord_bread_crumbs.*"
+        files: "dinext_common.*"
         exclude: ".*json$|.*txt$|.*csv|.*md|.*svg"
       - id: check-merge-conflict
       - id: check-ast
@@ -38,11 +38,11 @@ repos:
         # Ignore any files that might contain jinja / bundles
         exclude: |
             (?x)^(
-                dinord_bread_crumbs/public/dist/.*|
+                dinext_common/public/dist/.*|
                 .*node_modules.*|
                 .*boilerplate.*|
-                dinord_bread_crumbs/templates/includes/.*|
-                dinord_bread_crumbs/public/js/lib/.*
+                dinext_common/templates/includes/.*|
+                dinext_common/public/js/lib/.*
             )$
 
 
@@ -55,12 +55,12 @@ repos:
         # Ignore any files that might contain jinja / bundles
         exclude: |
             (?x)^(
-                dinord_bread_crumbs/public/dist/.*|
+                dinext_common/public/dist/.*|
                 cypress/.*|
                 .*node_modules.*|
                 .*boilerplate.*|
-                dinord_bread_crumbs/templates/includes/.*|
-                dinord_bread_crumbs/public/js/lib/.*
+                dinext_common/templates/includes/.*|
+                dinext_common/public/js/lib/.*
             )$
 
 ci:
