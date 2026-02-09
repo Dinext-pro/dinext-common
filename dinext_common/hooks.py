@@ -26,7 +26,7 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/dinext_common/css/common.css"
-app_include_js = ["/assets/dinext_common/js/breadcrumbs_update.js"]
+app_include_js = ["/assets/dinext_common/js/breadcrumbs_update.js", "/assets/dinext_common/js/sticky-datatable.js"]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/dinext_common/css/common.css"
@@ -43,7 +43,7 @@ app_include_js = ["/assets/dinext_common/js/breadcrumbs_update.js"]
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {"Project" : "/assets/dinext_common/js/sticky-datatable.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
