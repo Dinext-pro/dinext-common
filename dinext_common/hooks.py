@@ -4,6 +4,23 @@ app_publisher = "Dinext"
 app_description = "Dinext Common"
 app_email = "info@dinext.ru"
 app_license = "mit"
+app_logo_url  = "/assets/dinext_common/images/DI_SQ_NBG.png"
+app_icon = "/assets/dinext_common/images/DINEXT_FAVICON.ico"
+
+website_context = {
+	"favicon": "/assets/dinext_common/images/DINEXT_FAVICON.ico",
+	"splash_image": "/assets/dinext_common/images/DI_SQ_NBG.png",
+}
+
+fixtures = [
+    "Website Settings",
+    {
+        "doctype": "Web Page",
+        "filters": [
+            ["module", "in", ["Dinext Common"]],       
+        ]
+    },
+]
 
 # Apps
 # ------------------
@@ -26,7 +43,11 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/dinext_common/css/common.css"
-app_include_js = ["/assets/dinext_common/js/breadcrumbs_update.js", "/assets/dinext_common/js/sticky-datatable.js"]
+app_include_js = [
+    "/assets/dinext_common/js/breadcrumbs_update.js", 
+    "/assets/dinext_common/js/listview_resize.js",
+    "/assets/dinext_common/js/dinext-desk.js"
+    ]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/dinext_common/css/common.css"
@@ -43,9 +64,9 @@ app_include_js = ["/assets/dinext_common/js/breadcrumbs_update.js", "/assets/din
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-doctype_js = {"Project" : "/assets/dinext_common/js/sticky-datatable.js"}
+doctype_js = {"Project" : "public/js/sticky-datatable.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
-# doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
+# doctype_tree_js = {"Task" : "public/js/frappe-gantt.umd.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
 # Svg Icons
