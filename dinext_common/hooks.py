@@ -1,9 +1,27 @@
-app_name = "dinord_bread_crumbs"
-app_title = "Dinord Bread Crumbs"
-app_publisher = "Dinord"
-app_description = "Dinord Bread Crumbs"
-app_email = "info@dinord.ru"
+app_name = "dinext_common"
+app_title = "Dinext Common"
+app_publisher = "Dinext"
+app_description = "Dinext Common"
+app_email = "info@dinext.ru"
 app_license = "mit"
+app_logo_url  = "/assets/dinext_common/images/DI_SQ_NBG.png"
+app_icon = "/assets/dinext_common/images/DINEXT_FAVICON.ico"
+
+website_context = {
+	"favicon": "/assets/dinext_common/images/DINEXT_FAVICON.ico",
+	"splash_image": "/assets/dinext_common/images/DI_SQ_NBG.png",
+}
+
+fixtures = [
+    "Website Settings",
+    "Navbar Settings",
+    {
+        "doctype": "Web Page",
+        "filters": [
+            ["module", "in", ["Dinext Common"]],       
+        ]
+    },
+]
 
 # Apps
 # ------------------
@@ -13,11 +31,11 @@ app_license = "mit"
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
 # 	{
-# 		"name": "dinord_bread_crumbs",
-# 		"logo": "/assets/dinord_bread_crumbs/logo.png",
-# 		"title": "Dinord Bread Crumbs",
-# 		"route": "/dinord_bread_crumbs",
-# 		"has_permission": "dinord_bread_crumbs.api.permission.has_app_permission"
+# 		"name": "dinext_common",
+# 		"logo": "/assets/dinext_common/logo.png",
+# 		"title": "Dinext Common",
+# 		"route": "/dinext_common",
+# 		"has_permission": "dinext_common.api.permission.has_app_permission"
 # 	}
 # ]
 
@@ -25,15 +43,19 @@ app_license = "mit"
 # ------------------
 
 # include js, css files in header of desk.html
-# app_include_css = "/assets/dinord_bread_crumbs/css/dinord_bread_crumbs.css"
-app_include_js = ["/assets/dinord_bread_crumbs/js/breadcrumbs_update.js"]
+# app_include_css = "/assets/dinext_common/css/common.css"
+app_include_js = [
+    "/assets/dinext_common/js/breadcrumbs_update.js", 
+    "/assets/dinext_common/js/listview_resize.js",
+    "/assets/dinext_common/js/dinext-desk.js"
+    ]
 
 # include js, css files in header of web template
-# web_include_css = "/assets/dinord_bread_crumbs/css/dinord_bread_crumbs.css"
-# web_include_js = "/assets/dinord_bread_crumbs/js/dinord_bread_crumbs.js"
+# web_include_css = "/assets/dinext_common/css/common.css"
+# web_include_js = "/assets/dinext_common/js/dinext_common.js"
 
 # include custom scss in every website theme (without file extension ".scss")
-# website_theme_scss = "dinord_bread_crumbs/public/scss/website"
+# website_theme_scss = "dinext_common/public/scss/website"
 
 # include js, css files in header of web form
 # webform_include_js = {"doctype": "public/js/doctype.js"}
@@ -43,15 +65,15 @@ app_include_js = ["/assets/dinord_bread_crumbs/js/breadcrumbs_update.js"]
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {"Project" : "public/js/sticky-datatable.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
-# doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
+# doctype_tree_js = {"Task" : "public/js/frappe-gantt.umd.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
 # Svg Icons
 # ------------------
 # include app icons in desk
-# app_include_icons = "dinord_bread_crumbs/public/icons.svg"
+# app_include_icons = "dinext_common/public/icons.svg"
 
 # Home Pages
 # ----------
@@ -75,43 +97,43 @@ app_include_js = ["/assets/dinord_bread_crumbs/js/breadcrumbs_update.js"]
 
 # add methods and filters to jinja environment
 # jinja = {
-# 	"methods": "dinord_bread_crumbs.utils.jinja_methods",
-# 	"filters": "dinord_bread_crumbs.utils.jinja_filters"
+# 	"methods": "dinext_common.utils.jinja_methods",
+# 	"filters": "dinext_common.utils.jinja_filters"
 # }
 
 # Installation
 # ------------
 
-# before_install = "dinord_bread_crumbs.install.before_install"
-# after_install = "dinord_bread_crumbs.install.after_install"
+# before_install = "dinext_common.install.before_install"
+# after_install = "dinext_common.install.after_install"
 
 # Uninstallation
 # ------------
 
-# before_uninstall = "dinord_bread_crumbs.uninstall.before_uninstall"
-# after_uninstall = "dinord_bread_crumbs.uninstall.after_uninstall"
+# before_uninstall = "dinext_common.uninstall.before_uninstall"
+# after_uninstall = "dinext_common.uninstall.after_uninstall"
 
 # Integration Setup
 # ------------------
 # To set up dependencies/integrations with other apps
 # Name of the app being installed is passed as an argument
 
-# before_app_install = "dinord_bread_crumbs.utils.before_app_install"
-# after_app_install = "dinord_bread_crumbs.utils.after_app_install"
+# before_app_install = "dinext_common.utils.before_app_install"
+# after_app_install = "dinext_common.utils.after_app_install"
 
 # Integration Cleanup
 # -------------------
 # To clean up dependencies/integrations with other apps
 # Name of the app being uninstalled is passed as an argument
 
-# before_app_uninstall = "dinord_bread_crumbs.utils.before_app_uninstall"
-# after_app_uninstall = "dinord_bread_crumbs.utils.after_app_uninstall"
+# before_app_uninstall = "dinext_common.utils.before_app_uninstall"
+# after_app_uninstall = "dinext_common.utils.after_app_uninstall"
 
 # Desk Notifications
 # ------------------
 # See frappe.core.notifications.get_notification_config
 
-# notification_config = "dinord_bread_crumbs.notifications.get_notification_config"
+# notification_config = "dinext_common.notifications.get_notification_config"
 
 # Permissions
 # -----------
@@ -150,39 +172,39 @@ app_include_js = ["/assets/dinord_bread_crumbs/js/breadcrumbs_update.js"]
 
 # scheduler_events = {
 # 	"all": [
-# 		"dinord_bread_crumbs.tasks.all"
+# 		"dinext_common.tasks.all"
 # 	],
 # 	"daily": [
-# 		"dinord_bread_crumbs.tasks.daily"
+# 		"dinext_common.tasks.daily"
 # 	],
 # 	"hourly": [
-# 		"dinord_bread_crumbs.tasks.hourly"
+# 		"dinext_common.tasks.hourly"
 # 	],
 # 	"weekly": [
-# 		"dinord_bread_crumbs.tasks.weekly"
+# 		"dinext_common.tasks.weekly"
 # 	],
 # 	"monthly": [
-# 		"dinord_bread_crumbs.tasks.monthly"
+# 		"dinext_common.tasks.monthly"
 # 	],
 # }
 
 # Testing
 # -------
 
-# before_tests = "dinord_bread_crumbs.install.before_tests"
+# before_tests = "dinext_common.install.before_tests"
 
 # Overriding Methods
 # ------------------------------
 #
 # override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "dinord_bread_crumbs.event.get_events"
+# 	"frappe.desk.doctype.event.event.get_events": "dinext_common.event.get_events"
 # }
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
 # along with any modifications made in other Frappe apps
 # override_doctype_dashboards = {
-# 	"Task": "dinord_bread_crumbs.task.get_dashboard_data"
+# 	"Task": "dinext_common.task.get_dashboard_data"
 # }
 
 # exempt linked doctypes from being automatically cancelled
@@ -196,13 +218,13 @@ app_include_js = ["/assets/dinord_bread_crumbs/js/breadcrumbs_update.js"]
 
 # Request Events
 # ----------------
-# before_request = ["dinord_bread_crumbs.utils.before_request"]
-# after_request = ["dinord_bread_crumbs.utils.after_request"]
+# before_request = ["dinext_common.utils.before_request"]
+# after_request = ["dinext_common.utils.after_request"]
 
 # Job Events
 # ----------
-# before_job = ["dinord_bread_crumbs.utils.before_job"]
-# after_job = ["dinord_bread_crumbs.utils.after_job"]
+# before_job = ["dinext_common.utils.before_job"]
+# after_job = ["dinext_common.utils.after_job"]
 
 # User Data Protection
 # --------------------
@@ -232,7 +254,7 @@ app_include_js = ["/assets/dinord_bread_crumbs/js/breadcrumbs_update.js"]
 # --------------------------------
 
 # auth_hooks = [
-# 	"dinord_bread_crumbs.auth.validate"
+# 	"dinext_common.auth.validate"
 # ]
 
 # Automatically update python controller files with type annotations for this app.
