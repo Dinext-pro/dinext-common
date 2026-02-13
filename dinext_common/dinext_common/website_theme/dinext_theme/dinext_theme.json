@@ -1,0 +1,40 @@
+{
+ "button_gradients": 0,
+ "button_rounded_corners": 1,
+ "button_shadows": 0,
+ "creation": "2026-02-07 12:53:03.264205",
+ "custom": 0,
+ "docstatus": 0,
+ "doctype": "Website Theme",
+ "font_properties": "wght@300;400;500;600;700;800",
+ "idx": 0,
+ "ignored_apps": [
+  {
+   "app": "erpnext"
+  },
+  {
+   "app": "dinord_erpnext_customization"
+  },
+  {
+   "app": "hrms"
+  },
+  {
+   "app": "lms"
+  },
+  {
+   "app": "insights"
+  },
+  {
+   "app": "persona"
+  }
+ ],
+ "js": "var elements = document.getElementsByClassName(\"navbar\");\r\nfor (var i = 0; i < elements.length; i++) {\r\n  elements[i].style.backgroundColor = \"#191945\";\r\n  var brandElements = elements[i].getElementsByClassName(\"navbar-brand\");\r\n  for (var j = 0; j < brandElements.length; j++) {\r\n    brandElements[j].style.color = \"white\";\r\n  }\r\n  var itemElements = elements[i].getElementsByClassName(\"nav-link btn-login-area\");\r\n  for (var k = 0; k < itemElements.length; k++) {\r\n    itemElements[k].style.color = \"white\";\r\n  }\r\n}",
+ "modified": "2026-02-13 21:48:40.952598",
+ "modified_by": "Administrator",
+ "module": "Dinext Common",
+ "name": "Dinext Theme",
+ "owner": "Administrator",
+ "theme": "Dinext Theme",
+ "theme_scss": "$enable-shadows: false;\n$enable-gradients: false;\n$enable-rounded: true;\n\n// Bootstrap Variable Overrides\n\n\n// Import themes from installed apps\n@import \"frappe/public/scss/website.bundle\";\n\n\n\n// Custom Theme\n\n\n:root {\n\t}\n",
+ "theme_url": "/files/website_theme/dinext_theme_style.css"
+}
