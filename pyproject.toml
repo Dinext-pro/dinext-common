@@ -1,9 +1,9 @@
 [project]
-name = "dinord_bread_crumbs"
+name = "dinext_common"
 authors = [
-    { name = "Dinord", email = "administrator@dinext.invalid"}
+    { name = "Dinext", email = "info@Dinext.ru"}
 ]
-description = "Dinord Bread Crumbs"
+description = "Dinext Common Lib"
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
