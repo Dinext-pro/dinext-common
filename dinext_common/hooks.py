@@ -14,6 +14,7 @@ website_context = {
 
 fixtures = [
     "Website Settings",
+    "Navbar Settings",
     {
         "doctype": "Web Page",
         "filters": [
