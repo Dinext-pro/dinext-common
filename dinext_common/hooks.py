@@ -47,7 +47,8 @@ fixtures = [
 app_include_js = [
     "/assets/dinext_common/js/breadcrumbs_update.js", 
     "/assets/dinext_common/js/listview_resize.js",
-    "/assets/dinext_common/js/dinext-desk.js"
+    "/assets/dinext_common/js/dinext-desk.js",
+    "/assets/dinext_common/js/dashboar_filters_fix.js"
     ]
 
 # include js, css files in header of web template
