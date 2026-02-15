@@ -21,6 +21,13 @@ fixtures = [
             ["module", "in", ["Dinext Common"]],       
         ]
     },
+    {
+        "doctype": "Server Script",
+        "filters": [
+            ["module", "=", "Dinext Common"],
+            ["disabled", "=", 0],
+        ]
+    },
 ]
 
 # Apps
