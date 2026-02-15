@@ -1,0 +1,118 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-02-15 16:32:57.548673",
+ "description": "Data Cleanup Rules Management",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "version_section",
+  "version_rules",
+  "comment_section",
+  "comment_rules",
+  "file_section",
+  "file_rules",
+  "communication_section",
+  "communication_rules",
+  "event_section",
+  "event_rules",
+  "workflow_section",
+  "workflow_rules"
+ ],
+ "fields": [
+  {
+   "fieldname": "version_section",
+   "fieldtype": "Section Break",
+   "label": "Version"
+  },
+  {
+   "fieldname": "version_rules",
+   "fieldtype": "Table",
+   "label": "Version Rules",
+   "options": "Version Cleanup Rule"
+  },
+  {
+   "fieldname": "comment_section",
+   "fieldtype": "Section Break",
+   "label": "Comments"
+  },
+  {
+   "fieldname": "comment_rules",
+   "fieldtype": "Table",
+   "label": "Comment Rules",
+   "options": "Comment Cleanup Rule"
+  },
+  {
+   "fieldname": "file_section",
+   "fieldtype": "Section Break",
+   "label": "File"
+  },
+  {
+   "fieldname": "file_rules",
+   "fieldtype": "Table",
+   "label": "File Rules",
+   "options": "File Cleanup Rule"
+  },
+  {
+   "fieldname": "communication_section",
+   "fieldtype": "Section Break",
+   "label": "Communication"
+  },
+  {
+   "fieldname": "communication_rules",
+   "fieldtype": "Table",
+   "label": "Communication Rules",
+   "options": "Communication Cleanup Rule"
+  },
+  {
+   "fieldname": "event_section",
+   "fieldtype": "Section Break",
+   "label": "Event"
+  },
+  {
+   "fieldname": "event_rules",
+   "fieldtype": "Table",
+   "label": "Event Rules",
+   "options": "Event Cleanup Rule"
+  },
+  {
+   "fieldname": "workflow_section",
+   "fieldtype": "Section Break",
+   "label": "Workflow Action / Workflow Task"
+  },
+  {
+   "fieldname": "workflow_rules",
+   "fieldtype": "Table",
+   "label": "Workflow Rules",
+   "options": "Workflow Cleanup Rule"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-02-15 17:10:02.838427",
+ "modified_by": "Administrator",
+ "module": "Dinext Common",
+ "name": "Data Cleanup Rules",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
