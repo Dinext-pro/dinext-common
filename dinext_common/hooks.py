@@ -15,10 +15,18 @@ website_context = {
 fixtures = [
     "Website Settings",
     "Navbar Settings",
+    "Data Cleanup Rules",
     {
         "doctype": "Web Page",
         "filters": [
             ["module", "in", ["Dinext Common"]],       
+        ]
+    },
+    {
+        "doctype": "Server Script",
+        "filters": [
+            ["module", "=", "Dinext Common"],
+            ["disabled", "=", 0],
         ]
     },
 ]

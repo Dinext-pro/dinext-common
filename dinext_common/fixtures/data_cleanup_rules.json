@@ -1,0 +1,135 @@
+[
+ {
+  "comment_rules": [
+   {
+    "comment_type": "Deleted",
+    "days": 45,
+    "enabled": 1,
+    "parent": "Data Cleanup Rules",
+    "parentfield": "comment_rules",
+    "parenttype": "Data Cleanup Rules",
+    "reference_doctype": ""
+   },
+   {
+    "comment_type": "",
+    "days": 90,
+    "enabled": 1,
+    "parent": "Data Cleanup Rules",
+    "parentfield": "comment_rules",
+    "parenttype": "Data Cleanup Rules",
+    "reference_doctype": null
+   },
+   {
+    "comment_type": "Workflow",
+    "days": 45,
+    "enabled": 1,
+    "parent": "Data Cleanup Rules",
+    "parentfield": "comment_rules",
+    "parenttype": "Data Cleanup Rules",
+    "reference_doctype": null
+   },
+   {
+    "comment_type": "Attachment",
+    "days": 45,
+    "enabled": 1,
+    "parent": "Data Cleanup Rules",
+    "parentfield": "comment_rules",
+    "parenttype": "Data Cleanup Rules",
+    "reference_doctype": null
+   },
+   {
+    "comment_type": "Shared",
+    "days": 45,
+    "enabled": 1,
+    "parent": "Data Cleanup Rules",
+    "parentfield": "comment_rules",
+    "parenttype": "Data Cleanup Rules",
+    "reference_doctype": null
+   }
+  ],
+  "communication_rules": [
+   {
+    "communication_medium": "",
+    "communication_type": "",
+    "days": 90,
+    "enabled": 1,
+    "parent": "Data Cleanup Rules",
+    "parentfield": "communication_rules",
+    "parenttype": "Data Cleanup Rules",
+    "reference_doctype": null
+   }
+  ],
+  "docstatus": 0,
+  "doctype": "Data Cleanup Rules",
+  "event_rules": [
+   {
+    "days": 90,
+    "enabled": 1,
+    "event_category": "",
+    "event_type": "",
+    "parent": "Data Cleanup Rules",
+    "parentfield": "event_rules",
+    "parenttype": "Data Cleanup Rules",
+    "status": "Closed"
+   },
+   {
+    "days": 90,
+    "enabled": 1,
+    "event_category": "",
+    "event_type": "",
+    "parent": "Data Cleanup Rules",
+    "parentfield": "event_rules",
+    "parenttype": "Data Cleanup Rules",
+    "status": "Completed"
+   },
+   {
+    "days": 90,
+    "enabled": 1,
+    "event_category": "",
+    "event_type": "",
+    "parent": "Data Cleanup Rules",
+    "parentfield": "event_rules",
+    "parenttype": "Data Cleanup Rules",
+    "status": "Cancelled"
+   }
+  ],
+  "file_rules": [
+   {
+    "attached_to_doctype": "Issue",
+    "attached_to_field": null,
+    "days": 90,
+    "enabled": 1,
+    "file_size": 0,
+    "file_type": null,
+    "folder": null,
+    "parent": "Data Cleanup Rules",
+    "parentfield": "file_rules",
+    "parenttype": "Data Cleanup Rules",
+    "visibility": ""
+   }
+  ],
+  "modified": "2026-02-22 23:48:34.348580",
+  "name": "Data Cleanup Rules",
+  "version_rules": [
+   {
+    "days": 90,
+    "enabled": 1,
+    "parent": "Data Cleanup Rules",
+    "parentfield": "version_rules",
+    "parenttype": "Data Cleanup Rules",
+    "ref_doctype": ""
+   }
+  ],
+  "workflow_rules": [
+   {
+    "days": 90,
+    "enabled": 1,
+    "parent": "Data Cleanup Rules",
+    "parentfield": "workflow_rules",
+    "parenttype": "Data Cleanup Rules",
+    "reference_doctype": null,
+    "status": "Completed"
+   }
+  ]
+ }
+]
