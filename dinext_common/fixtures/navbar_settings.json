@@ -42,7 +42,7 @@
     "route": null
    }
   ],
-  "modified": "2026-02-07 12:22:06.005242",
+  "modified": "2026-02-24 16:02:39.284442",
   "name": "Navbar Settings",
   "settings_dropdown": [
    {
@@ -106,9 +106,21 @@
     "route": null
    },
    {
-    "action": "frappe.ui.toolbar.view_website()",
+    "action": null,
     "condition": null,
     "hidden": 0,
+    "is_standard": 0,
+    "item_label": "View Website",
+    "item_type": "Route",
+    "parent": "Navbar Settings",
+    "parentfield": "settings_dropdown",
+    "parenttype": "Navbar Settings",
+    "route": "/homepage"
+   },
+   {
+    "action": "frappe.ui.toolbar.view_website()",
+    "condition": null,
+    "hidden": 1,
     "is_standard": 1,
     "item_label": "View Website",
     "item_type": "Action",
