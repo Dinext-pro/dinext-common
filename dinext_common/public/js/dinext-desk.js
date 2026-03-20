@@ -19,8 +19,8 @@ frappe.ui.misc.about = function () {
 
 				<p>
 					<i class='fa fa-users fa-fw'></i>
-					${__("Forum")}:
-					<a href='https://dinext.ru' target='_blank'>dinext.ru</a>
+					${__("Roadmap")}:
+					<a href='https://dinext.ru/roadmap' target='_blank'>dinext.ru/roadmap</a>
 				</p>
 
 				<hr>
