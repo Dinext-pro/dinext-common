@@ -102,6 +102,8 @@ function BodyRendererDecorator( bodyRenderer ) {
   Как использовать:
     - new StickyDataTable(container, { stickyColumnsCount: 2 })  — или
     - const sm = new StickyManager(datatable, { stickyColumnsCount: 2 });
+    - table.setStickyColumnsCount(3) / table.sticky.setStickyColumnsCount(3) для изменения количества
+      липких колонок без пересоздания таблицы.
 
   Замечание: код использует публичные свойства DataTable (options, container) и стандартные DOM-структуры.
   При интеграции в проект можно заменить detection-логики (header/rows селекторы) под вашу версию разметки.
@@ -172,6 +174,7 @@ class StickyManager {
     this._stickyCount = 0;
     this._lefts = [];
     this._lastRender = 0;
+    this._destroyed = false;
 
     // reference to generated stylesheet
     this._genSheet = document.getElementById('dt-sticky-generated' + this._selector);
@@ -224,6 +227,7 @@ class StickyManager {
   }
 
   destroy() {
+    this._destroyed = true;
     window.removeEventListener('resize', this._onWindowResize);
     if (this._ro) this._ro.disconnect();
     if (this._mo) this._mo.disconnect();
@@ -231,6 +235,7 @@ class StickyManager {
   }
 
   scheduleRecalculate(immediate = false) {
+    if (this._destroyed) return;
     const now = performance.now();
     if (!immediate && now - this._lastRender < this.options.minRenderInterval) return;
     this._lastRender = now;
@@ -238,6 +243,22 @@ class StickyManager {
     requestAnimationFrame(() => {
       this.recalculate();
     });
+  }
+
+  setStickyColumnsCount(count) {
+    if (this._destroyed) return this._stickyCount || 0;
+    const parsedCount = Number.isFinite(Number(count)) ? Math.trunc(Number(count)) : 0;
+    const columns = this.datatable ? this._getColumnDefs() : null;
+    const maxCount = Array.isArray(columns) ? columns.length : parsedCount;
+    const nextCount = Math.max(0, Math.min(maxCount, parsedCount));
+    this.options.stickyColumnsCount = nextCount;
+    if (this.datatable && this.datatable.options) {
+      this.datatable.options.stickyColumnsCount = nextCount;
+    }
+    if (!this._destroyed && this.datatable && this.el) {
+      this.scheduleRecalculate(true);
+    }
+    return nextCount;
   }
 
   // ------------------ DataTable events integration ------------------
@@ -285,6 +306,7 @@ class StickyManager {
 
   // ------------------ Main algorithm ------------------
   recalculate() {
+    if (this._destroyed || !this.datatable || !this.el) return;
     const columns = this._getColumnDefs();
     const stickyCount = this._resolveStickyCount(columns);
     this._stickyCount = stickyCount;
@@ -439,6 +461,10 @@ class StickyDataTable extends DataTable {
         this.sticky = this._sm;
     }
     get container() { return this.wrapper; }
+    setStickyColumnsCount(count) {
+        if (!this._sm || typeof this._sm.setStickyColumnsCount !== 'function') return 0;
+        return this._sm.setStickyColumnsCount(count);
+    }
     destroy() { if (this._sm) this._sm.destroy(); super.destroy(); }
 }
 
