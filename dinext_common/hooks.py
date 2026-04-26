@@ -23,6 +23,12 @@ fixtures = [
         ]
     },
     {
+        "doctype": "Client Script",
+        "filters": [
+            ["module", "=", "Dinext Common"]
+        ]
+    },
+    {
         "doctype": "Server Script",
         "filters": [
             ["module", "=", "Dinext Common"],
