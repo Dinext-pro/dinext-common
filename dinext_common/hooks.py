@@ -29,6 +29,12 @@ fixtures = [
             ["disabled", "=", 0],
         ]
     },
+    {
+        "doctype": "Custom Field",
+        "filters": [
+            ["module", "in", ["Dinext Common"]]
+        ]
+    }
 ]
 
 # Apps
