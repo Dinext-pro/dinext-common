@@ -1,0 +1,60 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-01-18 18:47:38.611861",
+ "custom": 1,
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "state",
+  "action",
+  "next_state",
+  "custom_all_users_with_role"
+ ],
+ "fields": [
+  {
+   "fieldname": "state",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "State",
+   "options": "Workflow State"
+  },
+  {
+   "fieldname": "action",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Action",
+   "options": "Workflow Action Master"
+  },
+  {
+   "fieldname": "next_state",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Next State",
+   "options": "Workflow State"
+  },
+  {
+   "default": "0",
+   "fieldname": "custom_all_users_with_role",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "All Users"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2025-11-25 09:27:38.187998",
+ "modified_by": "iodyshev@dinord.email",
+ "module": "Dinext Common",
+ "name": "Available Workflow Transitions",
+ "owner": "iodyshev@dinord.email",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
