@@ -43,20 +43,20 @@ def has_permission(
         frappe.set_user(user)
         logger.info(f"user set to: '{user}'")
 
-    res = og_has_permission(doctype=doctype,
-                            ptype=ptype,
-                            doc=doc,
-                            user=user,
-                            raise_exception=raise_exception,
-                            parent_doctype=parent_doctype,
-                            debug=debug)
-    #logger.info(f"Does user have {ptype} permission for {doc}? {res}")
-
-    if user:
-        frappe.set_user(cur_user)
-        logger.info(f"user set back to: '{cur_user}'")
-
-    return res
+    try:
+        return og_has_permission(
+            doctype=doctype,
+            ptype=ptype,
+            doc=doc,
+            user=user,
+            raise_exception=raise_exception,
+            parent_doctype=parent_doctype,
+            debug=debug,
+        )
+    finally:
+        if user:
+            frappe.set_user(cur_user)
+            logger.info(f"user set back to: '{cur_user}'")
 
 @frappe.whitelist()
 def get_doc_permissions(doctype, doc, user=None, ptype=None, debug=False):
@@ -88,9 +88,9 @@ def get_users_with_role(role: str) -> list[str]:
     from frappe.utils.user import get_users_with_role as og_get_users_with_role
     
     cur_user = frappe.session.user
-    frappe.set_user('Administrator')
+    frappe.set_user("Administrator")
     
-    res = og_get_users_with_role(role)
-    
-    frappe.set_user(cur_user)
-    return res
+    try:
+        return og_get_users_with_role(role)
+    finally:
+        frappe.set_user(cur_user)
