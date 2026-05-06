@@ -70,6 +70,9 @@
                 --projects-workload-ag-header-main-color: var(--text-color);
                 --projects-workload-ag-header-sub-color: var(--text-color);
             }
+            .projects-workload-ag-grid .ag-pinned-left-header {
+                --ag-header-column-resize-handle-display: block;
+            }
             [data-theme="dark"] .projects-workload-ag-grid,
             .projects-workload-ag-grid.projects-workload-ag-grid-dark {
                 --ag-background-color: rgb(23, 23, 23);
@@ -127,12 +130,14 @@
                 padding: 0 !important;
                 border-right: none !important;
             }
-            .projects-workload-ag-grid .ag-header-cell-resize {
+            .projects-workload-ag-grid .ag-header-viewport .ag-header-cell-resize {
                 display: none !important;
             }
             .projects-workload-ag-grid .ag-header-cell::before,
-            .projects-workload-ag-grid .ag-header-group-cell::before,
-            .projects-workload-ag-grid .ag-header-cell-resize::after {
+            .projects-workload-ag-grid .ag-header-group-cell::before {
+                display: none !important;
+            }
+            .projects-workload-ag-grid .ag-header-viewport .ag-header-cell-resize::after {
                 display: none !important;
             }
             .projects-workload-ag-grid .ag-pinned-left-header,
@@ -255,13 +260,13 @@
                 html: column.name || ""
             },
             width: isParticipant ? 200 : 50,
-            minWidth: isParticipant ? 200 : 50,
-            maxWidth: isParticipant ? 200 : 50,
+            minWidth: isParticipant ? 120 : 50,
+            ...(isParticipant ? {} : { maxWidth: 50 }),
             pinned: isParticipant ? "left" : undefined,
             lockPinned: isParticipant,
             suppressMovable: true,
             sortable: !!column.sortable,
-            resizable: false,
+            resizable: isParticipant,
             cellRenderer: params => {
                 if (isParticipant) {
                     return table.renderParticipantCell(params.data, column, params);
