@@ -46,24 +46,70 @@
         style.id = "projects-workload-ag-grid-css";
         style.textContent = `
             .projects-workload-ag-grid {
-                width: 100%;
+                width: calc(100% - 4px);
                 height: 70vh;
                 min-height: 420px;
-                margin-bottom: 16px;
+                margin: 0.5rem 0 4px 4px;
+                border-radius: 0;
+                font-family: inherit;
+                font-size: var(--text-md);
+                --ag-font-family: inherit;
+                --ag-font-size: var(--text-md);
+                --ag-border-radius: 0;
+                --ag-wrapper-border-radius: 0;
+                --ag-row-border-color: transparent;
+                --ag-cell-horizontal-border: none;
+                --ag-border-color: var(--border-color);
+                --ag-header-column-separator-display: none;
+                --ag-header-column-resize-handle-display: none;
+                --ag-background-color: var(--bg-color);
+                --ag-header-background-color: rgb(243, 243, 243);
+                --ag-header-foreground-color: var(--text-color);
+                --ag-foreground-color: var(--text-color);
                 --projects-workload-ag-header-bg: rgb(243, 243, 243);
-                --projects-workload-ag-header-main-color: #242933;
-                --projects-workload-ag-header-sub-color: #4f5358;
+                --projects-workload-ag-header-main-color: var(--text-color);
+                --projects-workload-ag-header-sub-color: var(--text-color);
             }
             [data-theme="dark"] .projects-workload-ag-grid,
             .projects-workload-ag-grid.projects-workload-ag-grid-dark {
                 --ag-background-color: rgb(23, 23, 23);
+                --ag-header-background-color: var(--subtle-fg, #1f2226);
+                --ag-foreground-color: var(--text-color);
                 --projects-workload-ag-header-bg: var(--subtle-fg, #1f2226);
                 --projects-workload-ag-header-main-color: var(--text-color, #f4f4f4);
-                --projects-workload-ag-header-sub-color: var(--text-muted, #c8c8c8);
+                --projects-workload-ag-header-sub-color: var(--text-color, #f4f4f4);
+            }
+            .projects-workload-ag-grid .ag-root-wrapper {
+                border: 1px solid var(--border-color) !important;
+                border-radius: 0 !important;
+                background: var(--ag-background-color) !important;
+            }
+            .projects-workload-ag-grid .ag-root,
+            .projects-workload-ag-grid .ag-body,
+            .projects-workload-ag-grid .ag-body-viewport,
+            .projects-workload-ag-grid .ag-center-cols-viewport,
+            .projects-workload-ag-grid .ag-center-cols-container,
+            .projects-workload-ag-grid .ag-pinned-left-cols-container {
+                background: var(--ag-background-color) !important;
+            }
+            .projects-workload-ag-grid .ag-row {
+                border: none !important;
+                background: transparent !important;
             }
             .projects-workload-ag-grid .ag-cell {
-                padding: 0;
+                padding: 0 !important;
+                margin: 0 !important;
                 line-height: normal;
+                border: none !important;
+                overflow: hidden !important;
+            }
+            .projects-workload-ag-grid .ag-cell-wrapper,
+            .projects-workload-ag-grid .ag-cell-value {
+                width: 100%;
+                height: 100%;
+                padding: 0 !important;
+                margin: 0 !important;
+                display: block;
             }
             .projects-workload-ag-grid .ag-header-cell-label {
                 justify-content: center;
@@ -74,6 +120,25 @@
             .projects-workload-ag-grid .ag-header-cell {
                 background: var(--projects-workload-ag-header-bg);
             }
+            .projects-workload-ag-grid .ag-header {
+                border-bottom: none !important;
+            }
+            .projects-workload-ag-grid .ag-header-cell {
+                padding: 0 !important;
+                border-right: none !important;
+            }
+            .projects-workload-ag-grid .ag-header-cell-resize {
+                display: none !important;
+            }
+            .projects-workload-ag-grid .ag-header-cell::before,
+            .projects-workload-ag-grid .ag-header-group-cell::before,
+            .projects-workload-ag-grid .ag-header-cell-resize::after {
+                display: none !important;
+            }
+            .projects-workload-ag-grid .ag-pinned-left-header,
+            .projects-workload-ag-grid .ag-pinned-left-cols-container {
+                border-right: 1px solid var(--border-color) !important;
+            }
             .projects-workload-ag-grid .projects-workload-ag-grid-header {
                 display: flex;
                 flex-direction: column;
@@ -81,24 +146,25 @@
                 justify-content: center;
                 width: 100%;
                 height: 100%;
-                line-height: 1.15;
+                line-height: 1.4;
                 text-align: center;
+                padding: 10px 0 !important;
             }
             .projects-workload-ag-grid .projects-workload-ag-grid-header-main {
                 color: var(--projects-workload-ag-header-main-color);
                 font-size: 12px;
-                font-weight: 700;
-                letter-spacing: 0.01em;
+                font-weight: 600;
             }
             .projects-workload-ag-grid .projects-workload-ag-grid-header-sub {
-                margin-top: 4px;
+                margin-top: 2px;
                 color: var(--projects-workload-ag-header-sub-color);
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: 700;
+                opacity: 0.9;
             }
             .projects-workload-ag-grid .projects-workload-ag-grid-header-single {
                 color: var(--projects-workload-ag-header-main-color);
-                font-size: 15px;
+                font-size: 12px;
                 font-weight: 600;
                 white-space: normal;
             }
@@ -106,13 +172,18 @@
                 display: flex;
                 align-items: center;
                 height: 100%;
+                padding: 0 8px !important;
                 cursor: default;
             }
             .projects-workload-ag-grid-toggle {
-                width: 18px;
-                min-width: 18px;
+                width: 16px;
+                min-width: 16px;
                 color: var(--text-muted, #6c7680);
                 cursor: pointer;
+                font-size: 18px;
+                font-weight: 400;
+                line-height: 1;
+                text-align: center;
                 user-select: none;
             }
             .projects-workload-ag-grid-placeholder {
@@ -183,13 +254,14 @@
             headerComponentParams: {
                 html: column.name || ""
             },
-            width: column.width || (isParticipant ? 220 : 55),
-            minWidth: isParticipant ? 180 : 48,
+            width: isParticipant ? 200 : 50,
+            minWidth: isParticipant ? 200 : 50,
+            maxWidth: isParticipant ? 200 : 50,
             pinned: isParticipant ? "left" : undefined,
             lockPinned: isParticipant,
             suppressMovable: true,
             sortable: !!column.sortable,
-            resizable: true,
+            resizable: false,
             cellRenderer: params => {
                 if (isParticipant) {
                     return table.renderParticipantCell(params.data, column, params);
@@ -274,7 +346,7 @@
                 theme: "legacy",
                 columnDefs: this.columns.map((column, index) => toAgColumn(column, index, this)),
                 rowData: [],
-                rowHeight: options.rowHeight || 42,
+                rowHeight: options.rowHeight || 40,
                 headerHeight: options.headerHeight || 70,
                 suppressColumnVirtualisation: false,
                 suppressRowVirtualisation: false,
@@ -352,7 +424,7 @@
 
             return `
                 <div class="projects-workload-ag-grid-participant" style="padding-left: ${indent}px">
-                    <span class="projects-workload-ag-grid-toggle">${hasToggle ? (expanded ? "▾" : "▸") : ""}</span>
+                    <span class="projects-workload-ag-grid-toggle">${hasToggle ? (expanded ? "⌄" : "›") : ""}</span>
                     <span class="projects-workload-ag-grid-participant-content">${content}</span>
                 </div>
             `;
