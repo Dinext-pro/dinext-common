@@ -204,7 +204,7 @@ var HyperList = function () {
       }
 
       var scrollContainer = config.scrollContainer;
-      var scrollerHeight = config.itemHeight * config.total;
+      var scrollerHeight = isNumber(config.itemHeight) ? config.itemHeight * config.total : this._computeItemsHeight();
       var maxElementHeight = this._maxElementHeight;
 
       if (scrollerHeight > maxElementHeight) {
@@ -390,9 +390,7 @@ var HyperList = function () {
       var config = this._config;
       var isHoriz = Boolean(config.horizontal);
       var total = config.total;
-      var scrollHeight = this._itemHeights.reduce(function (a, b) {
-        return a + b;
-      }, 0) + this._scrollPaddingBottom + this._scrollPaddingTop;
+      var scrollHeight = this._computeItemsHeight() + this._scrollPaddingBottom + this._scrollPaddingTop;
 
       HyperList.mergeStyle(this._scroller, (_HyperList$mergeStyle2 = {
         opacity: 0,
@@ -400,12 +398,9 @@ var HyperList = function () {
         top: '0px'
       }, _defineProperty(_HyperList$mergeStyle2, isHoriz ? 'height' : 'width', '1px'), _defineProperty(_HyperList$mergeStyle2, isHoriz ? 'width' : 'height', scrollHeight + 'px'), _HyperList$mergeStyle2));
 
-      // Calculate the height median
-      var sortedItemHeights = this._itemHeights.slice(0).sort(function (a, b) {
-        return a - b;
-      });
-      var middle = Math.floor(total / 2);
-      var averageHeight = total % 2 === 0 ? (sortedItemHeights[middle] + sortedItemHeights[middle - 1]) / 2 : sortedItemHeights[middle];
+      // Calculate the height median. Fixed-height tables are the hot path for
+      // wide reports, so avoid sorting a same-height array on every refresh.
+      var averageHeight = isNumber(config.itemHeight) ? config.itemHeight : this._computeMedianItemHeight(total);
 
       var clientProp = isHoriz ? 'clientWidth' : 'clientHeight';
       var element = config.scrollContainer ? config.scrollContainer : this._element;
@@ -465,15 +460,47 @@ var HyperList = function () {
       }
     }
   }, {
-    key: '_getFrom',
-    value: function _getFrom(scrollTop) {
-      var i = 0;
+    key: '_computeItemsHeight',
+    value: function _computeItemsHeight() {
+      var config = this._config;
 
-      while (this._itemPositions[i] < scrollTop) {
-        i++;
+      if (isNumber(config.itemHeight)) {
+        return config.itemHeight * config.total;
       }
 
-      return i;
+      return this._itemHeights.reduce(function (a, b) {
+        return a + b;
+      }, 0);
+    }
+  }, {
+    key: '_computeMedianItemHeight',
+    value: function _computeMedianItemHeight(total) {
+      var sortedItemHeights = this._itemHeights.slice(0).sort(function (a, b) {
+        return a - b;
+      });
+      var middle = Math.floor(total / 2);
+
+      return total % 2 === 0 ? (sortedItemHeights[middle] + sortedItemHeights[middle - 1]) / 2 : sortedItemHeights[middle];
+    }
+  }, {
+    key: '_getFrom',
+    value: function _getFrom(scrollTop) {
+      var low = 0;
+      var high = this._config.total - 1;
+      var result = this._config.total;
+
+      while (low <= high) {
+        var middle = Math.floor((low + high) / 2);
+
+        if (this._itemPositions[middle] < scrollTop) {
+          low = middle + 1;
+        } else {
+          result = middle;
+          high = middle - 1;
+        }
+      }
+
+      return result;
     }
   }, {
     key: '_getReverseFrom',

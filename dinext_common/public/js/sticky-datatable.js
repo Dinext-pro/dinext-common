@@ -12,6 +12,65 @@ if (typeof DataTable === 'undefined') {
     document.head.appendChild(datatable_script);
 }
 
+function getHyperListRowKey(node) {
+    if (!node || node.nodeType !== 1) return null;
+
+    const rowIndex = node.getAttribute('data-row-index');
+    if (rowIndex !== null) return String(rowIndex);
+
+    const match = String(node.className || '').match(/\bdt-row-([^\s]+)/);
+    return match ? match[1] : null;
+}
+
+function syncHyperListRowShell(existingRow, nextRow, patchToken) {
+    Array.from(existingRow.attributes).forEach(attr => {
+        if (!nextRow.hasAttribute(attr.name)) {
+            existingRow.removeAttribute(attr.name);
+        }
+    });
+
+    Array.from(nextRow.attributes).forEach(attr => {
+        if (existingRow.getAttribute(attr.name) !== attr.value) {
+            existingRow.setAttribute(attr.name, attr.value);
+        }
+    });
+
+    existingRow.__hyperListPatchToken = patchToken;
+}
+
+function createHyperListApplyPatch(patchToken) {
+    return function applyPatch(element, fragment) {
+        const existingRows = new Map();
+        Array.from(element.children).forEach(child => {
+            const key = getHyperListRowKey(child);
+            if (key !== null && child.__hyperListPatchToken === patchToken) {
+                existingRows.set(key, child);
+            }
+        });
+
+        const patchedFragment = document.createDocumentFragment();
+        Array.from(fragment.childNodes).forEach(nextChild => {
+            const key = getHyperListRowKey(nextChild);
+            const existingRow = key !== null ? existingRows.get(key) : null;
+
+            if (existingRow) {
+                syncHyperListRowShell(existingRow, nextChild, patchToken);
+                patchedFragment.appendChild(existingRow);
+            } else {
+                if (key !== null) nextChild.__hyperListPatchToken = patchToken;
+                patchedFragment.appendChild(nextChild);
+            }
+        });
+
+        while (element.firstChild) {
+            element.removeChild(element.firstChild);
+        }
+        element.appendChild(patchedFragment);
+
+        return true;
+    };
+}
+
 function BodyRendererDecorator( bodyRenderer ) {
     const original_bodyRenderer_renderows = bodyRenderer.renderRows;
 
@@ -37,22 +96,22 @@ function BodyRendererDecorator( bodyRenderer ) {
         }).filter(index => index !== null);
 
         const computedStyle = getComputedStyle(this.bodyScrollable);
+        const patchToken = (this._hyperListPatchToken || 0) + 1;
+        this._hyperListPatchToken = patchToken;
+
+        const itemHeight = (
+            this.instance.options.dynamicRowHeight &&
+            this.instance.options.getDynamicRowHeight
+        )
+            ? rows.map(row => this.instance.options.getDynamicRowHeight(this.instance, row.meta.rowIndex))
+            : (this.instance.options.cellHeight || 0);
 
         let config = {
             width: computedStyle.width,
             height: computedStyle.height,
             instance: this.instance,
             rows: rows.map( r => r.meta.rowIndex ),
-            get itemHeight() { 
-                if ( this.instance.options.dynamicRowHeight && this.instance.options.getDynamicRowHeight ) {
-                    let heights = [];
-                    for ( i of this.rows ) {
-                        heights.push( this.instance.options.getDynamicRowHeight( this.instance, i ) );
-                    }
-                    return heights;
-                }/**/
-                return this?.instance?.options?.cellHeight || 0;
-            },
+            itemHeight,
             total: rows.length,
             generate: (index) => {
                 //console.log("generate row: " + index);
@@ -65,14 +124,27 @@ function BodyRendererDecorator( bodyRenderer ) {
             },
             afterRender: () => {
                 this.restoreState();
-            }
+                if (this.instance._sm && typeof this.instance._sm.scheduleApplyToRenderedRows === 'function') {
+                    this.instance._sm.scheduleApplyToRenderedRows();
+                }
+            },
+            applyPatch: createHyperListApplyPatch(patchToken)
         };
 
-        if (this.hyperlist) {
-            this.hyperlist.destroy();
+        if (this.instance._sm && typeof this.instance._sm.suspendRecalculate === 'function') {
+            this.instance._sm.suspendRecalculate();
         }
-        
-        this.hyperlist = new HyperList(this.bodyScrollable, config);/**/
+        try {
+            if (!this.hyperlist) {
+                this.hyperlist = new HyperList(this.bodyScrollable, config);
+            } else {
+                this.hyperlist.refresh(this.bodyScrollable, config);
+            }
+        } finally {
+            if (this.instance._sm && typeof this.instance._sm.resumeRecalculate === 'function') {
+                this.instance._sm.resumeRecalculate(false);
+            }
+        }
         this.renderFooter();
     }
 
@@ -175,6 +247,14 @@ class StickyManager {
     this._lefts = [];
     this._lastRender = 0;
     this._destroyed = false;
+    this._suspendDepth = 0;
+    this._pendingRecalculate = false;
+    this._pendingApply = false;
+    this._recalculateRaf = null;
+    this._recalculateTimer = null;
+    this._applyRaf = null;
+    this._syncRaf = null;
+    this._lastGeneratedRules = '';
 
     // reference to generated stylesheet
     this._genSheet = document.getElementById('dt-sticky-generated' + this._selector);
@@ -201,12 +281,12 @@ class StickyManager {
       this._ro.observe(this.el);
     } catch (e) { /* noop */ }
 
-    // MutationObserver 
-    this._mo = new MutationObserver(this._throttle(() => this.scheduleRecalculate(), this.options.minRenderInterval));
-    this._mo.observe(this.el, { childList: true, subtree: true });
+    // MutationObserver mostly sees virtualized row replacement, so keep it light.
+    this._mo = new MutationObserver(this._throttle(() => this.scheduleApplyToRenderedRows(), this.options.minRenderInterval));
+    this._connectMutationObserver();
     
     $(this.datatable.bodyScrollable).on('scroll', (e) => {
-        this.scheduleRecalculate( true );
+        this.scheduleSyncHeaderFooter();
     });
     
         // 1) сохраняем "оригинал" ДО переопределения
@@ -231,17 +311,87 @@ class StickyManager {
     window.removeEventListener('resize', this._onWindowResize);
     if (this._ro) this._ro.disconnect();
     if (this._mo) this._mo.disconnect();
+    if (this._recalculateTimer) clearTimeout(this._recalculateTimer);
+    if (this._recalculateRaf) cancelAnimationFrame(this._recalculateRaf);
+    if (this._applyRaf) cancelAnimationFrame(this._applyRaf);
+    if (this._syncRaf) cancelAnimationFrame(this._syncRaf);
     this._detachFromDataTableEvents();
+  }
+
+  suspendRecalculate() {
+    if (this._destroyed) return;
+    this._suspendDepth += 1;
+    if (this._mo) this._mo.disconnect();
+  }
+
+  resumeRecalculate(flush = true) {
+    if (this._destroyed) return;
+    this._suspendDepth = Math.max(0, this._suspendDepth - 1);
+    if (this._suspendDepth > 0) return;
+    this._connectMutationObserver();
+
+    if (flush && this._pendingRecalculate) {
+      this._pendingRecalculate = false;
+      this.scheduleRecalculate(true);
+      return;
+    }
+
+    if (this._pendingApply) {
+      this._pendingApply = false;
+      this.scheduleApplyToRenderedRows();
+    }
+  }
+
+  _connectMutationObserver() {
+    if (!this._mo || !this.el || this._destroyed || this._suspendDepth > 0) return;
+    try {
+      this._mo.observe(this.el, { childList: true, subtree: true });
+    } catch (e) { /* noop */ }
   }
 
   scheduleRecalculate(immediate = false) {
     if (this._destroyed) return;
+    if (this._suspendDepth > 0) {
+      this._pendingRecalculate = true;
+      return;
+    }
     const now = performance.now();
-    if (!immediate && now - this._lastRender < this.options.minRenderInterval) return;
-    this._lastRender = now;
-    // batch via rAF
-    requestAnimationFrame(() => {
+    const elapsed = now - this._lastRender;
+    if (!immediate && elapsed < this.options.minRenderInterval) {
+      if (!this._recalculateTimer) {
+        this._recalculateTimer = setTimeout(() => {
+          this._recalculateTimer = null;
+          this.scheduleRecalculate(true);
+        }, this.options.minRenderInterval - elapsed);
+      }
+      return;
+    }
+    if (this._recalculateRaf) return;
+    this._recalculateRaf = requestAnimationFrame(() => {
+      this._recalculateRaf = null;
+      this._lastRender = performance.now();
       this.recalculate();
+    });
+  }
+
+  scheduleApplyToRenderedRows() {
+    if (this._destroyed) return;
+    if (this._suspendDepth > 0) {
+      this._pendingApply = true;
+      return;
+    }
+    if (this._applyRaf) return;
+    this._applyRaf = requestAnimationFrame(() => {
+      this._applyRaf = null;
+      this.applyToRenderedRows();
+    });
+  }
+
+  scheduleSyncHeaderFooter() {
+    if (this._destroyed || this._syncRaf) return;
+    this._syncRaf = requestAnimationFrame(() => {
+      this._syncRaf = null;
+      this._syncHeaderFooterScroll();
     });
   }
 
@@ -316,6 +466,17 @@ class StickyManager {
     this._updateGeneratedStylesheet(lefts);
     // apply attribute/class to header and to currently rendered rows
     this._applyStickyToAllRows(stickyCount);
+    this._syncHeaderFooterScroll();
+  }
+
+  applyToRenderedRows() {
+    if (this._destroyed || !this.datatable || !this.el) return;
+    this._applyStickyToAllRows(this._stickyCount);
+    this._syncHeaderFooterScroll();
+  }
+
+  _syncHeaderFooterScroll() {
+    if (this._destroyed || !this.datatable || !this.datatable.bodyScrollable) return;
     let scrollWidth = this._getElementScrollbarThickness( this.datatable.bodyScrollable );
     let scrollLeft = $( this.el ).find(".dt-scrollable").scrollLeft();
     let header = $( this.el ).find(".dt-row-header");
@@ -388,6 +549,8 @@ class StickyManager {
       // data-sticky-index selector; применится ко всем ячейкам с этим атрибутом
       rules += `${this._selector} .dt-sticky-col[data-sticky-index="${i}"]{ left: ${lefts[i]}px; }`;
     }
+    if (rules === this._lastGeneratedRules) return;
+    this._lastGeneratedRules = rules;
     this._genSheet.textContent = rules || '/* no sticky columns */';
   }
 
@@ -417,19 +580,25 @@ class StickyManager {
     }
     rows.forEach(row => {
       const children = Array.from(row.children || row.querySelectorAll(':scope > *'));
-      for (let i = 0; i < children.length; i++) {
+      for (let i = 0; i < count && i < children.length; i++) {
         const cell = children[i];
         if (!cell) continue;
-        if (i < count) {
-          if (!cell.classList.contains('dt-sticky-col')) cell.classList.add('dt-sticky-col');
+        if (!cell.classList.contains('dt-sticky-col')) cell.classList.add('dt-sticky-col');
+        if (cell.getAttribute('data-sticky-index') !== String(i)) {
           cell.setAttribute('data-sticky-index', String(i));
-          if (this.options.stickyBackground) cell.style.background = this.options.stickyBackground;
-        } else {
+        }
+        if (this.options.stickyBackground) cell.style.background = this.options.stickyBackground;
+      }
+
+      const staleStickyCells = row.querySelectorAll('.dt-sticky-col');
+      staleStickyCells.forEach(cell => {
+        const idx = parseInt(cell.getAttribute('data-sticky-index'), 10);
+        if (isNaN(idx) || idx >= count) {
           if (cell.classList.contains('dt-sticky-col')) cell.classList.remove('dt-sticky-col');
           cell.removeAttribute('data-sticky-index');
           if (this.options.stickyBackground) cell.style.background = '';
         }
-      }
+      });
     });
   }
 
@@ -454,18 +623,117 @@ class StickyManager {
 class StickyDataTable extends DataTable {
     constructor(container, options ) {
         //changeStyle();
+        options = Object.assign({ dynamicRowHeight: false }, options || {});
         super( container, options );
         this.bodyRenderer = BodyRendererDecorator( this.bodyRenderer );
         this.style._settingHeaderPosition = true;
         this._sm = new StickyManager(this, options);
         this.sticky = this._sm;
+        this._stickyRefreshState = {
+            dataSnapshot: Array.isArray(options.data) ? options.data.slice() : [],
+            dataLength: Array.isArray(options.data) ? options.data.length : 0,
+            columnsSignature: this._getColumnsSignature(this.options && this.options.columns)
+        };
     }
     get container() { return this.wrapper; }
+    refresh(data, columns) {
+        const state = this._stickyRefreshState;
+        const canAppendOnly = this._canAppendOnlyRefresh(data, columns);
+
+        if (canAppendOnly) {
+            const rowsToAppend = data.slice(state.dataLength);
+            const result = this._withStickySuspended(() => this.appendRows(rowsToAppend), false);
+            if (this.datamanager) this.datamanager.data = data;
+            if (this.options) this.options.data = data;
+            this._rememberRefreshState(data, columns);
+            if (this._sm) this._sm.scheduleApplyToRenderedRows();
+            return result;
+        }
+
+        const result = this._withStickySuspended(() => super.refresh(data, columns), true);
+        this._rememberRefreshState(data || (this.options && this.options.data) || [], columns);
+        return result;
+    }
+
+    appendRows(rows) {
+        const result = this._withStickySuspended(() => super.appendRows(rows), false);
+        const currentRows = this.getRows ? this.getRows() : [];
+        this._stickyRefreshState = this._stickyRefreshState || {};
+        this._stickyRefreshState.dataLength = Array.isArray(currentRows) ? currentRows.length : 0;
+        if (this._sm) this._sm.scheduleApplyToRenderedRows();
+        return result;
+    }
+
     setStickyColumnsCount(count) {
         if (!this._sm || typeof this._sm.setStickyColumnsCount !== 'function') return 0;
         return this._sm.setStickyColumnsCount(count);
     }
     destroy() { if (this._sm) this._sm.destroy(); super.destroy(); }
+
+    _withStickySuspended(fn, flush = true) {
+        if (!this._sm || typeof this._sm.suspendRecalculate !== 'function') {
+            return fn();
+        }
+        this._sm.suspendRecalculate();
+        try {
+            return fn();
+        } finally {
+            this._sm.resumeRecalculate(flush);
+        }
+    }
+
+    _canAppendOnlyRefresh(data, columns) {
+        const state = this._stickyRefreshState;
+        if (!state || !Array.isArray(data) || state.dataLength <= 0 || data.length <= state.dataLength) {
+            return false;
+        }
+        if (typeof super.appendRows !== 'function' && typeof this.appendRows !== 'function') {
+            return false;
+        }
+
+        const nextColumnsSignature = this._getColumnsSignature(columns || (this.options && this.options.columns));
+        if (state.columnsSignature !== nextColumnsSignature) {
+            return false;
+        }
+
+        for (let i = 0; i < state.dataLength; i++) {
+            if (data[i] !== state.dataSnapshot[i]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    _rememberRefreshState(data, columns) {
+        const currentData = Array.isArray(data) ? data : [];
+        this._stickyRefreshState = {
+            dataSnapshot: currentData.slice(),
+            dataLength: currentData.length,
+            columnsSignature: this._getColumnsSignature(columns || (this.options && this.options.columns))
+        };
+    }
+
+    _getColumnsSignature(columns) {
+        if (!Array.isArray(columns)) return '';
+        return columns.map(column => {
+            if (column == null) return '';
+            if (typeof column !== 'object') return String(column);
+            return [
+                column.id,
+                column.name,
+                column.content,
+                column.width,
+                column.align,
+                column.format ? 'format' : '',
+                column.sticky,
+                column.editable,
+                column.resizable,
+                column.focusable,
+                column.dropdown
+            ].join(':');
+        }).join('|');
+    }
 }
 
 window.StickyDataTable = StickyDataTable;
