@@ -17,6 +17,12 @@ fixtures = [
     "Navbar Settings",
     "Data Cleanup Rules",
     {
+        "doctype": "Holiday List",
+        "filters": [
+            ["name", "in", ["Праздники и выходные РФ"]]
+        ]
+    },
+    {
         "doctype": "Web Page",
         "filters": [
             ["module", "in", ["Dinext Common"]],       
@@ -42,7 +48,7 @@ fixtures = [
         ]
     }
 ]
-
+''' '''
 # Apps
 # ------------------
 
