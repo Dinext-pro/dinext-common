@@ -9,8 +9,8 @@ def get_transitions(
     if user:
         frappe.set_user(user)
 
-    res = og_get_transitions(doc, workflow, raise_exception)
-
-    if user:
-        frappe.set_user(cur_user)
-    return res
+    try:
+        return og_get_transitions(doc, workflow, raise_exception)
+    finally:
+        if user:
+            frappe.set_user(cur_user)
