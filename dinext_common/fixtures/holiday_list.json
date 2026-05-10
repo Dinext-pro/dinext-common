@@ -1,0 +1,1890 @@
+[
+ {
+  "color": null,
+  "country": "RU",
+  "docstatus": 0,
+  "doctype": "Holiday List",
+  "from_date": "2025-01-01",
+  "holiday_list_name": "Праздники и выходные РФ",
+  "holidays": [
+   {
+    "description": "Wednesday  ",
+    "holiday_date": "2025-01-01",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Thursday  ",
+    "holiday_date": "2025-01-02",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Friday  ",
+    "holiday_date": "2025-01-03",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-01-04",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-01-05",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Monday  ",
+    "holiday_date": "2025-01-06",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Tuesday  ",
+    "holiday_date": "2025-01-07",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Wednesday  ",
+    "holiday_date": "2025-01-08",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-01-11",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-01-12",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-01-18",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-01-19",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-01-25",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-01-26",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-02-01",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-02-02",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-02-08",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-02-09",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-02-15",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-02-16",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-02-22",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-02-23",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-03-01",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-03-02",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-03-08",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-03-09",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-03-15",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-03-16",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-03-22",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-03-23",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-03-29",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-03-30",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-04-05",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-04-06",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-04-12",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-04-13",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-04-19",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-04-20",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-04-26",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-04-27",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Thursday  ",
+    "holiday_date": "2025-05-01",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Friday  ",
+    "holiday_date": "2025-05-02",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-05-03",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-05-04",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Thursday  ",
+    "holiday_date": "2025-05-08",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Friday  ",
+    "holiday_date": "2025-05-09",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-05-10",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-05-11",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-05-17",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-05-18",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-05-24",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-05-25",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-05-31",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-06-01",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-06-07",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-06-08",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Thursday  ",
+    "holiday_date": "2025-06-12",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Friday  ",
+    "holiday_date": "2025-06-13",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-06-14",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-06-15",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-06-21",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-06-22",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-06-28",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-06-29",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-07-05",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-07-06",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-07-12",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-07-13",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-07-19",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-07-20",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-07-26",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-07-27",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-08-02",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-08-03",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-08-09",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-08-10",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-08-16",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-08-17",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-08-23",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-08-24",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-08-30",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-08-31",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-09-06",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-09-07",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-09-13",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-09-14",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-09-20",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-09-21",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-09-27",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-09-28",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-10-04",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-10-05",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-10-11",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-10-12",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-10-18",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-10-19",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-10-25",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-10-26",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-11-01",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-11-02",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Monday  ",
+    "holiday_date": "2025-11-03",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Tuesday  ",
+    "holiday_date": "2025-11-04",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-11-08",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-11-09",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-11-15",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-11-16",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-11-22",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-11-23",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-11-29",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-11-30",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-12-06",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-12-07",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-12-13",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-12-14",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-12-20",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-12-21",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2025-12-27",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2025-12-28",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Wednesday  ",
+    "holiday_date": "2025-12-31",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "New Year Holidays",
+    "holiday_date": "2026-01-01",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "New Year Holidays",
+    "holiday_date": "2026-01-02",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "New Year Holidays",
+    "holiday_date": "2026-01-03",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "New Year Holidays",
+    "holiday_date": "2026-01-04",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "New Year Holidays",
+    "holiday_date": "2026-01-05",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "New Year Holidays",
+    "holiday_date": "2026-01-06",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Christmas Day",
+    "holiday_date": "2026-01-07",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "New Year Holidays",
+    "holiday_date": "2026-01-08",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-01-10",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-01-11",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-01-17",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-01-18",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-01-24",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-01-25",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-01-31",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-02-01",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-02-07",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-02-08",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-02-14",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-02-15",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-02-21",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-02-22",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Defender of the Fatherland Day",
+    "holiday_date": "2026-02-23",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-02-28",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-03-01",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-03-07",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "International Women's Day",
+    "holiday_date": "2026-03-08",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-03-14",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-03-15",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-03-21",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-03-22",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-03-28",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-03-29",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-04-04",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-04-05",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-04-11",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-04-12",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-04-18",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-04-19",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-04-25",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-04-26",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Holiday of Spring and Labor",
+    "holiday_date": "2026-05-01",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-05-02",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-05-03",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Victory Day",
+    "holiday_date": "2026-05-09",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-05-10",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "<div class=\"ql-editor read-mode\"><p>Monday</p></div>",
+    "holiday_date": "2026-05-11",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-05-16",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-05-17",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-05-23",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-05-24",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-05-30",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-05-31",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-06-06",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-06-07",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Russia Day",
+    "holiday_date": "2026-06-12",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-06-13",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-06-14",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-06-20",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-06-21",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-06-27",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-06-28",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-07-04",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-07-05",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-07-11",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-07-12",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-07-18",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-07-19",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-07-25",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-07-26",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-08-01",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-08-02",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-08-08",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-08-09",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-08-15",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-08-16",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-08-22",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-08-23",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-08-29",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-08-30",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-09-05",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-09-06",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-09-12",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-09-13",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-09-19",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-09-20",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-09-26",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-09-27",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-10-03",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-10-04",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-10-10",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-10-11",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-10-17",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-10-18",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-10-24",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-10-25",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-10-31",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-11-01",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Unity Day",
+    "holiday_date": "2026-11-04",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 0
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-11-07",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-11-08",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-11-14",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-11-15",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-11-21",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-11-22",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-11-28",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-11-29",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-12-05",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-12-06",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-12-12",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-12-13",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-12-19",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-12-20",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Saturday",
+    "holiday_date": "2026-12-26",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   },
+   {
+    "description": "Sunday",
+    "holiday_date": "2026-12-27",
+    "parent": "Праздники и выходные РФ",
+    "parentfield": "holidays",
+    "parenttype": "Holiday List",
+    "weekly_off": 1
+   }
+  ],
+  "modified": "2026-05-06 16:49:00.617010",
+  "name": "Праздники и выходные РФ",
+  "subdivision": null,
+  "to_date": "2026-12-31",
+  "total_holidays": 234,
+  "weekly_off": "Sunday"
+ }
+]
