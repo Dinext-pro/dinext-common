@@ -87,55 +87,26 @@ def run_get_projects_workload_data_v2(fd):
 		perf_end("Generate periods early for SQL window", early_period_start, "periods=" + str(len(periods)) + ", window_sql=" + str(ws) + ".." + str(we))
 		
 		# ========== 1. ПОЛУЧЕНИЕ ВСЕХ НЕОБХОДИМЫХ ДАННЫХ ==========
-		# ISS-2026-00865 этап II: выборка назначений — dinext_common.project_workload_assignments (frappe.call).
-		
-		
+		# ISS-2026-00865 этап II: выборка назначений — dinext_common.project_workload.assignments (прямые импорты).
+
 		use_sql_ug = bool(user_totals_sql_paged and user_group)
-		
+
 		assignments = []
 		if user_totals_sql_paged:
 		    perf_section_start = perf_start("SQL user_totals bundle")
-		    from dinext_common.dinext_common.project_workload.assignments import (
-		        count_pwr_report_distinct_users,
-		        fetch_pwr_report_assignments,
-		        fetch_pwr_report_user_page,
-		    )
+		    from dinext_common.dinext_common.project_workload.assignments import fetch_pwr_user_totals_bundle
+
 		    use_join = bool(use_sql_ug)
-		    total_users = count_pwr_report_distinct_users(
+		    bundle = fetch_pwr_user_totals_bundle(
 		        ws,
 		        we,
+		        limit,
+		        offset,
 		        user=user,
 		        project=project,
 		        user_group_parent=user_group,
 		        use_sql_user_group_join=use_join,
 		    )
-		    page_users = fetch_pwr_report_user_page(
-		        ws,
-		        we,
-		        limit=limit,
-		        offset=offset,
-		        user=user,
-		        project=project,
-		        user_group_parent=user_group,
-		        use_sql_user_group_join=use_join,
-		    )
-		    if not page_users:
-		        bundle = {"total_users": total_users, "page_users": [], "assignments": []}
-		    else:
-		        assignments_fb = fetch_pwr_report_assignments(
-		            ws,
-		            we,
-		            user=user,
-		            project=project,
-		            user_group_parent=user_group,
-		            use_sql_user_group_join=use_join,
-		            restrict_users=page_users,
-		        )
-		        bundle = {
-		            "total_users": total_users,
-		            "page_users": page_users,
-		            "assignments": assignments_fb,
-		        }
 		    total_users = int(bundle.get("total_users") or 0)
 		    page_users = bundle.get("page_users") or []
 		    assignments = bundle.get("assignments") or []
@@ -456,7 +427,7 @@ def run_get_projects_workload_data_v2(fd):
 		    perf_log("SKIP SQL project work efforts batch | task_roles=0")
 		
 		# ========== 4. ПЕРИОДЫ ==========
-		# periods уже сгенерированы в начале (pwr_generate_periods_and_sql_bounds); дубликат генерации убран.
+		# periods уже сгенерированы в начале run (generate_periods_for_pwr_report); повторная генерация не нужна.
 		frappe.log("Generated " + str(len(periods)) + " periods for view_type=" + view_type + ", range=" + period_range)
 		if periods:
 		    frappe.log("First period: " + str(periods[0]))

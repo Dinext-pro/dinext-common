@@ -144,6 +144,21 @@
             .projects-workload-ag-grid .ag-pinned-left-cols-container {
                 border-right: 1px solid var(--border-color) !important;
             }
+            .projects-workload-ag-grid[data-loading-message]::after {
+                content: attr(data-loading-message);
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                z-index: 10;
+                padding: 8px 12px;
+                border: 1px solid var(--border-color);
+                border-radius: 4px;
+                background: var(--fg-color, var(--bg-color));
+                color: var(--text-color);
+                box-shadow: var(--shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.12));
+                pointer-events: none;
+            }
             .projects-workload-ag-grid .projects-workload-ag-grid-header {
                 display: flex;
                 flex-direction: column;
@@ -218,40 +233,90 @@
         return agGridPromise;
     }
 
-    function getRowId(row, index) {
+    function getDefaultRowLevel(row) {
+        const indent = Number(row && row.indent);
+        return Number.isFinite(indent) ? Math.max(0, indent) : 0;
+    }
+
+    function getDefaultRowKey(row, index) {
+        if (!row) return `row-${index}`;
+        if (row._agRowKey) return row._agRowKey;
+
+        if (row.level === "user" || row.isUser || row._isUser) {
+            return `user:${row.email || row._email || row.participant || index}`;
+        }
+        if (row.level === "role" || row.isRole) {
+            return `role:${row.email || row._email || "user"}:${row.roleName || row.role || row.participant || index}`;
+        }
+        if (row.level === "task" || row.isTask) {
+            return `task:${row.email || row._email || "user"}:${row.roleName || row.role || "role"}:${row.task_id || row.name || row.participant || index}`;
+        }
+        if (row._isAbsenceRow) {
+            return `absence:${row._email || row.email || index}`;
+        }
+        if (row._isLazyPlaceholder) {
+            return `placeholder:${row._email || row.email || index}`;
+        }
+        if (row._isProject) {
+            return `project:${row._email || row.email || "user"}:${row._project || row.project || row.participant || index}`;
+        }
+
+        return `row:${row.participant || row.name || index}:${index}`;
+    }
+
+    function getRowId(row, index, table) {
         if (!row) return `row-${index}`;
         if (row._agRowId) return row._agRowId;
 
-        const type = row._isUser ? "user" : row._isProject ? "project" : row._isAbsenceRow ? "absence" : row._isLazyPlaceholder ? "placeholder" : "row";
-        const key = row._email || row._project || row.project || row.participant || index;
-        row._agRowId = `${type}:${key}:${index}`;
+        const key = table ? table.getRowKey(row, index) : getDefaultRowKey(row, index);
+        row._agRowId = `${key}:${index}`;
         return row._agRowId;
     }
 
-    function getParticipantIndent(row) {
-        const indent = Number(row && row.indent);
-        return Number.isFinite(indent) ? indent * 18 : 0;
+    function getParticipantIndent(row, table) {
+        const indentSize = table && Number.isFinite(Number(table.options.indentSize))
+            ? Number(table.options.indentSize)
+            : 18;
+        return (table ? table.getRowLevel(row) : getDefaultRowLevel(row)) * indentSize;
     }
 
-    function isChildOfExpandedUser(row, expandedUsers) {
-        if (!row || !row._email) return false;
-        if (!row.indent || row.indent <= 0) return true;
-        return expandedUsers.has(row._email);
+    function isDefaultExpandableRow(row) {
+        if (!row) return false;
+        if (row.expandable === true) return true;
+        return !!(row._isUser && row._email);
     }
 
-    function toVisibleRows(rows, expandedUsers) {
-        return (rows || []).filter(row => {
+    function toVisibleRows(rows, table) {
+        const expandedByLevel = [];
+        const visibleRows = [];
+
+        (rows || []).forEach((row, index) => {
             if (!row) return false;
-            if (!row.indent || row.indent <= 0) return true;
-            return isChildOfExpandedUser(row, expandedUsers);
+            const level = table.getRowLevel(row);
+            const parentVisible = level <= 0 || expandedByLevel[level - 1] !== false;
+            const rowVisible = level <= 0 || parentVisible;
+
+            if (rowVisible) {
+                visibleRows.push(row);
+            }
+
+            const expandable = table.isRowExpandable(row, index);
+            const rowKey = table.getRowKey(row, index);
+            expandedByLevel[level] = rowVisible && (!expandable || table.expandedRows.has(rowKey));
+            expandedByLevel.length = level + 1;
         });
+
+        return visibleRows;
     }
 
     function toAgColumn(column, index, table) {
         const field = column.id || column.name || `col_${index}`;
         const isParticipant = field === "participant" || index === 0;
+        const width = Number(column.width) || (isParticipant ? table.options.participantWidth || 220 : 50);
+        const minWidth = Number(column.minWidth) || (isParticipant ? Math.min(width, 160) : width);
+        const maxWidth = Number(column.maxWidth) || (isParticipant ? undefined : width);
 
-        return {
+        const agColumn = {
             field,
             colId: field,
             headerName: column.name || "",
@@ -259,14 +324,29 @@
             headerComponentParams: {
                 html: column.name || ""
             },
-            width: isParticipant ? 200 : 50,
-            minWidth: isParticipant ? 120 : 50,
-            ...(isParticipant ? {} : { maxWidth: 50 }),
+            width,
+            minWidth,
             pinned: isParticipant ? "left" : undefined,
             lockPinned: isParticipant,
             suppressMovable: true,
             sortable: !!column.sortable,
             resizable: isParticipant,
+            cellClass: params => {
+                const classes = [];
+                if (isParticipant) classes.push("projects-workload-ag-grid-participant-cell");
+                if (params.data && params.data.level) classes.push(`level-${params.data.level}`);
+                if (typeof column.cellClass === "function") {
+                    const customClass = column.cellClass(params);
+                    if (Array.isArray(customClass)) {
+                        classes.push(...customClass);
+                    } else if (customClass) {
+                        classes.push(customClass);
+                    }
+                } else if (column.cellClass) {
+                    classes.push(column.cellClass);
+                }
+                return classes;
+            },
             cellRenderer: params => {
                 if (isParticipant) {
                     return table.renderParticipantCell(params.data, column, params);
@@ -279,6 +359,12 @@
                 return params.value == null ? "" : String(params.value);
             }
         };
+
+        if (Number.isFinite(maxWidth)) {
+            agColumn.maxWidth = maxWidth;
+        }
+
+        return agColumn;
     }
 
     function isFrappeDarkTheme() {
@@ -323,10 +409,27 @@
             this.options = options;
             this.columns = options.columns || [];
             this.rows = options.data || [];
-            this.expandedUsers = new Set();
+            this.expandedRows = new Set();
             this.loading = false;
+            this.getRowLevel = typeof options.getRowLevel === "function"
+                ? options.getRowLevel
+                : getDefaultRowLevel;
+            this.getRowKey = typeof options.getRowKey === "function"
+                ? options.getRowKey
+                : getDefaultRowKey;
+            this.isRowExpandable = typeof options.isRowExpandable === "function"
+                ? options.isRowExpandable
+                : isDefaultExpandableRow;
+            this.onCellDoubleClick = typeof options.onCellDoubleClick === "function"
+                ? options.onCellDoubleClick
+                : null;
 
             this.container.classList.add("projects-workload-ag-grid");
+            if (options.extraClass) {
+                String(options.extraClass).split(/\s+/).filter(Boolean).forEach(className => {
+                    this.container.classList.add(className);
+                });
+            }
             this.applyTheme();
             this.themeObserver = new MutationObserver(() => this.applyTheme());
             this.themeObserver.observe(document.documentElement, {
@@ -335,13 +438,13 @@
             });
             this.rowmanager = {
                 collapseAllNodes: () => {
-                    this.expandedUsers.clear();
+                    this.expandedRows.clear();
                     this.renderRows();
                 },
                 openSingleNode: rowIndex => {
                     const row = this.rows[rowIndex];
-                    if (row && row._email) {
-                        this.expandedUsers.add(row._email);
+                    if (row) {
+                        this.expandedRows.add(this.getRowKey(row, rowIndex));
                         this.renderRows();
                     }
                 }
@@ -357,7 +460,11 @@
                 suppressRowVirtualisation: false,
                 animateRows: false,
                 ensureDomOrder: false,
-                getRowId: params => params.data && params.data._agRowId ? params.data._agRowId : getRowId(params.data, 0),
+                loadingOverlayComponentParams: {
+                    loadingMessage: options.freezeMessage || __("Идет загрузка данных...")
+                },
+                getRowId: params => params.data && params.data._agRowId ? params.data._agRowId : getRowId(params.data, 0, this),
+                getRowClass: params => params.data && params.data.level ? `level-${params.data.level}` : "",
                 onGridReady: params => {
                     this.api = params.api;
                     this.bodyScrollable = this.container.querySelector(".ag-body-viewport");
@@ -381,7 +488,7 @@
         refresh(rows, columns) {
             this.rows = rows || [];
             this.columns = columns || this.columns || [];
-            this.rows.forEach((row, index) => getRowId(row, index));
+            this.rows.forEach((row, index) => getRowId(row, index, this));
 
             const columnDefs = this.columns.map((column, index) => toAgColumn(column, index, this));
             this.setGridOption("columnDefs", columnDefs);
@@ -389,7 +496,7 @@
         }
 
         renderRows() {
-            const visibleRows = toVisibleRows(this.rows, this.expandedUsers);
+            const visibleRows = toVisibleRows(this.rows, this);
             this.setGridOption("rowData", visibleRows);
             this.bodyScrollable = this.container.querySelector(".ag-body-viewport");
         }
@@ -412,9 +519,10 @@
             if (!row) return "";
 
             const value = params.value == null ? row.participant : params.value;
-            const indent = getParticipantIndent(row);
-            const hasToggle = row._isUser && row._email;
-            const expanded = hasToggle && this.expandedUsers.has(row._email);
+            const indent = getParticipantIndent(row, this);
+            const rowKey = this.getRowKey(row, this.rows.indexOf(row));
+            const hasToggle = this.isRowExpandable(row);
+            const expanded = hasToggle && this.expandedRows.has(rowKey);
             let content = "";
 
             if (typeof column.format === "function") {
@@ -437,7 +545,7 @@
 
         handleCellClick(params) {
             const row = params.data;
-            if (!row || params.column.getColId() !== "participant" || !row._isUser || !row._email) {
+            if (!row || params.column.getColId() !== "participant" || !this.isRowExpandable(row)) {
                 return;
             }
 
@@ -446,21 +554,29 @@
                 return;
             }
 
-            if (this.expandedUsers.has(row._email)) {
-                this.expandedUsers.delete(row._email);
+            const rowKey = this.getRowKey(row, this.rows.indexOf(row));
+            if (this.expandedRows.has(rowKey)) {
+                this.expandedRows.delete(rowKey);
             } else {
-                this.expandedUsers.add(row._email);
+                this.expandedRows.add(rowKey);
             }
             this.renderRows();
         }
 
         handleCellDoubleClick(params) {
-            if (typeof window.handleDoubleClick !== "function") return;
-
             const column = this.columns.find(col => (col.id || col.name) === params.column.getColId()) || {
                 id: params.column.getColId()
             };
-            window.handleDoubleClick(params.data, column);
+
+            if (this.onCellDoubleClick) {
+                this.onCellDoubleClick(params.data, column, params);
+            } else if (typeof window.handleDoubleClick === "function") {
+                window.handleDoubleClick(params.data, column);
+            }
+        }
+
+        setCellDoubleClickHandler(handler) {
+            this.onCellDoubleClick = typeof handler === "function" ? handler : null;
         }
 
         freeze(message) {
