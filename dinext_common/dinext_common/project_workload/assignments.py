@@ -148,6 +148,52 @@ def fetch_pwr_report_user_page(
 	return out
 
 
+def fetch_pwr_user_totals_bundle(
+	window_start,
+	window_end,
+	limit,
+	offset,
+	*,
+	user=None,
+	project=None,
+	user_group_parent=None,
+	use_sql_user_group_join=False,
+):
+	"""Режим user_totals отчёта команды: count, страница пользователей, назначения только по странице."""
+	lim = int(limit or 0) or 20
+	off = int(offset or 0)
+	total_users = count_pwr_report_distinct_users(
+		window_start,
+		window_end,
+		user=user,
+		project=project,
+		user_group_parent=user_group_parent,
+		use_sql_user_group_join=use_sql_user_group_join,
+	)
+	page_users = fetch_pwr_report_user_page(
+		window_start,
+		window_end,
+		limit=lim,
+		offset=off,
+		user=user,
+		project=project,
+		user_group_parent=user_group_parent,
+		use_sql_user_group_join=use_sql_user_group_join,
+	)
+	if not page_users:
+		return {"total_users": total_users, "page_users": [], "assignments": []}
+	assignments = fetch_pwr_report_assignments(
+		window_start,
+		window_end,
+		user=user,
+		project=project,
+		user_group_parent=user_group_parent,
+		use_sql_user_group_join=use_sql_user_group_join,
+		restrict_users=page_users,
+	)
+	return {"total_users": total_users, "page_users": page_users, "assignments": assignments}
+
+
 def fetch_project_assignments_with_worker_context(project, date_from, date_to):
 	"""Строки как в Get_Project_Workload_Data_V3 (Task + PWA + User + Worker + Timesheet Template)."""
 	date_from = _as_date(date_from)
