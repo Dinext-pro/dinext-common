@@ -1,0 +1,16 @@
+{
+  "_comment": "ISS-2026-00865 TC-10: зафиксированный контракт ответа Python V2 (run_get_projects_workload_data_v2) на фикстуре TC-01 + nowdate=ANCHOR_MONDAY. Не путать с pre-I get_projects_workload_data (Get Projects Workload Data_Exp) и не с TC-10b (паритет с Get Projects Workload Data_Exp_OLD). Обновлять только при намеренном изменении контракта V2.",
+  "anchor_date": "2026-05-04",
+  "week_start": "2026-05-04",
+  "week_end": "2026-05-10",
+  "counts": {
+    "users_count": 1,
+    "projects_count": 1,
+    "assignments_count": 1
+  },
+  "user_email": "Administrator",
+  "workload_total": 40.0,
+  "week_daily_sum": 40.0,
+  "workload_total_delta": 0.25,
+  "week_daily_sum_delta": 0.25
+}

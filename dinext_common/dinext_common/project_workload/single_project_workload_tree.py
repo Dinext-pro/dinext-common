@@ -583,13 +583,17 @@ def run_get_project_workload_data(fd):
 		# Вспомогательная функция для проверки рабочего дня
 		def is_working_day_optimized(date_str, user_email):
 		    """Оптимизированная проверка рабочего дня"""
-		    # 1. Проверка праздников проекта (только если не weekly_off)
+		    # 1. Праздничный календарь проекта: weekly_off — нерабочий день; прочие праздники — нерабочие.
+		    if date_str in project_weekly_off_set:
+		        return False
 		    if date_str in project_holidays_set and date_str not in project_weekly_off_set:
 		        return False
-		
-		    # 2. Проверка праздников пользователя (только если не weekly_off)
+		    
+		    # 2. Календарь пользователя (Worker.wholiday_list): та же логика.
 		    user_holidays = user_holidays_cache.get(user_email, set())
 		    user_weekly_off = user_weekly_off_cache.get(user_email, set())
+		    if date_str in user_weekly_off:
+		        return False
 		    if date_str in user_holidays and date_str not in user_weekly_off:
 		        return False
 		
