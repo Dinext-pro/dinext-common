@@ -897,6 +897,7 @@ def run_get_projects_workload_data_v2(fd):
 		            '_project': project_name,
 		            '_workingHours': user_daily_hours.get(user_email, {}),
 		            '_absences': user_absences.get(user_email, []),
+		            '_userHolidays': holiday_lists_cache.get(user_info.get('wholiday_list', ''), []),
 		            '_projectHolidays': holiday_lists_cache.get(project_info.get('holiday_list', ''), [])
 		        }
 		
