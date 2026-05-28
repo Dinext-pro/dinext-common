@@ -196,19 +196,49 @@
                 cursor: default;
             }
             .projects-workload-ag-grid-toggle {
-                width: 16px;
-                min-width: 16px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 18px;
+                min-width: 18px;
+                height: 18px;
                 color: var(--text-muted, #6c7680);
                 cursor: pointer;
-                font-size: 18px;
-                font-weight: 400;
+                font-size: 24px;
+                font-weight: 700;
                 line-height: 1;
-                text-align: center;
                 user-select: none;
+                flex-shrink: 0;
+                align-self: center;
+                transform: rotate(0deg);
+                transform-origin: center center;
+                transition: transform 0.15s ease;
+            }
+            .projects-workload-ag-grid-toggle.is-expanded {
+                transform: rotate(90deg);
+                transform-origin: center center;
+                transition: transform 0.15s ease;
+                padding-left: 4px !important;
+                padding-bottom: 8px !important;
+            }
+            .projects-workload-ag-grid-toggle-spacer {
+                display: inline-block;
+                width: 18px;
+                min-width: 18px;
+                height: 18px;
+                flex-shrink: 0;
             }
             .projects-workload-ag-grid-placeholder {
                 color: var(--text-muted, #6c7680);
                 font-style: italic;
+            }
+            .projects-workload-ag-grid.project-workload-ag-grid .projects-workload-ag-grid-participant-content .project-role-display,
+            .projects-workload-ag-grid.project-workload-ag-grid .projects-workload-ag-grid-participant-content .project-task-display {
+                width: 100%;
+            }
+            .projects-workload-ag-grid.project-workload-ag-grid .projects-workload-ag-grid-participant-content .project-role-name {
+                padding-left: 4px !important;
+                font-weight: 600;
             }
         `;
         document.head.appendChild(style);
@@ -236,6 +266,49 @@
     function getDefaultRowLevel(row) {
         const indent = Number(row && row.indent);
         return Number.isFinite(indent) ? Math.max(0, indent) : 0;
+    }
+
+    function getWorkloadTreeRowLevel(row) {
+        if (!row) return 0;
+        if (row.level === "user" || row.isUser) return 0;
+        if (row.level === "role" || row.isRole) return 1;
+        if (row.level === "task" || row.isTask) {
+            const indent = Number(row.indent);
+            return Number.isFinite(indent) ? Math.max(2, indent) : 2;
+        }
+        return getDefaultRowLevel(row);
+    }
+
+    function getTreeLevelAttr(row) {
+        if (!row) return "";
+        if (row.level) return row.level;
+        if (row._isProject) return "project";
+        if (row._isUser) return "user";
+        return "";
+    }
+
+    function getToggleSymbol() {
+        return "›";
+    }
+
+    function getProjectWorkloadToggleIndent(row, table) {
+        const indent = Number(row && row.indent);
+        if (Number.isFinite(indent) && indent > 0) {
+            return 28 + (indent - 1) * 18;
+        }
+        const level = table ? table.getRowLevel(row) : getWorkloadTreeRowLevel(row);
+        if (level <= 0) return 0;
+        return 28 + (level - 1) * 18;
+    }
+
+    function resolveRowLevel(row, table) {
+        if (table && typeof table.getRowLevel === "function") {
+            return table.getRowLevel(row);
+        }
+        if (row && row.level) {
+            return getWorkloadTreeRowLevel(row);
+        }
+        return getDefaultRowLevel(row);
     }
 
     function getDefaultRowKey(row, index) {
@@ -266,10 +339,8 @@
 
     function getRowId(row, index, table) {
         if (!row) return `row-${index}`;
-        if (row._agRowId) return row._agRowId;
-
         const key = table ? table.getRowKey(row, index) : getDefaultRowKey(row, index);
-        row._agRowId = `${key}:${index}`;
+        row._agRowId = key;
         return row._agRowId;
     }
 
@@ -283,27 +354,36 @@
     function isDefaultExpandableRow(row) {
         if (!row) return false;
         if (row.expandable === true) return true;
-        return !!(row._isUser && row._email);
+        return !!(
+            (row._isUser && row._email)
+            || row.isUser
+            || row.isRole
+            || row.level === "user"
+            || row.level === "role"
+        );
     }
 
     function toVisibleRows(rows, table) {
-        const expandedByLevel = [];
         const visibleRows = [];
+        const expandedOnPath = [];
 
         (rows || []).forEach((row, index) => {
-            if (!row) return false;
-            const level = table.getRowLevel(row);
-            const parentVisible = level <= 0 || expandedByLevel[level - 1] !== false;
-            const rowVisible = level <= 0 || parentVisible;
+            if (!row) return;
 
-            if (rowVisible) {
-                visibleRows.push(row);
+            const level = resolveRowLevel(row, table);
+            expandedOnPath.length = level;
+
+            const parentVisible = level === 0 || expandedOnPath[level - 1] === true;
+            if (!parentVisible) {
+                return;
             }
+
+            visibleRows.push(row);
 
             const expandable = table.isRowExpandable(row, index);
             const rowKey = table.getRowKey(row, index);
-            expandedByLevel[level] = rowVisible && (!expandable || table.expandedRows.has(rowKey));
-            expandedByLevel.length = level + 1;
+            const isExpanded = !expandable || table.expandedRows.has(rowKey);
+            expandedOnPath[level] = isExpanded;
         });
 
         return visibleRows;
@@ -413,7 +493,7 @@
             this.loading = false;
             this.getRowLevel = typeof options.getRowLevel === "function"
                 ? options.getRowLevel
-                : getDefaultRowLevel;
+                : row => (row && row.level ? getWorkloadTreeRowLevel(row) : getDefaultRowLevel(row));
             this.getRowKey = typeof options.getRowKey === "function"
                 ? options.getRowKey
                 : getDefaultRowKey;
@@ -443,11 +523,10 @@
                 },
                 openSingleNode: rowIndex => {
                     const row = this.rows[rowIndex];
-                    if (row) {
-                        this.expandedRows.add(this.getRowKey(row, rowIndex));
-                        this.renderRows();
-                    }
-                }
+                    if (!row) return;
+                    this.expandedRows.add(this.getRowKey(row, rowIndex));
+                    this.renderRows();
+                },
             };
 
             this.gridOptions = {
@@ -488,7 +567,12 @@
         refresh(rows, columns) {
             this.rows = rows || [];
             this.columns = columns || this.columns || [];
-            this.rows.forEach((row, index) => getRowId(row, index, this));
+            this.rows.forEach((row, index) => {
+                if (row) {
+                    delete row._agRowId;
+                    getRowId(row, index, this);
+                }
+            });
 
             const columnDefs = this.columns.map((column, index) => toAgColumn(column, index, this));
             this.setGridOption("columnDefs", columnDefs);
@@ -497,8 +581,17 @@
 
         renderRows() {
             const visibleRows = toVisibleRows(this.rows, this);
+            visibleRows.forEach((row, index) => getRowId(row, index, this));
             this.setGridOption("rowData", visibleRows);
             this.bodyScrollable = this.container.querySelector(".ag-body-viewport");
+            this.refreshParticipantCells();
+        }
+
+        refreshParticipantCells() {
+            if (!this.api) return;
+            if (typeof this.api.refreshCells === "function") {
+                this.api.refreshCells({ columns: ["participant"], force: true });
+            }
         }
 
         setGridOption(key, value) {
@@ -515,14 +608,53 @@
             }
         }
 
+        findRowIndex(row) {
+            if (!row) return -1;
+            const targetKey = this.getRowKey(row, 0);
+            for (let i = 0; i < this.rows.length; i++) {
+                const current = this.rows[i];
+                if (current === row) {
+                    return i;
+                }
+                if (this.getRowKey(current, i) === targetKey) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
         renderParticipantCell(row, column, params) {
             if (!row) return "";
 
             const value = params.value == null ? row.participant : params.value;
-            const indent = getParticipantIndent(row, this);
-            const rowKey = this.getRowKey(row, this.rows.indexOf(row));
-            const hasToggle = this.isRowExpandable(row);
+            const rowIndex = this.findRowIndex(row);
+            const treeLevel = getTreeLevelAttr(row);
+            const rowKey = this.getRowKey(row, rowIndex >= 0 ? rowIndex : 0);
+            const hasToggle = this.isRowExpandable(row, rowIndex);
             const expanded = hasToggle && this.expandedRows.has(rowKey);
+            const toggleClass = expanded
+                ? "projects-workload-ag-grid-toggle is-expanded"
+                : "projects-workload-ag-grid-toggle";
+            const isProjectGrid = this.container.classList.contains("project-workload-ag-grid");
+            let participantStyle = "";
+            let toggleHtml = "";
+            if (isProjectGrid) {
+                const toggleIndent = getProjectWorkloadToggleIndent(row, this);
+                const indentStyle = toggleIndent ? ` style="margin-left:${toggleIndent}px"` : "";
+                if (hasToggle) {
+                    toggleHtml = `<span class="${toggleClass}"${indentStyle}>${getToggleSymbol()}</span>`;
+                } else if (toggleIndent > 0) {
+                    toggleHtml = `<span class="projects-workload-ag-grid-toggle-spacer"${indentStyle}></span>`;
+                }
+            } else {
+                const indent = getParticipantIndent(row, this);
+                if (indent) {
+                    participantStyle = ` style="padding-left:${indent}px"`;
+                }
+                if (hasToggle) {
+                    toggleHtml = `<span class="${toggleClass}">${getToggleSymbol()}</span>`;
+                }
+            }
             let content = "";
 
             if (typeof column.format === "function") {
@@ -535,9 +667,11 @@
                 content = `<span class="projects-workload-ag-grid-placeholder">${content}</span>`;
             }
 
+            const treeLevelAttr = treeLevel ? ` data-tree-level="${treeLevel}"` : "";
+
             return `
-                <div class="projects-workload-ag-grid-participant" style="padding-left: ${indent}px">
-                    <span class="projects-workload-ag-grid-toggle">${hasToggle ? (expanded ? "⌄" : "›") : ""}</span>
+                <div class="projects-workload-ag-grid-participant"${treeLevelAttr}${participantStyle}>
+                    ${toggleHtml}
                     <span class="projects-workload-ag-grid-participant-content">${content}</span>
                 </div>
             `;
@@ -549,12 +683,21 @@
                 return;
             }
 
+            const rowIndex = this.findRowIndex(row);
+            const rowKey = this.getRowKey(row, rowIndex >= 0 ? rowIndex : 0);
+
             if (row._detailsLoaded === false && typeof window.loadProjectDetailsForUser === "function" && window.cur_frm) {
+                if (this.expandedRows.has(rowKey)) {
+                    this.expandedRows.delete(rowKey);
+                    this.renderRows();
+                    return;
+                }
+                this.expandedRows.add(rowKey);
+                this.renderRows();
                 window.loadProjectDetailsForUser(window.cur_frm, row);
                 return;
             }
 
-            const rowKey = this.getRowKey(row, this.rows.indexOf(row));
             if (this.expandedRows.has(rowKey)) {
                 this.expandedRows.delete(rowKey);
             } else {
