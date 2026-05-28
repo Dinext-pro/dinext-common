@@ -81,12 +81,11 @@
 			communications: "сообщения",
 			comments: "комментарии",
 		},
+		docinfo_self_change_suppress_ms: 10000,
 
 		// 0 = выключено. Полезно, если realtime/socket.io недоступен.
 		poll_server_changes_interval_ms: 0,
 
-		// Опциональный hook для DocType-specific реакции после server-only merge.
-		on_server_apply: null,
 	};
 
 	const SYSTEM_FIELDS = [
@@ -390,6 +389,56 @@
 		return changed;
 	}
 
+	function mark_docinfo_self_change(state, keys) {
+		const expires_at = Date.now() + Number(state.cfg.docinfo_self_change_suppress_ms || 0);
+		if (!expires_at) return;
+
+		state.docinfo_self_changes = state.docinfo_self_changes || {};
+		keys.forEach((key) => {
+			state.docinfo_self_changes[key] = expires_at;
+		});
+	}
+
+	function filter_self_docinfo_changes(state, changed_keys) {
+		const now = Date.now();
+		const self_changes = state.docinfo_self_changes || {};
+
+		return changed_keys.filter((key) => {
+			if (!self_changes[key]) return true;
+			if (self_changes[key] < now) {
+				delete self_changes[key];
+				return true;
+			}
+
+			delete self_changes[key];
+			return false;
+		});
+	}
+
+	function init_docinfo_self_change_markers(frm, state) {
+		const watched_keys = get_docinfo_keys(state.cfg);
+		if (!watched_keys.length || state.docinfo_self_change_markers_ready) return;
+		state.docinfo_self_change_markers_ready = true;
+
+		if (watched_keys.includes("assignments") && frm.assign_to && frm.assign_to.parent) {
+			frm.assign_to.parent.on("click.dinext_fcm_docinfo_self_change", () => {
+				mark_docinfo_self_change(state, ["assignments"]);
+			});
+		}
+
+		if (watched_keys.includes("attachments") && frm.attachments && frm.attachments.parent) {
+			frm.attachments.parent.on("click.dinext_fcm_docinfo_self_change", () => {
+				mark_docinfo_self_change(state, ["attachments"]);
+			});
+		}
+
+		if (watched_keys.includes("shared") && frm.shared && frm.shared.parent) {
+			frm.shared.parent.on("click.dinext_fcm_docinfo_self_change", () => {
+				mark_docinfo_self_change(state, ["shared"]);
+			});
+		}
+	}
+
 	function show_docinfo_alert(changed_keys, cfg) {
 		if (!changed_keys.length || !cfg.show_docinfo_alert) return;
 
@@ -427,8 +476,9 @@
 		return new Promise((resolve) => {
 			frm.sidebar.reload_docinfo((docinfo) => {
 				const changed_keys = get_changed_docinfo_keys(frm, state, docinfo);
+				const visible_changed_keys = filter_self_docinfo_changes(state, changed_keys);
 				if (!opts.silent) {
-					show_docinfo_alert(changed_keys, state.cfg);
+					show_docinfo_alert(visible_changed_keys, state.cfg);
 				}
 				resolve(changed_keys);
 			});
@@ -534,10 +584,6 @@
 
 		if (modified_changed && state.cfg.refresh_docinfo_on_server_apply) {
 			refresh_docinfo(frm, state);
-		}
-
-		if ((applied_server.length || applied_conflicts.length) && typeof state.cfg.on_server_apply === "function") {
-			state.cfg.on_server_apply(frm, analysis, server_doc);
 		}
 
 		return analysis;
@@ -751,6 +797,7 @@
 		ensure_highlight_styles();
 		if (first_install || !state.initial_values) refresh_initial(frm);
 		state.docinfo_values = snapshot_docinfo(frm, state);
+		init_docinfo_self_change_markers(frm, state);
 		init_listener();
 		init_polling(frm, state);
 		init_docinfo_polling(frm, state);
