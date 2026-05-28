@@ -17,7 +17,7 @@
  *                 include_fields: ["custom_z_user_group"],
  *                 include_child_tables: ["custom_z_user_group"],
  *                 exclude_fields: ["some_field_to_ignore"],
- *                 conflict_policy: "local_wins",
+ *                 conflict_policy: "server_wins",
  *                 apply_server_changes_on_realtime: true,
  *                 refresh_docinfo_on_server_apply: true,
  *                 poll_server_changes_interval_ms: 5000,
@@ -31,9 +31,10 @@
  * - server: актуальный документ из БД;
  * - local: текущие значения в форме пользователя.
  *
- * Поля, изменённые только на сервере, подтягиваются в форму. Поля, изменённые
- * только пользователем, остаются локальными. Если одно и то же поле изменено
- * и на сервере, и локально, применяется conflict_policy.
+ * Поля, изменённые только на сервере, подтягиваются в форму и подсвечиваются
+ * жёлтым. Если одно и то же поле изменено и на сервере, и локально, применяется
+ * conflict_policy; при server_wins серверное значение применяется сразу, а поле
+ * подсвечивается красным.
  *
  * Важно: утилита не заменяет permissions, validations и серверные hooks.
  * Child tables сравниваются и применяются целиком, без построчного merge.
@@ -63,10 +64,23 @@
 
 		show_realtime_alert: true,
 		show_applied_alert: true,
+		highlight_server_changes: true,
 		apply_server_changes_on_realtime: false,
 
 		// Обновляет sidebar docinfo: Assigned To, attachments, timeline.
 		refresh_docinfo_on_server_apply: false,
+
+		// Универсальное отслеживание частей frm.get_docinfo(), например:
+		// ["assignments", "attachments", "shared"].
+		watch_docinfo_keys: [],
+		show_docinfo_alert: true,
+		docinfo_key_labels: {
+			assignments: "назначения",
+			attachments: "вложения",
+			shared: "доступы",
+			communications: "сообщения",
+			comments: "комментарии",
+		},
 
 		// 0 = выключено. Полезно, если realtime/socket.io недоступен.
 		poll_server_changes_interval_ms: 0,
@@ -99,11 +113,90 @@
 
 	const registry = (window.__dinext_form_conflict_merge_registry =
 		window.__dinext_form_conflict_merge_registry || {});
+	const HIGHLIGHT_STYLE_ID = "dinext-form-conflict-merge-highlight-style";
+	const SERVER_HIGHLIGHT_CLASS = "dinext-fcm-highlight-server";
+	const CONFLICT_HIGHLIGHT_CLASS = "dinext-fcm-highlight-conflict";
+
+	function ensure_highlight_styles() {
+		if (document.getElementById(HIGHLIGHT_STYLE_ID)) return;
+
+		const style = document.createElement("style");
+		style.id = HIGHLIGHT_STYLE_ID;
+		style.textContent = `
+			.${SERVER_HIGHLIGHT_CLASS} .control-input,
+			.${SERVER_HIGHLIGHT_CLASS} .form-control,
+			.${SERVER_HIGHLIGHT_CLASS} .ql-editor,
+			.${SERVER_HIGHLIGHT_CLASS} .grid-body {
+				outline: 2px solid #f0ad4e !important;
+				outline-offset: 2px;
+				border-radius: 4px;
+			}
+			.${CONFLICT_HIGHLIGHT_CLASS} .control-input,
+			.${CONFLICT_HIGHLIGHT_CLASS} .form-control,
+			.${CONFLICT_HIGHLIGHT_CLASS} .ql-editor,
+			.${CONFLICT_HIGHLIGHT_CLASS} .grid-body {
+				outline: 2px solid #d9534f !important;
+				outline-offset: 2px;
+				border-radius: 4px;
+			}
+		`;
+		document.head.appendChild(style);
+	}
 
 	function get_state(frm) {
 		const key = `${frm.doctype}::${frm.docname}`;
 		registry[key] = registry[key] || {};
 		return registry[key];
+	}
+
+	function get_field_wrapper(frm, fieldname) {
+		const field = frm.fields_dict && frm.fields_dict[fieldname];
+		return field && field.$wrapper;
+	}
+
+	function clear_highlight(frm, state, fieldname) {
+		const $wrapper = get_field_wrapper(frm, fieldname);
+		if ($wrapper) {
+			$wrapper.removeClass(`${SERVER_HIGHLIGHT_CLASS} ${CONFLICT_HIGHLIGHT_CLASS}`);
+			$wrapper.off(".dinext_fcm_clear_highlight");
+		}
+		if (state.highlighted_fields) {
+			delete state.highlighted_fields[fieldname];
+		}
+	}
+
+	function bind_clear_highlight_on_edit(frm, state, fieldname, $wrapper) {
+		$wrapper.off(".dinext_fcm_clear_highlight");
+		$wrapper.on(
+			"focusin.dinext_fcm_clear_highlight input.dinext_fcm_clear_highlight change.dinext_fcm_clear_highlight keydown.dinext_fcm_clear_highlight",
+			() => clear_highlight(frm, state, fieldname)
+		);
+	}
+
+	function highlight_field(frm, state, fieldname, kind) {
+		if (!state.cfg.highlight_server_changes) return;
+		const $wrapper = get_field_wrapper(frm, fieldname);
+		if (!$wrapper) return;
+
+		$wrapper.removeClass(`${SERVER_HIGHLIGHT_CLASS} ${CONFLICT_HIGHLIGHT_CLASS}`);
+		$wrapper.addClass(kind === "conflict" ? CONFLICT_HIGHLIGHT_CLASS : SERVER_HIGHLIGHT_CLASS);
+		bind_clear_highlight_on_edit(frm, state, fieldname, $wrapper);
+
+		state.highlighted_fields = state.highlighted_fields || {};
+		state.highlighted_fields[fieldname] = kind;
+	}
+
+	function clear_highlights(frm, state) {
+		Object.keys(state.highlighted_fields || {}).forEach((fieldname) => {
+			clear_highlight(frm, state, fieldname);
+		});
+		state.highlighted_fields = {};
+	}
+
+	function cancel_pending_reload(frm) {
+		if (frm.debounced_reload_doc && frm.debounced_reload_doc.cancel) {
+			frm.debounced_reload_doc.cancel();
+		}
 	}
 
 	function is_child_table(df) {
@@ -196,17 +289,9 @@
 	}
 
 	function apply_child_table(frm, server_doc, fieldname) {
-		const rows = Array.isArray(server_doc[fieldname]) ? server_doc[fieldname] : [];
-		frappe.model.clear_table(frm.doc, fieldname);
-
-		rows.forEach((row) => {
-			const child = frm.add_child(fieldname);
-			Object.keys(row || {}).forEach((key) => {
-				if (SYSTEM_FIELDS.includes(key)) return;
-				child[key] = clone_raw_value(row[key]);
-			});
-		});
-
+		frm.doc[fieldname] = clone_raw_value(server_doc[fieldname] || []);
+		const local_doc = locals[frm.doctype] && locals[frm.doctype][frm.docname];
+		if (local_doc) local_doc[fieldname] = frm.doc[fieldname];
 		frm.refresh_field(fieldname);
 	}
 
@@ -229,6 +314,94 @@
 		if (local_doc) local_doc.modified = server_doc.modified;
 	}
 
+	function update_initial_value(state, server_doc, fieldname) {
+		state.initial_values[fieldname] = normalize_value(server_doc[fieldname]);
+	}
+
+	function sync_matching_server_values(frm, server_doc, state) {
+		const local = snapshot(frm.doc, state.fields);
+		const server = snapshot(server_doc, state.fields);
+
+		state.fields.forEach((fieldname) => {
+			if (equal(local[fieldname], server[fieldname])) {
+				state.initial_values[fieldname] = server[fieldname];
+			}
+		});
+	}
+
+	function get_remaining_local_changes(frm, state) {
+		const local = snapshot(frm.doc, state.fields);
+		const initial = state.initial_values || {};
+
+		return state.fields.filter((fieldname) => !equal(local[fieldname], initial[fieldname]));
+	}
+
+	function get_docinfo(frm) {
+		if (frm.get_docinfo) return frm.get_docinfo() || {};
+		const docinfo_by_doctype = frappe.model.docinfo && frappe.model.docinfo[frm.doctype];
+		return (docinfo_by_doctype && docinfo_by_doctype[frm.docname]) || {};
+	}
+
+	function normalize_docinfo_object(value) {
+		if (Array.isArray(value)) {
+			return value
+				.map((item) => normalize_docinfo_object(item))
+				.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+		}
+
+		if (value && typeof value === "object") {
+			const out = {};
+			Object.keys(value)
+				.sort()
+				.forEach((key) => {
+					out[key] = normalize_docinfo_object(value[key]);
+				});
+			return out;
+		}
+
+		return value === undefined ? null : value;
+	}
+
+	function get_docinfo_keys(cfg) {
+		return Array.isArray(cfg.watch_docinfo_keys) ? cfg.watch_docinfo_keys.filter(Boolean) : [];
+	}
+
+	function snapshot_docinfo(frm, state, docinfo) {
+		const source = docinfo || get_docinfo(frm);
+		const out = {};
+
+		get_docinfo_keys(state.cfg).forEach((key) => {
+			out[key] = normalize_docinfo_object(source[key]);
+		});
+
+		return out;
+	}
+
+	function get_changed_docinfo_keys(frm, state, docinfo) {
+		const previous = state.docinfo_values || {};
+		const current = snapshot_docinfo(frm, state, docinfo);
+		const changed = [];
+
+		get_docinfo_keys(state.cfg).forEach((key) => {
+			if (!equal(previous[key], current[key])) changed.push(key);
+		});
+
+		state.docinfo_values = current;
+		return changed;
+	}
+
+	function show_docinfo_alert(changed_keys, cfg) {
+		if (!changed_keys.length || !cfg.show_docinfo_alert) return;
+
+		const labels = cfg.docinfo_key_labels || {};
+		const changed_labels = changed_keys.map((key) => labels[key] || key);
+
+		frappe.show_alert({
+			message: `Обновлены данные документа: ${changed_labels.join(", ")}`,
+			indicator: "orange",
+		});
+	}
+
 	function mark_clean(frm) {
 		frm.doc.__unsaved = 0;
 		const local_doc = locals[frm.doctype] && locals[frm.doctype][frm.docname];
@@ -245,9 +418,21 @@
 		}
 	}
 
-	function refresh_docinfo(frm) {
-		if (!frm.sidebar || !frm.sidebar.reload_docinfo) return;
-		frm.sidebar.reload_docinfo();
+	function refresh_docinfo(frm, state, opts) {
+		if (!frm.sidebar || !frm.sidebar.reload_docinfo) return Promise.resolve([]);
+
+		state = state || get_state(frm);
+		opts = opts || {};
+
+		return new Promise((resolve) => {
+			frm.sidebar.reload_docinfo((docinfo) => {
+				const changed_keys = get_changed_docinfo_keys(frm, state, docinfo);
+				if (!opts.silent) {
+					show_docinfo_alert(changed_keys, state.cfg);
+				}
+				resolve(changed_keys);
+			});
+		});
 	}
 
 	function analyze(frm, server_doc, state) {
@@ -289,24 +474,53 @@
 	}
 
 	function show_applied_alert(analysis) {
-		if (!analysis || !analysis.server_only.length) return;
+		if (!analysis) return;
+
+		const applied_server = analysis.applied_server || analysis.server_only || [];
+		const applied_conflicts = analysis.applied_conflicts || [];
+		if (!applied_server.length && !applied_conflicts.length) return;
+
+		const messages = [];
+		if (applied_server.length) {
+			messages.push(`обновлены поля: ${applied_server.join(", ")}`);
+		}
+		if (applied_conflicts.length) {
+			messages.push(`сервер перезаписал локальные правки: ${applied_conflicts.join(", ")}`);
+		}
+
 		frappe.show_alert({
-			message: `Подтянуты изменения с сервера: ${analysis.server_only.join(", ")}`,
-			indicator: "blue",
+			message: `Объект был изменён на сервере, ${messages.join("; ")}`,
+			indicator: applied_conflicts.length ? "red" : "orange",
 		});
 	}
 
-	function apply_server_only_changes(frm, server_doc, state) {
-		const was_dirty = frm.is_dirty();
+	function apply_server_changes(frm, server_doc, state) {
+		const modified_changed = Boolean(server_doc && server_doc.modified && server_doc.modified !== state.initial_modified);
 		const analysis = analyze(frm, server_doc, state);
+		const applied_server = analysis.server_only.slice();
+		const applied_conflicts = state.cfg.conflict_policy === "server_wins" ? analysis.conflicts.slice() : [];
 
-		analysis.server_only.forEach((fieldname) => {
+		applied_server.forEach((fieldname) => {
 			apply_field(frm, server_doc, fieldname);
-			state.initial_values[fieldname] = normalize_value(server_doc[fieldname]);
+			update_initial_value(state, server_doc, fieldname);
+			highlight_field(frm, state, fieldname, "server");
+		});
+
+		applied_conflicts.forEach((fieldname) => {
+			apply_field(frm, server_doc, fieldname);
+			update_initial_value(state, server_doc, fieldname);
+			highlight_field(frm, state, fieldname, "conflict");
 		});
 
 		apply_modified(frm, server_doc);
-		state.server_changed = analysis.conflicts.length > 0;
+		sync_matching_server_values(frm, server_doc, state);
+
+		analysis.applied_server = applied_server;
+		analysis.applied_conflicts = applied_conflicts;
+		analysis.remaining_local = get_remaining_local_changes(frm, state);
+		analysis.modified_changed = modified_changed;
+
+		state.server_changed = analysis.conflicts.length > applied_conflicts.length;
 		state.server_modified = server_doc.modified;
 		state.server_modified_by = server_doc.modified_by;
 
@@ -314,15 +528,15 @@
 			state.initial_modified = server_doc.modified;
 		}
 
-		if (!was_dirty && !analysis.local_only.length && !analysis.conflicts.length) {
+		if (!analysis.remaining_local.length) {
 			mark_clean(frm);
 		}
 
-		if (analysis.server_only.length && state.cfg.refresh_docinfo_on_server_apply) {
-			refresh_docinfo(frm);
+		if (modified_changed && state.cfg.refresh_docinfo_on_server_apply) {
+			refresh_docinfo(frm, state);
 		}
 
-		if (analysis.server_only.length && typeof state.cfg.on_server_apply === "function") {
+		if ((applied_server.length || applied_conflicts.length) && typeof state.cfg.on_server_apply === "function") {
 			state.cfg.on_server_apply(frm, analysis, server_doc);
 		}
 
@@ -339,6 +553,8 @@
 		const state = get_state(frm);
 		if (!state.installed) return;
 
+		cancel_pending_reload(frm);
+
 		state.server_changed = true;
 		state.server_modified = data.modified;
 		state.server_modified_by = data.modified_by;
@@ -350,7 +566,7 @@
 		if (state.cfg.apply_server_changes_on_realtime) {
 			fetch_server_doc(frm).then((server_doc) => {
 				if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) return;
-				const analysis = apply_server_only_changes(frm, server_doc, state);
+				const analysis = apply_server_changes(frm, server_doc, state);
 				if (state.cfg.show_applied_alert) show_applied_alert(analysis);
 			});
 		}
@@ -363,11 +579,13 @@
 	}
 
 	function check_server_changes(frm, state) {
-		if (!frm || !frm.doc || frm.is_new() || !state.installed) return Promise.resolve();
+		if (!frm || !frm.doc || frm.is_new()) return Promise.resolve();
+		state = state || get_state(frm);
+		if (!state.installed) return Promise.resolve();
 
 		return fetch_server_doc(frm).then((server_doc) => {
 			if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) return;
-			const analysis = apply_server_only_changes(frm, server_doc, state);
+			const analysis = apply_server_changes(frm, server_doc, state);
 			if (state.cfg.show_applied_alert) show_applied_alert(analysis);
 			return analysis;
 		});
@@ -385,6 +603,23 @@
 			const current = cur_frm;
 			if (!current || current.doctype !== frm.doctype || current.docname !== frm.docname) return;
 			check_server_changes(current, state);
+		}, interval);
+	}
+
+	function init_docinfo_polling(frm, state) {
+		if (!state.cfg.refresh_docinfo_on_server_apply && !get_docinfo_keys(state.cfg).length) return;
+
+		const interval = Number(state.cfg.poll_server_changes_interval_ms || 0);
+		if (!interval || interval < 1000) return;
+
+		if (state.docinfo_poll_timer) {
+			clearInterval(state.docinfo_poll_timer);
+		}
+
+		state.docinfo_poll_timer = setInterval(() => {
+			const current = cur_frm;
+			if (!current || current.doctype !== frm.doctype || current.docname !== frm.docname) return;
+			refresh_docinfo(current, state);
 		}, interval);
 	}
 
@@ -455,8 +690,18 @@
 		return fetch_server_doc(frm).then((server_doc) => {
 			if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) return;
 
+			if (state.cfg.conflict_policy === "server_wins") {
+				const analysis = apply_server_changes(frm, server_doc, state);
+				if (state.cfg.show_applied_alert) show_applied_alert(analysis);
+				return;
+			}
+
 			const analysis = analyze(frm, server_doc, state);
-			analysis.server_only.forEach((fieldname) => apply_field(frm, server_doc, fieldname));
+			analysis.server_only.forEach((fieldname) => {
+				apply_field(frm, server_doc, fieldname);
+				update_initial_value(state, server_doc, fieldname);
+				highlight_field(frm, state, fieldname, "server");
+			});
 
 			return confirm_conflicts(analysis.conflicts, state.cfg).then((decision) => {
 				if (decision === "block") {
@@ -465,11 +710,17 @@
 				}
 
 				if (decision === "server_wins") {
-					analysis.conflicts.forEach((fieldname) => apply_field(frm, server_doc, fieldname));
+					analysis.conflicts.forEach((fieldname) => {
+						apply_field(frm, server_doc, fieldname);
+						update_initial_value(state, server_doc, fieldname);
+						highlight_field(frm, state, fieldname, "conflict");
+					});
 				}
 
 				apply_modified(frm, server_doc);
-				state.server_changed = false;
+				sync_matching_server_values(frm, server_doc, state);
+				state.server_changed = decision !== "server_wins" && analysis.conflicts.length > 0;
+				state.initial_modified = server_doc.modified;
 			});
 		});
 	}
@@ -482,6 +733,7 @@
 		state.server_changed = false;
 		state.server_modified = null;
 		state.server_modified_by = null;
+		clear_highlights(frm, state);
 		if (frm.dashboard) frm.dashboard.clear_headline();
 	}
 
@@ -491,13 +743,17 @@
 
 		const cfg = Object.assign({}, DEFAULT_CONFIG, opts);
 		const state = get_state(frm);
+		const first_install = !state.installed;
 		state.cfg = cfg;
 		state.fields = get_fields(frm, cfg);
 		state.installed = true;
 
-		refresh_initial(frm);
+		ensure_highlight_styles();
+		if (first_install || !state.initial_values) refresh_initial(frm);
+		state.docinfo_values = snapshot_docinfo(frm, state);
 		init_listener();
 		init_polling(frm, state);
+		init_docinfo_polling(frm, state);
 
 		if (window.__dinext_form_conflict_merge_doctype_hooks && window.__dinext_form_conflict_merge_doctype_hooks[frm.doctype]) {
 			return;
