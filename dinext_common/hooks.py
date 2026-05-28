@@ -92,7 +92,20 @@ app_include_js = [
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-doctype_js = {"Project" : "public/js/sticky-datatable.js"}
+doctype_js = {
+    "Project": [
+        "public/js/sticky-datatable.js",
+        "public/js/ag-grid/bootstrap.js",
+        "public/js/presets/work-efforts-column-helpers.js",
+        "public/js/presets/projects-work-efforts-table.js",
+    ],
+    "Projects Workload Report": [
+        "public/js/ag-grid/bootstrap.js",
+    ],
+    "User Timesheet": [
+        "public/js/ag-grid/bootstrap.js",
+    ],
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"Task" : "public/js/frappe-gantt.umd.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}

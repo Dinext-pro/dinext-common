@@ -1,0 +1,517 @@
+/* Project work efforts — DinextAgGrid.ensureFeatureStyles('work-efforts') */
+.work_efforts_container {
+            & .work-efforts-table .datatable {
+                margin-top: 1rem;
+            }
+            & {
+                max-width: 100% !important;
+            }
+            & .work-efforts-controls {
+                display: inline-flex;
+                width: 100%;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            & .work-efforts-fullscreen-toggle {
+                min-width: 32px;
+                font-size: 16px;
+                line-height: 1;
+            }
+            & .work-efforts-controls .frappe-control {
+                flex: 0 1 150px;
+                margin: 0;
+            }
+            & .work-efforts-group-header {
+                display: flex; 
+                justify-content: space-around;
+            }
+            & .work-efforts-group-header > span {
+                width: 33.33%;
+                font-size: 10px;
+                display: flex;
+                justify-content: center;
+            }
+            & .work-efforts-group {
+                display: flex;
+                flex-direction: row;
+                flex-wrap: nowrap;
+                justify-content: space-around;
+            }
+            & .work-efforts-table .datatable .dt-row.dt-row-header, 
+            & .work-efforts-table .datatable .dt-cell.dt-cell--header {
+                height: auto;
+                text-align: center;
+                display: flex;
+            }
+            & .work-efforts-table .datatable .dt-cell--focus .dt-cell__content {
+                border-color: var(--gray-200);
+            }
+            & .work-efforts-table div[data-indent="1"] .dt-tree-node {
+                padding-left: 40px!important;
+            }
+            & .work-efforts-table div[data-indent="2"] .dt-tree-node {
+                padding-left: 80px!important;
+            }
+            & .work-efforts-table div[data-indent="3"] .dt-tree-node {
+                padding-left: 120px!important;
+            }
+            & .work-efforts-table div[data-indent="4"] .dt-tree-node {
+                padding-left: 160px!important;
+            }
+            & .work-efforts-table .datatable .dt-scrollable {
+                max-height: max(calc(100vh - 400px),350px);
+            }
+            &.work-efforts-fullscreen {
+                position: fixed;
+                inset: 12px;
+                z-index: 1040;
+                padding: 12px;
+                overflow: auto;
+                background: var(--bg-color);
+                border: 1px solid var(--border-color);
+                box-shadow: var(--shadow-lg);
+            }
+            &.work-efforts-fullscreen .work-efforts-table .datatable .dt-scrollable {
+                max-height: calc(100vh - 190px);
+            }
+            &.work-efforts-fullscreen .work-efforts-table {
+                min-height: calc(100vh - 170px);
+            }
+            & .work-efforts-table.work-efforts-ag-grid {
+                width: 100%;
+                height: max(calc(100vh - 400px), 350px);
+                margin-top: 1rem;
+                --ag-font-family: inherit;
+                --ag-font-size: var(--text-md);
+                --ag-border-color: var(--border-color);
+                --ag-header-background-color: var(--fg-color);
+                --ag-background-color: var(--bg-color);
+                --ag-foreground-color: var(--text-color);
+            }
+            &.work-efforts-fullscreen .work-efforts-table.work-efforts-ag-grid,
+            & .work-efforts-table.work-efforts-ag-grid.dinext-ag-grid-table-fullscreen {
+                height: calc(100vh - 170px);
+            }
+            & .work-efforts-table.work-efforts-ag-grid .ag-header-cell-label {
+                justify-content: center;
+            }
+            & .work-efforts-table.work-efforts-ag-grid .ag-cell {
+                padding-left: 2px;
+                padding-right: 2px;
+                line-height: normal;
+            }
+            & .work-efforts-table.work-efforts-ag-grid .ag-cell-value {
+                width: 100%;
+            }
+            & .work-efforts-table.work-efforts-ag-grid .work-efforts-ag-grid-header {
+                width: 100%;
+                text-align: center;
+                font-weight: 600;
+            }
+            & .work-efforts-table.work-efforts-ag-grid .work-efforts-ag-grid-tree-node {
+                width: 100%;
+                box-sizing: border-box;
+                display: flex;
+                align-items: flex-start;
+                gap: 4px;
+            }
+            & .work-efforts-table.work-efforts-ag-grid .work-efforts-ag-grid-toggle {
+                width: 14px;
+                min-width: 14px;
+                color: var(--text-muted);
+                cursor: pointer;
+                font-size: 16px;
+                line-height: 20px;
+                text-align: center;
+                user-select: none;
+            }
+            & .work-efforts-table.work-efforts-ag-grid .work-efforts-ag-grid-tree-content {
+                min-width: 0;
+            }
+            & .work-efforts-table.work-efforts-ag-grid .work-efforts-ag-grid-total-cell {
+                background: var(--fg-color);
+                border-top: 1px solid var(--border-color);
+                font-weight: 600;
+            }
+            & .work-efforts-table .datatable .dt-fit-height {
+                min-height: auto !important;
+            }
+            & .work-efforts-table .datatable .dt-header .dt-cell--header .dt-cell__content {
+                font-weight: 600;    
+                margin: auto;
+            }
+            & .work-efforts-group > div {
+                min-width: 3em;
+                text-align: center;
+            }
+            & .we-role-value:not(.zero):has(.readonly-fact) {
+                cursor: pointer;
+            }
+            & .editable-forecast {
+                cursor: text;
+                display: block;
+            }
+            & .we-edit-input {
+                text-align: center;
+                width: 4em;
+                outline: none;
+                background-color: transparent;
+                border: 0px;
+            }
+            & .we-edit-input.error {
+                background-color: var(--error-border);
+            }
+            & .delete-role-btn {
+                padding: 0px!important;
+                border-radius: 50%;
+                box-sizing: border-box;
+                line-height: 0;
+                margin-left: 0.5rem;
+             }
+            & .dt-cell__content {
+                font-feature-settings: "tnum";
+                width: 180px;
+                padding: 2px;  /* ← ВЕРНУТЬ */
+            }
+            & .dt-cell__content--col-0 {
+                text-align: center;
+            }
+            & .dt-cell__content--col-0 input[type=checkbox] {
+                margin: auto !important;
+            }
+            & .dt-cell__content--col-1 {
+                color: var(--text-light);
+                font-weight: 200;
+                font-size: var(--text-md);
+            }
+            
+            /*Высота ячеек*/
+            & .work-efforts-table .datatable .dt-row, 
+            & .work-efforts-table .dt-cell__content,
+            & .work-efforts-table .dt-cell {
+                height: auto !important;
+            }
+            & .work-efforts-table .vrow {
+                position: static;
+                width: fit-content;
+            }
+            & .we-role,
+            & .new-role-select {
+                height: 24px;
+            }
+            & .we-role.miss-plan,
+            & .missing-plan-task {
+                color: var(--alert-text-warning); 
+                font-weight: 500; 
+                cursor: help;
+            }
+            & .new-role-select, 
+            & .new-role-select option {
+                width: 100%;
+            }
+            
+            /* Стили для колонки назначений */
+            & .work-efforts-table .dt-cell__content--col-3 {
+                /* Колонка ролей */
+            }
+            
+            & .work-efforts-table .dt-cell[data-column-id="assignments"] .dt-cell__content {
+                font-size: 11px;
+            }
+            
+            & .assignments-container {
+                display: flex;
+                flex-direction: column;
+            }
+            
+            & .assignment-row {
+                height: 24px;
+                min-height: 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                line-height: 24px;
+                cursor: pointer;
+                border-radius: 4px;
+            }
+            
+            & .assignment-row:hover {
+                background-color: transparent;
+            }
+            
+            & .assignment-avatars-group {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 100%;
+            }
+            
+            /* Стили для avatar_group, чтобы аватары были компактными */
+            & .assignment-avatars-group .avatar-group {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+            }
+            
+            & .assignment-avatars-group .avatar-frame {
+                width: 22px;
+                height: 22px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+            }
+            
+            & .assignment-avatars-group .avatar-frame img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                border-radius: 50%;
+            }
+            
+            & .assignment-avatars-group .avatar {
+                width: 22px;
+                height: 22px;
+                font-size: 10px;
+                line-height: 22px;
+                text-align: center;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                background: var(--gray-300);
+                border-radius: 50%;
+                color: var(--gray-700);
+            }
+            
+            & .assignment-avatars-group .avatar-group .avatar-extra {
+                width: 22px;
+                height: 22px;
+                font-size: 10px;
+                font-weight: 500;
+                background: var(--gray-300);
+                border-radius: 50%;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--gray-700);
+                cursor: default;
+            }
+            
+            & .missing-role-warning,
+            & .missing-assignment-warning {
+                cursor: help;
+                font-size: 10px;
+            }
+            
+            & .assignment-placeholder {
+                color: var(--text-muted);
+                font-size: 11px;
+                text-align: center;
+            }
+            
+            /* Стили для чекбокса "Назначения" */
+            & .assignments-checkbox-wrapper {
+                margin-left: 10px;
+                margin-top: 10px;
+                display: inline-flex;
+                align-items: center;
+                position: relative;
+                top: -6px;
+            }
+            
+            & .assignments-checkbox-wrapper .frappe-control {
+                margin: 0;
+                display: inline-flex;
+                align-items: center;
+            }
+            
+            & .assignments-checkbox-wrapper .checkbox {
+                margin: 0;
+                display: inline-flex;
+                align-items: center;
+            }
+            
+            /* Подсветка нулевого плана при наличии загрузки - только цвет текста */
+            & .we-group-plan.missing-plan-highlight span {
+                color: var(--alert-text-warning) !important;
+                font-weight: 700 !important;
+            }
+            
+            /* ПРИОРИТЕТ ОШИБКИ НАД СРОКАМИ ЗАДАЧИ */
+            & .we-group-plan.in-task-dates.missing-plan-highlight span {
+                color: var(--alert-text-warning) !important;
+                font-weight: 700 !important;
+                background-color: transparent !important;
+            }
+            
+            /* Максимальная специфичность */
+            & .work-efforts-group .we-group-plan.in-task-dates.missing-plan-highlight span {
+                color: var(--alert-text-warning) !important;
+                font-weight: 700 !important;
+            }
+            
+            /* Для темной темы тоже */
+            [data-theme="dark"] & .we-group-plan.in-task-dates.missing-plan-highlight span {
+                color: var(--alert-text-warning) !important;
+                font-weight: 700 !important;
+            }
+            
+            /* Для темной темы с максимальной специфичностью */
+            [data-theme="dark"] & .work-efforts-group .we-group-plan.in-task-dates.missing-plan-highlight span {
+                color: var(--alert-text-warning) !important;
+                font-weight: 700 !important;
+            }
+            
+            /* Анимация для привлечения внимания */
+            & .we-group-plan.missing-plan-highlight span {
+                animation: pulse-warning-text 1.5s ease-in-out 3;
+            }
+            
+            @keyframes pulse-warning-text {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
+            }
+            
+            /* Стили для тултипов */
+            .custom-workload-tooltip {
+                font-family: inherit;
+                max-width: 300px;
+                white-space: normal;
+                word-wrap: break-word;
+                line-height: 1.4;
+            }
+            
+            
+            /* ========== НОВАЯ СТРУКТУРА С КОЛОНКАМИ ========== */
+            
+            & .we-columns-container {
+                display: flex !important;
+                width: 100% !important;
+                height: 100% !important;
+            }
+            
+            & .we-plan-column,
+            & .we-actual-column,
+            & .we-delta-column {
+                flex: 1 !important;
+                display: flex !important;
+                flex-direction: column !important;
+                height: 100% !important;
+                gap: 0 !important;
+                row-gap: 0 !important;
+            }
+            
+            & .we-role-value {
+                text-align: center;
+                padding: 0 !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                width: 100% !important;
+                height: 24px !important;
+                min-height: 24px !important;
+                margin: 0 !important;
+                border: none !important;
+                box-sizing: border-box !important;
+                background: transparent !important;
+            }
+            
+            /* Замечание 3. Веруть границы между ячейками месяцев (выполнено), но будем их также закрашивать в цвет фона (не получилось)
+            /* Стандартные границы DataTable */
+            & .work-efforts-table .datatable .dt-cell {
+                padding-left: 0 !important;
+                padding-right: 0 !important;
+            }
+            
+            & .work-efforts-table .dt-cell__content {
+                padding-left: 0 !important;
+                padding-right: 0 !important;
+                border: 0px;
+            }
+            
+            /* ФОН ДЛЯ КОЛОНОК */
+            & .we-plan-column.in-plan-dates {
+                background-color: #ede0f5 !important;
+            }
+            
+            & .we-actual-column.in-forecast-dates {
+                background-color: #e0e8ff !important;
+            }
+            
+            & .we-delta-column.in-forecast-dates {
+                background-color: #e0e8ff !important;
+            }
+            
+            /* Тёмная тема */
+            [data-theme="dark"] & .we-plan-column.in-plan-dates {
+                background-color: #3a1a5a !important;
+            }
+            
+            [data-theme="dark"] & .we-actual-column.in-forecast-dates,
+            [data-theme="dark"] & .we-delta-column.in-forecast-dates {
+                background-color: #1a2a6a !important;
+            }
+            
+            
+            /* Загрузка точками — серые, меньшего размера */
+            & .we-role-value.has-workload {
+                background-image: radial-gradient(circle, #bec5cc 1px, transparent 1px) !important;
+                background-size: 4px 4px !important;
+            }
+            
+            [data-theme="dark"] & .we-role-value.has-workload {
+                background-image: radial-gradient(circle, #686e74 1px, transparent 1px) !important;
+                background-size: 4px 4px !important;
+            }
+            
+            /* Подсветка ошибки */
+            & .we-role-value.missing-plan-highlight span {
+                color: var(--alert-text-warning) !important;
+                font-weight: 700 !important;
+            }
+            
+            & .work-efforts-legend {
+                margin-top: 12px;
+                font-family: var(--font-stack);
+                font-size: 14px;
+                font-weight: 600;
+                letter-spacing: 0.02em;
+                color: var(--text-color);
+            }
+            
+            /* Тёмная тема для легенды */
+            [data-theme="dark"] & .work-efforts-legend [style*="background-color: #ede0f5"] {
+                background-color: #3a1a5a !important;
+            }
+            
+            [data-theme="dark"] & .work-efforts-legend [style*="background-color: #e0e8ff"] {
+                background-color: #1a2a6a !important;
+            }
+            
+            /* Замечание 4: Нулевые значения должны отображаться приглушенным цветом текста
+            /* Нулевые значения — приглушенный цвет */
+            & .we-role-value.zero span,
+            & .we-columns-container .we-role-value.zero span {
+                color: #b0b8c0;
+                font-weight: 400;
+                opacity: 0.65;
+            }
+            
+            [data-theme="dark"] & .we-role-value.zero span,
+            [data-theme="dark"] & .we-columns-container .we-role-value.zero span {
+                color: #7a8288;
+                opacity: 0.55;
+            }
+            
+            & .btn-group {
+                margin-left: auto;
+            }
+            & .btn-group .dropdown-menu li {
+                cursor: pointer; 
+                padding: 8px 15px;
+            }
+        }
+        body.work-efforts-fullscreen-active {
+            overflow: hidden;
+        }

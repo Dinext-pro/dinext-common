@@ -1,0 +1,76 @@
+/* User Timesheet AG Grid — DinextAgGrid.ensureFeatureStyles('timesheet') */
+.newDescrModal {
+    z-index: 1100 !important;
+}
+
+.timesheet-table-shell {
+    position: relative;
+    width: 100%;
+}
+
+.timesheet-ag-grid-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.timesheet-ag-grid-holder {
+    display: none;
+    margin-bottom: 8px;
+}
+
+.timesheet-ag-grid-active .timesheet-ag-grid-holder {
+    display: block;
+}
+
+.timesheet-ag-grid-toolbar .btn {
+    height: 28px;
+    line-height: 1;
+}
+
+.timesheet-ag-grid {
+    width: 100%;
+    min-height: 160px;
+    max-height: 640px;
+    --ag-font-size: 12px;
+    --ag-row-height: 30px;
+    --ag-header-height: 30px;
+}
+
+.timesheet-ag-grid .ag-header-cell,
+.timesheet-ag-grid .ag-cell {
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+.timesheet-ag-grid .ag-cell {
+    display: flex;
+    align-items: center;
+}
+
+.timesheet-ag-grid .timesheet-ag-cell-center {
+    justify-content: center;
+    text-align: center;
+}
+
+.timesheet-ag-grid .timesheet-ag-holiday {
+    background-color: var(--bg-dark-blue);
+}
+
+.timesheet-ag-grid .timesheet-ag-leave {
+    background-color: var(--bg-green);
+}
+
+.timesheet-ag-grid .timesheet-ag-zero {
+    color: var(--secondary);
+}
+
+.timesheet-ag-grid .timesheet-ag-rejected {
+    background-color: var(--error-bg);
+    color: var(--text-on-red);
+}
+
+.timesheet-ag-grid .timesheet-ag-readonly-row {
+    opacity: 0.85;
+}

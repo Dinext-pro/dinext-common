@@ -1,0 +1,108 @@
+/* Dinext AG Grid — core (DinextAgGrid.ensure) */
+.dinext-ag-grid-table {
+    position: relative;
+    font-family: inherit;
+    --ag-font-family: inherit;
+    --ag-border-color: var(--border-color);
+    --ag-background-color: var(--bg-color);
+    --ag-foreground-color: var(--text-color);
+}
+
+.dinext-ag-grid-table.dinext-ag-grid-table-dark {
+    --ag-background-color: rgb(23, 23, 23);
+    --ag-foreground-color: var(--text-color, #f4f4f4);
+}
+
+.dinext-ag-grid-table .ag-cell-focus,
+.dinext-ag-grid-table .ag-cell.ag-cell-focus {
+    box-shadow: inset 0 0 0 1px var(--primary, #2490ef) !important;
+}
+
+.dinext-ag-grid-table .ag-cell-inline-editing {
+    box-shadow: inset 0 0 0 1px var(--primary, #2490ef) !important;
+}
+
+.dinext-ag-grid-table .dinext-ag-grid-editor {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    outline: 0;
+    padding: 0 6px;
+    background: var(--control-bg, var(--bg-color));
+    color: var(--text-color);
+    font: inherit;
+}
+
+.dinext-ag-grid-table-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.dinext-ag-grid-table-fullscreen-button {
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--control-bg, var(--fg-color, transparent));
+    color: var(--text-color);
+    min-width: 28px;
+    height: 28px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.dinext-ag-grid-table-fullscreen-button-active {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1060;
+    box-shadow: var(--shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.12));
+}
+
+.dinext-ag-grid-table-fullscreen {
+    position: fixed !important;
+    inset: 12px !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    z-index: 1050;
+    background: var(--bg-color);
+    box-shadow: var(--shadow-xl, 0 16px 48px rgba(0, 0, 0, 0.25));
+}
+
+body.dinext-ag-grid-table-fullscreen-active {
+    overflow: hidden;
+}
+
+.dinext-ag-grid-table[data-loading-message]::after {
+    content: attr(data-loading-message);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--fg-color, var(--bg-color));
+    color: var(--text-color);
+    box-shadow: var(--shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.12));
+    pointer-events: none;
+}
+.dinext-ag-grid-forecast-input {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    padding: 0 4px;
+    margin: 0;
+    background: var(--control-bg, var(--bg-color));
+    color: var(--text-color);
+    font: inherit;
+    text-align: inherit;
+}
+
+.dinext-ag-grid-forecast-input.error {
+    border: 1px solid var(--red-500, #e03636);
+}

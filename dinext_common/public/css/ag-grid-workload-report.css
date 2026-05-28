@@ -1,0 +1,903 @@
+/* Projects Workload Report + facade grid — DinextAgGrid.ensureFeatureStyles("workload-report") */
+
+/* --- projects-workload-ag-grid (facade) --- */
+.projects-workload-ag-grid {
+    width: calc(100% - 4px);
+    height: 70vh;
+    min-height: 420px;
+    margin: 0.5rem 0 4px 4px;
+    border-radius: 0;
+    font-family: inherit;
+    font-size: var(--text-md);
+    --ag-font-family: inherit;
+    --ag-font-size: var(--text-md);
+    --ag-border-radius: 0;
+    --ag-wrapper-border-radius: 0;
+    --ag-row-border-color: transparent;
+    --ag-cell-horizontal-border: none;
+    --ag-border-color: var(--border-color);
+    --ag-header-column-separator-display: none;
+    --ag-header-column-resize-handle-display: none;
+    --ag-background-color: var(--bg-color);
+    --ag-header-background-color: rgb(243, 243, 243);
+    --ag-header-foreground-color: var(--text-color);
+    --ag-foreground-color: var(--text-color);
+    --projects-workload-ag-header-bg: rgb(243, 243, 243);
+    --projects-workload-ag-header-main-color: var(--text-color);
+    --projects-workload-ag-header-sub-color: var(--text-color);
+}
+
+.projects-workload-ag-grid .ag-pinned-left-header {
+    --ag-header-column-resize-handle-display: block;
+}
+
+[data-theme="dark"] .projects-workload-ag-grid,
+.projects-workload-ag-grid.projects-workload-ag-grid-dark {
+    --ag-background-color: rgb(23, 23, 23);
+    --ag-header-background-color: var(--subtle-fg, #1f2226);
+    --ag-foreground-color: var(--text-color);
+    --projects-workload-ag-header-bg: var(--subtle-fg, #1f2226);
+    --projects-workload-ag-header-main-color: var(--text-color, #f4f4f4);
+    --projects-workload-ag-header-sub-color: var(--text-color, #f4f4f4);
+}
+
+.projects-workload-ag-grid .ag-root-wrapper {
+    border: 1px solid var(--border-color) !important;
+    border-radius: 0 !important;
+    background: var(--ag-background-color) !important;
+}
+
+.projects-workload-ag-grid .ag-root,
+.projects-workload-ag-grid .ag-body,
+.projects-workload-ag-grid .ag-body-viewport,
+.projects-workload-ag-grid .ag-center-cols-viewport,
+.projects-workload-ag-grid .ag-center-cols-container,
+.projects-workload-ag-grid .ag-pinned-left-cols-container {
+    background: var(--ag-background-color) !important;
+}
+
+.projects-workload-ag-grid .ag-row {
+    border: none !important;
+    background: transparent !important;
+}
+
+.projects-workload-ag-grid .ag-cell {
+    padding: 0 !important;
+    margin: 0 !important;
+    line-height: normal;
+    border: none !important;
+    overflow: hidden !important;
+}
+
+.projects-workload-ag-grid .ag-cell-wrapper,
+.projects-workload-ag-grid .ag-cell-value {
+    width: 100%;
+    height: 100%;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block;
+}
+
+.projects-workload-ag-grid .ag-header-cell-label {
+    justify-content: center;
+    text-align: center;
+}
+
+.projects-workload-ag-grid .ag-header,
+.projects-workload-ag-grid .ag-header-row,
+.projects-workload-ag-grid .ag-header-cell {
+    background: var(--projects-workload-ag-header-bg);
+}
+
+.projects-workload-ag-grid .ag-header {
+    border-bottom: none !important;
+}
+
+.projects-workload-ag-grid .ag-header-cell {
+    padding: 0 !important;
+    border-right: none !important;
+}
+
+.projects-workload-ag-grid .ag-header-viewport .ag-header-cell-resize {
+    display: none !important;
+}
+
+.projects-workload-ag-grid .ag-header-cell::before,
+.projects-workload-ag-grid .ag-header-group-cell::before {
+    display: none !important;
+}
+
+.projects-workload-ag-grid .ag-header-viewport .ag-header-cell-resize::after {
+    display: none !important;
+}
+
+.projects-workload-ag-grid .ag-pinned-left-header,
+.projects-workload-ag-grid .ag-pinned-left-cols-container {
+    border-right: 1px solid var(--border-color) !important;
+}
+
+.projects-workload-ag-grid[data-loading-message]::after {
+    content: attr(data-loading-message);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--fg-color, var(--bg-color));
+    color: var(--text-color);
+    box-shadow: var(--shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.12));
+    pointer-events: none;
+}
+
+.projects-workload-ag-grid .projects-workload-ag-grid-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    line-height: 1.4;
+    text-align: center;
+    padding: 10px 0 !important;
+}
+
+.projects-workload-ag-grid .projects-workload-ag-grid-header-main {
+    color: var(--projects-workload-ag-header-main-color);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.projects-workload-ag-grid .projects-workload-ag-grid-header-sub {
+    margin-top: 2px;
+    color: var(--projects-workload-ag-header-sub-color);
+    font-size: 11px;
+    font-weight: 700;
+    opacity: 0.9;
+}
+
+.projects-workload-ag-grid .projects-workload-ag-grid-header-single {
+    color: var(--projects-workload-ag-header-main-color);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: normal;
+}
+
+.projects-workload-ag-grid-participant {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 0 8px !important;
+    cursor: default;
+}
+
+.projects-workload-ag-grid-toggle {
+    width: 16px;
+    min-width: 16px;
+    color: var(--text-muted, #6c7680);
+    cursor: pointer;
+    font-size: 18px;
+    font-weight: 400;
+    line-height: 1;
+    text-align: center;
+    user-select: none;
+}
+
+.projects-workload-ag-grid-placeholder {
+    color: var(--text-muted, #6c7680);
+    font-style: italic;
+}
+
+/* --- projects_workload_report (page) --- */
+/* Скрываем сайдбар и кнопку сохранения для Projects Workload Report */
+        body[data-route="Form/Projects Workload Report"] .layout-side-section {
+            display: none !important;
+        }
+        
+        body[data-route="Form/Projects Workload Report"] .page-actions {
+            display: none !important;
+        }
+        
+        body[data-route="Form/Projects Workload Report"] .form-dashboard {
+            display: none !important;
+        }
+        
+        body[data-route="Form/Projects Workload Report"] .layout-main-section-wrapper {
+            width: 100% !important;
+        }
+        
+        body[data-route="Form/Projects Workload Report"] .layout-main-section {
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+
+        /* Основной контейнер */
+        .projects_workload_report {
+            max-width: 100% !important;
+            padding: 8px !important;
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 200px) !important;
+            min-height: 600px;
+        }
+        
+        .projects_workload_report .projects-workload-table {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 400px;
+        }
+        
+            margin-top: 0.5rem !important;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+            max-height: none !important;
+            height: auto !important;
+            min-height: 300px;
+            border: 1px solid var(--border-color) !important;
+            flex: 1;
+            overflow-y: auto;
+        }
+        
+            height: fit-content !important;
+            min-height: fit-content !important;
+        }
+        
+        /* ========== УЛУЧШЕННАЯ КОМПАКТНАЯ СТРОКА ФИЛЬТРОВ ========== */
+        .projects_workload_report .unified-filters-row {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 12px !important;
+            flex-wrap: wrap;
+            gap: 8px !important;
+            padding: 8px 12px;
+            background: var(--fg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+
+        .projects_workload_report .filters-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            flex: 1;
+        }
+
+        /* ФИКСИРОВАННАЯ ШИРИНА ДЛЯ ФИЛЬТРОВ */
+        .projects_workload_report .form-filter-wrapper {
+            display: flex;
+            align-items: center;
+            min-width: 160px !important;
+            width: 160px !important;
+            max-width: 160px !important;
+            flex: 0 0 auto !important;
+            margin-right: 0 !important;
+        }
+
+        .projects_workload_report .form-filter-wrapper .control-input {
+            margin-bottom: 0 !important;
+            width: 100%;
+        }
+
+        .projects_workload_report .form-filter-wrapper .form-control {
+            height: 28px !important;
+            min-height: 28px !important;
+            font-size: 12px !important;
+            line-height: 1.2 !important;
+            width: 100% !important;
+            padding: 2px 8px !important;
+        }
+
+        .projects_workload_report .form-filter-wrapper .link-field {
+            height: 28px !important;
+            min-height: 28px !important;
+            width: 100% !important;
+        }
+
+        .projects_workload_report .form-filter-wrapper .link-field .awesomplete {
+            width: 100% !important;
+        }
+
+        .projects_workload_report .form-filter-wrapper .link-field input {
+            width: 100% !important;
+            height: 28px !important;
+            padding: 2px 8px !important;
+            font-size: 12px !important;
+        }
+
+        /* Стили для выпадающих списков и кнопок */
+        .projects_workload_report .unified-filters-row .form-group {
+            margin-bottom: 0 !important;
+            margin-right: 0 !important;
+            width: auto;
+            min-width: 100px;
+        }
+
+        .projects_workload_report .unified-filters-row .control-input {
+            margin-bottom: 0 !important;
+        }
+
+        .projects_workload_report .unified-filters-row .form-control {
+            height: 28px !important;
+            line-height: 1.2 !important;
+            font-size: 12px !important;
+            padding: 2px 8px !important;
+        }
+
+        .projects_workload_report .filter-separator {
+            width: 1px;
+            height: 20px;
+            background: var(--border-color);
+            margin: 0 4px;
+            flex-shrink: 0;
+        }
+
+        .projects_workload_report .filter-buttons {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+
+        .projects_workload_report .projects-workload-fullscreen-toolbar {
+            margin-bottom: 0 !important;
+            gap: 0;
+        }
+
+        /* Кнопки - КОМПАКТНЫЕ */
+        .projects_workload_report .filter-buttons .btn,
+        .projects_workload_report .filter-buttons .dinext-ag-grid-table-fullscreen-button {
+            height: 28px !important;
+            min-height: 28px !important;
+            min-width: 28px !important;
+            padding: 0 6px !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px !important;
+            line-height: 1 !important;
+            border-radius: 3px !important;
+        }
+
+        /* Контейнеры для селекторов */
+        .projects_workload_report .unified-filters-row .frappe-control {
+            margin-bottom: 0 !important;
+        }
+
+        .projects_workload_report .unified-filters-row .frappe-control .form-group {
+            margin-bottom: 0 !important;
+        }
+
+        /* Убираем лейблы у контролов */
+        .projects_workload_report .unified-filters-row .control-label {
+            display: none !important;
+        }
+
+        /* Стили для таблицы */
+            height: auto;
+            text-align: center;
+            display: flex;
+        }
+        
+            height: 70px !important;
+            min-height: 70px !important;
+        }
+        
+            height: 70px !important;
+            min-height: 70px !important;
+        }
+        
+            border: none;
+            position: static;
+            padding: 0 !important;
+            margin: 0 !important;
+            overflow: hidden !important;
+        }
+        
+            border-color: var(--gray-200);
+            border-width: 1px !important;
+        }
+        
+            padding-left: 20px !important;
+        }
+        
+            height: auto !important;
+            min-height: auto !important;
+        }
+        
+            height: auto !important;
+            min-height: 33px !important;
+        }
+        
+            height: auto !important;
+            min-height: 27px !important;
+        }
+        
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+        }
+
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+            font-weight: 600;    
+            margin: auto;
+            font-size: 12px !important;
+            line-height: 1.4 !important;
+            padding: 10px 0 !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            flex-direction: column;
+        }
+        
+            display: block;
+            content: " ";
+            margin: 2px 0;
+        }
+        
+            font-size: 11px !important;
+            font-weight: 700 !important;
+            opacity: 0.9;
+            margin-top: 2px;
+            display: block;
+        }
+        
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            border: none !important;
+        }
+
+            width: 50px !important;
+            min-width: 50px !important;
+            max-width: 50px !important;
+            text-align: center !important;
+        }
+        
+            width: 200px !important;
+            min-width: 200px !important;
+            max-width: 200px !important;
+            text-align: left !important;
+            padding-left: 10px !important;
+        }
+        
+            width: 50px !important;
+            min-width: 50px !important;
+            max-width: 50px !important;
+        }
+        
+            width: 200px !important;
+            min-width: 200px !important;
+            max-width: 200px !important;
+            position: -webkit-sticky !important;
+            position: sticky !important;
+            left: 0;
+            background: var(--bg-color);
+            z-index: 3 !important;
+            border-right: 1px solid var(--border-color) !important;
+        }
+        
+        /* ========== ИСПРАВЛЕНИЯ ДЛЯ ОТОБРАЖЕНИЯ ПОЛЬЗОВАТЕЛЯ ========== */
+        
+        /* УВЕЛИЧИЛИ АВАТАР */
+        .projects_workload_report .projects-user-display {
+            display: flex;
+            align-items: center;
+            gap: 8px !important;
+            padding: 0 8px !important;
+            width: 100%;
+            height: 100% !important;
+            margin: 0 !important;
+            box-sizing: border-box !important;
+        }
+        
+        .projects_workload_report .projects-user-avatar {
+            width: 26px !important;
+            height: 26px !important;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 1px solid var(--border-color);
+            flex-shrink: 0;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        .projects_workload_report .projects-user-avatar-placeholder {
+            width: 22px !important;
+            height: 22px !important;
+            border-radius: 50%;
+            background: var(--blue-50);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px !important;
+            color: var(--blue-500);
+            border: 1px solid var(--blue-100);
+            flex-shrink: 0;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        .projects_workload_report .projects-user-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            justify-content: center;
+            flex: 1;
+            min-width: 0;
+            margin: 0 !important;
+            padding: 0 !important;
+            height: 100%;
+            line-height: 1.1 !important;
+            width: calc(100% - 30px);
+        }
+        
+        .projects_workload_report .projects-user-fullname {
+            font-weight: 500;
+            font-size: 12px !important;
+            line-height: 1.1 !important;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+            color: var(--text-color);
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block;
+            text-align: left !important;
+        }
+        
+        .projects_workload_report .projects-user-email {
+            font-size: 10px !important;
+            color: var(--text-muted);
+            line-height: 1.1 !important;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block;
+            text-align: left !important;
+        }
+        
+            padding-top: 2px !important;
+            align-items: flex-start !important;
+        }
+        
+            content: none !important;
+            display: none !important;
+        }
+        
+        /* ========== БАЗОВЫЕ СТИЛИ ДЛЯ ВСЕХ ЯЧЕЕК ========== */
+        .projects_workload_report .projects-workload-cell {
+            text-align: center;
+            padding: 0 !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            position: relative;
+            width: 100% !important;
+            height: 40px !important;
+            min-height: 40px !important;
+            font-size: 8px !important;
+            cursor: pointer;
+            margin: 0 !important;
+            border: none !important;
+            box-sizing: border-box !important;
+            line-height: 1 !important;
+        }
+        
+        /* Ячейки проекта с отступом слева */
+        .projects_workload_report .project-display {
+            padding: 1px 4px 1px 35px !important;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 4px !important;
+            height: 100%;
+            cursor: pointer;
+            margin: 0 !important;
+            width: 100%;
+            box-sizing: border-box !important;
+        }
+        
+        .projects_workload_report .project-name {
+            font-weight: 500;
+            font-size: 11px !important;
+            color: var(--text-color);
+            margin: 0 !important;
+            line-height: 1.1 !important;
+        }
+        
+        /* ========== ЯЧЕЙКИ ВЫХОДНЫХ ========== */
+        .projects_workload_report .projects-weekend-cell {
+            background: #60bcff20 !important;
+            cursor: pointer;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            height: 40px !important;
+            min-height: 40px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            border: none !important;
+        }
+        
+        /* Скрываем текст в выходных ячейках */
+        .projects_workload_report .projects-weekend-cell .projects-weekend-text {
+            display: none !important;
+        }
+        
+        .projects_workload_report .projects-weekend-cell .projects-workload-percentage {
+            display: none;
+        }
+        
+        /* ========== ЯЧЕЙКИ ОТСУТСТВИЙ ========== */
+        .projects_workload_report .projects-absence-cell {
+            background: -webkit-linear-gradient(135deg, #e8f5e8, #c8e6c9) !important;
+            background: -moz-linear-gradient(135deg, #e8f5e8, #c8e6c9) !important;
+            background: -o-linear-gradient(135deg, #e8f5e8, #c8e6c9) !important;
+            background: linear-gradient(135deg, #e8f5e8, #c8e6c9) !important;
+            color: #2e7d32 !important;
+            border: 1px solid #a5d6a7 !important;
+            cursor: pointer;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            height: 40px !important;
+            min-height: 40px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        
+        .projects_workload_report .projects-absence-cell .projects-absence-text {
+            font-weight: 600;
+            font-size: 9px !important;
+            line-height: 1 !important;
+            text-align: center;
+            word-break: break-word;
+            overflow-wrap: break-word;
+            -webkit-hyphens: auto;
+            -moz-hyphens: auto;
+            hyphens: auto;
+            white-space: pre-line;
+            color: #2e7d32;
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        
+        .projects_workload_report .projects-absence-cell .projects-workload-percentage {
+            display: none;
+        }
+        
+        /* ========== ВИЗУАЛИЗАЦИЯ ЗАГРУЗКИ ========== */
+        .projects_workload_report .projects-workload-visualization {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 0%;
+            -webkit-transition: height 0.3s ease;
+            -moz-transition: height 0.3s ease;
+            -o-transition: height 0.3s ease;
+            transition: height 0.3s ease;
+            z-index: 1;
+            border-radius: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            border: none !important;
+        }
+        
+        .projects_workload_report .projects-workload-visualization.normal {
+            background: -webkit-linear-gradient(to top, #7bc67b, #66b266) !important;
+            background: -moz-linear-gradient(to top, #7bc67b, #66b266) !important;
+            background: -o-linear-gradient(to top, #7bc67b, #66b266) !important;
+            background: linear-gradient(to top, #7bc67b, #66b266) !important;
+            border: none !important;
+        }
+        
+        .projects_workload_report .projects-workload-visualization.warning {
+            background: -webkit-linear-gradient(to top, #fcd34d, #fbbf24) !important;
+            background: -moz-linear-gradient(to top, #fcd34d, #fbbf24) !important;
+            background: -o-linear-gradient(to top, #fcd34d, #fbbf24) !important;
+            background: linear-gradient(to top, #fcd34d, #fbbf24) !important;
+            border: none !important;
+        }
+        
+        .projects_workload_report .projects-workload-visualization.overload {
+            background: -webkit-linear-gradient(to top, #e68a8a, #d67979) !important;
+            background: -moz-linear-gradient(to top, #e68a8a, #d67979) !important;
+            background: -o-linear-gradient(to top, #e68a8a, #d67979) !important;
+            background: linear-gradient(to top, #e68a8a, #d67979) !important;
+            border: none !important;
+            height: 100% !important;
+        }
+        
+        .projects_workload_report .projects-workload-content {
+            position: relative;
+            z-index: 2;
+            background: transparent;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            line-height: 1 !important;
+        }
+        
+        .projects_workload_report .projects-workload-percentage {
+            font-size: 7px !important;
+            color: var(--text-color) !important;
+            margin-top: 0px !important;
+            font-weight: 600;
+            line-height: 1 !important;
+            padding: 0 !important;
+        }
+        
+        /* Стиль для часов загрузки */
+        .projects_workload_report .workload-hours {
+            font-weight: 600;
+            font-size: 10px !important;
+            color: var(--text-color) !important;
+        }
+        
+        .projects_workload_report .workload-hours.zero-load {
+            color: var(--gray-500) !important;
+        }
+        
+        .projects_workload_report .workload-percentage.zero-load {
+            color: var(--gray-500) !important;
+        }
+
+        /* ISS-2026-00865 V2: кнопка порционной дозагрузки пользователей */
+        .projects_workload_report .projects-workload-load-more {
+            min-width: 130px !important;
+            padding: 0 10px !important;
+            white-space: nowrap;
+            font-size: 12px !important;
+        }
+
+        .projects_workload_report .projects-workload-load-more:disabled {
+            opacity: 0.7;
+            cursor: wait;
+        }
+
+        /* ========== АДАПТИВНОСТЬ ========== */
+        @media screen and (max-width: 1200px) {
+            .projects_workload_report .form-filter-wrapper {
+                min-width: 140px !important;
+                width: 140px !important;
+                max-width: 140px !important;
+            }
+        }
+
+        @media screen and (max-width: 992px) {
+            .projects_workload_report .unified-filters-row {
+                gap: 6px;
+                padding: 6px 8px;
+            }
+            
+            .projects_workload_report .filters-container {
+                gap: 6px;
+            }
+            
+            .projects_workload_report .form-filter-wrapper {
+                min-width: calc(33.333% - 12px) !important;
+                width: calc(33.333% - 12px) !important;
+                max-width: calc(33.333% - 12px) !important;
+            }
+            
+            .projects_workload_report .unified-filters-row .form-group {
+                min-width: calc(33.333% - 12px) !important;
+                width: calc(33.333% - 12px) !important;
+            }
+            
+            .projects_workload_report .filter-separator {
+                display: none;
+            }
+            
+            .projects_workload_report .filter-buttons {
+                margin-left: 0;
+                width: 100%;
+                justify-content: flex-end;
+                margin-top: 6px;
+                gap: 8px;
+            }
+            
+            /* Уменьшаем аватар на мобильных */
+            .projects_workload_report .projects-user-avatar,
+            .projects_workload_report .projects-user-avatar-placeholder {
+                width: 18px !important;
+                height: 18px !important;
+                font-size: 8px !important;
+            }
+            
+            .projects_workload_report .projects-user-info {
+                width: calc(100% - 26px);
+            }
+        }
+
+        @media screen and (max-width: 768px) {
+            .projects_workload_report .unified-filters-row {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+            
+            .projects_workload_report .filters-container {
+                flex-direction: column;
+                gap: 6px;
+                align-items: stretch;
+            }
+            
+            .projects_workload_report .form-filter-wrapper {
+                min-width: 100% !important;
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+            
+            .projects_workload_report .unified-filters-row .form-group {
+                min-width: 100% !important;
+                width: 100% !important;
+            }
+            
+            .projects_workload_report .filter-buttons {
+                margin-left: 0;
+                justify-content: center;
+                width: 100%;
+                gap: 12px;
+                margin-top: 8px;
+            }
+            
+            .projects_workload_report .filter-buttons .btn {
+                min-width: 100px !important;
+                padding: 4px 12px !important;
+            }
+        }
+/* Report table — AG Grid (replaces legacy datatable layout) */
+.projects_workload_report .projects-workload-table .projects-workload-ag-grid {
+    flex: 1;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 400px;
+    max-height: max(calc(100vh - 280px), 420px);
+    margin: 0.5rem 0 0 0 !important;
+}
+
+.projects_workload_report .projects-workload-table .projects-workload-ag-grid .ag-root-wrapper {
+    width: 100%;
+    height: 100%;
+}
+
+.projects_workload_report .projects-workload-table .projects-workload-ag-grid .ag-body-viewport,
+.projects_workload_report .projects-workload-table .projects-workload-ag-grid .ag-center-cols-viewport {
+    min-height: 320px;
+}
