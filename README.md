@@ -6,7 +6,7 @@ Dinext Common is a shared Frappe app for the Dinext platform. It centralizes cro
 
 In practice, this app does four things:
 
-- applies common site configuration through fixtures such as `Website Settings`, `Navbar Settings`, `Web Page`, `Data Cleanup Rules`, and `Server Script`
+- applies common site configuration through fixtures such as `Website Settings`, `Navbar Settings`, `Web Page`, and `Data Cleanup Rules`
 - injects shared Desk assets from `hooks.py`
 - provides a standard website theme and Dinext branding assets
 - ships reusable JS/CSS libraries that other apps can load on demand
@@ -14,7 +14,7 @@ In practice, this app does four things:
 ## Features
 
 - Shared Dinext branding for Desk and website via `app_logo_url`, `app_icon`, and `website_context` in `dinext_common/hooks.py`
-- Fixture-driven site setup for `Website Settings`, `Navbar Settings`, `Data Cleanup Rules`, Dinext homepage content, and enabled `Server Script` records from the `Dinext Common` module
+- Fixture-driven site setup for `Website Settings`, `Navbar Settings`, `Data Cleanup Rules`, and Dinext homepage content
 - Global Desk enhancements loaded through `app_include_js`:
   - `breadcrumbs_update.js`
   - `listview_resize.js`
@@ -94,15 +94,7 @@ Available rule types:
 - `Event Cleanup Rule`: filters by age, event category, event type, and status
 - `Workflow Cleanup Rule`: filters by age, optional reference DocType, and workflow status
 
-The app also installs these enabled Server Scripts from fixtures:
-
-- `Data Cleanup Daily` as a daily `Scheduler Event`
-- `Data Cleanup Version` as API method `dinext_common_data_cleanup_version`
-- `Data Cleanup Comment` as API method `dinext_common_data_cleanup_comment`
-- `Data Cleanup File` as API method `dinext_common_data_cleanup_file`
-- `Data Cleanup Communication` as API method `dinext_common_data_cleanup_communication`
-- `Data Cleanup Event` as API method `dinext_common_data_cleanup_event`
-- `Data Cleanup Workflow` as API method `dinext_common_data_cleanup_workflow`
+Data cleanup on a site expects enabled `Server Script` records in module `Dinext Common` (for example `Data Cleanup Daily` and the `dinext_common_data_cleanup_*` API methods). Those scripts are **not** shipped as app fixtures; deploy them through your sandbox or site-specific Server Script workflow.
 
 `Data Cleanup Daily` reads the current `Data Cleanup Rules` document and enqueues one long-running cleanup job per enabled rule category. Each cleanup script then deletes matching records in batches and commits periodically.
 
@@ -160,7 +152,8 @@ Fixtures exported by the app:
 - `Navbar Settings`
 - `Data Cleanup Rules`
 - `Web Page` records filtered to module `Dinext Common`
-- `Server Script` records filtered to module `Dinext Common` and `disabled = 0`
+- `Custom Field` records filtered to module `Dinext Common`
+- `Holiday List` named `Праздники и выходные РФ`
 
 Relevant fixture behavior:
 
@@ -236,8 +229,8 @@ This repository does not maintain a handwritten changelog in the README at the m
 │   ├── patches.txt
 │   ├── fixtures/
 │   │   ├── data_cleanup_rules.json
+│   │   ├── holiday_list.json
 │   │   ├── navbar_settings.json
-│   │   ├── server_script.json
 │   │   ├── web_page.json
 │   │   └── website_settings.json
 │   ├── public/
@@ -291,7 +284,6 @@ flowchart LR
   fixtures --> navbar["Navbar Settings"]
   fixtures --> homepage["Web Page"]
   fixtures --> cleanupRules["Data Cleanup Rules"]
-  fixtures --> serverScripts["Server Scripts"]
   migrate --> build["bench build"]
   build --> assets["Desk and website assets available"]
 ```
