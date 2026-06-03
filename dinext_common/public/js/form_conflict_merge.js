@@ -1,0 +1,827 @@
+// Copyright (c) 2026, Dinext
+// MIT License. See license.txt
+
+/*
+ * FormConflictMerge
+ * -----------------
+ * Универсальная клиентская утилита для Frappe Form, которая уменьшает риск
+ * потери данных при параллельных изменениях одного документа.
+ *
+ * Как использовать в Client Script конкретного DocType:
+ *
+ * frappe.require("/assets/dinext_common/js/form_conflict_merge.js", () => {
+ *     frappe.ui.form.on("Issue", {
+ *         onload(frm) {
+ *             dinext_common.formConflictMerge.install(frm, {
+ *                 // fields: [] means all supported non-child fields.
+ *                 include_fields: ["custom_z_user_group"],
+ *                 include_child_tables: ["custom_z_user_group"],
+ *                 exclude_fields: ["some_field_to_ignore"],
+ *                 conflict_policy: "server_wins",
+ *                 apply_server_changes_on_realtime: true,
+ *                 refresh_docinfo_on_server_apply: true,
+ *                 poll_server_changes_interval_ms: 5000,
+ *             });
+ *         },
+ *     });
+ * });
+ *
+ * Алгоритм сравнивает три состояния:
+ * - initial: снимок формы при открытии;
+ * - server: актуальный документ из БД;
+ * - local: текущие значения в форме пользователя.
+ *
+ * Поля, изменённые только на сервере, подтягиваются в форму и подсвечиваются
+ * жёлтым. Если одно и то же поле изменено и на сервере, и локально, применяется
+ * conflict_policy; при server_wins серверное значение применяется сразу, а поле
+ * подсвечивается красным.
+ *
+ * Важно: утилита не заменяет permissions, validations и серверные hooks.
+ * Child tables сравниваются и применяются целиком, без построчного merge.
+ */
+
+(function () {
+	window.dinext_common = window.dinext_common || {};
+
+	const DEFAULT_CONFIG = {
+		// Если пусто, отслеживаются все поддерживаемые non-child поля формы.
+		// Если указан список, он становится явным allowlist.
+		fields: [],
+
+		// Дополнительно включить поля поверх auto/allowlist.
+		// Удобно для точечного включения child table или нестандартного поля.
+		include_fields: [],
+
+		// Исключить поля из итогового списка.
+		exclude_fields: [],
+
+		// Child tables по умолчанию выключены, так как они применяются целиком.
+		// true = все child tables, array = только перечисленные child table поля.
+		include_child_tables: false,
+
+		// "dialog" | "local_wins" | "server_wins" | "block"
+		conflict_policy: "dialog",
+
+		show_realtime_alert: true,
+		show_applied_alert: true,
+		highlight_server_changes: true,
+		apply_server_changes_on_realtime: false,
+
+		// Обновляет sidebar docinfo: Assigned To, attachments, timeline.
+		refresh_docinfo_on_server_apply: false,
+
+		// Универсальное отслеживание частей frm.get_docinfo(), например:
+		// ["assignments", "attachments", "shared"].
+		watch_docinfo_keys: [],
+		show_docinfo_alert: true,
+		docinfo_key_labels: {
+			assignments: "назначения",
+			attachments: "вложения",
+			shared: "доступы",
+			communications: "сообщения",
+			comments: "комментарии",
+		},
+		docinfo_self_change_suppress_ms: 10000,
+
+		// 0 = выключено. Полезно, если realtime/socket.io недоступен.
+		poll_server_changes_interval_ms: 0,
+
+	};
+
+	const SYSTEM_FIELDS = [
+		"name",
+		"owner",
+		"creation",
+		"modified",
+		"modified_by",
+		"docstatus",
+		"idx",
+		"doctype",
+		"parent",
+		"parentfield",
+		"parenttype",
+		"_user_tags",
+		"_comments",
+		"_assign",
+		"_liked_by",
+		"__islocal",
+		"__unsaved",
+		"__last_sync_on",
+		"__needs_refresh",
+	];
+
+	const registry = (window.__dinext_form_conflict_merge_registry =
+		window.__dinext_form_conflict_merge_registry || {});
+	const HIGHLIGHT_STYLE_ID = "dinext-form-conflict-merge-highlight-style";
+	const SERVER_HIGHLIGHT_CLASS = "dinext-fcm-highlight-server";
+	const CONFLICT_HIGHLIGHT_CLASS = "dinext-fcm-highlight-conflict";
+
+	function ensure_highlight_styles() {
+		if (document.getElementById(HIGHLIGHT_STYLE_ID)) return;
+
+		const style = document.createElement("style");
+		style.id = HIGHLIGHT_STYLE_ID;
+		style.textContent = `
+			.${SERVER_HIGHLIGHT_CLASS} .control-input,
+			.${SERVER_HIGHLIGHT_CLASS} .form-control,
+			.${SERVER_HIGHLIGHT_CLASS} .ql-editor,
+			.${SERVER_HIGHLIGHT_CLASS} .grid-body {
+				outline: 2px solid #f0ad4e !important;
+				outline-offset: 2px;
+				border-radius: 4px;
+			}
+			.${CONFLICT_HIGHLIGHT_CLASS} .control-input,
+			.${CONFLICT_HIGHLIGHT_CLASS} .form-control,
+			.${CONFLICT_HIGHLIGHT_CLASS} .ql-editor,
+			.${CONFLICT_HIGHLIGHT_CLASS} .grid-body {
+				outline: 2px solid #d9534f !important;
+				outline-offset: 2px;
+				border-radius: 4px;
+			}
+		`;
+		document.head.appendChild(style);
+	}
+
+	function get_state(frm) {
+		const key = `${frm.doctype}::${frm.docname}`;
+		registry[key] = registry[key] || {};
+		return registry[key];
+	}
+
+	function get_field_wrapper(frm, fieldname) {
+		const field = frm.fields_dict && frm.fields_dict[fieldname];
+		return field && field.$wrapper;
+	}
+
+	function clear_highlight(frm, state, fieldname) {
+		const $wrapper = get_field_wrapper(frm, fieldname);
+		if ($wrapper) {
+			$wrapper.removeClass(`${SERVER_HIGHLIGHT_CLASS} ${CONFLICT_HIGHLIGHT_CLASS}`);
+			$wrapper.off(".dinext_fcm_clear_highlight");
+		}
+		if (state.highlighted_fields) {
+			delete state.highlighted_fields[fieldname];
+		}
+	}
+
+	function bind_clear_highlight_on_edit(frm, state, fieldname, $wrapper) {
+		$wrapper.off(".dinext_fcm_clear_highlight");
+		$wrapper.on(
+			"focusin.dinext_fcm_clear_highlight input.dinext_fcm_clear_highlight change.dinext_fcm_clear_highlight keydown.dinext_fcm_clear_highlight",
+			() => clear_highlight(frm, state, fieldname)
+		);
+	}
+
+	function highlight_field(frm, state, fieldname, kind) {
+		if (!state.cfg.highlight_server_changes) return;
+		const $wrapper = get_field_wrapper(frm, fieldname);
+		if (!$wrapper) return;
+
+		$wrapper.removeClass(`${SERVER_HIGHLIGHT_CLASS} ${CONFLICT_HIGHLIGHT_CLASS}`);
+		$wrapper.addClass(kind === "conflict" ? CONFLICT_HIGHLIGHT_CLASS : SERVER_HIGHLIGHT_CLASS);
+		bind_clear_highlight_on_edit(frm, state, fieldname, $wrapper);
+
+		state.highlighted_fields = state.highlighted_fields || {};
+		state.highlighted_fields[fieldname] = kind;
+	}
+
+	function clear_highlights(frm, state) {
+		Object.keys(state.highlighted_fields || {}).forEach((fieldname) => {
+			clear_highlight(frm, state, fieldname);
+		});
+		state.highlighted_fields = {};
+	}
+
+	function cancel_pending_reload(frm) {
+		if (frm.debounced_reload_doc && frm.debounced_reload_doc.cancel) {
+			frm.debounced_reload_doc.cancel();
+		}
+	}
+
+	function is_child_table(df) {
+		return df && (df.fieldtype === "Table" || df.fieldtype === "Table MultiSelect");
+	}
+
+	function is_child_table_included(df, cfg) {
+		if (!is_child_table(df)) return true;
+		if (cfg.include_child_tables === true) return true;
+		if (Array.isArray(cfg.include_child_tables)) return cfg.include_child_tables.includes(df.fieldname);
+		return false;
+	}
+
+	function is_mergeable_field(df) {
+		if (!df || !df.fieldname) return false;
+		if (SYSTEM_FIELDS.includes(df.fieldname)) return false;
+		if (["Section Break", "Column Break", "Tab Break"].includes(df.fieldtype)) return false;
+		if (["HTML", "Button", "Fold"].includes(df.fieldtype)) return false;
+		return true;
+	}
+
+	function is_supported_field(df, cfg) {
+		return is_mergeable_field(df) && is_child_table_included(df, cfg);
+	}
+
+	function unique_fields(fields) {
+		return Array.from(new Set((fields || []).filter(Boolean)));
+	}
+
+	function get_fields(frm, cfg) {
+		const meta_fields = frm.meta.fields || [];
+		const fields_by_name = {};
+		meta_fields.forEach((df) => {
+			if (df && df.fieldname) fields_by_name[df.fieldname] = df;
+		});
+
+		const base_fields =
+			cfg.fields && cfg.fields.length
+				? cfg.fields.filter((fieldname) => is_mergeable_field(fields_by_name[fieldname]))
+				: meta_fields.filter((df) => is_supported_field(df, cfg)).map((df) => df.fieldname);
+
+		const included_fields = (cfg.include_fields || []).filter((fieldname) =>
+			is_mergeable_field(fields_by_name[fieldname])
+		);
+		const excluded_fields = new Set(cfg.exclude_fields || []);
+
+		return unique_fields(base_fields.concat(included_fields)).filter((fieldname) => !excluded_fields.has(fieldname));
+	}
+
+	function normalize_child(row) {
+		const out = {};
+		Object.keys(row || {})
+			.sort()
+			.forEach((key) => {
+				if (SYSTEM_FIELDS.includes(key)) return;
+				out[key] = row[key];
+			});
+		return out;
+	}
+
+	function normalize_value(value) {
+		if (value === undefined) return null;
+		if (Array.isArray(value)) return value.map((row) => normalize_child(row));
+		if (value && typeof value === "object") return JSON.parse(JSON.stringify(value));
+		return value;
+	}
+
+	function snapshot(doc, fields) {
+		const out = {};
+		fields.forEach((fieldname) => {
+			out[fieldname] = normalize_value(doc ? doc[fieldname] : null);
+		});
+		return out;
+	}
+
+	function equal(left, right) {
+		return JSON.stringify(normalize_value(left)) === JSON.stringify(normalize_value(right));
+	}
+
+	function clone_raw_value(value) {
+		if (value === undefined) return null;
+		if (value && typeof value === "object") return JSON.parse(JSON.stringify(value));
+		return value;
+	}
+
+	function is_child_table_field(frm, fieldname) {
+		const field = frm.fields_dict && frm.fields_dict[fieldname];
+		const df = field && field.df;
+		return df && (df.fieldtype === "Table" || df.fieldtype === "Table MultiSelect");
+	}
+
+	function apply_child_table(frm, server_doc, fieldname) {
+		frm.doc[fieldname] = clone_raw_value(server_doc[fieldname] || []);
+		const local_doc = locals[frm.doctype] && locals[frm.doctype][frm.docname];
+		if (local_doc) local_doc[fieldname] = frm.doc[fieldname];
+		frm.refresh_field(fieldname);
+	}
+
+	function apply_field(frm, server_doc, fieldname) {
+		if (is_child_table_field(frm, fieldname)) {
+			apply_child_table(frm, server_doc, fieldname);
+			return;
+		}
+
+		frm.doc[fieldname] = clone_raw_value(server_doc[fieldname]);
+		const local_doc = locals[frm.doctype] && locals[frm.doctype][frm.docname];
+		if (local_doc) local_doc[fieldname] = frm.doc[fieldname];
+		frm.refresh_field(fieldname);
+	}
+
+	function apply_modified(frm, server_doc) {
+		if (!server_doc || !server_doc.modified) return;
+		frm.doc.modified = server_doc.modified;
+		const local_doc = locals[frm.doctype] && locals[frm.doctype][frm.docname];
+		if (local_doc) local_doc.modified = server_doc.modified;
+	}
+
+	function update_initial_value(state, server_doc, fieldname) {
+		state.initial_values[fieldname] = normalize_value(server_doc[fieldname]);
+	}
+
+	function sync_matching_server_values(frm, server_doc, state) {
+		const local = snapshot(frm.doc, state.fields);
+		const server = snapshot(server_doc, state.fields);
+
+		state.fields.forEach((fieldname) => {
+			if (equal(local[fieldname], server[fieldname])) {
+				state.initial_values[fieldname] = server[fieldname];
+			}
+		});
+	}
+
+	function get_remaining_local_changes(frm, state) {
+		const local = snapshot(frm.doc, state.fields);
+		const initial = state.initial_values || {};
+
+		return state.fields.filter((fieldname) => !equal(local[fieldname], initial[fieldname]));
+	}
+
+	function get_docinfo(frm) {
+		if (frm.get_docinfo) return frm.get_docinfo() || {};
+		const docinfo_by_doctype = frappe.model.docinfo && frappe.model.docinfo[frm.doctype];
+		return (docinfo_by_doctype && docinfo_by_doctype[frm.docname]) || {};
+	}
+
+	function normalize_docinfo_object(value) {
+		if (Array.isArray(value)) {
+			return value
+				.map((item) => normalize_docinfo_object(item))
+				.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+		}
+
+		if (value && typeof value === "object") {
+			const out = {};
+			Object.keys(value)
+				.sort()
+				.forEach((key) => {
+					out[key] = normalize_docinfo_object(value[key]);
+				});
+			return out;
+		}
+
+		return value === undefined ? null : value;
+	}
+
+	function get_docinfo_keys(cfg) {
+		return Array.isArray(cfg.watch_docinfo_keys) ? cfg.watch_docinfo_keys.filter(Boolean) : [];
+	}
+
+	function snapshot_docinfo(frm, state, docinfo) {
+		const source = docinfo || get_docinfo(frm);
+		const out = {};
+
+		get_docinfo_keys(state.cfg).forEach((key) => {
+			out[key] = normalize_docinfo_object(source[key]);
+		});
+
+		return out;
+	}
+
+	function get_changed_docinfo_keys(frm, state, docinfo) {
+		const previous = state.docinfo_values || {};
+		const current = snapshot_docinfo(frm, state, docinfo);
+		const changed = [];
+
+		get_docinfo_keys(state.cfg).forEach((key) => {
+			if (!equal(previous[key], current[key])) changed.push(key);
+		});
+
+		state.docinfo_values = current;
+		return changed;
+	}
+
+	function mark_docinfo_self_change(state, keys) {
+		const expires_at = Date.now() + Number(state.cfg.docinfo_self_change_suppress_ms || 0);
+		if (!expires_at) return;
+
+		state.docinfo_self_changes = state.docinfo_self_changes || {};
+		keys.forEach((key) => {
+			state.docinfo_self_changes[key] = expires_at;
+		});
+	}
+
+	function filter_self_docinfo_changes(state, changed_keys) {
+		const now = Date.now();
+		const self_changes = state.docinfo_self_changes || {};
+
+		return changed_keys.filter((key) => {
+			if (!self_changes[key]) return true;
+			if (self_changes[key] < now) {
+				delete self_changes[key];
+				return true;
+			}
+
+			delete self_changes[key];
+			return false;
+		});
+	}
+
+	function init_docinfo_self_change_markers(frm, state) {
+		const watched_keys = get_docinfo_keys(state.cfg);
+		if (!watched_keys.length || state.docinfo_self_change_markers_ready) return;
+		state.docinfo_self_change_markers_ready = true;
+
+		if (watched_keys.includes("assignments") && frm.assign_to && frm.assign_to.parent) {
+			frm.assign_to.parent.on("click.dinext_fcm_docinfo_self_change", () => {
+				mark_docinfo_self_change(state, ["assignments"]);
+			});
+		}
+
+		if (watched_keys.includes("attachments") && frm.attachments && frm.attachments.parent) {
+			frm.attachments.parent.on("click.dinext_fcm_docinfo_self_change", () => {
+				mark_docinfo_self_change(state, ["attachments"]);
+			});
+		}
+
+		if (watched_keys.includes("shared") && frm.shared && frm.shared.parent) {
+			frm.shared.parent.on("click.dinext_fcm_docinfo_self_change", () => {
+				mark_docinfo_self_change(state, ["shared"]);
+			});
+		}
+	}
+
+	function show_docinfo_alert(changed_keys, cfg) {
+		if (!changed_keys.length || !cfg.show_docinfo_alert) return;
+
+		const labels = cfg.docinfo_key_labels || {};
+		const changed_labels = changed_keys.map((key) => labels[key] || key);
+
+		frappe.show_alert({
+			message: `Обновлены данные документа: ${changed_labels.join(", ")}`,
+			indicator: "orange",
+		});
+	}
+
+	function mark_clean(frm) {
+		frm.doc.__unsaved = 0;
+		const local_doc = locals[frm.doctype] && locals[frm.doctype][frm.docname];
+		if (local_doc) local_doc.__unsaved = 0;
+
+		if (frm.beforeUnloadListener) {
+			removeEventListener("beforeunload", frm.beforeUnloadListener, { capture: true });
+		}
+
+		if (frm.toolbar) {
+			frm.toolbar.set_indicator();
+			frm.toolbar.show_title_as_dirty();
+			frm.toolbar.set_primary_action();
+		}
+	}
+
+	function refresh_docinfo(frm, state, opts) {
+		if (!frm.sidebar || !frm.sidebar.reload_docinfo) return Promise.resolve([]);
+
+		state = state || get_state(frm);
+		opts = opts || {};
+
+		return new Promise((resolve) => {
+			frm.sidebar.reload_docinfo((docinfo) => {
+				const changed_keys = get_changed_docinfo_keys(frm, state, docinfo);
+				const visible_changed_keys = filter_self_docinfo_changes(state, changed_keys);
+				if (!opts.silent) {
+					show_docinfo_alert(visible_changed_keys, state.cfg);
+				}
+				resolve(changed_keys);
+			});
+		});
+	}
+
+	function analyze(frm, server_doc, state) {
+		const initial = state.initial_values || {};
+		const local = snapshot(frm.doc, state.fields);
+		const server = snapshot(server_doc, state.fields);
+		const server_only = [];
+		const local_only = [];
+		const conflicts = [];
+
+		state.fields.forEach((fieldname) => {
+			const local_changed = !equal(local[fieldname], initial[fieldname]);
+			const server_changed = !equal(server[fieldname], initial[fieldname]);
+
+			if (!local_changed && server_changed) {
+				server_only.push(fieldname);
+				return;
+			}
+
+			if (local_changed && !server_changed) {
+				local_only.push(fieldname);
+				return;
+			}
+
+			if (local_changed && server_changed && !equal(local[fieldname], server[fieldname])) {
+				conflicts.push(fieldname);
+			}
+		});
+
+		return { server_only, local_only, conflicts };
+	}
+
+	function show_realtime_alert(data) {
+		const changed_by = data && data.modified_by ? ` (${data.modified_by})` : "";
+		frappe.show_alert({
+			message: `Документ изменён на сервере${changed_by}. Выполняется сверка изменений.`,
+			indicator: "orange",
+		});
+	}
+
+	function show_applied_alert(analysis) {
+		if (!analysis) return;
+
+		const applied_server = analysis.applied_server || analysis.server_only || [];
+		const applied_conflicts = analysis.applied_conflicts || [];
+		if (!applied_server.length && !applied_conflicts.length) return;
+
+		const messages = [];
+		if (applied_server.length) {
+			messages.push(`обновлены поля: ${applied_server.join(", ")}`);
+		}
+		if (applied_conflicts.length) {
+			messages.push(`сервер перезаписал локальные правки: ${applied_conflicts.join(", ")}`);
+		}
+
+		frappe.show_alert({
+			message: `Объект был изменён на сервере, ${messages.join("; ")}`,
+			indicator: applied_conflicts.length ? "red" : "orange",
+		});
+	}
+
+	function apply_server_changes(frm, server_doc, state) {
+		const modified_changed = Boolean(server_doc && server_doc.modified && server_doc.modified !== state.initial_modified);
+		const analysis = analyze(frm, server_doc, state);
+		const applied_server = analysis.server_only.slice();
+		const applied_conflicts = state.cfg.conflict_policy === "server_wins" ? analysis.conflicts.slice() : [];
+
+		applied_server.forEach((fieldname) => {
+			apply_field(frm, server_doc, fieldname);
+			update_initial_value(state, server_doc, fieldname);
+			highlight_field(frm, state, fieldname, "server");
+		});
+
+		applied_conflicts.forEach((fieldname) => {
+			apply_field(frm, server_doc, fieldname);
+			update_initial_value(state, server_doc, fieldname);
+			highlight_field(frm, state, fieldname, "conflict");
+		});
+
+		apply_modified(frm, server_doc);
+		sync_matching_server_values(frm, server_doc, state);
+
+		analysis.applied_server = applied_server;
+		analysis.applied_conflicts = applied_conflicts;
+		analysis.remaining_local = get_remaining_local_changes(frm, state);
+		analysis.modified_changed = modified_changed;
+
+		state.server_changed = analysis.conflicts.length > applied_conflicts.length;
+		state.server_modified = server_doc.modified;
+		state.server_modified_by = server_doc.modified_by;
+
+		if (!state.server_changed) {
+			state.initial_modified = server_doc.modified;
+		}
+
+		if (!analysis.remaining_local.length) {
+			mark_clean(frm);
+		}
+
+		if (modified_changed && state.cfg.refresh_docinfo_on_server_apply) {
+			refresh_docinfo(frm, state);
+		}
+
+		return analysis;
+	}
+
+	function handle_doc_update(data) {
+		const frm = cur_frm;
+		if (!frm || !frm.doc || frm.is_new() || !data) return;
+		if (data.doctype !== frm.doctype || data.name !== frm.docname) return;
+		if (frappe.ui.form.is_saving) return;
+		if (data.modified && data.modified === frm.doc.modified) return;
+
+		const state = get_state(frm);
+		if (!state.installed) return;
+
+		cancel_pending_reload(frm);
+
+		state.server_changed = true;
+		state.server_modified = data.modified;
+		state.server_modified_by = data.modified_by;
+
+		if (state.cfg.show_realtime_alert) {
+			show_realtime_alert(data);
+		}
+
+		if (state.cfg.apply_server_changes_on_realtime) {
+			fetch_server_doc(frm).then((server_doc) => {
+				if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) return;
+				const analysis = apply_server_changes(frm, server_doc, state);
+				if (state.cfg.show_applied_alert) show_applied_alert(analysis);
+			});
+		}
+	}
+
+	function init_listener() {
+		if (window.__dinext_form_conflict_merge_listener_ready) return;
+		window.__dinext_form_conflict_merge_listener_ready = true;
+		frappe.realtime.on("doc_update", handle_doc_update);
+	}
+
+	function check_server_changes(frm, state) {
+		if (!frm || !frm.doc || frm.is_new()) return Promise.resolve();
+		state = state || get_state(frm);
+		if (!state.installed) return Promise.resolve();
+
+		return fetch_server_doc(frm).then((server_doc) => {
+			if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) return;
+			const analysis = apply_server_changes(frm, server_doc, state);
+			if (state.cfg.show_applied_alert) show_applied_alert(analysis);
+			return analysis;
+		});
+	}
+
+	function init_polling(frm, state) {
+		const interval = Number(state.cfg.poll_server_changes_interval_ms || 0);
+		if (!interval || interval < 1000) return;
+
+		if (state.poll_timer) {
+			clearInterval(state.poll_timer);
+		}
+
+		state.poll_timer = setInterval(() => {
+			const current = cur_frm;
+			if (!current || current.doctype !== frm.doctype || current.docname !== frm.docname) return;
+			check_server_changes(current, state);
+		}, interval);
+	}
+
+	function init_docinfo_polling(frm, state) {
+		if (!state.cfg.refresh_docinfo_on_server_apply && !get_docinfo_keys(state.cfg).length) return;
+
+		const interval = Number(state.cfg.poll_server_changes_interval_ms || 0);
+		if (!interval || interval < 1000) return;
+
+		if (state.docinfo_poll_timer) {
+			clearInterval(state.docinfo_poll_timer);
+		}
+
+		state.docinfo_poll_timer = setInterval(() => {
+			const current = cur_frm;
+			if (!current || current.doctype !== frm.doctype || current.docname !== frm.docname) return;
+			refresh_docinfo(current, state);
+		}, interval);
+	}
+
+	function confirm_conflicts(conflicts, cfg) {
+		if (!conflicts.length) return Promise.resolve("continue");
+		if (cfg.conflict_policy === "local_wins") return Promise.resolve("local_wins");
+		if (cfg.conflict_policy === "server_wins") return Promise.resolve("server_wins");
+		if (cfg.conflict_policy === "block") return Promise.resolve("block");
+
+		return new Promise((resolve) => {
+			const message = [
+				"Документ был изменён на сервере, и часть полей конфликтует с вашими правками.",
+				"",
+				`Конфликтующие поля: ${conflicts.join(", ")}`,
+				"",
+				"Выберите, как продолжить сохранение.",
+			].join("<br>");
+
+			const dialog = new frappe.ui.Dialog({
+				title: "Конфликт изменений",
+				fields: [{ fieldtype: "HTML", fieldname: "message", options: message }],
+				primary_action_label: "Сохранить мои значения",
+				primary_action() {
+					dialog.hide();
+					resolve("local_wins");
+				},
+				secondary_action_label: "Взять значения сервера",
+				secondary_action() {
+					dialog.hide();
+					resolve("server_wins");
+				},
+			});
+
+			dialog.$wrapper.find(".modal-footer").prepend(
+				$(`<button class="btn btn-default btn-sm">${__("Отменить сохранение")}</button>`).on("click", () => {
+					dialog.hide();
+					resolve("block");
+				})
+			);
+
+			dialog.show();
+		});
+	}
+
+	function fetch_server_doc(frm) {
+		return new Promise((resolve, reject) => {
+			frappe.call({
+				method: "frappe.client.get",
+				type: "GET",
+				args: {
+					doctype: frm.doctype,
+					name: frm.docname,
+				},
+				callback(r) {
+					resolve(r.message);
+				},
+				error: reject,
+			});
+		});
+	}
+
+	function before_save(frm) {
+		if (frm.is_new()) return Promise.resolve();
+
+		const state = get_state(frm);
+		if (!state.installed) return Promise.resolve();
+
+		return fetch_server_doc(frm).then((server_doc) => {
+			if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) return;
+
+			if (state.cfg.conflict_policy === "server_wins") {
+				const analysis = apply_server_changes(frm, server_doc, state);
+				if (state.cfg.show_applied_alert) show_applied_alert(analysis);
+				return;
+			}
+
+			const analysis = analyze(frm, server_doc, state);
+			analysis.server_only.forEach((fieldname) => {
+				apply_field(frm, server_doc, fieldname);
+				update_initial_value(state, server_doc, fieldname);
+				highlight_field(frm, state, fieldname, "server");
+			});
+
+			return confirm_conflicts(analysis.conflicts, state.cfg).then((decision) => {
+				if (decision === "block") {
+					frappe.validated = false;
+					frappe.throw("Сохранение отменено: документ был изменён на сервере.");
+				}
+
+				if (decision === "server_wins") {
+					analysis.conflicts.forEach((fieldname) => {
+						apply_field(frm, server_doc, fieldname);
+						update_initial_value(state, server_doc, fieldname);
+						highlight_field(frm, state, fieldname, "conflict");
+					});
+				}
+
+				apply_modified(frm, server_doc);
+				sync_matching_server_values(frm, server_doc, state);
+				state.server_changed = decision !== "server_wins" && analysis.conflicts.length > 0;
+				state.initial_modified = server_doc.modified;
+			});
+		});
+	}
+
+	function refresh_initial(frm) {
+		const state = get_state(frm);
+		if (!state.installed) return;
+		state.initial_values = snapshot(frm.doc, state.fields);
+		state.initial_modified = frm.doc.modified;
+		state.server_changed = false;
+		state.server_modified = null;
+		state.server_modified_by = null;
+		clear_highlights(frm, state);
+		if (frm.dashboard) frm.dashboard.clear_headline();
+	}
+
+	function install(frm, opts) {
+		opts = opts || {};
+		if (!frm || !frm.doctype) frappe.throw("FormConflictMerge: вызовите из onload(frm)");
+
+		const cfg = Object.assign({}, DEFAULT_CONFIG, opts);
+		const state = get_state(frm);
+		const first_install = !state.installed;
+		state.cfg = cfg;
+		state.fields = get_fields(frm, cfg);
+		state.installed = true;
+
+		ensure_highlight_styles();
+		if (first_install || !state.initial_values) refresh_initial(frm);
+		state.docinfo_values = snapshot_docinfo(frm, state);
+		init_docinfo_self_change_markers(frm, state);
+		init_listener();
+		init_polling(frm, state);
+		init_docinfo_polling(frm, state);
+
+		if (window.__dinext_form_conflict_merge_doctype_hooks && window.__dinext_form_conflict_merge_doctype_hooks[frm.doctype]) {
+			return;
+		}
+
+		window.__dinext_form_conflict_merge_doctype_hooks = window.__dinext_form_conflict_merge_doctype_hooks || {};
+		window.__dinext_form_conflict_merge_doctype_hooks[frm.doctype] = true;
+
+		frappe.ui.form.on(frm.doctype, {
+			before_save,
+			after_save: refresh_initial,
+			refresh(frm) {
+				const active = get_state(frm);
+				if (!active.initial_values) refresh_initial(frm);
+			},
+		});
+	}
+
+	window.dinext_common.formConflictMerge = {
+		install,
+		check_server_changes,
+		refresh_initial,
+	};
+})();
