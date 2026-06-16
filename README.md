@@ -1,34 +1,36 @@
 # Dinext Common
 
-## Overview
+## Обзор
 
-Dinext Common is a shared Frappe app for the Administrator. It centralizes cross-project branding, website defaults, reusable Desk behavior, bundled frontend libraries, and a configurable data-cleanup subsystem that can be installed on multiple sites together with other Dinext or ERPNext apps.
+Dinext Common — общее Frappe-приложение платформы Dinext. Оно централизует сквозной брендинг, настройки сайта, переиспользуемое поведение Desk, подключаемые frontend-библиотеки и настраиваемую подсистему очистки данных, которую можно установить на несколько сайтов вместе с другими приложениями Dinext или ERPNext.
 
-In practice, this app does four things:
+На практике приложение делает пять вещей:
 
-- applies common site configuration through fixtures such as `Website Settings`, `Navbar Settings`, `Web Page`, and `Data Cleanup Rules`
-- injects shared Desk assets from `hooks.py`
-- provides a standard website theme and Dinext branding assets
-- ships reusable JS/CSS libraries that other apps can load on demand
+- применяет общую конфигурацию сайта через fixtures: `Website Settings`, `Navbar Settings`, `Web Page`, `Data Cleanup Rules`
+- подключает общие Desk-ресурсы из `hooks.py`
+- предоставляет стандартную тему сайта и брендинговые ресурсы Dinext
+- поставляет переиспользуемые JS/CSS-библиотеки, которые другие приложения могут подгружать по требованию
+- даёт инструмент Desk для предварительного анализа fixtures по всем установленным приложениям
 
-## Features
+## Возможности
 
-- Shared Dinext branding for Desk and website via `app_logo_url`, `app_icon`, and `website_context` in `dinext_common/hooks.py`
-- Fixture-driven site setup for `Website Settings`, `Navbar Settings`, `Data Cleanup Rules`, and Dinext homepage content
-- Global Desk enhancements loaded through `app_include_js`:
+- Общий брендинг Dinext для Desk и сайта через `app_logo_url`, `app_icon` и `website_context` в `dinext_common/hooks.py`
+- Настройка сайта через fixtures: `Website Settings`, `Navbar Settings`, `Data Cleanup Rules`, контент главной страницы Dinext и записи `Custom Field` модуля `Dinext Common`
+- Глобальные улучшения Desk через `app_include_js`:
   - `breadcrumbs_update.js`
   - `listview_resize.js`
   - `dinext-desk.js`
   - `dashboard_filters_fix.js`
-- Project-specific `sticky-datatable.js` loaded through `doctype_js` for the `Project` DocType
-- Standard `Dinext Theme` website theme in `dinext_common/dinext_common/website_theme/dinext_theme/`
-- Bundled frontend libraries:
+- `sticky-datatable.js` только для DocType `Project` через `doctype_js`
+- Стандартная тема сайта `Dinext Theme` в `dinext_common/dinext_common/website_theme/dinext_theme/`
+- Встроенные frontend-библиотеки:
   - `frappe-datatable.min.js`
   - `hyperlist.js`
   - `frappe-gantt.umd.js`
   - `frappe-gantt.css`
   - `echarts.min.js`
-- Configurable daily data cleanup based on a single `Data Cleanup Rules` document and six cleanup rule tables:
+- Страница Desk **Fixture Analysis** (`/app/fixture-analysis`) для сравнения экспортированных fixture-файлов с данными живого сайта до `bench migrate`, с группировкой по приложению, DocType и записи, а также diff на уровне полей и текста для больших скриптов
+- Настраиваемая ежедневная очистка данных на основе одного документа `Data Cleanup Rules` и шести дочерних таблиц правил:
   - `Version Cleanup Rule`
   - `Comment Cleanup Rule`
   - `File Cleanup Rule`
@@ -36,9 +38,9 @@ In practice, this app does four things:
   - `Event Cleanup Rule`
   - `Workflow Cleanup Rule`
 
-## Installation
+## Установка
 
-Install the app with Bench:
+Установите приложение через Bench:
 
 ```bash
 cd $PATH_TO_YOUR_BENCH
@@ -46,61 +48,105 @@ bench get-app $URL_OF_THIS_REPO --branch develop
 bench --site your-site.local install-app dinext_common
 ```
 
-After installation or upgrade, run migration and rebuild assets so fixtures and Desk assets are applied:
+После установки или обновления выполните миграцию и пересоберите assets, чтобы применились fixtures и Desk-ресурсы:
 
 ```bash
 bench --site your-site.local migrate
 bench build --app dinext_common
 ```
 
-If your deployment does not already contain Dinext branding assets, make sure these files exist under `dinext_common/public/images/` before building assets:
+Если в вашем развёртывании ещё нет брендинговых файлов Dinext, убедитесь, что перед `bench build` они лежат в `dinext_common/public/images/`:
 
 - `DI_SQ_NBG.png`
 - `DINEXT_2.png`
 - `DINEXT_FAVICON.ico`
 
-## Usage
+## Использование
 
-### Branding and shared UI
+### Брендинг и общий UI
 
-Once the app is installed and migrated:
+После установки и миграции:
 
-- the Desk uses the Dinext app logo and favicon from `hooks.py`
-- the website uses the Dinext splash image and the `Dinext Theme`
-- the homepage route is provided through the `Web Page` fixture with route `homepage`
-- the navbar Help menu exposes the documentation link `https://docs.dinext.ru`
+- в Desk используются логотип и favicon приложения Dinext из `hooks.py`
+- на сайте — splash-изображение Dinext и тема `Dinext Theme`
+- маршрут главной страницы задаётся fixture `Web Page` с route `homepage`
+- в меню Help навбара доступна ссылка на документацию `https://docs.dinext.ru`
 
-### Desk scripts
+### Скрипты Desk
 
-The app injects shared behavior into all Desk sessions:
+Приложение подключает общее поведение во все сессии Desk:
 
-- `breadcrumbs_update.js` keeps workspace context in breadcrumbs and supports copying the last crumb
-- `listview_resize.js` stores list-column widths in `localStorage`
-- `dinext-desk.js` customizes the About dialog and shows installed app versions
-- `dashboard_filters_fix.js` improves dynamic dashboard filtering for `_assign` and `_liked_by`
+- `breadcrumbs_update.js` сохраняет контекст workspace в breadcrumbs и поддерживает копирование последнего элемента
+- `listview_resize.js` сохраняет ширины колонок списка в `localStorage`
+- `dinext-desk.js` настраивает диалог About и показывает версии установленных приложений
+- `dashboard_filters_fix.js` улучшает динамическую фильтрацию дашборда для `_assign` и `_liked_by`
 
-For the `Project` DocType, `sticky-datatable.js` loads a virtualized sticky datatable backed by bundled `frappe-datatable.min.js` and `hyperlist.js`.
+Для DocType `Project` подключается `sticky-datatable.js` — виртуализированная таблица с закреплением строк на базе `frappe-datatable.min.js` и `hyperlist.js`.
 
-### Data cleanup
+### Fixture Analysis
 
-The data cleanup subsystem is configured through the single `Data Cleanup Rules` document. Each child table defines whether cleanup is enabled, how many days of history to keep, and type-specific filters.
+Страница **Fixture Analysis** помогает проверить расхождение fixtures перед импортом метаданных на сайт. Режим только чтения: база данных и fixture-файлы не изменяются.
 
-Available rule types:
+**Доступ:** роль `System Manager` (маршрут Desk `/app/fixture-analysis`). После установки или обновления приложения выполните `bench --site your-site.local migrate`, чтобы создался стандартный документ Page, затем `bench build --app dinext_common`.
 
-- `Version Cleanup Rule`: filters by age and optional reference DocType
-- `Comment Cleanup Rule`: filters by age, comment type, and optional reference DocType
-- `File Cleanup Rule`: filters by age, file type, visibility, folder, size, attached DocType, and attached field
-- `Communication Cleanup Rule`: filters by age, communication type, medium, and optional reference DocType
-- `Event Cleanup Rule`: filters by age, event category, event type, and status
-- `Workflow Cleanup Rule`: filters by age, optional reference DocType, and workflow status
+**Что сравнивается:**
 
-Data cleanup on a site expects enabled `Server Script` records in module `Dinext Common` (for example `Data Cleanup Daily` and the `dinext_common_data_cleanup_*` API methods). Those scripts are **not** shipped as app fixtures; deploy them through your sandbox or site-specific Server Script workflow.
+- JSON fixtures в каждом установленном приложении (`hooks.fixtures` и `fixtures/*.json`)
+- текущие записи в базе сайта с учётом фильтров fixtures, если они объявлены в `hooks.py`
 
-`Data Cleanup Daily` reads the current `Data Cleanup Rules` document and enqueues one long-running cleanup job per enabled rule category. Each cleanup script then deletes matching records in batches and commits periodically.
+**Интерфейс:**
 
-### Loading bundled libraries from other apps
+1. **Приложения и DocType** — сводные счётчики по приложению и DocType (`file_only`, `db_only`, `changed`, `equal`)
+2. **Записи** — фильтр по статусу и поиск по имени записи или изменённым путям полей
+3. **Детали** — diff по полям; для длинного текста (например, поле `script` в `Client Script` / `Server Script`) — построчный diff с номерами строк и контекстом
 
-Only the libraries needed by Dinext Common itself are loaded automatically. For optional libraries, prefer lazy loading with `frappe.require()` from the consuming app:
+**Статусы записей:**
+
+| Статус | Значение |
+|--------|----------|
+| `file_only` | Есть в fixture-файле, нет в БД (будет добавлена при импорте) |
+| `db_only` | Есть в БД, нет в fixture-файле |
+| `changed` | Запись есть с обеих сторон, но значения полей различаются |
+| `equal` | Нет существенных отличий после игнорирования служебных полей метаданных |
+
+Для записей, которые есть в базе, используйте **Open in System**, чтобы перейти к соответствующей форме Frappe (включая Single DocType).
+
+**Whitelisted API** (используется страницей; та же роль `System Manager`):
+
+- `dinext_common.fixture_analysis_api.get_fixture_analysis_overview`
+- `dinext_common.fixture_analysis_api.get_fixture_analysis_records`
+- `dinext_common.fixture_analysis_api.get_fixture_analysis_record_detail`
+
+Реализация: `dinext_common/fixture_analysis_api.py` и `dinext_common/dinext_common/fixture_analysis/` (`discovery.py`, `diff_engine.py`, `service.py`, `formatters.py`).
+
+### Очистка данных
+
+Подсистема очистки настраивается через единственный документ `Data Cleanup Rules`. Каждая дочерняя таблица задаёт, включена ли очистка, сколько дней истории хранить, и фильтры по типу правила.
+
+Типы правил:
+
+- `Version Cleanup Rule`: по возрасту и опционально по reference DocType
+- `Comment Cleanup Rule`: по возрасту, типу комментария и опционально по reference DocType
+- `File Cleanup Rule`: по возрасту, типу файла, видимости, папке, размеру, привязанному DocType и полю
+- `Communication Cleanup Rule`: по возрасту, типу коммуникации, каналу и опционально по reference DocType
+- `Event Cleanup Rule`: по возрасту, категории, типу и статусу события
+- `Workflow Cleanup Rule`: по возрасту, опционально по reference DocType и статусу workflow
+
+Для работы очистки на сайте нужны включённые записи `Server Script` модуля `Dinext Common` (например `Data Cleanup Daily` и API-методы `dinext_common_data_cleanup_*`). Они **не** поставляются как fixtures приложения; разворачивайте их через sandbox или site-specific workflow.
+
+- `Data Cleanup Daily` — ежедневное `Scheduler Event`
+- `Data Cleanup Version` — API-метод `dinext_common_data_cleanup_version`
+- `Data Cleanup Comment` — API-метод `dinext_common_data_cleanup_comment`
+- `Data Cleanup File` — API-метод `dinext_common_data_cleanup_file`
+- `Data Cleanup Communication` — API-метод `dinext_common_data_cleanup_communication`
+- `Data Cleanup Event` — API-метод `dinext_common_data_cleanup_event`
+- `Data Cleanup Workflow` — API-метод `dinext_common_data_cleanup_workflow`
+
+`Data Cleanup Daily` читает актуальный документ `Data Cleanup Rules` и ставит в очередь `long` по одной длительной задаче очистки на каждую включённую категорию. Скрипты очистки удаляют подходящие записи пакетами с периодическим commit.
+
+### Подключение библиотек из других приложений
+
+Автоматически загружаются только библиотеки, нужные самому Dinext Common. Для остальных предпочтительна ленивая загрузка через `frappe.require()` из потребляющего приложения:
 
 ```javascript
 frappe.require(
@@ -120,100 +166,102 @@ frappe.require(["/assets/dinext_common/js/echarts.min.js"], function () {
 });
 ```
 
-## Technologies
+## Технологии
 
 - Python 3.10+
 - Frappe
-- JavaScript for Desk customizations
-- CSS and SCSS for shared styling and website theme assets
-- Flit build backend via `pyproject.toml`
-- Pre-commit tooling:
+- JavaScript для кастомизаций Desk
+- CSS и SCSS для общих стилей и темы сайта
+- Сборка пакета через Flit в `pyproject.toml`
+- Pre-commit:
   - `ruff`
   - `eslint`
   - `prettier`
   - `pre-commit-hooks`
 
-## Configuration
+## Конфигурация
 
-The main configuration lives in `dinext_common/hooks.py`.
+Основная конфигурация — в `dinext_common/hooks.py`.
 
-Key hooks and settings:
+Ключевые hooks и настройки:
 
 - `app_logo_url = "/assets/dinext_common/images/DI_SQ_NBG.png"`
 - `app_icon = "/assets/dinext_common/images/DINEXT_FAVICON.ico"`
-- `website_context` sets the public favicon and splash image
+- `website_context` задаёт favicon и splash для публичного сайта
 - `app_include_css = "/assets/dinext_common/css/common.css"`
-- `app_include_js` loads shared Desk scripts globally
+- `app_include_js` подключает общие скрипты Desk глобально
 - `doctype_js = {"Project": "public/js/sticky-datatable.js"}`
 
-Fixtures exported by the app:
+Fixtures, экспортируемые приложением:
 
 - `Website Settings`
 - `Navbar Settings`
 - `Data Cleanup Rules`
-- `Web Page` records filtered to module `Dinext Common`
-- `Custom Field` records filtered to module `Dinext Common`
-- `Holiday List` named `Праздники и выходные РФ`
+- записи `Web Page` с фильтром по модулю `Dinext Common`
+- записи `Custom Field` с фильтром по модулю `Dinext Common`
+- `Holiday List` с именем `Праздники и выходные РФ`
 
-Relevant fixture behavior:
+Поведение fixtures:
 
-- `Website Settings` sets the public app name to `Dinext`, points `home_page` to `homepage`, disables signup, sets a branded banner image, and references `Dinext Theme`
-- `Navbar Settings` sets the app logo and injects custom menu items such as `Documentation`, `About`, and `Мои замещения`
-- `Web Page` publishes a dynamic homepage at route `homepage`
-- `Data Cleanup Rules` ships with default retention rules, including 90-day defaults for version, communication, event, file, and workflow cleanup, plus 45-day specialized comment cleanup rules
+- `Website Settings` задаёт публичное имя приложения `Dinext`, `home_page` = `homepage`, отключает регистрацию, баннер и ссылку на `Dinext Theme`
+- `Navbar Settings` задаёт логотип и пункты меню: `Documentation`, `About`, `Мои замещения`
+- `Web Page` публикует динамическую главную по маршруту `homepage`
+- `Data Cleanup Rules` поставляется с правилами хранения по умолчанию: 90 дней для version, communication, event, file и workflow, 45 дней для специализированных правил comment
 
-Compatibility notes:
+Замечания по совместимости:
 
-- this app changes global site objects such as `Navbar Settings` and `Website Settings`
-- it injects JS into every Desk session
-- if another app manages the same single DocTypes or overrides the same Desk behavior, coordinate fixture ownership and asset loading order
+- приложение меняет глобальные объекты сайта (`Navbar Settings`, `Website Settings`)
+- подключает JS в каждую сессию Desk
+- если другое приложение управляет теми же Single DocType или переопределяет то же поведение Desk, согласуйте владение fixtures и порядок загрузки assets
 
-## Requirements
+## Требования
 
-- Bench environment with Frappe installed
+- окружение Bench с установленным Frappe
 - Python `>=3.10`
-- Node.js toolchain for `bench build`
-- A site where `dinext_common` can be installed
-- Scheduler and workers enabled if you want daily data cleanup to run automatically
+- Node.js для `bench build`
+- сайт, на котором можно установить `dinext_common`
+- включённые scheduler и workers, если нужна автоматическая ежедневная очистка
 
-For the cleanup subsystem, make sure the long queue is served by a worker because `Data Cleanup Daily` enqueues all cleanup jobs on `queue="long"`.
+Для подсистемы очистки убедитесь, что очередь `long` обслуживается worker: `Data Cleanup Daily` ставит все задачи очистки в `queue="long"`.
 
-## Contributing
+## Участие в разработке
 
-Install and enable pre-commit hooks before contributing:
+Перед коммитами установите и включите pre-commit:
 
 ```bash
 cd apps/dinext_common
 pre-commit install
 ```
 
-The repository is configured to check:
+В репозитории настроены проверки:
 
-- JSON, TOML, and YAML validity
-- Python import order and formatting through `ruff`
-- JavaScript formatting through `prettier`
-- JavaScript linting through `eslint`
-- common hygiene checks such as merge conflicts and debug statements
+- валидность JSON, TOML и YAML
+- порядок импортов и форматирование Python через `ruff`
+- форматирование JavaScript через `prettier`
+- линтинг JavaScript через `eslint`
+- базовая гигиена: конфликты слияния, отладочные операторы и т.п.
 
-## Documentation
+## Документация
 
-- Product and platform docs: [docs.dinext.ru](https://docs.dinext.ru)
-- App configuration entry point: `dinext_common/hooks.py`
-- Cleanup DocType schema: `dinext_common/dinext_common/doctype/data_cleanup_rules/`
-- Website theme definition: `dinext_common/dinext_common/website_theme/dinext_theme/`
-- Repository development guidance: `AGENTS.md`
+- Документация продукта и платформы: [docs.dinext.ru](https://docs.dinext.ru)
+- Точка входа конфигурации приложения: `dinext_common/hooks.py`
+- Страница Desk Fixture Analysis: `dinext_common/dinext_common/page/fixture_analysis/`
+- Backend Fixture Analysis: `dinext_common/dinext_common/fixture_analysis/`
+- Схема DocType очистки: `dinext_common/dinext_common/doctype/data_cleanup_rules/`
+- Определение темы сайта: `dinext_common/dinext_common/website_theme/dinext_theme/`
+- Руководство для агентов разработки: `AGENTS.md`
 
-## Acknowledgements
+## Благодарности
 
-- Dinext for the platform branding, shared UX conventions, and cleanup workflows
-- Frappe Framework for the application platform, fixture system, Desk asset hooks, and scheduler infrastructure
-- Bundled frontend libraries such as Frappe DataTable, HyperList, Frappe Gantt, and ECharts
+- Dinext — брендинг платформы, общие UX-соглашения и сценарии очистки
+- Frappe Framework — платформа приложений, fixtures, hooks Desk и планировщик
+- Встроенные библиотеки: Frappe DataTable, HyperList, Frappe Gantt, ECharts
 
 ## Changelog
 
-This repository does not maintain a handwritten changelog in the README at the moment. If you want release notes here, generate them from `git log` and summarize them per release.
+В README пока нет отдельного changelog. При необходимости release notes можно собрать из `git log` и кратко описать по релизам.
 
-## Repository Structure
+## Структура репозитория
 
 ```text
 .
@@ -225,12 +273,13 @@ This repository does not maintain a handwritten changelog in the README at the m
 ├── dinext_common/
 │   ├── __init__.py
 │   ├── hooks.py
+│   ├── fixture_analysis_api.py
 │   ├── modules.txt
 │   ├── patches.txt
 │   ├── fixtures/
 │   │   ├── data_cleanup_rules.json
-│   │   ├── holiday_list.json
 │   │   ├── navbar_settings.json
+│   │   ├── server_script.json
 │   │   ├── web_page.json
 │   │   └── website_settings.json
 │   ├── public/
@@ -247,6 +296,13 @@ This repository does not maintain a handwritten changelog in the README at the m
 │   │       ├── hyperlist.js
 │   │       ├── listview_resize.js
 │   │       └── sticky-datatable.js
+│   ├── tests/
+│   │   ├── test_fixture_analysis_api.py
+│   │   ├── test_fixture_analysis_diff_engine.py
+│   │   ├── test_fixture_analysis_discovery.py
+│   │   ├── test_fixture_analysis_formatters.py
+│   │   ├── test_fixture_analysis_golden.py
+│   │   └── test_fixture_analysis_page_assets.py
 │   └── dinext_common/
 │       ├── doctype/
 │       │   ├── communication_cleanup_rule/
@@ -256,59 +312,89 @@ This repository does not maintain a handwritten changelog in the README at the m
 │       │   ├── file_cleanup_rule/
 │       │   ├── version_cleanup_rule/
 │       │   └── workflow_cleanup_rule/
+│       ├── fixture_analysis/
+│       │   ├── discovery.py
+│       │   ├── diff_engine.py
+│       │   ├── formatters.py
+│       │   ├── loader.py
+│       │   ├── service.py
+│       │   └── snapshot.py
+│       ├── page/
+│       │   └── fixture_analysis/
+│       │       ├── fixture_analysis.js
+│       │       └── fixture_analysis.json
 │       └── website_theme/
 │           └── dinext_theme/
 ```
 
-Main parts of the repository:
+Основные части репозитория:
 
-- `dinext_common/hooks.py`: app metadata, fixture exports, Desk asset hooks, Project-specific JS hook, and branding paths
-- `dinext_common/fixtures/`: exported site-level metadata that is applied during migration
-- `dinext_common/public/js/`: global Desk enhancements and bundled third-party frontend libraries
-- `dinext_common/public/css/`: shared styling and bundled stylesheet assets
-- `dinext_common/dinext_common/doctype/`: the `Data Cleanup Rules` schema plus child rule DocTypes
-- `dinext_common/dinext_common/website_theme/`: standard website theme documents for Dinext branding
-- `pyproject.toml`: Python package metadata and Ruff configuration
-- `.pre-commit-config.yaml`: repository quality gates for contributors
+- `dinext_common/hooks.py`: метаданные приложения, экспорт fixtures, hooks Desk, JS для Project, пути брендинга
+- `dinext_common/fixture_analysis_api.py`: whitelisted API для Fixture Analysis
+- `dinext_common/fixtures/`: метаданные уровня сайта, применяемые при миграции
+- `dinext_common/public/js/`: глобальные улучшения Desk и сторонние библиотеки
+- `dinext_common/public/css/`: общие стили и CSS библиотек
+- `dinext_common/dinext_common/fixture_analysis/`: discovery, снимок БД, diff-движок и форматтеры ответов
+- `dinext_common/dinext_common/page/fixture_analysis/`: стандартная Desk Page и клиентский UI
+- `dinext_common/dinext_common/doctype/`: схема `Data Cleanup Rules` и дочерние DocType правил
+- `dinext_common/dinext_common/website_theme/`: документы темы сайта Dinext
+- `dinext_common/tests/test_fixture_analysis_*.py`: unit-тесты diff, discovery, API и formatters
+- `pyproject.toml`: метаданные Python-пакета и настройки Ruff
+- `.pre-commit-config.yaml`: проверки качества для контрибьюторов
 
-## Flow Chart
+## Схемы потоков
 
-### Install and migrate flow
+### Установка и миграция
 
 ```mermaid
 flowchart LR
   getApp["bench get-app"] --> installApp["bench install-app dinext_common"]
   installApp --> migrate["bench migrate"]
-  migrate --> fixtures["Load fixtures"]
+  migrate --> fixtures["Загрузка fixtures"]
   fixtures --> website["Website Settings"]
   fixtures --> navbar["Navbar Settings"]
   fixtures --> homepage["Web Page"]
   fixtures --> cleanupRules["Data Cleanup Rules"]
+  fixtures --> serverScripts["Server Scripts"]
   migrate --> build["bench build"]
-  build --> assets["Desk and website assets available"]
+  build --> assets["Desk и website assets готовы"]
 ```
 
-### Daily cleanup flow
+### Fixture Analysis
 
 ```mermaid
 flowchart LR
-  scheduler["Daily scheduler"] --> dailyScript["Data Cleanup Daily"]
-  dailyScript --> rulesDoc["Read Data Cleanup Rules"]
-  rulesDoc --> versionJob["Enqueue version cleanup"]
-  rulesDoc --> commentJob["Enqueue comment cleanup"]
-  rulesDoc --> fileJob["Enqueue file cleanup"]
-  rulesDoc --> communicationJob["Enqueue communication cleanup"]
-  rulesDoc --> eventJob["Enqueue event cleanup"]
-  rulesDoc --> workflowJob["Enqueue workflow cleanup"]
-  versionJob --> longQueue["Long queue worker"]
+  user["Открыть /app/fixture-analysis"] --> overview["get_fixture_analysis_overview"]
+  overview --> discover["Поиск приложений и fixture-записей"]
+  discover --> compare["Сравнение fixture JSON и БД"]
+  compare --> summary["Счётчики app / DocType / record"]
+  user --> records["Выбор DocType и фильтров"]
+  records --> detail["get_fixture_analysis_record_detail"]
+  detail --> fieldDiff["Diff полей и текста"]
+  detail --> openForm["Open in System, если запись в БД"]
+```
+
+### Ежедневная очистка
+
+```mermaid
+flowchart LR
+  scheduler["Ежедневный scheduler"] --> dailyScript["Data Cleanup Daily"]
+  dailyScript --> rulesDoc["Чтение Data Cleanup Rules"]
+  rulesDoc --> versionJob["Очередь: version cleanup"]
+  rulesDoc --> commentJob["Очередь: comment cleanup"]
+  rulesDoc --> fileJob["Очередь: file cleanup"]
+  rulesDoc --> communicationJob["Очередь: communication cleanup"]
+  rulesDoc --> eventJob["Очередь: event cleanup"]
+  rulesDoc --> workflowJob["Очередь: workflow cleanup"]
+  versionJob --> longQueue["Worker очереди long"]
   commentJob --> longQueue
   fileJob --> longQueue
   communicationJob --> longQueue
   eventJob --> longQueue
   workflowJob --> longQueue
-  longQueue --> dataStore["Delete old records in batches"]
+  longQueue --> dataStore["Пакетное удаление старых записей"]
 ```
 
-## License
+## Лицензия
 
 MIT
