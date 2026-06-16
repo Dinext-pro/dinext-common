@@ -15,9 +15,8 @@
  *     frappe.ui.form.on("Issue", {
  *         onload(frm) {
  *             dinext_common.formConflictMerge.install(frm, {
- *                 // fields: [] means all supported non-child fields.
- *                 include_fields: ["custom_z_user_group"],
- *                 include_child_tables: ["custom_z_user_group"],
+ *                 // fields: [] — все scalar-поля и child tables из meta.
+ *                 exclude_child_tables: ["some_child_table"],
  *                 exclude_fields: ["some_field_to_ignore"],
  *                 conflict_policy: "server_wins",
  *                 apply_server_changes_on_realtime: true,
@@ -58,9 +57,13 @@ const DEFAULT_CONFIG = {
 	// Исключить поля из итогового списка.
 	exclude_fields: [],
 
-	// Child tables по умолчанию выключены, так как они применяются целиком.
-	// true = все child tables, array = только перечисленные child table поля.
-	include_child_tables: false,
+	// Child tables по умолчанию включены (применяются целиком, без построчного merge).
+	// exclude_child_tables — opt-out для отдельных таблиц.
+	exclude_child_tables: [],
+
+	// Legacy opt-in: false = ни одной child table; array = только перечисленные.
+	// true и отсутствие ключа эквивалентны «все, кроме exclude_child_tables».
+	include_child_tables: undefined,
 
 	// "dialog" | "local_wins" | "server_wins" | "block"
 	conflict_policy: "dialog",
@@ -137,9 +140,10 @@ function is_child_table(df) {
 
 function is_child_table_included(df, cfg) {
 	if (!is_child_table(df)) return true;
-	if (cfg.include_child_tables === true) return true;
+	if (cfg.include_child_tables === false) return false;
 	if (Array.isArray(cfg.include_child_tables)) return cfg.include_child_tables.includes(df.fieldname);
-	return false;
+	const excluded = new Set(cfg.exclude_child_tables || []);
+	return !excluded.has(df.fieldname);
 }
 
 function is_mergeable_field(df) {
@@ -174,8 +178,15 @@ function get_fields(frm, cfg) {
 		is_mergeable_field(fields_by_name[fieldname])
 	);
 	const excluded_fields = new Set(cfg.exclude_fields || []);
+	const explicit_fields = cfg.fields && cfg.fields.length ? new Set(cfg.fields) : null;
 
-	return unique_fields(base_fields.concat(included_fields)).filter((fieldname) => !excluded_fields.has(fieldname));
+	return unique_fields(base_fields.concat(included_fields)).filter((fieldname) => {
+		if (excluded_fields.has(fieldname)) return false;
+		const df = fields_by_name[fieldname];
+		if (!df || !is_child_table(df)) return true;
+		if (explicit_fields && explicit_fields.has(fieldname)) return true;
+		return is_child_table_included(df, cfg);
+	});
 }
 
 function import_pending_local_seeds(frm, state) {
@@ -636,16 +647,27 @@ function snapshot_docinfo(frm, state, docinfo) {
 	return out;
 }
 
-function get_changed_docinfo_keys(frm, state, docinfo) {
+function peek_changed_docinfo_keys(state, docinfo) {
 	const previous = state.docinfo_values || {};
-	const current = snapshot_docinfo(frm, state, docinfo);
+	const current = snapshot_docinfo(null, state, docinfo);
 	const changed = [];
 
 	get_docinfo_keys(state.cfg).forEach((key) => {
 		if (!equal(previous[key], current[key])) changed.push(key);
 	});
 
-	state.docinfo_values = current;
+	return changed;
+}
+
+function commit_docinfo_snapshot(state, docinfo) {
+	state.docinfo_values = snapshot_docinfo(null, state, docinfo);
+}
+
+function get_changed_docinfo_keys(frm, state, docinfo) {
+	const changed = peek_changed_docinfo_keys(state, docinfo);
+	if (changed.length) {
+		commit_docinfo_snapshot(state, docinfo);
+	}
 	return changed;
 }
 
@@ -699,26 +721,70 @@ function init_docinfo_self_change_markers(frm, state) {
 	}
 }
 
-function refresh_docinfo(frm, state, opts) {
-	if (!frm.sidebar || !frm.sidebar.reload_docinfo) return Promise.resolve([]);
+function fetch_docinfo(frm) {
+	return new Promise((resolve, reject) => {
+		frappe.call({
+			method: "frappe.desk.form.load.get_docinfo",
+			args: {
+				doctype: frm.doctype,
+				name: frm.docname,
+			},
+			callback(r) {
+				resolve(r && r.docinfo);
+			},
+			error: reject,
+		});
+	});
+}
 
+function refresh_watched_docinfo_blocks(frm, changed_keys) {
+	if (changed_keys.includes("assignments") && frm.assign_to && frm.assign_to.refresh) {
+		frm.assign_to.refresh();
+	}
+	if (changed_keys.includes("attachments") && frm.attachments && frm.attachments.refresh) {
+		frm.attachments.refresh();
+	}
+	if (changed_keys.includes("shared") && frm.shared && frm.shared.refresh) {
+		frm.shared.refresh();
+	}
+}
+
+function apply_docinfo_changes(frm, state, docinfo, opts) {
+	opts = opts || {};
+	const changed_keys = peek_changed_docinfo_keys(state, docinfo);
+	if (!changed_keys.length) return [];
+
+	commit_docinfo_snapshot(state, docinfo);
+
+	const visible_changed_keys = filter_self_docinfo_changes(state, changed_keys);
+	const silent_startup = is_startup_warmup_active(state) || !state.startup_docinfo_baseline_ready;
+	if (!silent_startup) {
+		state.startup_docinfo_baseline_ready = true;
+	}
+	if (!opts.silent && !silent_startup) {
+		show_docinfo_alert(visible_changed_keys, state.cfg);
+	}
+
+	refresh_watched_docinfo_blocks(frm, changed_keys);
+	return changed_keys;
+}
+
+function check_docinfo_changes(frm, state, opts) {
 	state = state || get_state(frm);
 	opts = opts || {};
 
-	return new Promise((resolve) => {
-		frm.sidebar.reload_docinfo((docinfo) => {
-			const changed_keys = get_changed_docinfo_keys(frm, state, docinfo);
-			const visible_changed_keys = filter_self_docinfo_changes(state, changed_keys);
-			const silent_startup = is_startup_warmup_active(state) || !state.startup_docinfo_baseline_ready;
-			if (!silent_startup) {
-				state.startup_docinfo_baseline_ready = true;
-			}
-			if (!opts.silent && !silent_startup) {
-				show_docinfo_alert(visible_changed_keys, state.cfg);
-			}
-			resolve(changed_keys);
-		});
-	});
+	if (!get_docinfo_keys(state.cfg).length) return Promise.resolve([]);
+
+	return fetch_docinfo(frm)
+		.then((docinfo) => {
+			if (!docinfo) return [];
+			return apply_docinfo_changes(frm, state, docinfo, opts);
+		})
+		.catch(() => []);
+}
+
+function refresh_docinfo(frm, state, opts) {
+	return check_docinfo_changes(frm, state, opts);
 }
 
 function init_docinfo_polling(frm, state) {
@@ -734,11 +800,15 @@ function init_docinfo_polling(frm, state) {
 	state.docinfo_poll_timer = setInterval(() => {
 		const current = cur_frm;
 		if (!current || current.doctype !== frm.doctype || current.docname !== frm.docname) return;
-		refresh_docinfo(current, state);
+		check_docinfo_changes(current, state);
 	}, interval);
 }
 
 const FormDocInfoWatcher = {
+	apply_docinfo_changes,
+	check_docinfo_changes,
+	commit_docinfo_snapshot,
+	fetch_docinfo,
 	filter_self_docinfo_changes,
 	get_changed_docinfo_keys,
 	get_docinfo,
@@ -747,7 +817,9 @@ const FormDocInfoWatcher = {
 	init_docinfo_self_change_markers,
 	mark_docinfo_self_change,
 	normalize_docinfo_object,
+	peek_changed_docinfo_keys,
 	refresh_docinfo,
+	refresh_watched_docinfo_blocks,
 	snapshot_docinfo,
 };
 

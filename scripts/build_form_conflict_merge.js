@@ -34,9 +34,8 @@ const header = `// Copyright (c) 2026, Dinext
  *     frappe.ui.form.on("Issue", {
  *         onload(frm) {
  *             dinext_common.formConflictMerge.install(frm, {
- *                 // fields: [] means all supported non-child fields.
- *                 include_fields: ["custom_z_user_group"],
- *                 include_child_tables: ["custom_z_user_group"],
+ *                 // fields: [] — все scalar-поля и child tables из meta.
+ *                 exclude_child_tables: ["some_child_table"],
  *                 exclude_fields: ["some_field_to_ignore"],
  *                 conflict_policy: "server_wins",
  *                 apply_server_changes_on_realtime: true,

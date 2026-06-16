@@ -13,9 +13,10 @@ function is_child_table(df) {
 
 function is_child_table_included(df, cfg) {
 	if (!is_child_table(df)) return true;
-	if (cfg.include_child_tables === true) return true;
+	if (cfg.include_child_tables === false) return false;
 	if (Array.isArray(cfg.include_child_tables)) return cfg.include_child_tables.includes(df.fieldname);
-	return false;
+	const excluded = new Set(cfg.exclude_child_tables || []);
+	return !excluded.has(df.fieldname);
 }
 
 function is_mergeable_field(df) {
@@ -50,8 +51,15 @@ function get_fields(frm, cfg) {
 		is_mergeable_field(fields_by_name[fieldname])
 	);
 	const excluded_fields = new Set(cfg.exclude_fields || []);
+	const explicit_fields = cfg.fields && cfg.fields.length ? new Set(cfg.fields) : null;
 
-	return unique_fields(base_fields.concat(included_fields)).filter((fieldname) => !excluded_fields.has(fieldname));
+	return unique_fields(base_fields.concat(included_fields)).filter((fieldname) => {
+		if (excluded_fields.has(fieldname)) return false;
+		const df = fields_by_name[fieldname];
+		if (!df || !is_child_table(df)) return true;
+		if (explicit_fields && explicit_fields.has(fieldname)) return true;
+		return is_child_table_included(df, cfg);
+	});
 }
 
 function import_pending_local_seeds(frm, state) {
