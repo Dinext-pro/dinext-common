@@ -10,9 +10,13 @@ const DEFAULT_CONFIG = {
 	// Исключить поля из итогового списка.
 	exclude_fields: [],
 
-	// Child tables по умолчанию выключены, так как они применяются целиком.
-	// true = все child tables, array = только перечисленные child table поля.
-	include_child_tables: false,
+	// Child tables по умолчанию включены (применяются целиком, без построчного merge).
+	// exclude_child_tables — opt-out для отдельных таблиц.
+	exclude_child_tables: [],
+
+	// Legacy opt-in: false = ни одной child table; array = только перечисленные.
+	// true и отсутствие ключа эквивалентны «все, кроме exclude_child_tables».
+	include_child_tables: undefined,
 
 	// "dialog" | "local_wins" | "server_wins" | "block"
 	conflict_policy: "dialog",

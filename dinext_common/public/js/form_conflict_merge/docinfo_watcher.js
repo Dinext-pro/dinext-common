@@ -39,16 +39,27 @@ function snapshot_docinfo(frm, state, docinfo) {
 	return out;
 }
 
-function get_changed_docinfo_keys(frm, state, docinfo) {
+function peek_changed_docinfo_keys(state, docinfo) {
 	const previous = state.docinfo_values || {};
-	const current = snapshot_docinfo(frm, state, docinfo);
+	const current = snapshot_docinfo(null, state, docinfo);
 	const changed = [];
 
 	get_docinfo_keys(state.cfg).forEach((key) => {
 		if (!equal(previous[key], current[key])) changed.push(key);
 	});
 
-	state.docinfo_values = current;
+	return changed;
+}
+
+function commit_docinfo_snapshot(state, docinfo) {
+	state.docinfo_values = snapshot_docinfo(null, state, docinfo);
+}
+
+function get_changed_docinfo_keys(frm, state, docinfo) {
+	const changed = peek_changed_docinfo_keys(state, docinfo);
+	if (changed.length) {
+		commit_docinfo_snapshot(state, docinfo);
+	}
 	return changed;
 }
 
@@ -102,26 +113,70 @@ function init_docinfo_self_change_markers(frm, state) {
 	}
 }
 
-function refresh_docinfo(frm, state, opts) {
-	if (!frm.sidebar || !frm.sidebar.reload_docinfo) return Promise.resolve([]);
+function fetch_docinfo(frm) {
+	return new Promise((resolve, reject) => {
+		frappe.call({
+			method: "frappe.desk.form.load.get_docinfo",
+			args: {
+				doctype: frm.doctype,
+				name: frm.docname,
+			},
+			callback(r) {
+				resolve(r && r.docinfo);
+			},
+			error: reject,
+		});
+	});
+}
 
+function refresh_watched_docinfo_blocks(frm, changed_keys) {
+	if (changed_keys.includes("assignments") && frm.assign_to && frm.assign_to.refresh) {
+		frm.assign_to.refresh();
+	}
+	if (changed_keys.includes("attachments") && frm.attachments && frm.attachments.refresh) {
+		frm.attachments.refresh();
+	}
+	if (changed_keys.includes("shared") && frm.shared && frm.shared.refresh) {
+		frm.shared.refresh();
+	}
+}
+
+function apply_docinfo_changes(frm, state, docinfo, opts) {
+	opts = opts || {};
+	const changed_keys = peek_changed_docinfo_keys(state, docinfo);
+	if (!changed_keys.length) return [];
+
+	commit_docinfo_snapshot(state, docinfo);
+
+	const visible_changed_keys = filter_self_docinfo_changes(state, changed_keys);
+	const silent_startup = is_startup_warmup_active(state) || !state.startup_docinfo_baseline_ready;
+	if (!silent_startup) {
+		state.startup_docinfo_baseline_ready = true;
+	}
+	if (!opts.silent && !silent_startup) {
+		show_docinfo_alert(visible_changed_keys, state.cfg);
+	}
+
+	refresh_watched_docinfo_blocks(frm, changed_keys);
+	return changed_keys;
+}
+
+function check_docinfo_changes(frm, state, opts) {
 	state = state || get_state(frm);
 	opts = opts || {};
 
-	return new Promise((resolve) => {
-		frm.sidebar.reload_docinfo((docinfo) => {
-			const changed_keys = get_changed_docinfo_keys(frm, state, docinfo);
-			const visible_changed_keys = filter_self_docinfo_changes(state, changed_keys);
-			const silent_startup = is_startup_warmup_active(state) || !state.startup_docinfo_baseline_ready;
-			if (!silent_startup) {
-				state.startup_docinfo_baseline_ready = true;
-			}
-			if (!opts.silent && !silent_startup) {
-				show_docinfo_alert(visible_changed_keys, state.cfg);
-			}
-			resolve(changed_keys);
-		});
-	});
+	if (!get_docinfo_keys(state.cfg).length) return Promise.resolve([]);
+
+	return fetch_docinfo(frm)
+		.then((docinfo) => {
+			if (!docinfo) return [];
+			return apply_docinfo_changes(frm, state, docinfo, opts);
+		})
+		.catch(() => []);
+}
+
+function refresh_docinfo(frm, state, opts) {
+	return check_docinfo_changes(frm, state, opts);
 }
 
 function init_docinfo_polling(frm, state) {
@@ -137,11 +192,15 @@ function init_docinfo_polling(frm, state) {
 	state.docinfo_poll_timer = setInterval(() => {
 		const current = cur_frm;
 		if (!current || current.doctype !== frm.doctype || current.docname !== frm.docname) return;
-		refresh_docinfo(current, state);
+		check_docinfo_changes(current, state);
 	}, interval);
 }
 
 const FormDocInfoWatcher = {
+	apply_docinfo_changes,
+	check_docinfo_changes,
+	commit_docinfo_snapshot,
+	fetch_docinfo,
 	filter_self_docinfo_changes,
 	get_changed_docinfo_keys,
 	get_docinfo,
@@ -150,6 +209,8 @@ const FormDocInfoWatcher = {
 	init_docinfo_self_change_markers,
 	mark_docinfo_self_change,
 	normalize_docinfo_object,
+	peek_changed_docinfo_keys,
 	refresh_docinfo,
+	refresh_watched_docinfo_blocks,
 	snapshot_docinfo,
 };
