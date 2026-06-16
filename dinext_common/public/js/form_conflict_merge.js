@@ -92,6 +92,10 @@ const DEFAULT_CONFIG = {
 	// 0 = выключено. Полезно, если realtime/socket.io недоступен.
 	poll_server_changes_interval_ms: 0,
 
+	// Подробные логи в console с префиксом [FCM] (console.info / console.warn).
+	// Также: localStorage.setItem("dinext_fcm_debug", "1") или window.__dinext_fcm_debug = true.
+	debug_log: false,
+
 	// Первичная стабилизация формы после onload/refresh: другие Client Script,
 	// Quill и sidebar могут ещё менять клиентское состояние.
 	startup_warmup_ms: 3000,
@@ -124,6 +128,212 @@ const SERVER_HIGHLIGHT_CLASS = "dinext-fcm-highlight-server";
 const CONFLICT_HIGHLIGHT_CLASS = "dinext-fcm-highlight-conflict";
 
 
+// Source: dinext_common/public/js/form_conflict_merge/debug.js
+const FCM_LOG_PREFIX = "[FCM]";
+
+const FCM_LOG_LEVELS = {
+	info: "info",
+	warn: "warn",
+};
+
+function is_fcm_debug_enabled(state) {
+	if (window.__dinext_fcm_debug) return true;
+	try {
+		if (window.localStorage && window.localStorage.getItem("dinext_fcm_debug") === "1") return true;
+	} catch (e) {
+		// ignore private mode / blocked storage
+	}
+	return Boolean(state && state.cfg && state.cfg.debug_log);
+}
+
+function fcm_doc_label(frm) {
+	if (!frm || !frm.doctype) return "?";
+	return `${frm.doctype}/${frm.docname || "new"}`;
+}
+
+function summarize_field_value(value) {
+	if (value === undefined) return { kind: "undefined" };
+	if (value === null) return { kind: "null" };
+	if (Array.isArray(value)) {
+		return {
+			kind: "child_table",
+			rows: value.length,
+			names: value.slice(0, 8).map((row) => (row && row.name) || null),
+			hash: JSON.stringify(normalize_value(value)).length,
+			preview: JSON.stringify(normalize_value(value)).slice(0, 240),
+		};
+	}
+	if (typeof value === "string") {
+		return { kind: "string", length: value.length, preview: value.slice(0, 160) };
+	}
+	return { kind: typeof value, preview: JSON.stringify(value).slice(0, 160) };
+}
+
+function fcm_emit(level, event, entry) {
+	const payload = Object.assign({ ts: new Date().toISOString(), event }, entry || {});
+	if (level === FCM_LOG_LEVELS.warn) {
+		console.warn(FCM_LOG_PREFIX, event, payload);
+		return;
+	}
+	console.info(FCM_LOG_PREFIX, event, payload);
+}
+
+function fcm_debug(state, event, payload, level) {
+	if (!is_fcm_debug_enabled(state)) return;
+	fcm_emit(level || FCM_LOG_LEVELS.info, event, payload);
+}
+
+function fcm_debug_state_snapshot(state, frm, label) {
+	if (!is_fcm_debug_enabled(state)) return;
+
+	const tracked = (state.fields || []).slice(0, 40);
+	const initial = state.initial_values || {};
+	const local = snapshot(frm.doc, tracked);
+	const field_stats = {};
+
+	tracked.forEach((fieldname) => {
+		field_stats[fieldname] = {
+			initial: summarize_field_value(initial[fieldname]),
+			local: summarize_field_value(local[fieldname]),
+		};
+	});
+
+	fcm_debug(state, label || "state_snapshot", {
+		doc: fcm_doc_label(frm),
+		modified: {
+			frm: frm.doc && frm.doc.modified,
+			initial: state.initial_modified,
+			server: state.server_modified,
+		},
+		flags: {
+			installed: state.installed,
+			startup_baseline_ready: state.startup_baseline_ready,
+			startup_warmup_active: is_startup_warmup_active(state),
+			startup_user_touched: state.startup_user_touched,
+			pollers_ready: state.pollers_ready,
+			highlighted_fields: Object.assign({}, state.highlighted_fields || {}),
+		},
+		tracked_fields: tracked.length,
+		fields: field_stats,
+	});
+}
+
+function fcm_debug_analysis(state, frm, analysis, extra) {
+	if (!is_fcm_debug_enabled(state) || !analysis) return;
+
+	const initial = state.initial_values || {};
+	const local = snapshot(frm.doc, state.fields);
+	const server = extra && extra.server_snapshot;
+	const fields = [
+		...new Set([
+			...(analysis.server_only || []),
+			...(analysis.local_only || []),
+			...(analysis.conflicts || []),
+			...(analysis.applied_server || []),
+			...(analysis.applied_conflicts || []),
+		]),
+	];
+
+	const details = {};
+	fields.forEach((fieldname) => {
+		details[fieldname] = {
+			local_changed: !equal(local[fieldname], initial[fieldname]),
+			server_changed: server ? !equal(server[fieldname], initial[fieldname]) : null,
+			equal_local_server: server ? equal(local[fieldname], server[fieldname]) : null,
+			local: summarize_field_value(local[fieldname]),
+			initial: summarize_field_value(initial[fieldname]),
+			server: server ? summarize_field_value(server[fieldname]) : null,
+		};
+	});
+
+	const has_conflicts = (analysis.conflicts || []).length || (analysis.applied_conflicts || []).length;
+	fcm_debug(
+		state,
+		"analyze",
+		Object.assign(
+			{
+				doc: fcm_doc_label(frm),
+				summary: {
+					server_only: analysis.server_only || [],
+					local_only: analysis.local_only || [],
+					conflicts: analysis.conflicts || [],
+					applied_server: analysis.applied_server || [],
+					applied_conflicts: analysis.applied_conflicts || [],
+					remaining_local: analysis.remaining_local || [],
+					modified_changed: analysis.modified_changed,
+				},
+				fields: details,
+			},
+			extra || {}
+		),
+		has_conflicts ? FCM_LOG_LEVELS.warn : FCM_LOG_LEVELS.info
+	);
+}
+
+function fcm_debug_local_drift(state, frm, label) {
+	if (!is_fcm_debug_enabled(state) || !state.initial_values) return;
+
+	const initial = state.initial_values;
+	const local = snapshot(frm.doc, state.fields);
+	const drifted = (state.fields || []).filter((fieldname) => !equal(local[fieldname], initial[fieldname]));
+	const details = {};
+
+	drifted.forEach((fieldname) => {
+		details[fieldname] = {
+			initial: summarize_field_value(initial[fieldname]),
+			local: summarize_field_value(local[fieldname]),
+		};
+	});
+
+	fcm_debug(
+		state,
+		label || "local_drift",
+		{
+			doc: fcm_doc_label(frm),
+			drifted,
+			count: drifted.length,
+			fields: details,
+		},
+		drifted.length ? FCM_LOG_LEVELS.warn : FCM_LOG_LEVELS.info
+	);
+}
+
+function dump_debug_state(frm) {
+	frm = frm || cur_frm;
+	if (!frm || !frm.doc) return null;
+
+	const state = get_state(frm);
+	const payload = {
+		doc: fcm_doc_label(frm),
+		cfg: state.cfg,
+		fields: state.fields,
+		initial_modified: state.initial_modified,
+		highlighted_fields: Object.assign({}, state.highlighted_fields || {}),
+		flags: {
+			startup_baseline_ready: state.startup_baseline_ready,
+			startup_warmup_active: is_startup_warmup_active(state),
+			startup_user_touched: state.startup_user_touched,
+			pollers_ready: state.pollers_ready,
+		},
+	};
+
+	fcm_debug_state_snapshot(state, frm, "dump_debug_state");
+	fcm_debug_local_drift(state, frm, "dump_debug_state_drift");
+	fcm_emit(FCM_LOG_LEVELS.warn, "dump_debug_state", payload);
+	return payload;
+}
+
+const FormMergeDebug = {
+	dump_debug_state,
+	fcm_debug,
+	fcm_debug_analysis,
+	fcm_debug_local_drift,
+	fcm_debug_state_snapshot,
+	is_fcm_debug_enabled,
+	summarize_field_value,
+};
+
+
 // Source: dinext_common/public/js/form_conflict_merge/state.js
 const registry = (window.__dinext_form_conflict_merge_registry =
 	window.__dinext_form_conflict_merge_registry || {});
@@ -131,7 +341,21 @@ const registry = (window.__dinext_form_conflict_merge_registry =
 function get_state(frm) {
 	const key = `${frm.doctype}::${frm.docname}`;
 	registry[key] = registry[key] || {};
-	return registry[key];
+	const state = registry[key];
+	state.doc_key = key;
+	return state;
+}
+
+function is_sync_stale(state, generation, frm) {
+	if (!state || !frm || !frm.doc || frm.is_new()) return true;
+	if (state.doc_key !== `${frm.doctype}::${frm.docname}`) return true;
+	if (state.sync_generation !== generation) return true;
+	return false;
+}
+
+function bump_sync_generation(state) {
+	state.sync_generation = (state.sync_generation || 0) + 1;
+	return state.sync_generation;
 }
 
 function is_child_table(df) {
@@ -248,14 +472,22 @@ function refresh_initial(frm) {
 	state.server_modified_by = null;
 	clear_highlights(frm, state);
 	if (frm.dashboard) frm.dashboard.clear_headline();
+	fcm_debug(state, "refresh_initial", {
+		doc: fcm_doc_label(frm),
+		modified: frm.doc.modified,
+		tracked_fields: (state.fields || []).length,
+	});
+	fcm_debug_state_snapshot(state, frm, "refresh_initial_snapshot");
 }
 
 const FormMergeState = {
+	bump_sync_generation,
 	clear_local_seed,
 	clear_local_seeds,
 	get_fields,
 	get_state,
 	import_pending_local_seeds,
+	is_sync_stale,
 	mark_local_seed,
 	refresh_initial,
 };
@@ -273,9 +505,21 @@ function normalize_child(row) {
 	return out;
 }
 
+function normalize_child_table_rows(value) {
+	if (!Array.isArray(value)) return null;
+
+	return value
+		.filter((row) => row && !row.__islocal)
+		.slice()
+		.sort((left, right) =>
+			String(left.name || left.idx || "").localeCompare(String(right.name || right.idx || ""))
+		)
+		.map((row) => normalize_child(row));
+}
+
 function normalize_value(value) {
 	if (value === undefined) return null;
-	if (Array.isArray(value)) return value.map((row) => normalize_child(row));
+	if (Array.isArray(value)) return normalize_child_table_rows(value);
 	if (value && typeof value === "object") return JSON.parse(JSON.stringify(value));
 	return value;
 }
@@ -370,6 +614,7 @@ const FormDiff = {
 	get_remaining_local_changes,
 	is_empty_value,
 	normalize_child,
+	normalize_child_table_rows,
 	normalize_value,
 	should_preserve_local_seed,
 	snapshot,
@@ -417,6 +662,10 @@ function clear_highlight(frm, state, fieldname) {
 	if (state.highlighted_fields) {
 		delete state.highlighted_fields[fieldname];
 	}
+	fcm_debug(state, "highlight_clear", {
+		doc: fcm_doc_label(frm),
+		fieldname,
+	});
 }
 
 function bind_clear_highlight_on_edit(frm, state, fieldname, $wrapper) {
@@ -438,6 +687,38 @@ function highlight_field(frm, state, fieldname, kind) {
 
 	state.highlighted_fields = state.highlighted_fields || {};
 	state.highlighted_fields[fieldname] = kind;
+
+	fcm_debug(state, "highlight", {
+		doc: fcm_doc_label(frm),
+		fieldname,
+		kind,
+		wrapper_found: Boolean($wrapper),
+	}, kind === "conflict" ? FCM_LOG_LEVELS.warn : FCM_LOG_LEVELS.info);
+}
+
+function get_form_wrapper(frm) {
+	if (!frm || !frm.wrapper) return null;
+	return frm.wrapper.on ? frm.wrapper : $(frm.wrapper);
+}
+
+function clear_all_fcm_highlights(frm, state) {
+	const $root = get_form_wrapper(frm);
+	if (!$root) return 0;
+
+	const selector = `.${SERVER_HIGHLIGHT_CLASS}, .${CONFLICT_HIGHLIGHT_CLASS}`;
+	const $marked = $root.find(selector).add($root.filter(selector));
+	const count = $marked.length;
+
+	$marked.removeClass(`${SERVER_HIGHLIGHT_CLASS} ${CONFLICT_HIGHLIGHT_CLASS}`).off(".dinext_fcm_clear_highlight");
+
+	if (state) {
+		fcm_debug(state, "clear_all_highlights", {
+			doc: fcm_doc_label(frm),
+			count,
+		});
+	}
+
+	return count;
 }
 
 function clear_highlights(frm, state) {
@@ -489,10 +770,12 @@ function show_applied_alert(analysis) {
 }
 
 const FormMergeUi = {
+	clear_all_fcm_highlights,
 	clear_highlight,
 	clear_highlights,
 	ensure_highlight_styles,
 	get_field_wrapper,
+	get_form_wrapper,
 	highlight_field,
 	show_applied_alert,
 	show_docinfo_alert,
@@ -766,6 +1049,13 @@ function apply_docinfo_changes(frm, state, docinfo, opts) {
 	}
 
 	refresh_watched_docinfo_blocks(frm, changed_keys);
+	fcm_debug(state, "docinfo_apply", {
+		doc: fcm_doc_label(frm),
+		changed_keys,
+		visible_changed_keys,
+		silent_startup,
+		opts,
+	});
 	return changed_keys;
 }
 
@@ -773,7 +1063,13 @@ function check_docinfo_changes(frm, state, opts) {
 	state = state || get_state(frm);
 	opts = opts || {};
 
-	if (!get_docinfo_keys(state.cfg).length) return Promise.resolve([]);
+	if (!get_docinfo_keys(state.cfg).length || !is_merge_ready(state)) {
+		fcm_debug(state, "docinfo_poll_skipped", {
+			doc: fcm_doc_label(frm),
+			reason: !get_docinfo_keys(state.cfg).length ? "no_watched_keys" : "merge_not_ready",
+		});
+		return Promise.resolve([]);
+	}
 
 	return fetch_docinfo(frm)
 		.then((docinfo) => {
@@ -797,10 +1093,13 @@ function init_docinfo_polling(frm, state) {
 		clearInterval(state.docinfo_poll_timer);
 	}
 
+	const bound_doctype = frm.doctype;
+	const bound_docname = frm.docname;
+
 	state.docinfo_poll_timer = setInterval(() => {
 		const current = cur_frm;
-		if (!current || current.doctype !== frm.doctype || current.docname !== frm.docname) return;
-		check_docinfo_changes(current, state);
+		if (!current || current.doctype !== bound_doctype || current.docname !== bound_docname) return;
+		check_docinfo_changes(current, get_state(current));
 	}, interval);
 }
 
@@ -827,6 +1126,12 @@ const FormDocInfoWatcher = {
 // Source: dinext_common/public/js/form_conflict_merge/startup.js
 function is_startup_warmup_active(state) {
 	return Boolean(state.startup_warmup_until && Date.now() < state.startup_warmup_until);
+}
+
+function is_merge_ready(state) {
+	if (!state || !state.installed) return false;
+	if (Number(state.cfg.startup_warmup_ms || 0) > 0 && !state.startup_baseline_ready) return false;
+	return true;
 }
 
 function get_form_wrapper(frm) {
@@ -856,11 +1161,21 @@ function finish_startup_warmup(frm, state) {
 	refresh_initial(frm);
 	state.docinfo_values = snapshot_docinfo(frm, state);
 	state.startup_docinfo_baseline_ready = true;
+	state.startup_baseline_ready = true;
 	state.startup_warmup_until = 0;
 
 	if (!state.startup_user_touched) {
 		mark_clean(frm);
 	}
+
+	fcm_debug(state, "warmup_finish", {
+		doc: fcm_doc_label(frm),
+		startup_user_touched: state.startup_user_touched,
+	});
+	fcm_debug_state_snapshot(state, frm, "warmup_finish_snapshot");
+	fcm_debug_local_drift(state, frm, "warmup_finish_drift");
+
+	start_deferred_services(frm, state);
 }
 
 function start_startup_warmup(frm, state) {
@@ -876,11 +1191,21 @@ function start_startup_warmup(frm, state) {
 	if (!warmup_ms) {
 		state.startup_warmup_until = 0;
 		state.startup_docinfo_baseline_ready = true;
+		state.startup_baseline_ready = true;
+		if (!state.initial_values) refresh_initial(frm);
+		start_deferred_services(frm, state);
 		return;
 	}
 
+	state.startup_baseline_ready = false;
+
 	state.startup_warmup_until = Date.now() + warmup_ms;
 	bind_startup_user_touch_marker(frm, state);
+	fcm_debug(state, "warmup_start", {
+		doc: fcm_doc_label(frm),
+		warmup_ms,
+		until: new Date(state.startup_warmup_until).toISOString(),
+	});
 	state.startup_warmup_timer = setTimeout(() => finish_startup_warmup(frm, state), warmup_ms);
 }
 
@@ -888,6 +1213,13 @@ function set_startup_value(frm, fieldname, value, opts) {
 	if (!frm || !fieldname) return Promise.resolve();
 
 	mark_local_seed(frm, fieldname, opts);
+
+	fcm_debug(get_state(frm), "startup_value_set", {
+		doc: fcm_doc_label(frm),
+		fieldname,
+		value: summarize_field_value(value),
+		opts,
+	});
 
 	const set_value = frappe.model.set_value(
 		frm.doctype,
@@ -911,6 +1243,7 @@ const FormStartup = {
 	bind_startup_user_touch_marker,
 	finish_startup_warmup,
 	get_form_wrapper,
+	is_merge_ready,
 	is_startup_warmup_active,
 	set_startup_value,
 	start_startup_warmup,
@@ -918,6 +1251,40 @@ const FormStartup = {
 
 
 // Source: dinext_common/public/js/form_conflict_merge/merge_engine.js
+function cancel_deferred_services(state) {
+	if (!state) return;
+	if (state.poll_timer) {
+		clearInterval(state.poll_timer);
+		state.poll_timer = null;
+	}
+	if (state.docinfo_poll_timer) {
+		clearInterval(state.docinfo_poll_timer);
+		state.docinfo_poll_timer = null;
+	}
+	if (state.startup_warmup_timer) {
+		clearTimeout(state.startup_warmup_timer);
+		state.startup_warmup_timer = null;
+	}
+	state.pollers_ready = false;
+}
+
+function cancel_bound_pollers(frm, except_key) {
+	Object.keys(registry).forEach((key) => {
+		if (key === except_key) return;
+		const bound = registry[key];
+		if (!bound || bound.frm !== frm) return;
+		fcm_debug(bound, "cancel_bound_pollers", {
+			doc: fcm_doc_label(frm),
+			cancelled_key: key,
+			active_key: except_key,
+			highlighted_fields: Object.keys(bound.highlighted_fields || {}),
+		});
+		clear_highlights(frm, bound);
+		cancel_deferred_services(bound);
+		bump_sync_generation(bound);
+	});
+}
+
 function cancel_pending_reload(frm) {
 	if (frm.debounced_reload_doc && frm.debounced_reload_doc.cancel) {
 		frm.debounced_reload_doc.cancel();
@@ -931,6 +1298,15 @@ function apply_server_changes(frm, server_doc, state, opts) {
 	const analysis = analyze(frm, server_doc, state);
 	const applied_server = analysis.server_only.slice();
 	const applied_conflicts = state.cfg.conflict_policy === "server_wins" ? analysis.conflicts.slice() : [];
+
+	fcm_debug_analysis(state, frm, analysis, {
+		source: opts.source || "apply_server_changes",
+		server_snapshot: snapshot(server_doc, state.fields),
+		silent_startup,
+		modified_changed,
+		server_modified: server_doc && server_doc.modified,
+		server_modified_by: server_doc && server_doc.modified_by,
+	});
 
 	applied_server.forEach((fieldname) => {
 		apply_field(frm, server_doc, fieldname);
@@ -968,6 +1344,15 @@ function apply_server_changes(frm, server_doc, state, opts) {
 		refresh_docinfo(frm, state, { silent: silent_startup });
 	}
 
+	fcm_debug(state, "apply_server_changes_done", {
+		doc: fcm_doc_label(frm),
+		source: opts.source || "apply_server_changes",
+		applied_server,
+		applied_conflicts,
+		remaining_local: analysis.remaining_local,
+		silent_startup,
+	});
+
 	return analysis;
 }
 
@@ -981,6 +1366,24 @@ function handle_doc_update(data) {
 	const state = get_state(frm);
 	if (!state.installed) return;
 
+	if (!is_merge_ready(state)) {
+		fcm_debug(state, "doc_update_skipped", {
+			doc: fcm_doc_label(frm),
+			reason: "merge_not_ready",
+			data,
+			frm_modified: frm.doc.modified,
+			initial_modified: state.initial_modified,
+		});
+		return;
+	}
+
+	fcm_debug(state, "doc_update", {
+		doc: fcm_doc_label(frm),
+		data,
+		frm_modified: frm.doc.modified,
+		initial_modified: state.initial_modified,
+	});
+
 	cancel_pending_reload(frm);
 
 	state.server_changed = true;
@@ -993,9 +1396,36 @@ function handle_doc_update(data) {
 	}
 
 	if (state.cfg.apply_server_changes_on_realtime) {
+		const generation = state.sync_generation;
+		const bound_docname = frm.docname;
 		fetch_server_doc(frm).then((server_doc) => {
-			if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) return;
-			const analysis = apply_server_changes(frm, server_doc, state, { silent: silent_startup });
+			if (is_sync_stale(state, generation, frm) || frm.docname !== bound_docname) {
+				fcm_debug(state, "doc_update_stale", {
+					doc: fcm_doc_label(frm),
+					bound_docname,
+					current_docname: frm.docname,
+					generation,
+					sync_generation: state.sync_generation,
+				});
+				return;
+			}
+			if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) {
+				fcm_debug(state, "doc_update_fetch_skipped", {
+					doc: fcm_doc_label(frm),
+					reason: !server_doc
+						? "no_server_doc"
+						: !server_doc.modified
+							? "no_server_modified"
+							: "modified_unchanged",
+					server_modified: server_doc && server_doc.modified,
+					initial_modified: state.initial_modified,
+				});
+				return;
+			}
+			const analysis = apply_server_changes(frm, server_doc, state, {
+				silent: silent_startup,
+				source: "doc_update",
+			});
 			if (state.cfg.show_applied_alert && !silent_startup) show_applied_alert(analysis);
 		});
 	}
@@ -1007,15 +1437,78 @@ function init_listener() {
 	frappe.realtime.on("doc_update", handle_doc_update);
 }
 
-function check_server_changes(frm, state) {
+function check_server_changes(frm) {
 	if (!frm || !frm.doc || frm.is_new()) return Promise.resolve();
-	state = state || get_state(frm);
+	const state = get_state(frm);
 	if (!state.installed) return Promise.resolve();
 
+	if (!is_merge_ready(state)) {
+		fcm_debug(state, "poll_skipped", {
+			doc: fcm_doc_label(frm),
+			reason: "merge_not_ready",
+			startup_baseline_ready: state.startup_baseline_ready,
+			startup_warmup_active: is_startup_warmup_active(state),
+		});
+		return Promise.resolve();
+	}
+
+	if (state.initial_modified && frm.doc.modified && state.initial_modified !== frm.doc.modified) {
+		fcm_debug(
+			state,
+			"poll_baseline_mismatch",
+			{
+				doc: fcm_doc_label(frm),
+				initial_modified: state.initial_modified,
+				frm_modified: frm.doc.modified,
+			},
+			FCM_LOG_LEVELS.warn
+		);
+	}
+
+	fcm_debug_local_drift(state, frm, "poll_local_drift");
+
+	const generation = state.sync_generation;
+	const bound_docname = frm.docname;
+
 	return fetch_server_doc(frm).then((server_doc) => {
-		if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) return;
+		if (is_sync_stale(state, generation, frm) || frm.docname !== bound_docname) {
+			fcm_debug(state, "poll_stale", {
+				doc: fcm_doc_label(frm),
+				bound_docname,
+				current_docname: frm.docname,
+				generation,
+				sync_generation: state.sync_generation,
+			});
+			return;
+		}
+		if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) {
+			fcm_debug(state, "poll_noop", {
+				doc: fcm_doc_label(frm),
+				reason: !server_doc
+					? "no_server_doc"
+					: !server_doc.modified
+						? "no_server_modified"
+						: "modified_unchanged",
+				server_modified: server_doc && server_doc.modified,
+				initial_modified: state.initial_modified,
+				frm_modified: frm.doc.modified,
+			});
+			return;
+		}
+
+		fcm_debug(state, "poll_detected_change", {
+			doc: fcm_doc_label(frm),
+			server_modified: server_doc.modified,
+			initial_modified: state.initial_modified,
+			frm_modified: frm.doc.modified,
+			server_modified_by: server_doc.modified_by,
+		});
+
 		const silent_startup = is_startup_warmup_active(state);
-		const analysis = apply_server_changes(frm, server_doc, state, { silent: silent_startup });
+		const analysis = apply_server_changes(frm, server_doc, state, {
+			silent: silent_startup,
+			source: "poll",
+		});
 		if (state.cfg.show_applied_alert && !silent_startup) show_applied_alert(analysis);
 		return analysis;
 	});
@@ -1029,10 +1522,13 @@ function init_polling(frm, state) {
 		clearInterval(state.poll_timer);
 	}
 
+	const bound_doctype = frm.doctype;
+	const bound_docname = frm.docname;
+
 	state.poll_timer = setInterval(() => {
 		const current = cur_frm;
-		if (!current || current.doctype !== frm.doctype || current.docname !== frm.docname) return;
-		check_server_changes(current, state);
+		if (!current || current.doctype !== bound_doctype || current.docname !== bound_docname) return;
+		check_server_changes(current);
 	}, interval);
 }
 
@@ -1138,28 +1634,79 @@ function before_save(frm) {
 	});
 }
 
+function start_deferred_services(frm, state) {
+	if (state.pollers_ready) return;
+	state.pollers_ready = true;
+	fcm_debug(state, "pollers_start", {
+		doc: fcm_doc_label(frm),
+		poll_ms: state.cfg.poll_server_changes_interval_ms,
+		watch_docinfo_keys: state.cfg.watch_docinfo_keys,
+	});
+	init_polling(frm, state);
+	init_docinfo_polling(frm, state);
+}
+
 function install(frm, opts) {
 	opts = opts || {};
 	if (!frm || !frm.doctype) frappe.throw("FormConflictMerge: вызовите из onload(frm)");
 
 	const cfg = Object.assign({}, DEFAULT_CONFIG, opts);
+	const state_key = `${frm.doctype}::${frm.docname}`;
+	cancel_bound_pollers(frm, state_key);
 	const state = get_state(frm);
+	clear_all_fcm_highlights(frm, state);
 	const first_install = !state.installed;
 	const new_form_instance = state.frm !== frm;
 	state.cfg = cfg;
 	state.fields = get_fields(frm, cfg);
 	state.installed = true;
 	state.frm = frm;
+	state.doc_key = state_key;
+	bump_sync_generation(state);
+
+	if (new_form_instance) {
+		cancel_deferred_services(state);
+	}
 
 	ensure_highlight_styles();
-	if (first_install || !state.initial_values) refresh_initial(frm);
+	const warmup_enabled = Number(cfg.startup_warmup_ms || 0) > 0;
+	if (!warmup_enabled && (first_install || !state.initial_values)) {
+		refresh_initial(frm);
+		state.startup_baseline_ready = true;
+	} else if (warmup_enabled && (first_install || new_form_instance)) {
+		state.startup_baseline_ready = false;
+	}
 	import_pending_local_seeds(frm, state);
 	if (first_install || new_form_instance) start_startup_warmup(frm, state);
+	else if (!state.pollers_ready && is_merge_ready(state)) start_deferred_services(frm, state);
 	state.docinfo_values = snapshot_docinfo(frm, state);
 	init_docinfo_self_change_markers(frm, state);
 	init_listener();
-	init_polling(frm, state);
-	init_docinfo_polling(frm, state);
+
+	fcm_debug(state, "install", {
+		doc: fcm_doc_label(frm),
+		first_install,
+		new_form_instance,
+		warmup_enabled,
+		startup_baseline_ready: state.startup_baseline_ready,
+		debug_enabled: is_fcm_debug_enabled(state),
+		tracked_fields: state.fields.length,
+		child_tables: state.fields.filter((fieldname) => is_child_table_field(frm, fieldname)),
+		cfg: {
+			conflict_policy: cfg.conflict_policy,
+			poll_server_changes_interval_ms: cfg.poll_server_changes_interval_ms,
+			startup_warmup_ms: cfg.startup_warmup_ms,
+			watch_docinfo_keys: cfg.watch_docinfo_keys,
+			debug_log: cfg.debug_log,
+		},
+	});
+
+	if (is_fcm_debug_enabled(state)) {
+		console.info(
+			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, highlight, local_drift. dump: dinext_common.formConflictMerge.dump_debug_state()`
+		);
+		fcm_debug_state_snapshot(state, frm, "install_snapshot");
+	}
 
 	if (window.__dinext_form_conflict_merge_doctype_hooks && window.__dinext_form_conflict_merge_doctype_hooks[frm.doctype]) {
 		return;
@@ -1176,7 +1723,7 @@ function install(frm, opts) {
 		},
 		refresh(frm) {
 			const active = get_state(frm);
-			if (!active.initial_values) refresh_initial(frm);
+			if (!active.initial_values && is_merge_ready(active)) refresh_initial(frm);
 		},
 	});
 }
@@ -1185,6 +1732,7 @@ const FormMergeEngine = {
 	analyze,
 	apply_server_changes,
 	before_save,
+	cancel_deferred_services,
 	cancel_pending_reload,
 	check_server_changes,
 	confirm_conflicts,
@@ -1193,6 +1741,7 @@ const FormMergeEngine = {
 	init_listener,
 	init_polling,
 	install,
+	start_deferred_services,
 };
 
 
@@ -1213,6 +1762,7 @@ window.dinext_common.formConflictMerge = {
 	mark_local_seed: FormMergeState.mark_local_seed,
 	refresh_initial: FormMergeState.refresh_initial,
 	set_startup_value: FormStartup.set_startup_value,
+	dump_debug_state: FormMergeDebug.dump_debug_state,
 	__internals: {
 		Config: FormConflictMergeConfig,
 		DocInfoWatcher: FormDocInfoWatcher,
@@ -1222,6 +1772,7 @@ window.dinext_common.formConflictMerge = {
 		StartupValues: FormStartup,
 		UiFeedback: FormMergeUi,
 		ValueNormalizer: FormDiff,
+		Debug: FormMergeDebug,
 	},
 };
 

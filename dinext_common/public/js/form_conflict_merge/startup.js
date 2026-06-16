@@ -2,6 +2,12 @@ function is_startup_warmup_active(state) {
 	return Boolean(state.startup_warmup_until && Date.now() < state.startup_warmup_until);
 }
 
+function is_merge_ready(state) {
+	if (!state || !state.installed) return false;
+	if (Number(state.cfg.startup_warmup_ms || 0) > 0 && !state.startup_baseline_ready) return false;
+	return true;
+}
+
 function get_form_wrapper(frm) {
 	if (!frm.wrapper) return null;
 	return frm.wrapper.on ? frm.wrapper : $(frm.wrapper);
@@ -29,11 +35,21 @@ function finish_startup_warmup(frm, state) {
 	refresh_initial(frm);
 	state.docinfo_values = snapshot_docinfo(frm, state);
 	state.startup_docinfo_baseline_ready = true;
+	state.startup_baseline_ready = true;
 	state.startup_warmup_until = 0;
 
 	if (!state.startup_user_touched) {
 		mark_clean(frm);
 	}
+
+	fcm_debug(state, "warmup_finish", {
+		doc: fcm_doc_label(frm),
+		startup_user_touched: state.startup_user_touched,
+	});
+	fcm_debug_state_snapshot(state, frm, "warmup_finish_snapshot");
+	fcm_debug_local_drift(state, frm, "warmup_finish_drift");
+
+	start_deferred_services(frm, state);
 }
 
 function start_startup_warmup(frm, state) {
@@ -49,11 +65,21 @@ function start_startup_warmup(frm, state) {
 	if (!warmup_ms) {
 		state.startup_warmup_until = 0;
 		state.startup_docinfo_baseline_ready = true;
+		state.startup_baseline_ready = true;
+		if (!state.initial_values) refresh_initial(frm);
+		start_deferred_services(frm, state);
 		return;
 	}
 
+	state.startup_baseline_ready = false;
+
 	state.startup_warmup_until = Date.now() + warmup_ms;
 	bind_startup_user_touch_marker(frm, state);
+	fcm_debug(state, "warmup_start", {
+		doc: fcm_doc_label(frm),
+		warmup_ms,
+		until: new Date(state.startup_warmup_until).toISOString(),
+	});
 	state.startup_warmup_timer = setTimeout(() => finish_startup_warmup(frm, state), warmup_ms);
 }
 
@@ -61,6 +87,13 @@ function set_startup_value(frm, fieldname, value, opts) {
 	if (!frm || !fieldname) return Promise.resolve();
 
 	mark_local_seed(frm, fieldname, opts);
+
+	fcm_debug(get_state(frm), "startup_value_set", {
+		doc: fcm_doc_label(frm),
+		fieldname,
+		value: summarize_field_value(value),
+		opts,
+	});
 
 	const set_value = frappe.model.set_value(
 		frm.doctype,
@@ -84,6 +117,7 @@ const FormStartup = {
 	bind_startup_user_touch_marker,
 	finish_startup_warmup,
 	get_form_wrapper,
+	is_merge_ready,
 	is_startup_warmup_active,
 	set_startup_value,
 	start_startup_warmup,

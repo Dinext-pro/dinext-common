@@ -45,6 +45,10 @@ const DEFAULT_CONFIG = {
 	// 0 = выключено. Полезно, если realtime/socket.io недоступен.
 	poll_server_changes_interval_ms: 0,
 
+	// Подробные логи в console с префиксом [FCM] (console.info / console.warn).
+	// Также: localStorage.setItem("dinext_fcm_debug", "1") или window.__dinext_fcm_debug = true.
+	debug_log: false,
+
 	// Первичная стабилизация формы после onload/refresh: другие Client Script,
 	// Quill и sidebar могут ещё менять клиентское состояние.
 	startup_warmup_ms: 3000,

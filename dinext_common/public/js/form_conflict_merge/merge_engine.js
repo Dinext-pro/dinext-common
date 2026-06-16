@@ -1,3 +1,37 @@
+function cancel_deferred_services(state) {
+	if (!state) return;
+	if (state.poll_timer) {
+		clearInterval(state.poll_timer);
+		state.poll_timer = null;
+	}
+	if (state.docinfo_poll_timer) {
+		clearInterval(state.docinfo_poll_timer);
+		state.docinfo_poll_timer = null;
+	}
+	if (state.startup_warmup_timer) {
+		clearTimeout(state.startup_warmup_timer);
+		state.startup_warmup_timer = null;
+	}
+	state.pollers_ready = false;
+}
+
+function cancel_bound_pollers(frm, except_key) {
+	Object.keys(registry).forEach((key) => {
+		if (key === except_key) return;
+		const bound = registry[key];
+		if (!bound || bound.frm !== frm) return;
+		fcm_debug(bound, "cancel_bound_pollers", {
+			doc: fcm_doc_label(frm),
+			cancelled_key: key,
+			active_key: except_key,
+			highlighted_fields: Object.keys(bound.highlighted_fields || {}),
+		});
+		clear_highlights(frm, bound);
+		cancel_deferred_services(bound);
+		bump_sync_generation(bound);
+	});
+}
+
 function cancel_pending_reload(frm) {
 	if (frm.debounced_reload_doc && frm.debounced_reload_doc.cancel) {
 		frm.debounced_reload_doc.cancel();
@@ -11,6 +45,15 @@ function apply_server_changes(frm, server_doc, state, opts) {
 	const analysis = analyze(frm, server_doc, state);
 	const applied_server = analysis.server_only.slice();
 	const applied_conflicts = state.cfg.conflict_policy === "server_wins" ? analysis.conflicts.slice() : [];
+
+	fcm_debug_analysis(state, frm, analysis, {
+		source: opts.source || "apply_server_changes",
+		server_snapshot: snapshot(server_doc, state.fields),
+		silent_startup,
+		modified_changed,
+		server_modified: server_doc && server_doc.modified,
+		server_modified_by: server_doc && server_doc.modified_by,
+	});
 
 	applied_server.forEach((fieldname) => {
 		apply_field(frm, server_doc, fieldname);
@@ -48,6 +91,15 @@ function apply_server_changes(frm, server_doc, state, opts) {
 		refresh_docinfo(frm, state, { silent: silent_startup });
 	}
 
+	fcm_debug(state, "apply_server_changes_done", {
+		doc: fcm_doc_label(frm),
+		source: opts.source || "apply_server_changes",
+		applied_server,
+		applied_conflicts,
+		remaining_local: analysis.remaining_local,
+		silent_startup,
+	});
+
 	return analysis;
 }
 
@@ -61,6 +113,24 @@ function handle_doc_update(data) {
 	const state = get_state(frm);
 	if (!state.installed) return;
 
+	if (!is_merge_ready(state)) {
+		fcm_debug(state, "doc_update_skipped", {
+			doc: fcm_doc_label(frm),
+			reason: "merge_not_ready",
+			data,
+			frm_modified: frm.doc.modified,
+			initial_modified: state.initial_modified,
+		});
+		return;
+	}
+
+	fcm_debug(state, "doc_update", {
+		doc: fcm_doc_label(frm),
+		data,
+		frm_modified: frm.doc.modified,
+		initial_modified: state.initial_modified,
+	});
+
 	cancel_pending_reload(frm);
 
 	state.server_changed = true;
@@ -73,9 +143,36 @@ function handle_doc_update(data) {
 	}
 
 	if (state.cfg.apply_server_changes_on_realtime) {
+		const generation = state.sync_generation;
+		const bound_docname = frm.docname;
 		fetch_server_doc(frm).then((server_doc) => {
-			if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) return;
-			const analysis = apply_server_changes(frm, server_doc, state, { silent: silent_startup });
+			if (is_sync_stale(state, generation, frm) || frm.docname !== bound_docname) {
+				fcm_debug(state, "doc_update_stale", {
+					doc: fcm_doc_label(frm),
+					bound_docname,
+					current_docname: frm.docname,
+					generation,
+					sync_generation: state.sync_generation,
+				});
+				return;
+			}
+			if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) {
+				fcm_debug(state, "doc_update_fetch_skipped", {
+					doc: fcm_doc_label(frm),
+					reason: !server_doc
+						? "no_server_doc"
+						: !server_doc.modified
+							? "no_server_modified"
+							: "modified_unchanged",
+					server_modified: server_doc && server_doc.modified,
+					initial_modified: state.initial_modified,
+				});
+				return;
+			}
+			const analysis = apply_server_changes(frm, server_doc, state, {
+				silent: silent_startup,
+				source: "doc_update",
+			});
 			if (state.cfg.show_applied_alert && !silent_startup) show_applied_alert(analysis);
 		});
 	}
@@ -87,15 +184,78 @@ function init_listener() {
 	frappe.realtime.on("doc_update", handle_doc_update);
 }
 
-function check_server_changes(frm, state) {
+function check_server_changes(frm) {
 	if (!frm || !frm.doc || frm.is_new()) return Promise.resolve();
-	state = state || get_state(frm);
+	const state = get_state(frm);
 	if (!state.installed) return Promise.resolve();
 
+	if (!is_merge_ready(state)) {
+		fcm_debug(state, "poll_skipped", {
+			doc: fcm_doc_label(frm),
+			reason: "merge_not_ready",
+			startup_baseline_ready: state.startup_baseline_ready,
+			startup_warmup_active: is_startup_warmup_active(state),
+		});
+		return Promise.resolve();
+	}
+
+	if (state.initial_modified && frm.doc.modified && state.initial_modified !== frm.doc.modified) {
+		fcm_debug(
+			state,
+			"poll_baseline_mismatch",
+			{
+				doc: fcm_doc_label(frm),
+				initial_modified: state.initial_modified,
+				frm_modified: frm.doc.modified,
+			},
+			FCM_LOG_LEVELS.warn
+		);
+	}
+
+	fcm_debug_local_drift(state, frm, "poll_local_drift");
+
+	const generation = state.sync_generation;
+	const bound_docname = frm.docname;
+
 	return fetch_server_doc(frm).then((server_doc) => {
-		if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) return;
+		if (is_sync_stale(state, generation, frm) || frm.docname !== bound_docname) {
+			fcm_debug(state, "poll_stale", {
+				doc: fcm_doc_label(frm),
+				bound_docname,
+				current_docname: frm.docname,
+				generation,
+				sync_generation: state.sync_generation,
+			});
+			return;
+		}
+		if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) {
+			fcm_debug(state, "poll_noop", {
+				doc: fcm_doc_label(frm),
+				reason: !server_doc
+					? "no_server_doc"
+					: !server_doc.modified
+						? "no_server_modified"
+						: "modified_unchanged",
+				server_modified: server_doc && server_doc.modified,
+				initial_modified: state.initial_modified,
+				frm_modified: frm.doc.modified,
+			});
+			return;
+		}
+
+		fcm_debug(state, "poll_detected_change", {
+			doc: fcm_doc_label(frm),
+			server_modified: server_doc.modified,
+			initial_modified: state.initial_modified,
+			frm_modified: frm.doc.modified,
+			server_modified_by: server_doc.modified_by,
+		});
+
 		const silent_startup = is_startup_warmup_active(state);
-		const analysis = apply_server_changes(frm, server_doc, state, { silent: silent_startup });
+		const analysis = apply_server_changes(frm, server_doc, state, {
+			silent: silent_startup,
+			source: "poll",
+		});
 		if (state.cfg.show_applied_alert && !silent_startup) show_applied_alert(analysis);
 		return analysis;
 	});
@@ -109,10 +269,13 @@ function init_polling(frm, state) {
 		clearInterval(state.poll_timer);
 	}
 
+	const bound_doctype = frm.doctype;
+	const bound_docname = frm.docname;
+
 	state.poll_timer = setInterval(() => {
 		const current = cur_frm;
-		if (!current || current.doctype !== frm.doctype || current.docname !== frm.docname) return;
-		check_server_changes(current, state);
+		if (!current || current.doctype !== bound_doctype || current.docname !== bound_docname) return;
+		check_server_changes(current);
 	}, interval);
 }
 
@@ -218,28 +381,79 @@ function before_save(frm) {
 	});
 }
 
+function start_deferred_services(frm, state) {
+	if (state.pollers_ready) return;
+	state.pollers_ready = true;
+	fcm_debug(state, "pollers_start", {
+		doc: fcm_doc_label(frm),
+		poll_ms: state.cfg.poll_server_changes_interval_ms,
+		watch_docinfo_keys: state.cfg.watch_docinfo_keys,
+	});
+	init_polling(frm, state);
+	init_docinfo_polling(frm, state);
+}
+
 function install(frm, opts) {
 	opts = opts || {};
 	if (!frm || !frm.doctype) frappe.throw("FormConflictMerge: вызовите из onload(frm)");
 
 	const cfg = Object.assign({}, DEFAULT_CONFIG, opts);
+	const state_key = `${frm.doctype}::${frm.docname}`;
+	cancel_bound_pollers(frm, state_key);
 	const state = get_state(frm);
+	clear_all_fcm_highlights(frm, state);
 	const first_install = !state.installed;
 	const new_form_instance = state.frm !== frm;
 	state.cfg = cfg;
 	state.fields = get_fields(frm, cfg);
 	state.installed = true;
 	state.frm = frm;
+	state.doc_key = state_key;
+	bump_sync_generation(state);
+
+	if (new_form_instance) {
+		cancel_deferred_services(state);
+	}
 
 	ensure_highlight_styles();
-	if (first_install || !state.initial_values) refresh_initial(frm);
+	const warmup_enabled = Number(cfg.startup_warmup_ms || 0) > 0;
+	if (!warmup_enabled && (first_install || !state.initial_values)) {
+		refresh_initial(frm);
+		state.startup_baseline_ready = true;
+	} else if (warmup_enabled && (first_install || new_form_instance)) {
+		state.startup_baseline_ready = false;
+	}
 	import_pending_local_seeds(frm, state);
 	if (first_install || new_form_instance) start_startup_warmup(frm, state);
+	else if (!state.pollers_ready && is_merge_ready(state)) start_deferred_services(frm, state);
 	state.docinfo_values = snapshot_docinfo(frm, state);
 	init_docinfo_self_change_markers(frm, state);
 	init_listener();
-	init_polling(frm, state);
-	init_docinfo_polling(frm, state);
+
+	fcm_debug(state, "install", {
+		doc: fcm_doc_label(frm),
+		first_install,
+		new_form_instance,
+		warmup_enabled,
+		startup_baseline_ready: state.startup_baseline_ready,
+		debug_enabled: is_fcm_debug_enabled(state),
+		tracked_fields: state.fields.length,
+		child_tables: state.fields.filter((fieldname) => is_child_table_field(frm, fieldname)),
+		cfg: {
+			conflict_policy: cfg.conflict_policy,
+			poll_server_changes_interval_ms: cfg.poll_server_changes_interval_ms,
+			startup_warmup_ms: cfg.startup_warmup_ms,
+			watch_docinfo_keys: cfg.watch_docinfo_keys,
+			debug_log: cfg.debug_log,
+		},
+	});
+
+	if (is_fcm_debug_enabled(state)) {
+		console.info(
+			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, highlight, local_drift. dump: dinext_common.formConflictMerge.dump_debug_state()`
+		);
+		fcm_debug_state_snapshot(state, frm, "install_snapshot");
+	}
 
 	if (window.__dinext_form_conflict_merge_doctype_hooks && window.__dinext_form_conflict_merge_doctype_hooks[frm.doctype]) {
 		return;
@@ -256,7 +470,7 @@ function install(frm, opts) {
 		},
 		refresh(frm) {
 			const active = get_state(frm);
-			if (!active.initial_values) refresh_initial(frm);
+			if (!active.initial_values && is_merge_ready(active)) refresh_initial(frm);
 		},
 	});
 }
@@ -265,6 +479,7 @@ const FormMergeEngine = {
 	analyze,
 	apply_server_changes,
 	before_save,
+	cancel_deferred_services,
 	cancel_pending_reload,
 	check_server_changes,
 	confirm_conflicts,
@@ -273,4 +488,5 @@ const FormMergeEngine = {
 	init_listener,
 	init_polling,
 	install,
+	start_deferred_services,
 };
