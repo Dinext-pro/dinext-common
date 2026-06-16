@@ -14,6 +14,7 @@ window.dinext_common.formConflictMerge = {
 	mark_local_seed: FormMergeState.mark_local_seed,
 	refresh_initial: FormMergeState.refresh_initial,
 	set_startup_value: FormStartup.set_startup_value,
+	dump_debug_state: FormMergeDebug.dump_debug_state,
 	__internals: {
 		Config: FormConflictMergeConfig,
 		DocInfoWatcher: FormDocInfoWatcher,
@@ -23,5 +24,6 @@ window.dinext_common.formConflictMerge = {
 		StartupValues: FormStartup,
 		UiFeedback: FormMergeUi,
 		ValueNormalizer: FormDiff,
+		Debug: FormMergeDebug,
 	},
 };

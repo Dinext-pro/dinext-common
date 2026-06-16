@@ -158,6 +158,13 @@ function apply_docinfo_changes(frm, state, docinfo, opts) {
 	}
 
 	refresh_watched_docinfo_blocks(frm, changed_keys);
+	fcm_debug(state, "docinfo_apply", {
+		doc: fcm_doc_label(frm),
+		changed_keys,
+		visible_changed_keys,
+		silent_startup,
+		opts,
+	});
 	return changed_keys;
 }
 
@@ -165,7 +172,13 @@ function check_docinfo_changes(frm, state, opts) {
 	state = state || get_state(frm);
 	opts = opts || {};
 
-	if (!get_docinfo_keys(state.cfg).length) return Promise.resolve([]);
+	if (!get_docinfo_keys(state.cfg).length || !is_merge_ready(state)) {
+		fcm_debug(state, "docinfo_poll_skipped", {
+			doc: fcm_doc_label(frm),
+			reason: !get_docinfo_keys(state.cfg).length ? "no_watched_keys" : "merge_not_ready",
+		});
+		return Promise.resolve([]);
+	}
 
 	return fetch_docinfo(frm)
 		.then((docinfo) => {
@@ -189,10 +202,13 @@ function init_docinfo_polling(frm, state) {
 		clearInterval(state.docinfo_poll_timer);
 	}
 
+	const bound_doctype = frm.doctype;
+	const bound_docname = frm.docname;
+
 	state.docinfo_poll_timer = setInterval(() => {
 		const current = cur_frm;
-		if (!current || current.doctype !== frm.doctype || current.docname !== frm.docname) return;
-		check_docinfo_changes(current, state);
+		if (!current || current.doctype !== bound_doctype || current.docname !== bound_docname) return;
+		check_docinfo_changes(current, get_state(current));
 	}, interval);
 }
 

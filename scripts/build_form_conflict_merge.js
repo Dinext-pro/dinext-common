@@ -7,6 +7,7 @@ const outputFile = path.join(appRoot, "dinext_common", "public", "js", "form_con
 
 const sources = [
 	"config.js",
+	"debug.js",
 	"state.js",
 	"diff.js",
 	"ui.js",

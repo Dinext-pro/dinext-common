@@ -38,6 +38,10 @@ function clear_highlight(frm, state, fieldname) {
 	if (state.highlighted_fields) {
 		delete state.highlighted_fields[fieldname];
 	}
+	fcm_debug(state, "highlight_clear", {
+		doc: fcm_doc_label(frm),
+		fieldname,
+	});
 }
 
 function bind_clear_highlight_on_edit(frm, state, fieldname, $wrapper) {
@@ -59,6 +63,38 @@ function highlight_field(frm, state, fieldname, kind) {
 
 	state.highlighted_fields = state.highlighted_fields || {};
 	state.highlighted_fields[fieldname] = kind;
+
+	fcm_debug(state, "highlight", {
+		doc: fcm_doc_label(frm),
+		fieldname,
+		kind,
+		wrapper_found: Boolean($wrapper),
+	}, kind === "conflict" ? FCM_LOG_LEVELS.warn : FCM_LOG_LEVELS.info);
+}
+
+function get_form_wrapper(frm) {
+	if (!frm || !frm.wrapper) return null;
+	return frm.wrapper.on ? frm.wrapper : $(frm.wrapper);
+}
+
+function clear_all_fcm_highlights(frm, state) {
+	const $root = get_form_wrapper(frm);
+	if (!$root) return 0;
+
+	const selector = `.${SERVER_HIGHLIGHT_CLASS}, .${CONFLICT_HIGHLIGHT_CLASS}`;
+	const $marked = $root.find(selector).add($root.filter(selector));
+	const count = $marked.length;
+
+	$marked.removeClass(`${SERVER_HIGHLIGHT_CLASS} ${CONFLICT_HIGHLIGHT_CLASS}`).off(".dinext_fcm_clear_highlight");
+
+	if (state) {
+		fcm_debug(state, "clear_all_highlights", {
+			doc: fcm_doc_label(frm),
+			count,
+		});
+	}
+
+	return count;
 }
 
 function clear_highlights(frm, state) {
@@ -110,10 +146,12 @@ function show_applied_alert(analysis) {
 }
 
 const FormMergeUi = {
+	clear_all_fcm_highlights,
 	clear_highlight,
 	clear_highlights,
 	ensure_highlight_styles,
 	get_field_wrapper,
+	get_form_wrapper,
 	highlight_field,
 	show_applied_alert,
 	show_docinfo_alert,

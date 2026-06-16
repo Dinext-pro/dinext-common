@@ -4,7 +4,21 @@ const registry = (window.__dinext_form_conflict_merge_registry =
 function get_state(frm) {
 	const key = `${frm.doctype}::${frm.docname}`;
 	registry[key] = registry[key] || {};
-	return registry[key];
+	const state = registry[key];
+	state.doc_key = key;
+	return state;
+}
+
+function is_sync_stale(state, generation, frm) {
+	if (!state || !frm || !frm.doc || frm.is_new()) return true;
+	if (state.doc_key !== `${frm.doctype}::${frm.docname}`) return true;
+	if (state.sync_generation !== generation) return true;
+	return false;
+}
+
+function bump_sync_generation(state) {
+	state.sync_generation = (state.sync_generation || 0) + 1;
+	return state.sync_generation;
 }
 
 function is_child_table(df) {
@@ -121,14 +135,22 @@ function refresh_initial(frm) {
 	state.server_modified_by = null;
 	clear_highlights(frm, state);
 	if (frm.dashboard) frm.dashboard.clear_headline();
+	fcm_debug(state, "refresh_initial", {
+		doc: fcm_doc_label(frm),
+		modified: frm.doc.modified,
+		tracked_fields: (state.fields || []).length,
+	});
+	fcm_debug_state_snapshot(state, frm, "refresh_initial_snapshot");
 }
 
 const FormMergeState = {
+	bump_sync_generation,
 	clear_local_seed,
 	clear_local_seeds,
 	get_fields,
 	get_state,
 	import_pending_local_seeds,
+	is_sync_stale,
 	mark_local_seed,
 	refresh_initial,
 };

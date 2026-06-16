@@ -9,9 +9,21 @@ function normalize_child(row) {
 	return out;
 }
 
+function normalize_child_table_rows(value) {
+	if (!Array.isArray(value)) return null;
+
+	return value
+		.filter((row) => row && !row.__islocal)
+		.slice()
+		.sort((left, right) =>
+			String(left.name || left.idx || "").localeCompare(String(right.name || right.idx || ""))
+		)
+		.map((row) => normalize_child(row));
+}
+
 function normalize_value(value) {
 	if (value === undefined) return null;
-	if (Array.isArray(value)) return value.map((row) => normalize_child(row));
+	if (Array.isArray(value)) return normalize_child_table_rows(value);
 	if (value && typeof value === "object") return JSON.parse(JSON.stringify(value));
 	return value;
 }
@@ -106,6 +118,7 @@ const FormDiff = {
 	get_remaining_local_changes,
 	is_empty_value,
 	normalize_child,
+	normalize_child_table_rows,
 	normalize_value,
 	should_preserve_local_seed,
 	snapshot,
