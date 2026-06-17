@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "build": "node scripts/build_form_conflict_merge.js"
+  }
+}
