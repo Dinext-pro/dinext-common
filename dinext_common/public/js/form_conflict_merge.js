@@ -151,14 +151,102 @@ function fcm_doc_label(frm) {
 	return `${frm.doctype}/${frm.docname || "new"}`;
 }
 
+function count_child_table_rows(value) {
+	const rows = Array.isArray(value) ? value : [];
+	return {
+		total: rows.length,
+		persisted: rows.filter((row) => row && !row.__islocal && !row.__deleted).length,
+		islocal: rows.filter((row) => row && row.__islocal).length,
+		deleted: rows.filter((row) => row && row.__deleted).length,
+	};
+}
+
+function child_table_row_keys(value, limit) {
+	if (!Array.isArray(value)) return [];
+	return value.slice(0, limit || 40).map((row, index) => ({
+		key: (row && (row.name || row.idx)) || `row-${index}`,
+		name: row && row.name,
+		idx: row && row.idx,
+		__islocal: Boolean(row && row.__islocal),
+		__deleted: Boolean(row && row.__deleted),
+	}));
+}
+
+function diff_child_table_rows(left, right) {
+	const left_rows = Array.isArray(left) ? left : [];
+	const right_rows = Array.isArray(right) ? right : [];
+
+	const key_of = (row, index) => String((row && (row.name || row.idx)) || `row-${index}`);
+	const left_map = {};
+	const right_map = {};
+
+	left_rows.forEach((row, index) => {
+		left_map[key_of(row, index)] = row;
+	});
+	right_rows.forEach((row, index) => {
+		right_map[key_of(row, index)] = row;
+	});
+
+	const removed = Object.keys(left_map).filter((key) => !right_map[key]);
+	const added = Object.keys(right_map).filter((key) => !left_map[key]);
+	const changed = Object.keys(left_map).filter((key) => {
+		if (!right_map[key]) return false;
+		return !equal(left_map[key], right_map[key]);
+	});
+
+	return { removed, added, changed };
+}
+
+function diff_child_table_snapshots(initial, local, server) {
+	const out = {
+		raw: {
+			initial: count_child_table_rows(initial),
+			local: count_child_table_rows(local),
+			server: count_child_table_rows(server),
+		},
+		normalized_equal: {
+			initial_local: equal(initial, local),
+			initial_server: equal(initial, server),
+			local_server: equal(local, server),
+		},
+		normalized_diff: {
+			initial_vs_local: diff_child_table_rows(normalize_value(initial), normalize_value(local)),
+			initial_vs_server: diff_child_table_rows(normalize_value(initial), normalize_value(server)),
+			local_vs_server: diff_child_table_rows(normalize_value(local), normalize_value(server)),
+		},
+		keys: {
+			initial: child_table_row_keys(initial),
+			local: child_table_row_keys(local),
+			server: child_table_row_keys(server),
+		},
+	};
+	return out;
+}
+
+function explain_field_classification(fieldname, initial, local, server) {
+	const local_changed = !equal(local, initial);
+	const server_changed = !equal(server, initial);
+	const local_server_equal = equal(local, server);
+
+	if (!local_changed && !server_changed) return "unchanged";
+	if (!local_changed && server_changed) return "server_only";
+	if (local_changed && !server_changed) return "local_only";
+	if (local_changed && server_changed && !local_server_equal) return "conflict";
+	if (local_changed && server_changed && local_server_equal) return "both_changed_same_value";
+	return "unknown";
+}
+
 function summarize_field_value(value) {
 	if (value === undefined) return { kind: "undefined" };
 	if (value === null) return { kind: "null" };
 	if (Array.isArray(value)) {
+		const counts = count_child_table_rows(value);
 		return {
 			kind: "child_table",
 			rows: value.length,
-			names: value.slice(0, 8).map((row) => (row && row.name) || null),
+			...counts,
+			names: value.slice(0, 12).map((row) => (row && row.name) || null),
+			keys: child_table_row_keys(value, 12),
 			hash: JSON.stringify(normalize_value(value)).length,
 			preview: JSON.stringify(normalize_value(value)).slice(0, 240),
 		};
@@ -236,7 +324,11 @@ function fcm_debug_analysis(state, frm, analysis, extra) {
 
 	const details = {};
 	fields.forEach((fieldname) => {
-		details[fieldname] = {
+		const classification = server
+			? explain_field_classification(fieldname, initial[fieldname], local[fieldname], server[fieldname])
+			: null;
+		const entry = {
+			classification,
 			local_changed: !equal(local[fieldname], initial[fieldname]),
 			server_changed: server ? !equal(server[fieldname], initial[fieldname]) : null,
 			equal_local_server: server ? equal(local[fieldname], server[fieldname]) : null,
@@ -244,6 +336,18 @@ function fcm_debug_analysis(state, frm, analysis, extra) {
 			initial: summarize_field_value(initial[fieldname]),
 			server: server ? summarize_field_value(server[fieldname]) : null,
 		};
+		if (
+			Array.isArray(local[fieldname]) ||
+			Array.isArray(initial[fieldname]) ||
+			(server && Array.isArray(server[fieldname]))
+		) {
+			entry.child_table_diff = diff_child_table_snapshots(
+				initial[fieldname],
+				local[fieldname],
+				server ? server[fieldname] : null
+			);
+		}
+		details[fieldname] = entry;
 	});
 
 	const has_conflicts = (analysis.conflicts || []).length || (analysis.applied_conflicts || []).length;
@@ -279,10 +383,14 @@ function fcm_debug_local_drift(state, frm, label) {
 	const details = {};
 
 	drifted.forEach((fieldname) => {
-		details[fieldname] = {
+		const entry = {
 			initial: summarize_field_value(initial[fieldname]),
 			local: summarize_field_value(local[fieldname]),
 		};
+		if (Array.isArray(local[fieldname]) || Array.isArray(initial[fieldname])) {
+			entry.child_table_diff = diff_child_table_snapshots(initial[fieldname], local[fieldname], null);
+		}
+		details[fieldname] = entry;
 	});
 
 	fcm_debug(
@@ -295,6 +403,48 @@ function fcm_debug_local_drift(state, frm, label) {
 			fields: details,
 		},
 		drifted.length ? FCM_LOG_LEVELS.warn : FCM_LOG_LEVELS.info
+	);
+}
+
+function fcm_debug_child_tables(state, frm, label, server_doc, extra) {
+	if (!is_fcm_debug_enabled(state) || !frm || !frm.doc) return;
+
+	const child_fields = (state.fields || []).filter((fieldname) => is_child_table_field(frm, fieldname));
+	if (!child_fields.length) return;
+
+	const initial = state.initial_values || {};
+	const local = snapshot(frm.doc, state.fields);
+	const server = server_doc ? snapshot(server_doc, state.fields) : null;
+	const tables = {};
+
+	child_fields.forEach((fieldname) => {
+		tables[fieldname] = {
+			classification: server
+				? explain_field_classification(fieldname, initial[fieldname], local[fieldname], server[fieldname])
+				: null,
+			raw_frm: summarize_field_value(frm.doc[fieldname]),
+			initial: summarize_field_value(initial[fieldname]),
+			local: summarize_field_value(local[fieldname]),
+			server: server ? summarize_field_value(server[fieldname]) : null,
+			child_table_diff: diff_child_table_snapshots(
+				initial[fieldname],
+				local[fieldname],
+				server ? server[fieldname] : null
+			),
+		};
+	});
+
+	fcm_debug(
+		state,
+		label || "child_tables",
+		Object.assign(
+			{
+				doc: fcm_doc_label(frm),
+				tables,
+			},
+			extra || {}
+		),
+		FCM_LOG_LEVELS.warn
 	);
 }
 
@@ -319,14 +469,21 @@ function dump_debug_state(frm) {
 
 	fcm_debug_state_snapshot(state, frm, "dump_debug_state");
 	fcm_debug_local_drift(state, frm, "dump_debug_state_drift");
+	fcm_debug_child_tables(state, frm, "dump_debug_state_child_tables");
 	fcm_emit(FCM_LOG_LEVELS.warn, "dump_debug_state", payload);
 	return payload;
 }
 
 const FormMergeDebug = {
+	child_table_row_keys,
+	count_child_table_rows,
+	diff_child_table_rows,
+	diff_child_table_snapshots,
 	dump_debug_state,
+	explain_field_classification,
 	fcm_debug,
 	fcm_debug_analysis,
+	fcm_debug_child_tables,
 	fcm_debug_local_drift,
 	fcm_debug_state_snapshot,
 	is_fcm_debug_enabled,
@@ -494,13 +651,21 @@ const FormMergeState = {
 
 
 // Source: dinext_common/public/js/form_conflict_merge/diff.js
+function is_absent_normalized_value(value) {
+	if (value === undefined || value === null) return true;
+	if (value === "") return true;
+	return false;
+}
+
 function normalize_child(row) {
 	const out = {};
 	Object.keys(row || {})
 		.sort()
 		.forEach((key) => {
 			if (SYSTEM_FIELDS.includes(key)) return;
-			out[key] = row[key];
+			const value = row[key];
+			if (is_absent_normalized_value(value)) return;
+			out[key] = value;
 		});
 	return out;
 }
@@ -612,6 +777,7 @@ const FormDiff = {
 	clone_raw_value,
 	equal,
 	get_remaining_local_changes,
+	is_absent_normalized_value,
 	is_empty_value,
 	normalize_child,
 	normalize_child_table_rows,
@@ -802,6 +968,8 @@ function apply_child_table(frm, server_doc, fieldname) {
 	const field = frm.fields_dict && frm.fields_dict[fieldname];
 	const child_doctype = field && field.df && field.df.options;
 	const rows = clone_raw_value(server_doc[fieldname] || []);
+	const before_rows = clone_raw_value(frm.doc[fieldname] || []);
+	const state = get_state(frm);
 
 	remove_child_rows_from_locals(frm.doc[fieldname]);
 	frm.doc[fieldname] = [];
@@ -824,6 +992,21 @@ function apply_child_table(frm, server_doc, fieldname) {
 	const local_doc = locals[frm.doctype] && locals[frm.doctype][frm.docname];
 	if (local_doc) local_doc[fieldname] = frm.doc[fieldname];
 	frm.refresh_field(fieldname);
+
+	fcm_debug(
+		state,
+		"apply_child_table",
+		{
+			doc: fcm_doc_label(frm),
+			fieldname,
+			child_doctype,
+			before: summarize_field_value(before_rows),
+			after: summarize_field_value(frm.doc[fieldname]),
+			server: summarize_field_value(server_doc[fieldname]),
+			child_table_diff: diff_child_table_snapshots(before_rows, frm.doc[fieldname], server_doc[fieldname]),
+		},
+		FCM_LOG_LEVELS.warn
+	);
 }
 
 function apply_field(frm, server_doc, fieldname) {
@@ -852,12 +1035,22 @@ function update_initial_value(state, server_doc, fieldname) {
 function sync_matching_server_values(frm, server_doc, state) {
 	const local = snapshot(frm.doc, state.fields);
 	const server = snapshot(server_doc, state.fields);
+	const synced_fields = [];
 
 	state.fields.forEach((fieldname) => {
 		if (equal(local[fieldname], server[fieldname])) {
 			state.initial_values[fieldname] = server[fieldname];
+			synced_fields.push(fieldname);
 		}
 	});
+
+	if (synced_fields.length) {
+		fcm_debug(state, "sync_matching_baseline", {
+			doc: fcm_doc_label(frm),
+			synced_fields,
+			child_tables: synced_fields.filter((fieldname) => is_child_table_field(frm, fieldname)),
+		});
+	}
 }
 
 function mark_clean(frm) {
@@ -1422,6 +1615,9 @@ function handle_doc_update(data) {
 				});
 				return;
 			}
+			fcm_debug_child_tables(state, frm, "doc_update_child_tables_before_apply", server_doc, {
+				source: "doc_update",
+			});
 			const analysis = apply_server_changes(frm, server_doc, state, {
 				silent: silent_startup,
 				source: "doc_update",
@@ -1502,6 +1698,9 @@ function check_server_changes(frm) {
 			initial_modified: state.initial_modified,
 			frm_modified: frm.doc.modified,
 			server_modified_by: server_doc.modified_by,
+		});
+		fcm_debug_child_tables(state, frm, "poll_child_tables_before_apply", server_doc, {
+			source: "poll",
 		});
 
 		const silent_startup = is_startup_warmup_active(state);
@@ -1596,8 +1795,33 @@ function before_save(frm) {
 	const state = get_state(frm);
 	if (!state.installed) return Promise.resolve();
 
+	fcm_debug_child_tables(state, frm, "before_save_local", null, {
+		frm_modified: frm.doc.modified,
+		initial_modified: state.initial_modified,
+		frm_unsaved: frm.doc.__unsaved,
+	});
+
 	return fetch_server_doc(frm).then((server_doc) => {
-		if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) return;
+		if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) {
+			fcm_debug(state, "before_save_noop", {
+				doc: fcm_doc_label(frm),
+				reason: !server_doc
+					? "no_server_doc"
+					: !server_doc.modified
+						? "no_server_modified"
+						: "modified_unchanged",
+				server_modified: server_doc && server_doc.modified,
+				initial_modified: state.initial_modified,
+				frm_modified: frm.doc.modified,
+			});
+			return;
+		}
+
+		fcm_debug_child_tables(state, frm, "before_save_server", server_doc, {
+			server_modified: server_doc.modified,
+			initial_modified: state.initial_modified,
+			conflict_policy: state.cfg.conflict_policy,
+		});
 
 		if (state.cfg.conflict_policy === "server_wins") {
 			const analysis = apply_server_changes(frm, server_doc, state);
@@ -1703,7 +1927,7 @@ function install(frm, opts) {
 
 	if (is_fcm_debug_enabled(state)) {
 		console.info(
-			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, highlight, local_drift. dump: dinext_common.formConflictMerge.dump_debug_state()`
+			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, local_drift. dump: dinext_common.formConflictMerge.dump_debug_state()`
 		);
 		fcm_debug_state_snapshot(state, frm, "install_snapshot");
 	}

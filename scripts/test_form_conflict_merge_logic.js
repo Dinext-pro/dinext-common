@@ -41,6 +41,63 @@ assert(FormDiff.equal(rowsA, rowsB) === true, "__islocal rows are ignored in chi
 const rowsC = [{ name: "a", grade: 1, idx: 1 }];
 assert(FormDiff.equal(rowsA, rowsC), "normalized snapshot ignores __islocal rows");
 
+// getdoc vs client.get: null keys on server must not count as a change
+const getdoc_ident = [{ name: "id1", type: "Номер SD заказчика", code: "843173", idx: 1 }];
+const client_ident = [
+	{ name: "id1", type: "Номер SD заказчика", code: "843173", idx: 1, auto_repeat: null },
+];
+assert(FormDiff.equal(getdoc_ident, client_ident), "identification: null field equals missing key");
+
+const getdoc_est = [
+	{
+		name: "est1",
+		project_role: "Консультант",
+		grade: 12,
+		status: "Согласовано",
+		category: "Трудоемкость, ч/ч (по умолчанию)",
+		category1: "Трудоемкость, ч/ч",
+	},
+];
+const client_est = [
+	{
+		name: "est1",
+		project_role: "Консультант",
+		grade: 12,
+		status: "Согласовано",
+		category: "Трудоемкость, ч/ч (по умолчанию)",
+		category1: "Трудоемкость, ч/ч",
+		task: null,
+		executor: null,
+		type: null,
+	},
+];
+assert(FormDiff.equal(getdoc_est, client_est), "estimations: null fields equal missing keys");
+
+assert(FormDiff.equal(0, 0), "zero is a real value");
+assert(FormDiff.equal(false, false), "false is a real value");
+assert(!FormDiff.equal({ name: "r1", grade: 0 }, { name: "r1" }), "zero must not collapse to absent");
+
+// analyze: observer form unchanged, server has client.get null extras -> not server_only
+const observer_frm = {
+	doc: {
+		identification: getdoc_ident,
+		estimations: getdoc_est,
+	},
+};
+const observer_server = {
+	identification: client_ident,
+	estimations: client_est,
+};
+const observer_state = {
+	fields: ["identification", "estimations"],
+	initial_values: FormDiff.snapshot(observer_frm.doc, ["identification", "estimations"]),
+	local_seed_fields: {},
+};
+const observer_analysis = FormDiff.analyze(observer_frm, observer_server, observer_state);
+assert(!observer_analysis.server_only.includes("identification"), "identification not server_only for null shape");
+assert(!observer_analysis.server_only.includes("estimations"), "estimations not server_only for null shape");
+assert(observer_analysis.server_only.length === 0, "no false server_only from null shape");
+
 // analyze: server_only when only server changed
 const frm = { doc: { description: "initial", subject: "same" } };
 const server_doc = { description: "server text", subject: "same" };

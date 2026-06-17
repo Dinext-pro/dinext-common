@@ -169,6 +169,9 @@ function handle_doc_update(data) {
 				});
 				return;
 			}
+			fcm_debug_child_tables(state, frm, "doc_update_child_tables_before_apply", server_doc, {
+				source: "doc_update",
+			});
 			const analysis = apply_server_changes(frm, server_doc, state, {
 				silent: silent_startup,
 				source: "doc_update",
@@ -249,6 +252,9 @@ function check_server_changes(frm) {
 			initial_modified: state.initial_modified,
 			frm_modified: frm.doc.modified,
 			server_modified_by: server_doc.modified_by,
+		});
+		fcm_debug_child_tables(state, frm, "poll_child_tables_before_apply", server_doc, {
+			source: "poll",
 		});
 
 		const silent_startup = is_startup_warmup_active(state);
@@ -343,8 +349,33 @@ function before_save(frm) {
 	const state = get_state(frm);
 	if (!state.installed) return Promise.resolve();
 
+	fcm_debug_child_tables(state, frm, "before_save_local", null, {
+		frm_modified: frm.doc.modified,
+		initial_modified: state.initial_modified,
+		frm_unsaved: frm.doc.__unsaved,
+	});
+
 	return fetch_server_doc(frm).then((server_doc) => {
-		if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) return;
+		if (!server_doc || !server_doc.modified || server_doc.modified === state.initial_modified) {
+			fcm_debug(state, "before_save_noop", {
+				doc: fcm_doc_label(frm),
+				reason: !server_doc
+					? "no_server_doc"
+					: !server_doc.modified
+						? "no_server_modified"
+						: "modified_unchanged",
+				server_modified: server_doc && server_doc.modified,
+				initial_modified: state.initial_modified,
+				frm_modified: frm.doc.modified,
+			});
+			return;
+		}
+
+		fcm_debug_child_tables(state, frm, "before_save_server", server_doc, {
+			server_modified: server_doc.modified,
+			initial_modified: state.initial_modified,
+			conflict_policy: state.cfg.conflict_policy,
+		});
 
 		if (state.cfg.conflict_policy === "server_wins") {
 			const analysis = apply_server_changes(frm, server_doc, state);
@@ -450,7 +481,7 @@ function install(frm, opts) {
 
 	if (is_fcm_debug_enabled(state)) {
 		console.info(
-			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, highlight, local_drift. dump: dinext_common.formConflictMerge.dump_debug_state()`
+			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, local_drift. dump: dinext_common.formConflictMerge.dump_debug_state()`
 		);
 		fcm_debug_state_snapshot(state, frm, "install_snapshot");
 	}
