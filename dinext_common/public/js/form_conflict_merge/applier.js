@@ -16,6 +16,8 @@ function apply_child_table(frm, server_doc, fieldname) {
 	const field = frm.fields_dict && frm.fields_dict[fieldname];
 	const child_doctype = field && field.df && field.df.options;
 	const rows = clone_raw_value(server_doc[fieldname] || []);
+	const before_rows = clone_raw_value(frm.doc[fieldname] || []);
+	const state = get_state(frm);
 
 	remove_child_rows_from_locals(frm.doc[fieldname]);
 	frm.doc[fieldname] = [];
@@ -38,6 +40,21 @@ function apply_child_table(frm, server_doc, fieldname) {
 	const local_doc = locals[frm.doctype] && locals[frm.doctype][frm.docname];
 	if (local_doc) local_doc[fieldname] = frm.doc[fieldname];
 	frm.refresh_field(fieldname);
+
+	fcm_debug(
+		state,
+		"apply_child_table",
+		{
+			doc: fcm_doc_label(frm),
+			fieldname,
+			child_doctype,
+			before: summarize_field_value(before_rows),
+			after: summarize_field_value(frm.doc[fieldname]),
+			server: summarize_field_value(server_doc[fieldname]),
+			child_table_diff: diff_child_table_snapshots(before_rows, frm.doc[fieldname], server_doc[fieldname]),
+		},
+		FCM_LOG_LEVELS.warn
+	);
 }
 
 function apply_field(frm, server_doc, fieldname) {
@@ -66,12 +83,22 @@ function update_initial_value(state, server_doc, fieldname) {
 function sync_matching_server_values(frm, server_doc, state) {
 	const local = snapshot(frm.doc, state.fields);
 	const server = snapshot(server_doc, state.fields);
+	const synced_fields = [];
 
 	state.fields.forEach((fieldname) => {
 		if (equal(local[fieldname], server[fieldname])) {
 			state.initial_values[fieldname] = server[fieldname];
+			synced_fields.push(fieldname);
 		}
 	});
+
+	if (synced_fields.length) {
+		fcm_debug(state, "sync_matching_baseline", {
+			doc: fcm_doc_label(frm),
+			synced_fields,
+			child_tables: synced_fields.filter((fieldname) => is_child_table_field(frm, fieldname)),
+		});
+	}
 }
 
 function mark_clean(frm) {

@@ -1,10 +1,18 @@
+function is_absent_normalized_value(value) {
+	if (value === undefined || value === null) return true;
+	if (value === "") return true;
+	return false;
+}
+
 function normalize_child(row) {
 	const out = {};
 	Object.keys(row || {})
 		.sort()
 		.forEach((key) => {
 			if (SYSTEM_FIELDS.includes(key)) return;
-			out[key] = row[key];
+			const value = row[key];
+			if (is_absent_normalized_value(value)) return;
+			out[key] = value;
 		});
 	return out;
 }
@@ -116,6 +124,7 @@ const FormDiff = {
 	clone_raw_value,
 	equal,
 	get_remaining_local_changes,
+	is_absent_normalized_value,
 	is_empty_value,
 	normalize_child,
 	normalize_child_table_rows,
