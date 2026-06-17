@@ -6,7 +6,7 @@ Dinext Common — общее Frappe-приложение платформы Dine
 
 На практике приложение делает пять вещей:
 
-- применяет общую конфигурацию сайта через fixtures: `Website Settings`, `Navbar Settings`, `Web Page`, `Data Cleanup Rules`, `Server Script`
+- применяет общую конфигурацию сайта через fixtures: `Website Settings`, `Navbar Settings`, `Web Page`, `Data Cleanup Rules`
 - подключает общие Desk-ресурсы из `hooks.py`
 - предоставляет стандартную тему сайта и брендинговые ресурсы Dinext
 - поставляет переиспользуемые JS/CSS-библиотеки, которые другие приложения могут подгружать по требованию
@@ -15,7 +15,7 @@ Dinext Common — общее Frappe-приложение платформы Dine
 ## Возможности
 
 - Общий брендинг Dinext для Desk и сайта через `app_logo_url`, `app_icon` и `website_context` в `dinext_common/hooks.py`
-- Настройка сайта через fixtures: `Website Settings`, `Navbar Settings`, `Data Cleanup Rules`, контент главной страницы Dinext и включённые записи `Server Script` из модуля `Dinext Common`
+- Настройка сайта через fixtures: `Website Settings`, `Navbar Settings`, `Data Cleanup Rules`, контент главной страницы Dinext и записи `Custom Field` модуля `Dinext Common`
 - Глобальные улучшения Desk через `app_include_js`:
   - `breadcrumbs_update.js`
   - `listview_resize.js`
@@ -132,7 +132,7 @@ bench build --app dinext_common
 - `Event Cleanup Rule`: по возрасту, категории, типу и статусу события
 - `Workflow Cleanup Rule`: по возрасту, опционально по reference DocType и статусу workflow
 
-Приложение также устанавливает из fixtures включённые Server Scripts:
+Для работы очистки на сайте нужны включённые записи `Server Script` модуля `Dinext Common` (например `Data Cleanup Daily` и API-методы `dinext_common_data_cleanup_*`). Они **не** поставляются как fixtures приложения; разворачивайте их через sandbox или site-specific workflow.
 
 - `Data Cleanup Daily` — ежедневное `Scheduler Event`
 - `Data Cleanup Version` — API-метод `dinext_common_data_cleanup_version`
@@ -198,7 +198,8 @@ Fixtures, экспортируемые приложением:
 - `Navbar Settings`
 - `Data Cleanup Rules`
 - записи `Web Page` с фильтром по модулю `Dinext Common`
-- записи `Server Script` с фильтром по модулю `Dinext Common` и `disabled = 0`
+- записи `Custom Field` с фильтром по модулю `Dinext Common`
+- `Holiday List` с именем `Праздники и выходные РФ`
 
 Поведение fixtures:
 
