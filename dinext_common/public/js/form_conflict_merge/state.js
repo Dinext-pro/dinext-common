@@ -123,6 +123,12 @@ function refresh_initial(frm) {
 	const state = get_state(frm);
 	if (!state.installed) return;
 	state.initial_values = snapshot(frm.doc, state.fields);
+	state.initial_raw_values = {};
+	(state.fields || []).forEach((fieldname) => {
+		if (frm.doc && frm.doc[fieldname] !== undefined) {
+			state.initial_raw_values[fieldname] = clone_raw_value(frm.doc[fieldname]);
+		}
+	});
 	Object.keys(state.local_seed_fields || {}).forEach((fieldname) => {
 		const seed = state.local_seed_fields[fieldname];
 		if (seed && seed.preserve_when_server_empty && !is_empty_value(frm.doc[fieldname])) {
