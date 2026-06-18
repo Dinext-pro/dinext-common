@@ -220,6 +220,17 @@ function fcm_debug_analysis(state, frm, analysis, extra) {
 	});
 
 	const has_conflicts = (analysis.conflicts || []).length || (analysis.applied_conflicts || []).length;
+	const child_table_changes = {};
+	Object.keys(analysis.child_table_changes || {}).forEach((fieldname) => {
+		const entry = analysis.child_table_changes[fieldname] || {};
+		child_table_changes[fieldname] = {
+			changed_rows: (entry.changed_rows || []).length,
+			added_rows: (entry.added_rows || []).length,
+			removed_rows: (entry.removed_rows || []).length,
+			has_server_apply: entry.has_server_apply,
+			has_conflicts: entry.has_conflicts,
+		};
+	});
 	fcm_debug(
 		state,
 		"analyze",
@@ -234,6 +245,7 @@ function fcm_debug_analysis(state, frm, analysis, extra) {
 					applied_conflicts: analysis.applied_conflicts || [],
 					remaining_local: analysis.remaining_local || [],
 					modified_changed: analysis.modified_changed,
+					child_table_changes,
 				},
 				fields: details,
 			},

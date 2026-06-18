@@ -38,7 +38,7 @@
  * подсвечивается красным.
  *
  * Важно: утилита не заменяет permissions, validations и серверные hooks.
- * Child tables сравниваются и применяются целиком, без построчного merge.
+ * Child tables сравниваются построчно; при server_wins конфликтующие поля строк берутся с сервера.
  */
 
 (function () {
@@ -57,7 +57,7 @@ const DEFAULT_CONFIG = {
 	// Исключить поля из итогового списка.
 	exclude_fields: [],
 
-	// Child tables по умолчанию включены (применяются целиком, без построчного merge).
+	// Child tables по умолчанию включены (построчный merge полей, server_wins на конфликтах).
 	// exclude_child_tables — opt-out для отдельных таблиц.
 	exclude_child_tables: [],
 
@@ -70,6 +70,8 @@ const DEFAULT_CONFIG = {
 
 	show_realtime_alert: true,
 	show_applied_alert: true,
+	alert_duration_seconds: 7,
+	conflict_alert_duration_seconds: 14,
 	highlight_server_changes: true,
 	apply_server_changes_on_realtime: false,
 
@@ -126,6 +128,10 @@ const SYSTEM_FIELDS = [
 const HIGHLIGHT_STYLE_ID = "dinext-form-conflict-merge-highlight-style";
 const SERVER_HIGHLIGHT_CLASS = "dinext-fcm-highlight-server";
 const CONFLICT_HIGHLIGHT_CLASS = "dinext-fcm-highlight-conflict";
+const CHILD_CELL_SERVER_CLASS = "dinext-fcm-highlight-child-server";
+const CHILD_CELL_CONFLICT_CLASS = "dinext-fcm-highlight-child-conflict";
+const CHILD_ROW_ADDED_CLASS = "dinext-fcm-highlight-child-row-added";
+const CHILD_TABLE_REMOVED_CLASS = "dinext-fcm-highlight-child-removed";
 
 
 // Source: dinext_common/public/js/form_conflict_merge/debug.js
@@ -351,6 +357,17 @@ function fcm_debug_analysis(state, frm, analysis, extra) {
 	});
 
 	const has_conflicts = (analysis.conflicts || []).length || (analysis.applied_conflicts || []).length;
+	const child_table_changes = {};
+	Object.keys(analysis.child_table_changes || {}).forEach((fieldname) => {
+		const entry = analysis.child_table_changes[fieldname] || {};
+		child_table_changes[fieldname] = {
+			changed_rows: (entry.changed_rows || []).length,
+			added_rows: (entry.added_rows || []).length,
+			removed_rows: (entry.removed_rows || []).length,
+			has_server_apply: entry.has_server_apply,
+			has_conflicts: entry.has_conflicts,
+		};
+	});
 	fcm_debug(
 		state,
 		"analyze",
@@ -365,6 +382,7 @@ function fcm_debug_analysis(state, frm, analysis, extra) {
 					applied_conflicts: analysis.applied_conflicts || [],
 					remaining_local: analysis.remaining_local || [],
 					modified_changed: analysis.modified_changed,
+					child_table_changes,
 				},
 				fields: details,
 			},
@@ -617,6 +635,12 @@ function refresh_initial(frm) {
 	const state = get_state(frm);
 	if (!state.installed) return;
 	state.initial_values = snapshot(frm.doc, state.fields);
+	state.initial_raw_values = {};
+	(state.fields || []).forEach((fieldname) => {
+		if (frm.doc && frm.doc[fieldname] !== undefined) {
+			state.initial_raw_values[fieldname] = clone_raw_value(frm.doc[fieldname]);
+		}
+	});
 	Object.keys(state.local_seed_fields || {}).forEach((fieldname) => {
 		const seed = state.local_seed_fields[fieldname];
 		if (seed && seed.preserve_when_server_empty && !is_empty_value(frm.doc[fieldname])) {
@@ -718,6 +742,206 @@ function clone_raw_value(value) {
 	return value;
 }
 
+function is_child_table_fieldname(frm, fieldname) {
+	const field = frm && frm.fields_dict && frm.fields_dict[fieldname];
+	const df = field && field.df;
+	return df && (df.fieldtype === "Table" || df.fieldtype === "Table MultiSelect");
+}
+
+function child_row_key(row, index) {
+	if (row && row.name && !row.__islocal) return `name:${row.name}`;
+	if (row && row.__islocal) return `__islocal:${row.idx || index}`;
+	return `idx:${index}`;
+}
+
+function build_child_row_map(rows) {
+	const map = {};
+	(rows || []).forEach((row, index) => {
+		if (!row) return;
+		map[child_row_key(row, index)] = row;
+	});
+	return map;
+}
+
+function row_equal(left_row, right_row) {
+	return equal(left_row, right_row);
+}
+
+function classify_child_row_fields(initial_row, local_row, server_row) {
+	const normalized_keys = new Set([
+		...Object.keys(normalize_child(initial_row || {})),
+		...Object.keys(normalize_child(local_row || {})),
+		...Object.keys(normalize_child(server_row || {})),
+	]);
+	[initial_row, local_row, server_row].forEach((row) => {
+		Object.keys(row || {}).forEach((key) => {
+			if (!SYSTEM_FIELDS.includes(key)) normalized_keys.add(key);
+		});
+	});
+
+	const initial_norm = normalize_child(initial_row || {});
+	const local_norm = normalize_child(local_row || {});
+	const server_norm = normalize_child(server_row || {});
+
+	const server_only_fields = [];
+	const local_only_fields = [];
+	const conflict_fields = [];
+
+	normalized_keys.forEach((fieldname) => {
+		const initial_value = initial_norm[fieldname];
+		const local_value = local_norm[fieldname];
+		const server_value = server_norm[fieldname];
+		const local_changed = initial_value !== local_value;
+		const server_changed = initial_value !== server_value;
+
+		if (!local_changed && server_changed) {
+			server_only_fields.push(fieldname);
+			return;
+		}
+		if (local_changed && !server_changed) {
+			local_only_fields.push(fieldname);
+			return;
+		}
+		if (local_changed && server_changed && local_value === server_value) {
+			// Форма уже совпала с сервером (realtime / предыдущий apply), baseline устарел.
+			server_only_fields.push(fieldname);
+			return;
+		}
+		if (local_changed && server_changed && local_value !== server_value) {
+			conflict_fields.push(fieldname);
+		}
+	});
+
+	return { server_only_fields, local_only_fields, conflict_fields };
+}
+
+function merge_child_row(initial_row, local_row, server_row, policy) {
+	const merged = clone_raw_value(local_row || server_row || initial_row || {});
+	const { server_only_fields, conflict_fields } = classify_child_row_fields(
+		initial_row || {},
+		local_row || merged,
+		server_row || {}
+	);
+
+	server_only_fields.forEach((fieldname) => {
+		if (server_row && Object.prototype.hasOwnProperty.call(server_row, fieldname)) {
+			merged[fieldname] = clone_raw_value(server_row[fieldname]);
+		} else {
+			delete merged[fieldname];
+		}
+	});
+
+	if (policy === "server_wins") {
+		conflict_fields.forEach((fieldname) => {
+			if (server_row && Object.prototype.hasOwnProperty.call(server_row, fieldname)) {
+				merged[fieldname] = clone_raw_value(server_row[fieldname]);
+			}
+		});
+	}
+
+	return merged;
+}
+
+function child_row_ref(row, key) {
+	return {
+		row_key: key,
+		row_name: row && row.name && !row.__islocal ? row.name : null,
+		idx: row && row.idx != null ? row.idx : null,
+		row: row ? clone_raw_value(row) : null,
+	};
+}
+
+function analyze_child_table_merge(initial_rows, local_rows, server_rows, policy) {
+	const initial_map = build_child_row_map(initial_rows);
+	const local_map = build_child_row_map(local_rows);
+	const server_map = build_child_row_map(server_rows);
+
+	let has_server_apply = false;
+	let has_conflicts = false;
+	let has_local_only = false;
+	const changed_rows = [];
+	const added_rows = [];
+	const removed_rows = [];
+
+	const persisted_keys = new Set();
+	Object.keys(initial_map).forEach((key) => {
+		if (!key.startsWith("__islocal:")) persisted_keys.add(key);
+	});
+	Object.keys(local_map).forEach((key) => {
+		if (!key.startsWith("__islocal:")) persisted_keys.add(key);
+	});
+	Object.keys(server_map).forEach((key) => {
+		if (!key.startsWith("__islocal:")) persisted_keys.add(key);
+	});
+
+	persisted_keys.forEach((key) => {
+		const initial_row = initial_map[key] || {};
+		const local_row = local_map[key];
+		const server_row = server_map[key];
+
+		if (!server_row && initial_map[key]) {
+			if (local_row && !row_equal(initial_map[key], local_row)) {
+				has_server_apply = true;
+				if (policy !== "server_wins") has_conflicts = true;
+			} else {
+				has_server_apply = true;
+			}
+			removed_rows.push(child_row_ref(initial_map[key], key));
+			return;
+		}
+
+		if (!local_row && server_row) {
+			const initial_row = initial_map[key] || {};
+			if (!row_equal(initial_row, server_row)) has_server_apply = true;
+			if (initial_map[key]) {
+				const classification = classify_child_row_fields(initial_row, server_row, server_row);
+				if (classification.server_only_fields.length || classification.conflict_fields.length) {
+					changed_rows.push(
+						Object.assign(child_row_ref(server_row, key), {
+							server_fields: classification.server_only_fields.slice(),
+							conflict_fields: classification.conflict_fields.slice(),
+						})
+					);
+				}
+			}
+			return;
+		}
+
+		if (!local_row || !server_row) return;
+
+		const classification = classify_child_row_fields(initial_map[key] || {}, local_row, server_row);
+		if (classification.server_only_fields.length) has_server_apply = true;
+		if (classification.local_only_fields.length) has_local_only = true;
+		if (classification.conflict_fields.length) {
+			has_server_apply = true;
+			has_conflicts = true;
+		}
+
+		if (classification.server_only_fields.length || classification.conflict_fields.length) {
+			changed_rows.push(
+				Object.assign(child_row_ref(server_row || local_row, key), {
+					server_fields: classification.server_only_fields.slice(),
+					conflict_fields: classification.conflict_fields.slice(),
+				})
+			);
+		}
+	});
+
+	Object.keys(server_map).forEach((key) => {
+		if (key.startsWith("__islocal:")) return;
+		if (!initial_map[key] && server_map[key]) {
+			has_server_apply = true;
+			added_rows.push(child_row_ref(server_map[key], key));
+		}
+	});
+
+	Object.keys(local_map).forEach((key) => {
+		if (key.startsWith("__islocal:") && local_map[key]) has_local_only = true;
+	});
+
+	return { has_server_apply, has_conflicts, has_local_only, changed_rows, added_rows, removed_rows };
+}
+
 function should_preserve_local_seed(state, fieldname, local_value, server_value) {
 	const seed = state.local_seed_fields && state.local_seed_fields[fieldname];
 	if (!seed || !seed.preserve_when_server_empty) return false;
@@ -737,8 +961,30 @@ function analyze(frm, server_doc, state) {
 	const server_only = [];
 	const local_only = [];
 	const conflicts = [];
+	const child_table_changes = {};
 
 	state.fields.forEach((fieldname) => {
+		if (frm && is_child_table_fieldname(frm, fieldname)) {
+			const initial_rows =
+				(state.initial_raw_values && state.initial_raw_values[fieldname]) || frm.doc[fieldname] || [];
+			const child_analysis = analyze_child_table_merge(
+				initial_rows,
+				frm.doc[fieldname] || [],
+				server_doc[fieldname] || [],
+				state.cfg.conflict_policy
+			);
+			child_table_changes[fieldname] = child_analysis;
+
+			if (child_analysis.has_conflicts) {
+				conflicts.push(fieldname);
+			} else if (child_analysis.has_server_apply) {
+				server_only.push(fieldname);
+			} else if (child_analysis.has_local_only) {
+				local_only.push(fieldname);
+			}
+			return;
+		}
+
 		const local_changed = !equal(local[fieldname], initial[fieldname]);
 		const server_changed = !equal(server[fieldname], initial[fieldname]);
 
@@ -762,7 +1008,7 @@ function analyze(frm, server_doc, state) {
 		}
 	});
 
-	return { server_only, local_only, conflicts };
+	return { server_only, local_only, conflicts, child_table_changes };
 }
 
 function get_remaining_local_changes(frm, state) {
@@ -774,14 +1020,22 @@ function get_remaining_local_changes(frm, state) {
 
 const FormDiff = {
 	analyze,
+	analyze_child_table_merge,
+	build_child_row_map,
+	child_row_key,
+	child_row_ref,
+	classify_child_row_fields,
 	clone_raw_value,
 	equal,
 	get_remaining_local_changes,
 	is_absent_normalized_value,
+	is_child_table_fieldname,
 	is_empty_value,
+	merge_child_row,
 	normalize_child,
 	normalize_child_table_rows,
 	normalize_value,
+	row_equal,
 	should_preserve_local_seed,
 	snapshot,
 };
@@ -810,6 +1064,37 @@ function ensure_highlight_styles() {
 			outline-offset: 2px;
 			border-radius: 4px;
 		}
+		.${CHILD_CELL_SERVER_CLASS} {
+			outline: 2px solid #f0ad4e !important;
+			outline-offset: -1px;
+			border-radius: 3px;
+		}
+		.${CHILD_CELL_SERVER_CLASS} .control-input,
+		.${CHILD_CELL_SERVER_CLASS} .form-control,
+		.${CHILD_CELL_SERVER_CLASS} .static-area,
+		.${CHILD_CELL_SERVER_CLASS} .field-area {
+			outline: none !important;
+		}
+		.${CHILD_CELL_CONFLICT_CLASS} {
+			outline: 2px solid #d9534f !important;
+			outline-offset: -1px;
+			border-radius: 3px;
+		}
+		.${CHILD_CELL_CONFLICT_CLASS} .control-input,
+		.${CHILD_CELL_CONFLICT_CLASS} .form-control,
+		.${CHILD_CELL_CONFLICT_CLASS} .static-area,
+		.${CHILD_CELL_CONFLICT_CLASS} .field-area {
+			outline: none !important;
+		}
+		.${CHILD_ROW_ADDED_CLASS} {
+			outline: 2px solid #f0ad4e !important;
+			outline-offset: -2px;
+			border-radius: 4px;
+		}
+		.${CHILD_TABLE_REMOVED_CLASS} .form-grid,
+		.${CHILD_TABLE_REMOVED_CLASS} .grid-body {
+			border-bottom: 2px solid #f0ad4e !important;
+		}
 	`;
 	document.head.appendChild(style);
 }
@@ -817,6 +1102,261 @@ function ensure_highlight_styles() {
 function get_field_wrapper(frm, fieldname) {
 	const field = frm.fields_dict && frm.fields_dict[fieldname];
 	return field && field.$wrapper;
+}
+
+function get_field_label(frm, fieldname) {
+	const field = frm && frm.fields_dict && frm.fields_dict[fieldname];
+	const df = field && field.df;
+	if (df && df.label) return __(df.label);
+	return fieldname;
+}
+
+function format_field_labels(frm, fieldnames) {
+	return (fieldnames || []).map((fieldname) => get_field_label(frm, fieldname));
+}
+
+function get_alert_duration(cfg, indicator) {
+	const base = Number((cfg && cfg.alert_duration_seconds) || 7);
+	if (indicator === "red") {
+		return Number((cfg && cfg.conflict_alert_duration_seconds) || base * 2);
+	}
+	return base;
+}
+
+function resolve_user_full_name(user) {
+	if (!user) return "";
+	if (frappe.user && frappe.user.full_name) {
+		return frappe.user.full_name(user) || user;
+	}
+	if (frappe.boot && frappe.boot.user_info && frappe.boot.user_info[user]) {
+		return frappe.boot.user_info[user].fullname || user;
+	}
+	return user;
+}
+
+function format_modifier_prefix(modified_by) {
+	if (!modified_by) return "";
+	const current_user = frappe.session && frappe.session.user;
+	if (!current_user || modified_by === current_user) return "";
+	return `${resolve_user_full_name(modified_by)} изменил документ на сервере. `;
+}
+
+function show_fcm_alert(cfg, message, indicator) {
+	frappe.show_alert({ message, indicator }, get_alert_duration(cfg, indicator));
+}
+
+function get_child_table_grid(frm, fieldname) {
+	const field = frm.fields_dict && frm.fields_dict[fieldname];
+	return field && field.grid;
+}
+
+function child_table_has_highlight_targets(child_analysis) {
+	if (!child_analysis) return false;
+	return Boolean(
+		(child_analysis.changed_rows && child_analysis.changed_rows.length) ||
+			(child_analysis.added_rows && child_analysis.added_rows.length) ||
+			(child_analysis.removed_rows && child_analysis.removed_rows.length)
+	);
+}
+
+function get_child_row_label(frm, fieldname, row) {
+	if (!row) return "";
+	const grid = get_child_table_grid(frm, fieldname);
+	const docfields = (grid && grid.docfields) || [];
+	for (let index = 0; index < docfields.length; index += 1) {
+		const df = docfields[index];
+		if (!df || !df.in_list_view) continue;
+		const value = row[df.fieldname];
+		if (value !== undefined && value !== null && value !== "") return String(value);
+	}
+	if (row.idx != null) return `#${row.idx}`;
+	return "";
+}
+
+function find_grid_row_element(grid, row_ref) {
+	if (!grid || !row_ref) return null;
+
+	if (row_ref.row_name && grid.wrapper) {
+		const $by_name = grid.wrapper.find(`.grid-row[data-name="${row_ref.row_name}"]`);
+		if ($by_name.length) return $by_name.first();
+	}
+
+	if (row_ref.idx != null && grid.wrapper) {
+		const $by_idx = grid.wrapper.find(`.grid-row[data-idx="${row_ref.idx}"]`);
+		if ($by_idx.length) return $by_idx.first();
+	}
+
+	if (grid.grid_rows) {
+		for (let index = 0; index < grid.grid_rows.length; index += 1) {
+			const grid_row = grid.grid_rows[index];
+			const doc = grid_row && grid_row.doc;
+			if (!doc) continue;
+			if (row_ref.row_name && doc.name === row_ref.row_name) return grid_row.row;
+			if (row_ref.idx != null && doc.idx === row_ref.idx) return grid_row.row;
+		}
+	}
+
+	return null;
+}
+
+function clear_child_table_removed_highlight(frm, fieldname) {
+	const $wrapper = get_field_wrapper(frm, fieldname);
+	if ($wrapper) $wrapper.removeClass(CHILD_TABLE_REMOVED_CLASS);
+}
+
+function clear_child_table_highlights(frm, state, fieldname) {
+	const grid = get_child_table_grid(frm, fieldname);
+	if (grid && grid.wrapper) {
+		grid.wrapper
+			.find(
+				`.${CHILD_CELL_SERVER_CLASS}, .${CHILD_CELL_CONFLICT_CLASS}, .${CHILD_ROW_ADDED_CLASS}`
+			)
+			.removeClass(`${CHILD_CELL_SERVER_CLASS} ${CHILD_CELL_CONFLICT_CLASS} ${CHILD_ROW_ADDED_CLASS}`)
+			.off(".dinext_fcm_clear_child_highlight");
+		grid.wrapper.off(".dinext_fcm_clear_child_highlight");
+		clear_child_table_removed_highlight(frm, fieldname);
+	}
+
+	if (state && state.highlighted_child_tables) {
+		delete state.highlighted_child_tables[fieldname];
+	}
+
+	fcm_debug(state, "highlight_child_clear", {
+		doc: fcm_doc_label(frm),
+		fieldname,
+	});
+}
+
+function bind_clear_child_highlight_on_edit(frm, state, fieldname, grid) {
+	if (!grid || !grid.wrapper) return;
+	grid.wrapper.off(".dinext_fcm_clear_child_highlight");
+	grid.wrapper.on(
+		"focusin.dinext_fcm_clear_child_highlight input.dinext_fcm_clear_child_highlight change.dinext_fcm_clear_child_highlight keydown.dinext_fcm_clear_child_highlight",
+		() => clear_child_table_highlights(frm, state, fieldname)
+	);
+}
+
+function highlight_grid_cell($row, child_fieldname, kind) {
+	if (!$row || !$row.length || !child_fieldname) return;
+	const highlight_class = kind === "conflict" ? CHILD_CELL_CONFLICT_CLASS : CHILD_CELL_SERVER_CLASS;
+	const $cell = $row.find(`.grid-static-col[data-fieldname="${child_fieldname}"]`).first();
+	if (!$cell.length) return;
+	$cell.removeClass(`${CHILD_CELL_SERVER_CLASS} ${CHILD_CELL_CONFLICT_CLASS}`);
+	$cell.addClass(highlight_class);
+}
+
+function highlight_child_table_removed_border(frm, fieldname) {
+	const $wrapper = get_field_wrapper(frm, fieldname);
+	if (!$wrapper) return;
+	$wrapper.addClass(CHILD_TABLE_REMOVED_CLASS);
+}
+
+function highlight_child_table_changes(frm, state, fieldname, child_analysis, attempt) {
+	if (!state.cfg.highlight_server_changes) return;
+	if (!child_table_has_highlight_targets(child_analysis)) return;
+
+	const grid = get_child_table_grid(frm, fieldname);
+	if (!grid) {
+		fcm_debug(
+			state,
+			"highlight_child_table_grid_missing",
+			{
+				doc: fcm_doc_label(frm),
+				fieldname,
+				attempt: attempt || 0,
+			},
+			FCM_LOG_LEVELS.warn
+		);
+		return false;
+	}
+
+	clear_child_table_highlights(frm, state, fieldname);
+
+	let cell_count = 0;
+	let row_count = 0;
+	let missing_rows = 0;
+
+	(child_analysis.changed_rows || []).forEach((row_ref) => {
+		const $row = find_grid_row_element(grid, row_ref);
+		if (!$row || !$row.length) {
+			missing_rows += 1;
+			return;
+		}
+		(row_ref.conflict_fields || []).forEach((child_fieldname) => {
+			highlight_grid_cell($row, child_fieldname, "conflict");
+			cell_count += 1;
+		});
+		(row_ref.server_fields || []).forEach((child_fieldname) => {
+			highlight_grid_cell($row, child_fieldname, "server");
+			cell_count += 1;
+		});
+	});
+
+	(child_analysis.added_rows || []).forEach((row_ref) => {
+		const $row = find_grid_row_element(grid, row_ref);
+		if (!$row || !$row.length) {
+			missing_rows += 1;
+			return;
+		}
+		$row.addClass(CHILD_ROW_ADDED_CLASS);
+		row_count += 1;
+	});
+
+	if (child_analysis.removed_rows && child_analysis.removed_rows.length) {
+		highlight_child_table_removed_border(frm, fieldname);
+	}
+
+	bind_clear_child_highlight_on_edit(frm, state, fieldname, grid);
+
+	state.highlighted_child_tables = state.highlighted_child_tables || {};
+	state.highlighted_child_tables[fieldname] = {
+		changed_rows: (child_analysis.changed_rows || []).length,
+		added_rows: (child_analysis.added_rows || []).length,
+		removed_rows: (child_analysis.removed_rows || []).length,
+	};
+
+	fcm_debug(state, "highlight_child_table", {
+		doc: fcm_doc_label(frm),
+		fieldname,
+		cell_count,
+		row_count,
+		missing_rows,
+		removed_rows: (child_analysis.removed_rows || []).length,
+		attempt: attempt || 0,
+	});
+
+	return missing_rows === 0;
+}
+
+function schedule_child_table_highlights(frm, state, fieldname, child_analysis) {
+	const max_attempts = 12;
+	const retry_ms = 50;
+
+	const run = (attempt) => {
+		const done = highlight_child_table_changes(frm, state, fieldname, child_analysis, attempt);
+		if (done || attempt >= max_attempts) return;
+		setTimeout(() => run(attempt + 1), retry_ms);
+	};
+
+	if (typeof requestAnimationFrame === "function") {
+		requestAnimationFrame(() => requestAnimationFrame(() => run(0)));
+		return;
+	}
+	setTimeout(() => run(0), 0);
+}
+
+function apply_field_highlight(frm, state, fieldname, kind, analysis, silent_startup) {
+	if (silent_startup || !state.cfg.highlight_server_changes) return;
+
+	if (is_child_table_field(frm, fieldname)) {
+		const child_analysis = analysis.child_table_changes && analysis.child_table_changes[fieldname];
+		if (child_table_has_highlight_targets(child_analysis)) {
+			schedule_child_table_highlights(frm, state, fieldname, child_analysis);
+			return;
+		}
+	}
+
+	highlight_field(frm, state, fieldname, kind);
 }
 
 function clear_highlight(frm, state, fieldname) {
@@ -871,13 +1411,26 @@ function clear_all_fcm_highlights(frm, state) {
 	const $root = get_form_wrapper(frm);
 	if (!$root) return 0;
 
-	const selector = `.${SERVER_HIGHLIGHT_CLASS}, .${CONFLICT_HIGHLIGHT_CLASS}`;
+	const selector = [
+		`.${SERVER_HIGHLIGHT_CLASS}`,
+		`.${CONFLICT_HIGHLIGHT_CLASS}`,
+		`.${CHILD_TABLE_REMOVED_CLASS}`,
+		`.${CHILD_CELL_SERVER_CLASS}`,
+		`.${CHILD_CELL_CONFLICT_CLASS}`,
+		`.${CHILD_ROW_ADDED_CLASS}`,
+	].join(", ");
 	const $marked = $root.find(selector).add($root.filter(selector));
 	const count = $marked.length;
 
-	$marked.removeClass(`${SERVER_HIGHLIGHT_CLASS} ${CONFLICT_HIGHLIGHT_CLASS}`).off(".dinext_fcm_clear_highlight");
+	$marked
+		.removeClass(
+			`${SERVER_HIGHLIGHT_CLASS} ${CONFLICT_HIGHLIGHT_CLASS} ${CHILD_TABLE_REMOVED_CLASS} ${CHILD_CELL_SERVER_CLASS} ${CHILD_CELL_CONFLICT_CLASS} ${CHILD_ROW_ADDED_CLASS}`
+		)
+		.off(".dinext_fcm_clear_highlight")
+		.off(".dinext_fcm_clear_child_highlight");
 
 	if (state) {
+		if (state.highlighted_child_tables) state.highlighted_child_tables = {};
 		fcm_debug(state, "clear_all_highlights", {
 			doc: fcm_doc_label(frm),
 			count,
@@ -892,6 +1445,11 @@ function clear_highlights(frm, state) {
 		clear_highlight(frm, state, fieldname);
 	});
 	state.highlighted_fields = {};
+
+	Object.keys(state.highlighted_child_tables || {}).forEach((fieldname) => {
+		clear_child_table_highlights(frm, state, fieldname);
+	});
+	state.highlighted_child_tables = {};
 }
 
 function show_docinfo_alert(changed_keys, cfg) {
@@ -900,51 +1458,60 @@ function show_docinfo_alert(changed_keys, cfg) {
 	const labels = cfg.docinfo_key_labels || {};
 	const changed_labels = changed_keys.map((key) => labels[key] || key);
 
-	frappe.show_alert({
-		message: `Обновлены данные документа: ${changed_labels.join(", ")}`,
-		indicator: "orange",
-	});
+	show_fcm_alert(cfg, `Обновлены данные документа: ${changed_labels.join(", ")}`, "orange");
 }
 
-function show_realtime_alert(data) {
-	const changed_by = data && data.modified_by ? ` (${data.modified_by})` : "";
-	frappe.show_alert({
-		message: `Документ изменён на сервере${changed_by}. Выполняется сверка изменений.`,
-		indicator: "orange",
-	});
+function show_realtime_alert(data, frm, cfg) {
+	cfg = cfg || {};
+	const prefix = format_modifier_prefix(data && data.modified_by);
+	show_fcm_alert(cfg, `${prefix}Выполняется сверка изменений.`, "orange");
 }
 
-function show_applied_alert(analysis) {
+function show_applied_alert(frm, analysis, cfg) {
 	if (!analysis) return;
+	cfg = cfg || {};
 
 	const applied_server = analysis.applied_server || analysis.server_only || [];
 	const applied_conflicts = analysis.applied_conflicts || [];
 	if (!applied_server.length && !applied_conflicts.length) return;
 
+	const prefix = format_modifier_prefix(analysis.server_modified_by);
 	const messages = [];
 	if (applied_server.length) {
-		messages.push(`обновлены поля: ${applied_server.join(", ")}`);
+		messages.push(`обновлены поля: ${format_field_labels(frm, applied_server).join(", ")}`);
 	}
 	if (applied_conflicts.length) {
-		messages.push(`сервер перезаписал локальные правки: ${applied_conflicts.join(", ")}`);
+		messages.push(
+			`сервер перезаписал локальные правки: ${format_field_labels(frm, applied_conflicts).join(", ")}`
+		);
 	}
 
-	frappe.show_alert({
-		message: `Объект был изменён на сервере, ${messages.join("; ")}`,
-		indicator: applied_conflicts.length ? "red" : "orange",
-	});
+	const indicator = applied_conflicts.length ? "red" : "orange";
+	show_fcm_alert(cfg, `${prefix}Объект был изменён на сервере, ${messages.join("; ")}`, indicator);
 }
 
 const FormMergeUi = {
+	apply_field_highlight,
+	child_table_has_highlight_targets,
 	clear_all_fcm_highlights,
+	clear_child_table_highlights,
 	clear_highlight,
 	clear_highlights,
 	ensure_highlight_styles,
+	format_field_labels,
+	format_modifier_prefix,
+	get_alert_duration,
+	get_child_table_grid,
+	get_field_label,
 	get_field_wrapper,
 	get_form_wrapper,
+	highlight_child_table_changes,
 	highlight_field,
+	resolve_user_full_name,
+	schedule_child_table_highlights,
 	show_applied_alert,
 	show_docinfo_alert,
+	show_fcm_alert,
 	show_realtime_alert,
 };
 
@@ -964,24 +1531,18 @@ function remove_child_rows_from_locals(rows) {
 	});
 }
 
-function apply_child_table(frm, server_doc, fieldname) {
-	const field = frm.fields_dict && frm.fields_dict[fieldname];
-	const child_doctype = field && field.df && field.df.options;
-	const rows = clone_raw_value(server_doc[fieldname] || []);
-	const before_rows = clone_raw_value(frm.doc[fieldname] || []);
-	const state = get_state(frm);
-
+function write_child_rows_to_form(frm, fieldname, rows, child_doctype) {
 	remove_child_rows_from_locals(frm.doc[fieldname]);
 	frm.doc[fieldname] = [];
 
-	rows.forEach((row, index) => {
+	(rows || []).forEach((row, index) => {
 		row.doctype = row.doctype || child_doctype;
 		row.parent = frm.docname;
 		row.parentfield = fieldname;
 		row.parenttype = frm.doctype;
-		row.idx = row.idx || index + 1;
+		row.idx = index + 1;
 
-		if (row.doctype && row.name) {
+		if (row.doctype && row.name && !row.__islocal) {
 			locals[row.doctype] = locals[row.doctype] || {};
 			locals[row.doctype][row.name] = row;
 		}
@@ -992,6 +1553,59 @@ function apply_child_table(frm, server_doc, fieldname) {
 	const local_doc = locals[frm.doctype] && locals[frm.doctype][frm.docname];
 	if (local_doc) local_doc[fieldname] = frm.doc[fieldname];
 	frm.refresh_field(fieldname);
+}
+
+function merge_child_table(frm, server_doc, fieldname, state) {
+	const field = frm.fields_dict && frm.fields_dict[fieldname];
+	const child_doctype = field && field.df && field.df.options;
+	const policy = (state.cfg && state.cfg.conflict_policy) || "server_wins";
+	const initial_rows = clone_raw_value((state.initial_raw_values && state.initial_raw_values[fieldname]) || []);
+	const local_rows = clone_raw_value(frm.doc[fieldname] || []);
+	const server_rows = clone_raw_value(server_doc[fieldname] || []);
+	const before_rows = clone_raw_value(local_rows);
+
+	const initial_map = build_child_row_map(initial_rows);
+	const local_map = build_child_row_map(local_rows);
+	const server_map = build_child_row_map(server_rows);
+	const merged_rows = [];
+	const processed_server_keys = new Set();
+
+	(server_rows || []).forEach((server_row, index) => {
+		if (!server_row || server_row.__islocal) return;
+		const key = child_row_key(server_row, index);
+		processed_server_keys.add(key);
+		const local_row = local_map[key];
+		const initial_row = initial_map[key] || {};
+
+		if (local_row) {
+			merged_rows.push(merge_child_row(initial_row, local_row, server_row, policy));
+			return;
+		}
+
+		merged_rows.push(clone_raw_value(server_row));
+	});
+
+	Object.keys(server_map).forEach((key) => {
+		if (key.startsWith("__islocal:") || processed_server_keys.has(key)) return;
+		merged_rows.push(clone_raw_value(server_map[key]));
+	});
+
+	Object.keys(local_map).forEach((key) => {
+		if (key.startsWith("__islocal:")) return;
+		if (server_map[key]) return;
+		const local_row = local_map[key];
+		const initial_row = initial_map[key] || {};
+		if (policy !== "server_wins" && local_row && !row_equal(initial_row, local_row)) {
+			merged_rows.push(clone_raw_value(local_row));
+		}
+	});
+
+	(local_rows || []).forEach((local_row) => {
+		if (!local_row || !local_row.__islocal) return;
+		merged_rows.push(clone_raw_value(local_row));
+	});
+
+	write_child_rows_to_form(frm, fieldname, merged_rows, child_doctype);
 
 	fcm_debug(
 		state,
@@ -1000,6 +1614,7 @@ function apply_child_table(frm, server_doc, fieldname) {
 			doc: fcm_doc_label(frm),
 			fieldname,
 			child_doctype,
+			mode: "merge",
 			before: summarize_field_value(before_rows),
 			after: summarize_field_value(frm.doc[fieldname]),
 			server: summarize_field_value(server_doc[fieldname]),
@@ -1009,9 +1624,13 @@ function apply_child_table(frm, server_doc, fieldname) {
 	);
 }
 
-function apply_field(frm, server_doc, fieldname) {
+function apply_child_table(frm, server_doc, fieldname, state) {
+	merge_child_table(frm, server_doc, fieldname, state);
+}
+
+function apply_field(frm, server_doc, fieldname, state) {
 	if (is_child_table_field(frm, fieldname)) {
-		apply_child_table(frm, server_doc, fieldname);
+		merge_child_table(frm, server_doc, fieldname, state);
 		return;
 	}
 
@@ -1022,13 +1641,34 @@ function apply_field(frm, server_doc, fieldname) {
 }
 
 function apply_modified(frm, server_doc) {
-	if (!server_doc || !server_doc.modified) return;
-	frm.doc.modified = server_doc.modified;
+	if (!server_doc) return;
+
+	if (server_doc.modified) {
+		frm.doc.modified = server_doc.modified;
+	}
+	if (server_doc.modified_by) {
+		frm.doc.modified_by = server_doc.modified_by;
+	}
+
 	const local_doc = locals[frm.doctype] && locals[frm.doctype][frm.docname];
-	if (local_doc) local_doc.modified = server_doc.modified;
+	if (local_doc) {
+		if (server_doc.modified) local_doc.modified = server_doc.modified;
+		if (server_doc.modified_by) local_doc.modified_by = server_doc.modified_by;
+	}
+
+	if (frm.sidebar && frm.sidebar.refresh) {
+		frm.sidebar.refresh();
+	}
 }
 
-function update_initial_value(state, server_doc, fieldname) {
+function update_initial_value(state, server_doc, fieldname, frm) {
+	if (frm && is_child_table_field(frm, fieldname)) {
+		state.initial_values[fieldname] = normalize_value(frm.doc[fieldname]);
+		state.initial_raw_values = state.initial_raw_values || {};
+		state.initial_raw_values[fieldname] = clone_raw_value(frm.doc[fieldname]);
+		return;
+	}
+
 	state.initial_values[fieldname] = normalize_value(server_doc[fieldname]);
 }
 
@@ -1040,6 +1680,10 @@ function sync_matching_server_values(frm, server_doc, state) {
 	state.fields.forEach((fieldname) => {
 		if (equal(local[fieldname], server[fieldname])) {
 			state.initial_values[fieldname] = server[fieldname];
+			if (is_child_table_field(frm, fieldname)) {
+				state.initial_raw_values = state.initial_raw_values || {};
+				state.initial_raw_values[fieldname] = clone_raw_value(frm.doc[fieldname]);
+			}
 			synced_fields.push(fieldname);
 		}
 	});
@@ -1075,9 +1719,11 @@ const FormValueApplier = {
 	apply_modified,
 	is_child_table_field,
 	mark_clean,
+	merge_child_table,
 	remove_child_rows_from_locals,
 	sync_matching_server_values,
 	update_initial_value,
+	write_child_rows_to_form,
 };
 
 
@@ -1502,15 +2148,21 @@ function apply_server_changes(frm, server_doc, state, opts) {
 	});
 
 	applied_server.forEach((fieldname) => {
-		apply_field(frm, server_doc, fieldname);
-		update_initial_value(state, server_doc, fieldname);
-		if (!silent_startup) highlight_field(frm, state, fieldname, "server");
+		apply_field(frm, server_doc, fieldname, state);
+		update_initial_value(state, server_doc, fieldname, frm);
 	});
 
 	applied_conflicts.forEach((fieldname) => {
-		apply_field(frm, server_doc, fieldname);
-		update_initial_value(state, server_doc, fieldname);
-		if (!silent_startup) highlight_field(frm, state, fieldname, "conflict");
+		apply_field(frm, server_doc, fieldname, state);
+		update_initial_value(state, server_doc, fieldname, frm);
+	});
+
+	applied_server.forEach((fieldname) => {
+		apply_field_highlight(frm, state, fieldname, "server", analysis, silent_startup);
+	});
+
+	applied_conflicts.forEach((fieldname) => {
+		apply_field_highlight(frm, state, fieldname, "conflict", analysis, silent_startup);
 	});
 
 	apply_modified(frm, server_doc);
@@ -1520,6 +2172,7 @@ function apply_server_changes(frm, server_doc, state, opts) {
 	analysis.applied_conflicts = applied_conflicts;
 	analysis.remaining_local = get_remaining_local_changes(frm, state);
 	analysis.modified_changed = modified_changed;
+	analysis.server_modified_by = server_doc.modified_by;
 
 	state.server_changed = analysis.conflicts.length > applied_conflicts.length;
 	state.server_modified = server_doc.modified;
@@ -1585,7 +2238,7 @@ function handle_doc_update(data) {
 
 	const silent_startup = is_startup_warmup_active(state);
 	if (state.cfg.show_realtime_alert && !silent_startup) {
-		show_realtime_alert(data);
+		show_realtime_alert(data, frm, state.cfg);
 	}
 
 	if (state.cfg.apply_server_changes_on_realtime) {
@@ -1622,7 +2275,9 @@ function handle_doc_update(data) {
 				silent: silent_startup,
 				source: "doc_update",
 			});
-			if (state.cfg.show_applied_alert && !silent_startup) show_applied_alert(analysis);
+			if (state.cfg.show_applied_alert && !silent_startup) {
+				show_applied_alert(frm, analysis, state.cfg);
+			}
 		});
 	}
 }
@@ -1708,7 +2363,9 @@ function check_server_changes(frm) {
 			silent: silent_startup,
 			source: "poll",
 		});
-		if (state.cfg.show_applied_alert && !silent_startup) show_applied_alert(analysis);
+		if (state.cfg.show_applied_alert && !silent_startup) {
+			show_applied_alert(frm, analysis, state.cfg);
+		}
 		return analysis;
 	});
 }
@@ -1731,17 +2388,18 @@ function init_polling(frm, state) {
 	}, interval);
 }
 
-function confirm_conflicts(conflicts, cfg) {
+function confirm_conflicts(frm, conflicts, cfg) {
 	if (!conflicts.length) return Promise.resolve("continue");
 	if (cfg.conflict_policy === "local_wins") return Promise.resolve("local_wins");
 	if (cfg.conflict_policy === "server_wins") return Promise.resolve("server_wins");
 	if (cfg.conflict_policy === "block") return Promise.resolve("block");
 
 	return new Promise((resolve) => {
+		const conflict_labels = format_field_labels(frm, conflicts).join(", ");
 		const message = [
 			"Документ был изменён на сервере, и часть полей конфликтует с вашими правками.",
 			"",
-			`Конфликтующие поля: ${conflicts.join(", ")}`,
+			`Конфликтующие поля: ${conflict_labels}`,
 			"",
 			"Выберите, как продолжить сохранение.",
 		].join("<br>");
@@ -1825,18 +2483,19 @@ function before_save(frm) {
 
 		if (state.cfg.conflict_policy === "server_wins") {
 			const analysis = apply_server_changes(frm, server_doc, state);
-			if (state.cfg.show_applied_alert) show_applied_alert(analysis);
+			if (state.cfg.show_applied_alert) show_applied_alert(frm, analysis, state.cfg);
 			return;
 		}
 
 		const analysis = analyze(frm, server_doc, state);
+		analysis.server_modified_by = server_doc.modified_by;
 		analysis.server_only.forEach((fieldname) => {
-			apply_field(frm, server_doc, fieldname);
-			update_initial_value(state, server_doc, fieldname);
-			highlight_field(frm, state, fieldname, "server");
+			apply_field(frm, server_doc, fieldname, state);
+			update_initial_value(state, server_doc, fieldname, frm);
+			apply_field_highlight(frm, state, fieldname, "server", analysis, false);
 		});
 
-		return confirm_conflicts(analysis.conflicts, state.cfg).then((decision) => {
+		return confirm_conflicts(frm, analysis.conflicts, state.cfg).then((decision) => {
 			if (decision === "block") {
 				frappe.validated = false;
 				frappe.throw("Сохранение отменено: документ был изменён на сервере.");
@@ -1844,9 +2503,9 @@ function before_save(frm) {
 
 			if (decision === "server_wins") {
 				analysis.conflicts.forEach((fieldname) => {
-					apply_field(frm, server_doc, fieldname);
-					update_initial_value(state, server_doc, fieldname);
-					highlight_field(frm, state, fieldname, "conflict");
+					apply_field(frm, server_doc, fieldname, state);
+					update_initial_value(state, server_doc, fieldname, frm);
+					apply_field_highlight(frm, state, fieldname, "conflict", analysis, false);
 				});
 			}
 
@@ -1927,7 +2586,7 @@ function install(frm, opts) {
 
 	if (is_fcm_debug_enabled(state)) {
 		console.info(
-			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, local_drift. dump: dinext_common.formConflictMerge.dump_debug_state()`
+			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, highlight_child_table, local_drift. dump: dinext_common.formConflictMerge.dump_debug_state()`
 		);
 		fcm_debug_state_snapshot(state, frm, "install_snapshot");
 	}
@@ -1971,6 +2630,10 @@ const FormMergeEngine = {
 
 // Source: dinext_common/public/js/form_conflict_merge/index.js
 const FormConflictMergeConfig = {
+	CHILD_CELL_CONFLICT_CLASS,
+	CHILD_CELL_SERVER_CLASS,
+	CHILD_TABLE_REMOVED_CLASS,
+	CHILD_ROW_ADDED_CLASS,
 	CONFLICT_HIGHLIGHT_CLASS,
 	DEFAULT_CONFIG,
 	HIGHLIGHT_STYLE_ID,
