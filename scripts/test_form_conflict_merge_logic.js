@@ -11,9 +11,10 @@ function loadModule(sources) {
 	const fn = new Function(
 		"window",
 		"frappe",
+		"__",
 		`${code}\nreturn { FormDiff, bump_sync_generation, is_sync_stale };`
 	);
-	return fn(sandbox.window, {});
+	return fn(sandbox.window, {}, (value) => value);
 }
 
 const { FormDiff, bump_sync_generation, is_sync_stale } = loadModule(["config.js", "diff.js", "state.js"]);
@@ -83,6 +84,10 @@ const observer_frm = {
 		identification: getdoc_ident,
 		estimations: getdoc_est,
 	},
+	fields_dict: {
+		identification: { df: { fieldtype: "Table", label: "Identification" } },
+		estimations: { df: { fieldtype: "Table", label: "Estimations" } },
+	},
 };
 const observer_server = {
 	identification: client_ident,
@@ -91,7 +96,12 @@ const observer_server = {
 const observer_state = {
 	fields: ["identification", "estimations"],
 	initial_values: FormDiff.snapshot(observer_frm.doc, ["identification", "estimations"]),
+	initial_raw_values: {
+		identification: getdoc_ident,
+		estimations: getdoc_est,
+	},
 	local_seed_fields: {},
+	cfg: { conflict_policy: "server_wins" },
 };
 const observer_analysis = FormDiff.analyze(observer_frm, observer_server, observer_state);
 assert(!observer_analysis.server_only.includes("identification"), "identification not server_only for null shape");
@@ -99,12 +109,14 @@ assert(!observer_analysis.server_only.includes("estimations"), "estimations not 
 assert(observer_analysis.server_only.length === 0, "no false server_only from null shape");
 
 // analyze: server_only when only server changed
-const frm = { doc: { description: "initial", subject: "same" } };
+const frm = { doc: { description: "initial", subject: "same" }, fields_dict: {} };
 const server_doc = { description: "server text", subject: "same" };
 const state = {
 	fields: ["description", "subject"],
 	initial_values: { description: "initial", subject: "same" },
+	initial_raw_values: {},
 	local_seed_fields: {},
+	cfg: { conflict_policy: "server_wins" },
 };
 const analysis = FormDiff.analyze(frm, server_doc, state);
 assert(analysis.server_only.includes("description"), "description is server_only");
@@ -120,6 +132,124 @@ server_doc.subject = "server";
 const conflictAnalysis = FormDiff.analyze(frm, server_doc, state);
 assert(conflictAnalysis.conflicts.includes("description"), "both changed -> conflict");
 assert(conflictAnalysis.conflicts.includes("subject"), "both changed subject -> conflict");
+
+// child table: local row A + server row B -> server_only, not whole-table conflict
+const initial_est = [
+	{ name: "row-a", grade: 10, status: "Open", idx: 1 },
+	{ name: "row-b", grade: 20, status: "Open", idx: 2 },
+];
+const local_est = [
+	{ name: "row-a", grade: 11, status: "Open", idx: 1 },
+	{ name: "row-b", grade: 20, status: "Open", idx: 2 },
+];
+const server_est = [
+	{ name: "row-a", grade: 10, status: "Open", idx: 1 },
+	{ name: "row-b", grade: 20, status: "Closed", idx: 2 },
+];
+const child_merge = FormDiff.analyze_child_table_merge(initial_est, local_est, server_est, "server_wins");
+assert(child_merge.has_server_apply, "child table has server apply when another row changed");
+assert(!child_merge.has_conflicts, "different rows changed -> no table-level conflict");
+assert(child_merge.changed_rows.length === 1, "one changed row detected");
+assert(child_merge.changed_rows[0].row_name === "row-b", "changed row is row-b");
+assert(child_merge.changed_rows[0].server_fields.includes("status"), "row-b status is server field");
+assert(!child_merge.changed_rows.some((row) => row.row_name === "row-a"), "unchanged row-a not in changed_rows");
+
+const child_frm = {
+	doc: { estimations: local_est },
+	fields_dict: { estimations: { df: { fieldtype: "Table", label: "Estimations" } } },
+};
+const child_state = {
+	fields: ["estimations"],
+	initial_values: { estimations: FormDiff.normalize_value(initial_est) },
+	initial_raw_values: { estimations: initial_est },
+	local_seed_fields: {},
+	cfg: { conflict_policy: "server_wins" },
+};
+const child_analysis = FormDiff.analyze(child_frm, { estimations: server_est }, child_state);
+assert(child_analysis.server_only.includes("estimations"), "child table classified as server_only");
+assert(!child_analysis.conflicts.includes("estimations"), "child table not whole-table conflict");
+assert(child_analysis.child_table_changes.estimations.changed_rows.length === 1, "analyze exposes changed_rows");
+
+const merged_a = FormDiff.merge_child_row(
+	initial_est[0],
+	local_est[0],
+	server_est[0],
+	"server_wins"
+);
+assert(merged_a.grade === 11, "merge preserves local-only row field when server row unchanged");
+
+const merged_b = FormDiff.merge_child_row(
+	initial_est[1],
+	local_est[1],
+	server_est[1],
+	"server_wins"
+);
+assert(merged_b.status === "Closed", "merge applies server-only row field");
+assert(merged_b.grade === 20, "merge keeps unchanged row field");
+
+// child table conflict on same row field
+const local_conflict = [
+	{ name: "row-a", grade: 11, status: "Open", idx: 1 },
+];
+const server_conflict = [{ name: "row-a", grade: 99, status: "Open", idx: 1 }];
+const row_conflict = FormDiff.analyze_child_table_merge(initial_est.slice(0, 1), local_conflict, server_conflict, "server_wins");
+assert(row_conflict.has_conflicts, "same row field changed on both sides -> conflict");
+
+const merged_conflict = FormDiff.merge_child_row(
+	initial_est[0],
+	local_conflict[0],
+	server_conflict[0],
+	"server_wins"
+);
+assert(merged_conflict.grade === 99, "server_wins overwrites conflicting row field");
+assert(row_conflict.changed_rows.length === 1, "conflict row tracked");
+assert(row_conflict.changed_rows[0].conflict_fields.includes("grade"), "conflict field listed");
+
+const added_server_est = [
+	...initial_est,
+	{ name: "row-c", grade: 3, status: "Open", idx: 3 },
+];
+const added_merge = FormDiff.analyze_child_table_merge(initial_est, local_est, added_server_est, "server_wins");
+assert(added_merge.added_rows.length === 1, "added row detected");
+assert(added_merge.added_rows[0].row_name === "row-c", "added row name captured");
+
+const removed_server_est = [initial_est[0]];
+const removed_merge = FormDiff.analyze_child_table_merge(initial_est, local_est, removed_server_est, "server_wins");
+assert(removed_merge.removed_rows.length === 1, "removed row detected");
+assert(removed_merge.removed_rows[0].row_name === "row-b", "removed row-b captured");
+
+// local already matches server while initial baseline is stale (realtime / early apply)
+const synced_local_est = [
+	{ name: "row-a", grade: 11, status: "Open", idx: 1 },
+	{ name: "row-b", grade: 20, status: "Closed", idx: 2 },
+];
+const synced_server_est = [
+	{ name: "row-a", grade: 11, status: "Open", idx: 1 },
+	{ name: "row-b", grade: 20, status: "Closed", idx: 2 },
+];
+const synced_merge = FormDiff.analyze_child_table_merge(initial_est, synced_local_est, synced_server_est, "server_wins");
+assert(synced_merge.has_server_apply, "stale baseline with synced local/server still has server apply");
+assert(synced_merge.changed_rows.length === 2, "both changed rows tracked when local already equals server");
+assert(
+	synced_merge.changed_rows.every((row) => (row.server_fields || []).length > 0),
+	"stale baseline rows expose server_fields for highlight"
+);
+
+// server row missing locally but present in initial baseline
+const missing_local_est = [{ name: "row-a", grade: 10, status: "Open", idx: 1 }];
+const restored_server_est = [
+	{ name: "row-a", grade: 10, status: "Open", idx: 1 },
+	{ name: "row-b", grade: 20, status: "Closed", idx: 2 },
+];
+const missing_local_merge = FormDiff.analyze_child_table_merge(
+	initial_est,
+	missing_local_est,
+	restored_server_est,
+	"server_wins"
+);
+assert(missing_local_merge.has_server_apply, "missing local row with server row triggers apply");
+assert(missing_local_merge.changed_rows.length === 1, "missing local row tracked in changed_rows");
+assert(missing_local_merge.changed_rows[0].row_name === "row-b", "restored row-b tracked");
 
 // sync generation stale guard
 const syncState = { doc_key: "Issue::ISS-001", sync_generation: 1 };

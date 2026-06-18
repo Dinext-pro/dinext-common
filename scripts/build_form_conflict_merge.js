@@ -58,7 +58,7 @@ const header = `// Copyright (c) 2026, Dinext
  * подсвечивается красным.
  *
  * Важно: утилита не заменяет permissions, validations и серверные hooks.
- * Child tables сравниваются и применяются целиком, без построчного merge.
+ * Child tables сравниваются построчно; при server_wins конфликтующие поля строк берутся с сервера.
  */
 
 (function () {
