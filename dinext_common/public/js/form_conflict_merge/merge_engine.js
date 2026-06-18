@@ -56,15 +56,21 @@ function apply_server_changes(frm, server_doc, state, opts) {
 	});
 
 	applied_server.forEach((fieldname) => {
-		apply_field(frm, server_doc, fieldname);
-		update_initial_value(state, server_doc, fieldname);
-		if (!silent_startup) highlight_field(frm, state, fieldname, "server");
+		apply_field(frm, server_doc, fieldname, state);
+		update_initial_value(state, server_doc, fieldname, frm);
 	});
 
 	applied_conflicts.forEach((fieldname) => {
-		apply_field(frm, server_doc, fieldname);
-		update_initial_value(state, server_doc, fieldname);
-		if (!silent_startup) highlight_field(frm, state, fieldname, "conflict");
+		apply_field(frm, server_doc, fieldname, state);
+		update_initial_value(state, server_doc, fieldname, frm);
+	});
+
+	applied_server.forEach((fieldname) => {
+		apply_field_highlight(frm, state, fieldname, "server", analysis, silent_startup);
+	});
+
+	applied_conflicts.forEach((fieldname) => {
+		apply_field_highlight(frm, state, fieldname, "conflict", analysis, silent_startup);
 	});
 
 	apply_modified(frm, server_doc);
@@ -74,6 +80,7 @@ function apply_server_changes(frm, server_doc, state, opts) {
 	analysis.applied_conflicts = applied_conflicts;
 	analysis.remaining_local = get_remaining_local_changes(frm, state);
 	analysis.modified_changed = modified_changed;
+	analysis.server_modified_by = server_doc.modified_by;
 
 	state.server_changed = analysis.conflicts.length > applied_conflicts.length;
 	state.server_modified = server_doc.modified;
@@ -139,7 +146,7 @@ function handle_doc_update(data) {
 
 	const silent_startup = is_startup_warmup_active(state);
 	if (state.cfg.show_realtime_alert && !silent_startup) {
-		show_realtime_alert(data);
+		show_realtime_alert(data, frm, state.cfg);
 	}
 
 	if (state.cfg.apply_server_changes_on_realtime) {
@@ -176,7 +183,9 @@ function handle_doc_update(data) {
 				silent: silent_startup,
 				source: "doc_update",
 			});
-			if (state.cfg.show_applied_alert && !silent_startup) show_applied_alert(analysis);
+			if (state.cfg.show_applied_alert && !silent_startup) {
+				show_applied_alert(frm, analysis, state.cfg);
+			}
 		});
 	}
 }
@@ -262,7 +271,9 @@ function check_server_changes(frm) {
 			silent: silent_startup,
 			source: "poll",
 		});
-		if (state.cfg.show_applied_alert && !silent_startup) show_applied_alert(analysis);
+		if (state.cfg.show_applied_alert && !silent_startup) {
+			show_applied_alert(frm, analysis, state.cfg);
+		}
 		return analysis;
 	});
 }
@@ -285,17 +296,18 @@ function init_polling(frm, state) {
 	}, interval);
 }
 
-function confirm_conflicts(conflicts, cfg) {
+function confirm_conflicts(frm, conflicts, cfg) {
 	if (!conflicts.length) return Promise.resolve("continue");
 	if (cfg.conflict_policy === "local_wins") return Promise.resolve("local_wins");
 	if (cfg.conflict_policy === "server_wins") return Promise.resolve("server_wins");
 	if (cfg.conflict_policy === "block") return Promise.resolve("block");
 
 	return new Promise((resolve) => {
+		const conflict_labels = format_field_labels(frm, conflicts).join(", ");
 		const message = [
 			"Документ был изменён на сервере, и часть полей конфликтует с вашими правками.",
 			"",
-			`Конфликтующие поля: ${conflicts.join(", ")}`,
+			`Конфликтующие поля: ${conflict_labels}`,
 			"",
 			"Выберите, как продолжить сохранение.",
 		].join("<br>");
@@ -379,18 +391,19 @@ function before_save(frm) {
 
 		if (state.cfg.conflict_policy === "server_wins") {
 			const analysis = apply_server_changes(frm, server_doc, state);
-			if (state.cfg.show_applied_alert) show_applied_alert(analysis);
+			if (state.cfg.show_applied_alert) show_applied_alert(frm, analysis, state.cfg);
 			return;
 		}
 
 		const analysis = analyze(frm, server_doc, state);
+		analysis.server_modified_by = server_doc.modified_by;
 		analysis.server_only.forEach((fieldname) => {
-			apply_field(frm, server_doc, fieldname);
-			update_initial_value(state, server_doc, fieldname);
-			highlight_field(frm, state, fieldname, "server");
+			apply_field(frm, server_doc, fieldname, state);
+			update_initial_value(state, server_doc, fieldname, frm);
+			apply_field_highlight(frm, state, fieldname, "server", analysis, false);
 		});
 
-		return confirm_conflicts(analysis.conflicts, state.cfg).then((decision) => {
+		return confirm_conflicts(frm, analysis.conflicts, state.cfg).then((decision) => {
 			if (decision === "block") {
 				frappe.validated = false;
 				frappe.throw("Сохранение отменено: документ был изменён на сервере.");
@@ -398,9 +411,9 @@ function before_save(frm) {
 
 			if (decision === "server_wins") {
 				analysis.conflicts.forEach((fieldname) => {
-					apply_field(frm, server_doc, fieldname);
-					update_initial_value(state, server_doc, fieldname);
-					highlight_field(frm, state, fieldname, "conflict");
+					apply_field(frm, server_doc, fieldname, state);
+					update_initial_value(state, server_doc, fieldname, frm);
+					apply_field_highlight(frm, state, fieldname, "conflict", analysis, false);
 				});
 			}
 
@@ -481,7 +494,7 @@ function install(frm, opts) {
 
 	if (is_fcm_debug_enabled(state)) {
 		console.info(
-			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, local_drift. dump: dinext_common.formConflictMerge.dump_debug_state()`
+			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, highlight_child_table, local_drift. dump: dinext_common.formConflictMerge.dump_debug_state()`
 		);
 		fcm_debug_state_snapshot(state, frm, "install_snapshot");
 	}
