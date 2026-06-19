@@ -101,6 +101,14 @@ const DEFAULT_CONFIG = {
 	// Первичная стабилизация формы после onload/refresh: другие Client Script,
 	// Quill и sidebar могут ещё менять клиентское состояние.
 	startup_warmup_ms: 3000,
+
+	// После серверных изменений docstatus / workflow state (и form_resync_fields)
+	// вызывать frm.refresh(), как при reload: read-only по workflow, кнопки действий,
+	// read_only_depends_on и refresh-хуки Client Script.
+	form_resync_on_server_apply: true,
+
+	// Дополнительные поля, изменение которых должно пересчитать UI формы.
+	form_resync_fields: [],
 };
 
 const SYSTEM_FIELDS = [
@@ -1727,6 +1735,88 @@ const FormValueApplier = {
 };
 
 
+// Source: dinext_common/public/js/form_conflict_merge/form_resync.js
+function get_form_resync_fieldnames(frm, cfg) {
+	if (!frm || !cfg || cfg.form_resync_on_server_apply === false) return [];
+
+	const fields = new Set(cfg.form_resync_fields || []);
+	fields.add("docstatus");
+
+	if (frappe.workflow && frappe.workflow.get_state_fieldname) {
+		const workflow_field = frappe.workflow.get_state_fieldname(frm.doctype);
+		if (workflow_field) fields.add(workflow_field);
+	}
+
+	return Array.from(fields);
+}
+
+function detect_form_control_changes(frm, server_doc, state) {
+	const fieldnames = get_form_resync_fieldnames(frm, state.cfg);
+	if (!fieldnames.length || !server_doc) return [];
+
+	return fieldnames.filter((fieldname) => {
+		if (server_doc[fieldname] === undefined) return false;
+		return !equal(frm.doc[fieldname], server_doc[fieldname]);
+	});
+}
+
+function sync_form_control_fields(frm, server_doc, fieldnames) {
+	(fieldnames || []).forEach((fieldname) => {
+		if (!server_doc || server_doc[fieldname] === undefined) return;
+		frm.doc[fieldname] = clone_raw_value(server_doc[fieldname]);
+		const local_doc = locals[frm.doctype] && locals[frm.doctype][frm.docname];
+		if (local_doc) local_doc[fieldname] = frm.doc[fieldname];
+	});
+}
+
+function resync_form_after_server_apply(frm, server_doc, state, changed_fields) {
+	if (!frm || frm.is_new() || frm.__dinext_fcm_resyncing) return false;
+	if (!changed_fields || !changed_fields.length) return false;
+	if (state.cfg.form_resync_on_server_apply === false) return false;
+
+	const resync_fields = get_form_resync_fieldnames(frm, state.cfg);
+	sync_form_control_fields(frm, server_doc, resync_fields);
+
+	frm.__dinext_fcm_resyncing = true;
+	fcm_debug(
+		state,
+		"form_resync_start",
+		{
+			doc: fcm_doc_label(frm),
+			changed_fields,
+			resync_fields,
+		},
+		FCM_LOG_LEVELS.warn
+	);
+
+	try {
+		cancel_pending_reload(frm);
+		frm.refresh();
+	} finally {
+		frm.__dinext_fcm_resyncing = false;
+	}
+
+	fcm_debug(
+		state,
+		"form_resync_done",
+		{
+			doc: fcm_doc_label(frm),
+			read_only: frm.read_only,
+			docstatus: frm.doc.docstatus,
+		},
+		FCM_LOG_LEVELS.warn
+	);
+	return true;
+}
+
+const FormResync = {
+	detect_form_control_changes,
+	get_form_resync_fieldnames,
+	resync_form_after_server_apply,
+	sync_form_control_fields,
+};
+
+
 // Source: dinext_common/public/js/form_conflict_merge/docinfo_watcher.js
 function get_docinfo(frm) {
 	if (frm.get_docinfo) return frm.get_docinfo() || {};
@@ -2132,8 +2222,11 @@ function cancel_pending_reload(frm) {
 
 function apply_server_changes(frm, server_doc, state, opts) {
 	opts = opts || {};
+	if (frm && frm.__dinext_fcm_resyncing) return { server_only: [], local_only: [], conflicts: [], applied_server: [], applied_conflicts: [] };
+
 	const silent_startup = opts.silent || is_startup_warmup_active(state);
 	const modified_changed = Boolean(server_doc && server_doc.modified && server_doc.modified !== state.initial_modified);
+	const form_control_changes = detect_form_control_changes(frm, server_doc, state);
 	const analysis = analyze(frm, server_doc, state);
 	const applied_server = analysis.server_only.slice();
 	const applied_conflicts = state.cfg.conflict_policy === "server_wins" ? analysis.conflicts.slice() : [];
@@ -2190,6 +2283,10 @@ function apply_server_changes(frm, server_doc, state, opts) {
 		refresh_docinfo(frm, state, { silent: silent_startup });
 	}
 
+	if (form_control_changes.length) {
+		resync_form_after_server_apply(frm, server_doc, state, form_control_changes);
+	}
+
 	fcm_debug(state, "apply_server_changes_done", {
 		doc: fcm_doc_label(frm),
 		source: opts.source || "apply_server_changes",
@@ -2205,6 +2302,7 @@ function apply_server_changes(frm, server_doc, state, opts) {
 function handle_doc_update(data) {
 	const frm = cur_frm;
 	if (!frm || !frm.doc || frm.is_new() || !data) return;
+	if (frm.__dinext_fcm_resyncing) return;
 	if (data.doctype !== frm.doctype || data.name !== frm.docname) return;
 	if (frappe.ui.form.is_saving) return;
 	if (data.modified && data.modified === frm.doc.modified) return;
@@ -2290,6 +2388,7 @@ function init_listener() {
 
 function check_server_changes(frm) {
 	if (!frm || !frm.doc || frm.is_new()) return Promise.resolve();
+	if (frm.__dinext_fcm_resyncing) return Promise.resolve();
 	const state = get_state(frm);
 	if (!state.installed) return Promise.resolve();
 
@@ -2586,7 +2685,7 @@ function install(frm, opts) {
 
 	if (is_fcm_debug_enabled(state)) {
 		console.info(
-			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, highlight_child_table, local_drift. dump: dinext_common.formConflictMerge.dump_debug_state()`
+			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, highlight_child_table, local_drift, form_resync_*. dump: dinext_common.formConflictMerge.dump_debug_state()`
 		);
 		fcm_debug_state_snapshot(state, frm, "install_snapshot");
 	}
