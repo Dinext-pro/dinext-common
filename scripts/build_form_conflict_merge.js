@@ -12,6 +12,7 @@ const sources = [
 	"diff.js",
 	"ui.js",
 	"applier.js",
+	"form_resync.js",
 	"docinfo_watcher.js",
 	"startup.js",
 	"merge_engine.js",
