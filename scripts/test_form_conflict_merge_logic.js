@@ -262,5 +262,36 @@ assert(is_sync_stale(syncState, 2, frmOk) === false, "current generation matches
 const frmOther = { doctype: "Issue", docname: "ISS-002", doc: {}, is_new: () => false };
 assert(is_sync_stale(syncState, 2, frmOther) === true, "different docname is stale");
 
+// form resync field detection
+const resyncMod = loadModule(["config.js", "diff.js", "state.js", "form_resync.js"]);
+const mockWorkflow = {
+	get_state_fieldname(doctype) {
+		return doctype === "Task" ? "workflow_state" : null;
+	},
+};
+const resyncFn = new Function(
+	"window",
+	"frappe",
+	`${fs.readFileSync(path.join(root, "config.js"), "utf8")}\n${fs.readFileSync(path.join(root, "diff.js"), "utf8")}\n${fs.readFileSync(path.join(root, "form_resync.js"), "utf8")}\nreturn { detect_form_control_changes, get_form_resync_fieldnames };`
+);
+const { detect_form_control_changes, get_form_resync_fieldnames } = resyncFn(
+	{},
+	{ workflow: mockWorkflow }
+);
+const resyncCfg = { form_resync_on_server_apply: true, form_resync_fields: [] };
+const resyncFrm = { doctype: "Task", docname: "TASK-1", doc: { docstatus: 0, workflow_state: "Open" } };
+assert(
+	get_form_resync_fieldnames(resyncFrm, resyncCfg).includes("workflow_state"),
+	"workflow state field auto-detected"
+);
+assert(get_form_resync_fieldnames(resyncFrm, resyncCfg).includes("docstatus"), "docstatus always included");
+const wfChanges = detect_form_control_changes(
+	resyncFrm,
+	{ docstatus: 0, workflow_state: "Отложено" },
+	{ cfg: resyncCfg }
+);
+assert(wfChanges.includes("workflow_state"), "workflow_state change detected for resync");
+assert(!wfChanges.includes("docstatus"), "unchanged docstatus not flagged");
+
 console.log(`\nFormConflictMerge logic tests: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
