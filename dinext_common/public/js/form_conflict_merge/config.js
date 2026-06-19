@@ -54,6 +54,14 @@ const DEFAULT_CONFIG = {
 	// Первичная стабилизация формы после onload/refresh: другие Client Script,
 	// Quill и sidebar могут ещё менять клиентское состояние.
 	startup_warmup_ms: 3000,
+
+	// После серверных изменений docstatus / workflow state (и form_resync_fields)
+	// вызывать frm.refresh(), как при reload: read-only по workflow, кнопки действий,
+	// read_only_depends_on и refresh-хуки Client Script.
+	form_resync_on_server_apply: true,
+
+	// Дополнительные поля, изменение которых должно пересчитать UI формы.
+	form_resync_fields: [],
 };
 
 const SYSTEM_FIELDS = [
