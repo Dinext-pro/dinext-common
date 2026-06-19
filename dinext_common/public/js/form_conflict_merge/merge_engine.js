@@ -40,8 +40,11 @@ function cancel_pending_reload(frm) {
 
 function apply_server_changes(frm, server_doc, state, opts) {
 	opts = opts || {};
+	if (frm && frm.__dinext_fcm_resyncing) return { server_only: [], local_only: [], conflicts: [], applied_server: [], applied_conflicts: [] };
+
 	const silent_startup = opts.silent || is_startup_warmup_active(state);
 	const modified_changed = Boolean(server_doc && server_doc.modified && server_doc.modified !== state.initial_modified);
+	const form_control_changes = detect_form_control_changes(frm, server_doc, state);
 	const analysis = analyze(frm, server_doc, state);
 	const applied_server = analysis.server_only.slice();
 	const applied_conflicts = state.cfg.conflict_policy === "server_wins" ? analysis.conflicts.slice() : [];
@@ -98,6 +101,10 @@ function apply_server_changes(frm, server_doc, state, opts) {
 		refresh_docinfo(frm, state, { silent: silent_startup });
 	}
 
+	if (form_control_changes.length) {
+		resync_form_after_server_apply(frm, server_doc, state, form_control_changes);
+	}
+
 	fcm_debug(state, "apply_server_changes_done", {
 		doc: fcm_doc_label(frm),
 		source: opts.source || "apply_server_changes",
@@ -113,6 +120,7 @@ function apply_server_changes(frm, server_doc, state, opts) {
 function handle_doc_update(data) {
 	const frm = cur_frm;
 	if (!frm || !frm.doc || frm.is_new() || !data) return;
+	if (frm.__dinext_fcm_resyncing) return;
 	if (data.doctype !== frm.doctype || data.name !== frm.docname) return;
 	if (frappe.ui.form.is_saving) return;
 	if (data.modified && data.modified === frm.doc.modified) return;
@@ -198,6 +206,7 @@ function init_listener() {
 
 function check_server_changes(frm) {
 	if (!frm || !frm.doc || frm.is_new()) return Promise.resolve();
+	if (frm.__dinext_fcm_resyncing) return Promise.resolve();
 	const state = get_state(frm);
 	if (!state.installed) return Promise.resolve();
 
@@ -494,7 +503,7 @@ function install(frm, opts) {
 
 	if (is_fcm_debug_enabled(state)) {
 		console.info(
-			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, highlight_child_table, local_drift. dump: dinext_common.formConflictMerge.dump_debug_state()`
+			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, highlight_child_table, local_drift, form_resync_*. dump: dinext_common.formConflictMerge.dump_debug_state()`
 		);
 		fcm_debug_state_snapshot(state, frm, "install_snapshot");
 	}
