@@ -15,7 +15,7 @@ Dinext Common — общее Frappe-приложение платформы Dine
 ## Возможности
 
 - Общий брендинг Dinext для Desk и сайта через `app_logo_url`, `app_icon` и `website_context` в `dinext_common/hooks.py`
-- Настройка сайта через fixtures: `Website Settings`, `Navbar Settings`, `Data Cleanup Rules`, контент главной страницы Dinext и включённые записи `Server Script` из модуля `Dinext Common`
+- Настройка сайта через fixtures: `Website Settings`, `Navbar Settings`, `Data Cleanup Rules`, контент главной страницы Dinext, включённые записи `Server Script` и записи `Custom Field` модуля `Dinext Common`
 - Глобальные улучшения Desk через `app_include_js`:
   - `breadcrumbs_update.js`
   - `listview_resize.js`
@@ -199,6 +199,8 @@ Fixtures, экспортируемые приложением:
 - `Data Cleanup Rules`
 - записи `Web Page` с фильтром по модулю `Dinext Common`
 - записи `Server Script` с фильтром по модулю `Dinext Common` и `disabled = 0`
+- записи `Custom Field` с фильтром по модулю `Dinext Common`
+- `Holiday List` с именем `Праздники и выходные РФ`
 
 Поведение fixtures:
 
