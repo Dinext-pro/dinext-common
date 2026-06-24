@@ -29,6 +29,19 @@ fixtures = [
         ]
     },
     {
+        "doctype": "Client Script",
+        "filters": [
+            ["module", "=", "Dinext Common"]
+        ]
+    },
+    {
+        "doctype": "Server Script",
+        "filters": [
+            ["module", "=", "Dinext Common"],
+            ["disabled", "=", 0],
+        ]
+    },
+    {
         "doctype": "Custom Field",
         "filters": [
             ["module", "in", ["Dinext Common"]]
