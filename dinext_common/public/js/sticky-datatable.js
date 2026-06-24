@@ -274,9 +274,14 @@ class StickyManager {
 
     // minimal ResizeObserver to re-evaluate container dimension
     try {
-      this._ro = new ResizeObserver(() => { 
-          this.scheduleRecalculate(); 
-           this.datatable.style.onWindowResize();
+      this._ro = new ResizeObserver(() => {
+        if (this._destroyed || !this.datatable || !this.datatable.style) return;
+        this.scheduleRecalculate();
+        try {
+          this.datatable.style.onWindowResize();
+        } catch (e) {
+          if (!e || !/cssRules/.test(String(e.message || e))) throw e;
+        }
       });
       this._ro.observe(this.el);
     } catch (e) { /* noop */ }
@@ -299,7 +304,11 @@ class StickyManager {
             sm.scheduleRecalculate( );
         }
         // корректно проксируем в оригинальный метод
-        return Reflect.apply(originalSetWidth, this, args);
+        try {
+            return Reflect.apply(originalSetWidth, this, args);
+        } catch (e) {
+            if (!e || !/cssRules/.test(String(e.message || e))) throw e;
+        }
     };
 
     // hook into datatable public events (options.events)
