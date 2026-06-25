@@ -64,7 +64,7 @@ frappe.provide("DinextCharts");
 
 		const $body = $panel.find(".dinext-chart-panel__body");
 		const $chartEl = $panel.find(".dinext-chart-panel__chart");
-		$chartEl.css({ width: "100%", height });
+		$chartEl.css({ height });
 
 		const panel = {
 			$panel,
