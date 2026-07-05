@@ -1,0 +1,126 @@
+.dinext-table {
+    height: 100%;
+    background-color: var(--card-bg);
+    color: var(--text-color);
+}
+
+.dinext-table-dark {
+    background-color: var(--card-bg);
+    color: var(--text-color);
+}
+
+.dinext-table-tree-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 1em;
+    width: 100%;
+}
+
+.dinext-table-tree-lead {
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.dinext-table-tree-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.dinext-table-tree-toggle {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.dinext-table-tree-spacer {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.dinext-table-tree-chevron {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform 0.15s ease;
+}
+
+.dinext-table-tree-toggle.is-expanded .dinext-table-tree-chevron {
+    transform: rotate(45deg);
+}
+
+.dinext-table-tree-toggle.is-loading .dinext-table-tree-chevron {
+    opacity: 0.35;
+    animation: dinext-table-tree-pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes dinext-table-tree-pulse {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 1; }
+}
+
+/* demo: name + avatar in tree column render */
+.dinext-table-name-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.dinext-table-demo-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--primary) 20%, var(--card-bg));
+    color: var(--text-color);
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.dinext-table-name-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* --- cell / row formatting utilities (AG Grid cellClass / getRowClass) --- */
+
+.dinext-table-cell--align-right {
+    text-align: right;
+}
+
+.dinext-table-cell--align-center {
+    text-align: center;
+}
+
+.dinext-table-cell--negative {
+    color: var(--red-500, #e03636);
+    font-weight: 600;
+}
+
+.dinext-table-cell--highlight {
+    background-color: color-mix(in srgb, var(--orange-500, #fd9660) 14%, transparent);
+    font-weight: 600;
+}
+
+.ag-row.dinext-table-row--level-1:not(.ag-row-selected) .ag-cell {
+    background-color: color-mix(in srgb, var(--control-bg, #f3f3f3) 55%, var(--card-bg, #fff));
+}
+
+.ag-row.dinext-table-row--level-2:not(.ag-row-selected) .ag-cell {
+    background-color: color-mix(in srgb, var(--control-bg, #f3f3f3) 80%, var(--card-bg, #fff));
+}
