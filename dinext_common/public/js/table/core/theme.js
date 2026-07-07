@@ -10,6 +10,29 @@ function isFrappeDarkTheme() {
     return root.getAttribute("data-theme-mode") === "dark";
 }
 
+/** AG Grid 35 programmatic theme needs resolved colors, not raw CSS var()/color-mix(). */
+function resolveCssColor(value, element) {
+    if (value == null || value === "") {
+        return value;
+    }
+    const str = String(value);
+    if (!str.includes("var(") && !str.includes("color-mix(")) {
+        return str;
+    }
+
+    const host = element?.isConnected ? element : document.documentElement;
+    const probe = document.createElement("div");
+    probe.style.position = "absolute";
+    probe.style.visibility = "hidden";
+    probe.style.pointerEvents = "none";
+    probe.style.backgroundColor = str;
+    host.appendChild(probe);
+    const resolved = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+
+    return resolved && resolved !== "rgba(0, 0, 0, 0)" ? resolved : str;
+}
+
 export const ThemeMixin = (Base) => class extends Base {
     initFeatures() {
         super.initFeatures();
@@ -33,12 +56,19 @@ export const ThemeMixin = (Base) => class extends Base {
 
     buildAgGridTheme() {
         const columnBorder = this.options.theme?.columnBorder !== false;
+        const el = this.container;
 
         return window.agGrid.themeQuartz.withParams({
-            backgroundColor: "var(--card-bg)",
-            foregroundColor: "var(--text-color)",
-            borderColor: "color-mix(in srgb, var(--text-color) 15%, transparent)",
-            headerBackgroundColor: "color-mix(in srgb, var(--card-bg), var(--text-color) 2%)",
+            backgroundColor: resolveCssColor("var(--card-bg)", el),
+            foregroundColor: resolveCssColor("var(--text-color)", el),
+            borderColor: resolveCssColor(
+                "color-mix(in srgb, var(--text-color) 15%, transparent)",
+                el
+            ),
+            headerBackgroundColor: resolveCssColor(
+                "color-mix(in srgb, var(--card-bg), var(--text-color) 2%)",
+                el
+            ),
             columnBorder
         });
     }
