@@ -126,7 +126,14 @@ function walkVisibleMergeGroup(sourceRows, startIndex, visible, expandedIds, opt
     }
 }
 
+function normalizeExpandedIds(expandedIds) {
+    if (expandedIds instanceof Set) return expandedIds;
+    if (Array.isArray(expandedIds)) return new Set(expandedIds.map((id) => String(id)));
+    return new Set();
+}
+
 export function toVisibleRows(sourceRows, expandedIds, options = {}) {
+    const ids = normalizeExpandedIds(expandedIds);
     const rowIdField = getRowIdField(options);
     const visible = [];
 
@@ -135,7 +142,7 @@ export function toVisibleRows(sourceRows, expandedIds, options = {}) {
         const meta = getMergeGroupMeta(row, options);
 
         if (meta && isMergeGroupHead(row, options) && mergeGroupRowsAreValid(sourceRows, i, meta, options)) {
-            walkVisibleMergeGroup(sourceRows, i, visible, expandedIds, options);
+            walkVisibleMergeGroup(sourceRows, i, visible, ids, options);
             i += meta.size;
             continue;
         }
@@ -151,7 +158,7 @@ export function toVisibleRows(sourceRows, expandedIds, options = {}) {
             0,
             null,
             visible,
-            expandedIds,
+            ids,
             options
         );
         i += 1;

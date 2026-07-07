@@ -23,12 +23,20 @@ function getRowIdField(options) {
 }
 
 export const SectionMixin = (Base) => class extends Base {
-    initFeatures() {
-        super.initFeatures();
+    initSectionState() {
         this.summarySourceData = this.options.summaryRows || [];
         this.summaryExpandedIds = new Set(
             (this.getSummaryOptions().expandedIds || []).map((id) => String(id))
         );
+    }
+
+    initFeatures() {
+        this.initSectionState();
+        super.initFeatures();
+    }
+
+    afterGridCreated() {
+        super.afterGridCreated();
         this.syncSummarySection();
     }
 
@@ -57,7 +65,7 @@ export const SectionMixin = (Base) => class extends Base {
         let visible;
 
         if (treeHasExpandable(rows, childrenField, this.options)) {
-            visible = toVisibleRows(rows, this.summaryExpandedIds, this.options);
+            visible = toVisibleRows(rows, this.summaryExpandedIds ?? new Set(), this.options);
         } else {
             const rowIdField = getRowIdField(this.options);
             visible = rows.map((row) => ({

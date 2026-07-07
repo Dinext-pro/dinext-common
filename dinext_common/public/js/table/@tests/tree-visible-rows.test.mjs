@@ -80,3 +80,11 @@ test("three-row merge group expanded keeps all tails before children", () => {
 
     assert.deepEqual(visibleRowIds(visible), ["10", "11", "12", "10:10.1"]);
 });
+
+test("toVisibleRows tolerates missing expandedIds (empty Set)", () => {
+    const row = makeRow("1", { children: [makeChild("1.1", "1")] });
+    const visible = toVisibleRows([row], undefined);
+
+    assert.deepEqual(visibleRowIds(visible), ["1"]);
+    assert.equal(visible[0]._hasChildren, true);
+});
