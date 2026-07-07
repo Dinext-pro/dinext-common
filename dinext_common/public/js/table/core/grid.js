@@ -1,7 +1,14 @@
 import { mergeGridOptions } from "./utils.js";
 
 const FEATURE_GRID_OPTION_BUILDERS = [
-    "buildTreeGridOptions"
+    "buildTreeGridOptions",
+    "buildSectionGridOptions",
+    "buildEditGridOptions",
+    "buildEditorsGridOptions",
+    "buildNavigationGridOptions",
+    "buildSelectionGridOptions",
+    "buildClipboardGridOptions",
+    "buildFillHandleGridOptions"
 ];
 
 export const GridMixin = (Base) => class extends Base {
@@ -14,9 +21,10 @@ export const GridMixin = (Base) => class extends Base {
     buildGridOptions() {
         const userGridOptions = this.options.gridOptions || {};
         const userDefaultColDef = this.options.defaultColDef || {};
+        const { columnTypes: userColumnTypes, ...restUserGridOptions } = userGridOptions;
 
         return mergeGridOptions(
-            userGridOptions,
+            restUserGridOptions,
             ...this.getFeatureGridOptionParts(),
             {
                 theme: this.buildAgGridTheme(),
@@ -41,7 +49,8 @@ export const GridMixin = (Base) => class extends Base {
                         this.options.onCellDoubleClicked(params, this);
                     }
                 }
-            }
+            },
+            userColumnTypes ? { columnTypes: userColumnTypes } : {}
         );
     }
 };

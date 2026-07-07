@@ -1,6 +1,13 @@
 import { composeMixins, normalizeColumns } from "./utils.js";
 import { ThemeMixin } from "./theme.js";
 import { TreeMixin } from "./tree.js";
+import { EditMixin } from "./edit.js";
+import { EditorsMixin } from "./editors.js";
+import { NavigationMixin } from "./navigation.js";
+import { SectionMixin } from "./section.js";
+import { SelectionMixin } from "./selection.js";
+import { ClipboardMixin } from "./clipboard.js";
+import { FillHandleMixin } from "./fill-handle.js";
 import { GridMixin } from "./grid.js";
 
 const SET_OPTION_HANDLERS = {
@@ -75,6 +82,14 @@ class DinextTableCore {
         this.api?.setGridOption(key, value);
     }
 
+    shouldApplyClipboardToRow(rowNode) {
+        return !!rowNode?.data;
+    }
+
+    shouldApplySelectionToRow(rowNode) {
+        return !!rowNode?.data;
+    }
+
     destroy() {
         this.destroyFeatures();
         this.api?.destroy();
@@ -86,6 +101,13 @@ class DinextTableCore {
 class DinextTable extends composeMixins(
     ThemeMixin,
     TreeMixin,
+    EditMixin,
+    EditorsMixin,
+    NavigationMixin,
+    SectionMixin,
+    SelectionMixin,
+    ClipboardMixin,
+    FillHandleMixin,
     GridMixin
 )(DinextTableCore) {}
 

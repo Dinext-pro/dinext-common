@@ -1,4 +1,6 @@
 import { DinextTable } from "./base.js";
+import { createMergeGroupSpanRows } from "./utils.js";
+import { CELL_CHANGE_SOURCES } from "./edit-changes.js";
 
 const ASSETS = [
     "/assets/dinext_common/css/dinext-table.css",
@@ -19,6 +21,8 @@ function loadAgGrid() {
 
 DinextTable.VERSION = "35.2.1";
 DinextTable.load = loadAgGrid;
+DinextTable.createMergeGroupSpanRows = createMergeGroupSpanRows;
+DinextTable.CELL_CHANGE_SOURCES = CELL_CHANGE_SOURCES;
 DinextTable.create = async function(options) {
     await loadAgGrid();
     if (!options?.container) {

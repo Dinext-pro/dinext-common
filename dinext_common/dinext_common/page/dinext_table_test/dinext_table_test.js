@@ -13,6 +13,13 @@ frappe.pages["dinext-table-test"].on_page_load = function(wrapper) {
     status.className = "text-muted";
     status.style.marginLeft = "8px";
 
+    const dataHint = document.createElement("div");
+    dataHint.className = "text-muted";
+    dataHint.style.marginTop = "6px";
+    dataHint.textContent = __("1–2 merge+eager; 3–4 merge+lazy; 5,10 eager; 7 lazy; pinned summary (Итого + tree) — expand chevron, ~900ms fetch");
+
+    const LAZY_LOAD_DELAY_MS = () => DinextTableTestData.lazyLoadDelayMs || 900;
+
     const container = document.createElement("div");
     container.style.height = "80vh";
     page.main.get(0).appendChild(container);
@@ -38,16 +45,26 @@ frappe.pages["dinext-table-test"].on_page_load = function(wrapper) {
         return DinextTable.create({
             container,
             data: DinextTableTestData.data,
+            summaryRows: DinextTableTestData.summaryRows,
             columns: DinextTableTestData.columns,
             gridOptions: DinextTableTestData.gridOptions,
             edit: true,
-            onExpandRow: async ({ rowId, table }) => {
-                const children = await DinextTableTestData.fetchLazyChildren(rowId);
-                table.setRowChildren(rowId, children);
+            selection: { enabled: true },
+            clipboard: { enabled: true },
+            onSaveCells: async ({ source, range, changes }) => {
+                console.log("DinextTable onSaveCells", { source, range, count: changes.length, changes });
+            },
+            onExpandRow: async ({ rowId, row, table, section }) => {
+                const parentNum = String(row?.id ?? rowId).split(":").pop();
+                console.log("DinextTable onExpandRow (lazy)", { rowId, parentNum, row, section });
+                await new Promise((resolve) => setTimeout(resolve, LAZY_LOAD_DELAY_MS()));
+                table.setRowChildren(rowId, DinextTableTestData.makeLazyChildren(parentNum));
             },
             onReady: (instance) => {
-                setStatus(__("Ready ({0} rows)", [instance.rowData.length]));
-                console.log("DinextTable ready", instance);
+                const topLevel = instance.sourceData?.length ?? 0;
+                const displayed = instance.rowData?.length ?? 0;
+                setStatus(__("Ready: {0} top-level, {1} displayed", [topLevel, displayed]));
+                console.log("DinextTable ready", { topLevel, displayed, instance });
             }
         }).then((instance) => {
             table = instance;
@@ -75,11 +92,12 @@ frappe.pages["dinext-table-test"].on_page_load = function(wrapper) {
             if (!table) return;
             const data = DinextTableTestData.refreshData();
             table.refresh(data);
+            table.setSummaryRows(DinextTableTestData.summaryRows);
             setStatus(__("Ready ({0} rows)", [data.length]));
-            console.log("DinextTable refreshed", data.length);
         });
 
         controls.appendChild(status);
+        page.main.get(0).appendChild(dataHint);
         createTable();
         window.dinextTableTest = { get table() { return table; }, createTable };
     });

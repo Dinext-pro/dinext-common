@@ -32,11 +32,14 @@ export const ThemeMixin = (Base) => class extends Base {
     }
 
     buildAgGridTheme() {
+        const columnBorder = this.options.theme?.columnBorder !== false;
+
         return window.agGrid.themeQuartz.withParams({
             backgroundColor: "var(--card-bg)",
             foregroundColor: "var(--text-color)",
             borderColor: "color-mix(in srgb, var(--text-color) 15%, transparent)",
-            headerBackgroundColor: "color-mix(in srgb, var(--card-bg), var(--text-color) 2%)"
+            headerBackgroundColor: "color-mix(in srgb, var(--card-bg), var(--text-color) 2%)",
+            columnBorder
         });
     }
 
