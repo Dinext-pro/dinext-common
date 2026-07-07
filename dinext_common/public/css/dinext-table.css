@@ -1,5 +1,6 @@
 .dinext-table {
     height: 100%;
+    position: relative;
     background-color: var(--card-bg);
     color: var(--text-color);
 }
@@ -15,6 +16,16 @@
     gap: 6px;
     min-height: 1em;
     width: 100%;
+}
+
+.dinext-table-tree-cell--merge-group {
+    height: 100%;
+    min-height: 100%;
+    box-sizing: border-box;
+}
+
+.dinext-table .ag-spanned-cell-wrapper > .dinext-table-tree-cell--merge-group {
+    height: 100%;
 }
 
 .dinext-table-tree-lead {
@@ -117,10 +128,82 @@
     font-weight: 600;
 }
 
-.ag-row.dinext-table-row--level-1:not(.ag-row-selected) .ag-cell {
-    background-color: color-mix(in srgb, var(--control-bg, #f3f3f3) 55%, var(--card-bg, #fff));
+/* Read-only focus ring (gray) instead of AG Grid default blue on .ag-cell-focus */
+.dinext-table .ag-cell.dinext-table-cell--readonly.ag-cell-focus:not(.ag-cell-inline-editing) {
+    --ag-input-focus-border-color: color-mix(in srgb, var(--text-color) 38%, transparent);
 }
 
-.ag-row.dinext-table-row--level-2:not(.ag-row-selected) .ag-cell {
-    background-color: color-mix(in srgb, var(--control-bg, #f3f3f3) 80%, var(--card-bg, #fff));
+.dinext-table .ag-ltr .ag-cell-focus.dinext-table-cell--readonly:not(.ag-cell-range-selected):not(.ag-cell-inline-editing),
+.dinext-table .ag-ltr .ag-cell-focus.dinext-table-cell--readonly:not(.ag-cell-range-selected):not(.ag-cell-inline-editing):focus-within,
+.dinext-table .ag-rtl .ag-cell-focus.dinext-table-cell--readonly:not(.ag-cell-range-selected):not(.ag-cell-inline-editing),
+.dinext-table .ag-rtl .ag-cell-focus.dinext-table-cell--readonly:not(.ag-cell-range-selected):not(.ag-cell-inline-editing):focus-within {
+    border-color: color-mix(in srgb, var(--text-color) 38%, transparent) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-color) 38%, transparent);
+}
+
+/* --- custom range selection (Community; no ag-grid rangeSelection module) --- */
+
+.dinext-table-cell-in-range {
+    background-color: color-mix(in srgb, var(--blue-500, #0289f7) 16%, transparent);
+}
+
+.dinext-table-cell-range-top {
+    border-top: 1px solid var(--blue-500, #0289f7);
+}
+
+.dinext-table-cell-range-bottom {
+    border-bottom: 1px solid var(--blue-500, #0289f7);
+}
+
+.dinext-table-cell-range-left {
+    border-left: 1px solid var(--blue-500, #0289f7);
+}
+
+.dinext-table-cell-range-right {
+    border-right: 1px solid var(--blue-500, #0289f7);
+}
+
+/* --- fill handle (Excel-like corner drag) --- */
+
+.dinext-table-fill-handle {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background-color: var(--blue-500, #0289f7);
+    border: 1px solid var(--card-bg, #fff);
+    box-sizing: border-box;
+    cursor: crosshair;
+    z-index: 3;
+    pointer-events: auto;
+}
+
+.dinext-table-cell-fill-preview {
+    background-color: color-mix(in srgb, var(--blue-500, #0289f7) 10%, transparent);
+}
+
+.dinext-table-cell-fill-preview-top {
+    border-top: 1px dashed var(--blue-500, #0289f7);
+}
+
+.dinext-table-cell-fill-preview-bottom {
+    border-bottom: 1px dashed var(--blue-500, #0289f7);
+}
+
+.dinext-table-cell-fill-preview-left {
+    border-left: 1px dashed var(--blue-500, #0289f7);
+}
+
+.dinext-table-cell-fill-preview-right {
+    border-right: 1px dashed var(--blue-500, #0289f7);
+}
+
+/* --- summary section (pinned bottom) --- */
+
+.dinext-table-row--summary {
+    font-weight: 600;
+    background-color: color-mix(in srgb, var(--text-muted, #748094) 8%, var(--card-bg, #fff));
+}
+
+.dinext-table-row--summary .dinext-table-cell--readonly {
+    opacity: 1;
 }

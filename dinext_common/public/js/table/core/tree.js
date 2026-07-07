@@ -1,3 +1,9 @@
+import {
+    getMergeGroupChildInsertOffset,
+    getMergeGroupMeta,
+    isMergeGroupHead
+} from "./utils.js";
+
 const DEFAULT_CHILDREN_FIELD = "children";
 const DEFAULT_ROW_ID_FIELD = "id";
 const TREE_INDENT_PX = 20;
@@ -15,32 +21,47 @@ function rowHasChildren(row, childrenField) {
     return Array.isArray(children) && children.length > 0;
 }
 
-/** Eager children or lazy marker `hasChildren: true`. */
-export function rowIsExpandable(row, childrenField) {
+/** Eager children or lazy marker `hasChildren: true`. Merge tail rows never expand. */
+export function rowIsExpandable(row, childrenField, options = {}) {
+    const meta = getMergeGroupMeta(row, options);
+    if (meta && meta.index !== 0) {
+        return false;
+    }
     if (row?.hasChildren === true) {
         return true;
     }
     return rowHasChildren(row, childrenField);
 }
 
-function treeHasExpandable(rows, childrenField) {
+export function treeHasExpandable(rows, childrenField, options = {}) {
     if (!Array.isArray(rows)) {
         return false;
     }
     for (const row of rows) {
-        if (rowIsExpandable(row, childrenField)) {
+        if (rowIsExpandable(row, childrenField, options)) {
             return true;
         }
         const children = row[childrenField];
-        if (Array.isArray(children) && children.length && treeHasExpandable(children, childrenField)) {
+        if (Array.isArray(children) && children.length && treeHasExpandable(children, childrenField, options)) {
             return true;
         }
     }
     return false;
 }
 
-function makeVisibleRow(row, rowId, level, parentRowId, childrenField) {
-    const expandable = rowIsExpandable(row, childrenField);
+function mergeGroupRowsAreValid(sourceRows, startIndex, meta, options) {
+    for (let j = 0; j < meta.size; j++) {
+        const groupRow = sourceRows[startIndex + j];
+        const groupMeta = getMergeGroupMeta(groupRow, options);
+        if (!groupMeta || groupMeta.id !== meta.id || groupMeta.index !== j) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function makeVisibleRow(row, rowId, level, parentRowId, childrenField, options = {}) {
+    const expandable = rowIsExpandable(row, childrenField, options);
     return {
         ...row,
         _rowId: rowId,
@@ -59,7 +80,7 @@ function flattenExpandedChildren(parentRow, parentRowId, parentLevel, expandedId
         const childLocalId = String(child[rowIdField]);
         const childRowId = `${parentRowId}:${childLocalId}`;
         const childLevel = parentLevel + 1;
-        const visibleChild = makeVisibleRow(child, childRowId, childLevel, parentRowId, childrenField);
+        const visibleChild = makeVisibleRow(child, childRowId, childLevel, parentRowId, childrenField, options);
         rows.push(visibleChild);
 
         if (visibleChild._hasChildren && expandedIds.has(childRowId)) {
@@ -72,20 +93,58 @@ function flattenExpandedChildren(parentRow, parentRowId, parentLevel, expandedId
 
 function walkVisibleRow(row, rowId, level, parentRowId, visible, expandedIds, options) {
     const childrenField = getChildrenField(options);
-    visible.push(makeVisibleRow(row, rowId, level, parentRowId, childrenField));
+    visible.push(makeVisibleRow(row, rowId, level, parentRowId, childrenField, options));
 
-    if (!rowIsExpandable(row, childrenField) || !expandedIds.has(rowId)) {
+    if (!rowIsExpandable(row, childrenField, options) || !expandedIds.has(rowId)) {
         return;
     }
 
     visible.push(...flattenExpandedChildren(row, rowId, level, expandedIds, options));
 }
 
+function walkVisibleMergeGroup(sourceRows, startIndex, visible, expandedIds, options) {
+    const rowIdField = getRowIdField(options);
+    const childrenField = getChildrenField(options);
+    const headRow = sourceRows[startIndex];
+    const meta = getMergeGroupMeta(headRow, options);
+    const headRowId = String(headRow[rowIdField]);
+
+    for (let j = 0; j < meta.size; j++) {
+        const groupRow = sourceRows[startIndex + j];
+        visible.push(makeVisibleRow(
+            groupRow,
+            String(groupRow[rowIdField]),
+            0,
+            null,
+            childrenField,
+            options
+        ));
+    }
+
+    if (rowIsExpandable(headRow, childrenField, options) && expandedIds.has(headRowId)) {
+        visible.push(...flattenExpandedChildren(headRow, headRowId, 0, expandedIds, options));
+    }
+}
+
 export function toVisibleRows(sourceRows, expandedIds, options = {}) {
     const rowIdField = getRowIdField(options);
     const visible = [];
 
-    for (const row of sourceRows) {
+    for (let i = 0; i < sourceRows.length; ) {
+        const row = sourceRows[i];
+        const meta = getMergeGroupMeta(row, options);
+
+        if (meta && isMergeGroupHead(row, options) && mergeGroupRowsAreValid(sourceRows, i, meta, options)) {
+            walkVisibleMergeGroup(sourceRows, i, visible, expandedIds, options);
+            i += meta.size;
+            continue;
+        }
+
+        if (meta && meta.index > 0) {
+            i += 1;
+            continue;
+        }
+
         walkVisibleRow(
             row,
             String(row[rowIdField]),
@@ -95,6 +154,7 @@ export function toVisibleRows(sourceRows, expandedIds, options = {}) {
             expandedIds,
             options
         );
+        i += 1;
     }
 
     return visible;
@@ -148,7 +208,7 @@ function createTreeCellRenderer(renderFn) {
                 const toggle = document.createElement("span");
                 toggle.className = "dinext-table-tree-toggle";
                 const rowId = String(data._rowId);
-                const expanded = table.expandedIds.has(rowId);
+                const expanded = table.isRowExpanded(rowId);
                 const loading = !!data._treeLoading;
                 toggle.classList.toggle("is-expanded", expanded && !loading);
                 toggle.classList.toggle("is-collapsed", !expanded && !loading);
@@ -170,8 +230,14 @@ function createTreeCellRenderer(renderFn) {
         render(params) {
             this.params = params;
             const data = params.data || {};
+            const table = params.context?.dinextTable;
             const level = data._level || 0;
+            const mergeMeta = getMergeGroupMeta(data, table?.options);
             this.eGui.style.paddingLeft = `${level * TREE_INDENT_PX}px`;
+            this.eGui.classList.toggle(
+                "dinext-table-tree-cell--merge-group",
+                !!(mergeMeta && mergeMeta.index === 0 && mergeMeta.size > 1)
+            );
             this.renderLead(params);
             mountCellContent(this.contentEl, params, renderFn);
         }
@@ -213,7 +279,7 @@ export const TreeMixin = (Base) => class extends Base {
     }
 
     hasNestedRows() {
-        return treeHasExpandable(this.sourceData, this.getChildrenField());
+        return treeHasExpandable(this.sourceData, this.getChildrenField(), this.options);
     }
 
     syncVisibleRows() {
@@ -225,25 +291,11 @@ export const TreeMixin = (Base) => class extends Base {
     }
 
     findSourceRow(rowId) {
-        rowId = String(rowId);
-        const parts = rowId.split(":");
-        const rowIdField = getRowIdField(this.options);
-        const childrenField = this.getChildrenField();
+        return findSourceRowInData(this.sourceData, rowId, this.options);
+    }
 
-        let rows = this.sourceData;
-        let row = null;
-
-        for (let i = 0; i < parts.length; i++) {
-            row = rows.find(item => String(item[rowIdField]) === parts[i]);
-            if (!row) {
-                return null;
-            }
-            if (i < parts.length - 1) {
-                rows = row[childrenField] || [];
-            }
-        }
-
-        return row;
+    isRowExpanded(rowId) {
+        return this.expandedIds.has(String(rowId));
     }
 
     getSourceChildren(rowId) {
@@ -307,7 +359,7 @@ export const TreeMixin = (Base) => class extends Base {
 
         const node = this.api?.getRowNode(rowId);
         if (node?.data) {
-            node.data._hasChildren = rowIsExpandable(row, childrenField);
+            node.data._hasChildren = rowIsExpandable(row, childrenField, this.options);
         }
 
         if (this.expandedIds.has(rowId)) {
@@ -338,7 +390,8 @@ export const TreeMixin = (Base) => class extends Base {
         }
 
         const parentNode = this.api?.getRowNode(rowId);
-        const addIndex = parentNode ? parentNode.rowIndex + 1 : undefined;
+        const insertOffset = getMergeGroupChildInsertOffset(parentRow, this.options);
+        const addIndex = parentNode ? parentNode.rowIndex + insertOffset : undefined;
         this.api.applyTransaction({ add: childRows, addIndex });
         this.syncRowDataFromGrid();
     }
@@ -396,12 +449,16 @@ export const TreeMixin = (Base) => class extends Base {
     }
 
     buildTreeGridOptions() {
-        if (!this.hasNestedRows()) {
-            return {};
-        }
+        const rowIdField = getRowIdField(this.options);
 
         return {
-            getRowId: params => String(params.data._rowId)
+            getRowId: params => {
+                const row = params.data;
+                if (row._rowId !== undefined) {
+                    return String(row._rowId);
+                }
+                return String(row[rowIdField]);
+            }
         };
     }
 
@@ -456,10 +513,32 @@ export const TreeMixin = (Base) => class extends Base {
 
     toggleRow(rowId) {
         rowId = String(rowId);
-        if (this.expandedIds.has(rowId)) {
+        if (this.isRowExpanded(rowId)) {
             this.collapseRow(rowId);
         } else {
             this.expandRow(rowId);
         }
     }
 };
+
+export function findSourceRowInData(sourceRows, rowId, options = {}) {
+    rowId = String(rowId);
+    const parts = rowId.split(":");
+    const rowIdField = getRowIdField(options);
+    const childrenField = getChildrenField(options);
+
+    let rows = sourceRows;
+    let row = null;
+
+    for (let i = 0; i < parts.length; i++) {
+        row = rows.find((item) => String(item[rowIdField]) === parts[i]);
+        if (!row) {
+            return null;
+        }
+        if (i < parts.length - 1) {
+            rows = row[childrenField] || [];
+        }
+    }
+
+    return row;
+}
