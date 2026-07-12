@@ -20,13 +20,13 @@ function resolveCssColor(value, element) {
         return str;
     }
 
-    const host = element?.isConnected ? element : document.documentElement;
+    const probeHost = document.documentElement;
     const probe = document.createElement("div");
     probe.style.position = "absolute";
     probe.style.visibility = "hidden";
     probe.style.pointerEvents = "none";
     probe.style.backgroundColor = str;
-    host.appendChild(probe);
+    probeHost.appendChild(probe);
     const resolved = getComputedStyle(probe).backgroundColor;
     probe.remove();
 

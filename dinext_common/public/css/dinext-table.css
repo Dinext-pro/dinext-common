@@ -8,6 +8,17 @@
     --dinext-table-radius: var(--border-radius, var(--ag-wrapper-border-radius, 8px));
 }
 
+/* Legacy ag-grid/bootstrap.css on same page (e.g. Project Workload tab) resets AG tokens to light. */
+.dinext-table [class*="ag-theme-"] {
+    --ag-background-color: var(--card-bg);
+    --ag-foreground-color: var(--text-color);
+    --ag-data-background-color: var(--card-bg);
+    --ag-header-background-color: color-mix(in srgb, var(--card-bg), var(--text-color) 2%);
+    --ag-border-color: color-mix(in srgb, var(--text-color) 15%, transparent);
+    --ag-secondary-foreground-color: color-mix(in srgb, var(--text-color) 80%, transparent);
+    --ag-header-foreground-color: var(--text-color);
+}
+
 .dinext-table-grid-host {
     flex: 1 1 auto;
     min-height: 0;
