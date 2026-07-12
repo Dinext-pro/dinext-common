@@ -6,8 +6,8 @@ import {
     getRowSection,
     isSummarySectionRow,
     stampSummaryRows
-} from "../core/sections.js";
-import { findSourceRowInData } from "../core/tree.js";
+} from "../core/section/sections.js";
+import { findSourceRowInData } from "../core/tree/model.js";
 
 test("getRowSection defaults to body", () => {
     assert.equal(getRowSection({ id: 1 }), TABLE_SECTIONS.BODY);

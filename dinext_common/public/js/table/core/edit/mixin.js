@@ -2,14 +2,9 @@ import {
     CELL_CHANGE_SOURCES,
     computeRangeFromChanges,
     toPublicCellChanges
-} from "./edit-changes.js";
-import { getRowSection } from "./sections.js";
-
-const DEFAULT_ROW_ID_FIELD = "id";
-
-function getRowIdField(options) {
-    return options.rowIdField || DEFAULT_ROW_ID_FIELD;
-}
+} from "./changes.js";
+import { getRowSection } from "../section/sections.js";
+import { getRowIdField } from "../shared/utils.js";
 
 /** cellClassRules: marks non-editable cells (per colDef.editable / column.edit). */
 function isReadOnlyCellClass(params) {
@@ -179,7 +174,12 @@ export const EditMixin = (Base) => class extends Base {
                 });
         }
 
-        return { applied: entries.length, entries };
+        const appliedCount = entries.length;
+        if (appliedCount && source === CELL_CHANGE_SOURCES.EDIT && typeof this.recordCellChangesForUndo === "function") {
+            this.recordCellChangesForUndo(entries, range);
+        }
+
+        return { applied: appliedCount, entries };
     }
 
     handleCellValueChanged(event) {
@@ -225,8 +225,7 @@ export const EditMixin = (Base) => class extends Base {
 
     buildEditGridOptions() {
         const gridOptions = {
-            undoRedoCellEditing: true,
-            undoRedoCellEditingLimit: 20,
+            undoRedoCellEditing: false,
             stopEditingWhenCellsLoseFocus: true,
             defaultColDef: {
                 enableCellChangeFlash: true,

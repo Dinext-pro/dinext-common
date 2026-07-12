@@ -14,6 +14,17 @@ const GRID_CALLBACK_KEYS = new Set([
     "onBodyScroll"
 ]);
 
+const DEFAULT_ROW_ID_FIELD = "id";
+const DEFAULT_CHILDREN_FIELD = "children";
+
+export function getRowIdField(options = {}) {
+    return options.rowIdField || DEFAULT_ROW_ID_FIELD;
+}
+
+export function getChildrenField(options = {}) {
+    return options.childrenField || DEFAULT_CHILDREN_FIELD;
+}
+
 /**
  * Layout-independent shortcut match. On RU layout Ctrl+V yields key "м", code "KeyV".
  * Prefer event.code (physical key); fall back to event.key when code is absent.
@@ -33,6 +44,60 @@ export function cssEscapeAttr(value) {
         return CSS.escape(value);
     }
     return String(value).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+}
+
+/**
+ * Resolve rendered `.ag-cell` for (displayedRowIndex, colId).
+ * With pinned left/right columns AG Grid keeps several `.ag-row[row-index=N]`
+ * (one per pin container); querying the first row alone misses center/right cells.
+ */
+export function queryAgCellElement(container, rowIndex, colId) {
+    if (!container || rowIndex == null || colId == null) {
+        return null;
+    }
+    return container.querySelector(
+        `.ag-row[row-index="${rowIndex}"] .ag-cell[col-id="${cssEscapeAttr(colId)}"]`
+    );
+}
+
+const TABLE_CHROME_CLASS_NAMES = ["dinext-table-toolbar", "dinext-table-status-bar"];
+
+function isTableChromeElement(element) {
+    return TABLE_CHROME_CLASS_NAMES.some(className => element?.classList?.contains(className));
+}
+
+function elementContainsAgGridRoot(element) {
+    return element?.classList?.contains("ag-root-wrapper")
+        || element?.classList?.contains("ag-root")
+        || !!element?.querySelector?.(".ag-root-wrapper, .ag-root");
+}
+
+/** Direct child of DinextTable container that hosts AG Grid (safe insertBefore target). */
+export function findGridMountElement(container) {
+    if (!container?.children) {
+        return null;
+    }
+    for (const child of container.children) {
+        if (isTableChromeElement(child)) {
+            continue;
+        }
+        if (elementContainsAgGridRoot(child)) {
+            return child;
+        }
+    }
+    return null;
+}
+
+/** Rendered AG Grid shell inside container; may be nested under mount element. */
+export function findAgGridRootElement(container) {
+    const mount = findGridMountElement(container);
+    if (!mount) {
+        return container?.querySelector?.(".ag-root-wrapper, .ag-root") || null;
+    }
+    if (mount.matches?.(".ag-root-wrapper, .ag-root")) {
+        return mount;
+    }
+    return mount.querySelector?.(".ag-root-wrapper, .ag-root") || mount;
 }
 
 /** Applies mixins left-to-right: first = innermost, last = outermost (GridMixin). */
@@ -152,6 +217,31 @@ export function chainHandlers(...handlers) {
     };
 }
 
+function normalizeRowClassResult(value) {
+    if (value == null || value === false || value === "") {
+        return [];
+    }
+    if (Array.isArray(value)) {
+        return value.filter(Boolean).map(String);
+    }
+    return [String(value)];
+}
+
+/** Merges AG Grid `getRowClass` handlers into one string[] (or undefined). */
+export function chainRowClassHandlers(...handlers) {
+    const fns = handlers.filter(fn => typeof fn === "function");
+    if (!fns.length) return undefined;
+    if (fns.length === 1) return fns[0];
+
+    return function chainedGetRowClass(...args) {
+        const classes = [];
+        for (const fn of fns) {
+            classes.push(...normalizeRowClassResult(fn.apply(this, args)));
+        }
+        return classes.length ? classes : undefined;
+    };
+}
+
 export function mergeGridOptions(...parts) {
     const result = {};
 
@@ -167,6 +257,11 @@ export function mergeGridOptions(...parts) {
 
             if (GRID_CALLBACK_KEYS.has(key) && typeof value === "function") {
                 result[key] = chainHandlers(result[key], value);
+                continue;
+            }
+
+            if (key === "getRowClass" && typeof value === "function") {
+                result[key] = chainRowClassHandlers(result[key], value);
                 continue;
             }
 

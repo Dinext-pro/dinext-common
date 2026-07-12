@@ -2,7 +2,13 @@ import {
     findSourceRowInData,
     toVisibleRows,
     treeHasExpandable
-} from "./tree.js";
+} from "../tree/model.js";
+import {
+    clearExpandedDescendantIds,
+    collapseTreeRow,
+    expandTreeRow
+} from "../tree/expand.js";
+import { getRowIdField } from "../shared/utils.js";
 import {
     getRowSection,
     isSummarySectionRow,
@@ -17,10 +23,6 @@ const SUMMARY_DEFAULTS = {
     edit: true,
     expandedIds: []
 };
-
-function getRowIdField(options) {
-    return options.rowIdField || "id";
-}
 
 export const SectionMixin = (Base) => class extends Base {
     initSectionState() {
@@ -114,13 +116,7 @@ export const SectionMixin = (Base) => class extends Base {
     }
 
     clearSummaryExpandedDescendants(rowId) {
-        rowId = String(rowId);
-        const prefix = `${rowId}:`;
-        for (const id of [...this.summaryExpandedIds]) {
-            if (id.startsWith(prefix)) {
-                this.summaryExpandedIds.delete(id);
-            }
-        }
+        clearExpandedDescendantIds(this.summaryExpandedIds, rowId);
     }
 
     isRowExpanded(rowId) {
@@ -132,43 +128,12 @@ export const SectionMixin = (Base) => class extends Base {
     }
 
     async expandSummaryRow(rowId) {
-        rowId = String(rowId);
-        if (this.summaryExpandedIds.has(rowId)) {
-            return;
-        }
-
-        const eagerChildren = this.getSummarySourceChildren(rowId);
-        const needsLazyLoad = !eagerChildren.length
-            && typeof this.options.onExpandRow === "function";
-
-        if (!eagerChildren.length && !needsLazyLoad) {
-            return;
-        }
-
-        this.summaryExpandedIds.add(rowId);
-
-        if (needsLazyLoad) {
-            this.setRowLoading(rowId, true);
-            try {
-                await this.options.onExpandRow({
-                    rowId,
-                    row: this.findSourceRow(rowId),
-                    table: this,
-                    section: TABLE_SECTIONS.SUMMARY
-                });
-            } finally {
-                this.setRowLoading(rowId, false);
-            }
-            if (!this.getSummarySourceChildren(rowId).length) {
-                this.summaryExpandedIds.delete(rowId);
-            }
-            this.syncSummarySection();
-            this.refreshTreeToggle(rowId);
-            return;
-        }
-
-        this.syncSummarySection();
-        this.refreshTreeToggle(rowId);
+        return expandTreeRow(this, rowId, {
+            expandedIds: this.summaryExpandedIds,
+            getChildren: (id) => this.getSummarySourceChildren(id),
+            revealChildren: () => this.syncSummarySection(),
+            expandCallbackExtra: { section: TABLE_SECTIONS.SUMMARY }
+        });
     }
 
     async expandRow(rowId) {
@@ -179,15 +144,12 @@ export const SectionMixin = (Base) => class extends Base {
     }
 
     collapseRow(rowId) {
-        rowId = String(rowId);
         if (this.isSummarySectionRowId(rowId)) {
-            if (!this.summaryExpandedIds.has(rowId)) {
-                return;
-            }
-            this.summaryExpandedIds.delete(rowId);
-            this.clearSummaryExpandedDescendants(rowId);
-            this.syncSummarySection();
-            this.refreshTreeToggle(rowId);
+            collapseTreeRow(this, rowId, {
+                expandedIds: this.summaryExpandedIds,
+                clearDescendants: (id) => clearExpandedDescendantIds(this.summaryExpandedIds, id),
+                hideDescendants: () => this.syncSummarySection()
+            });
             return;
         }
         super.collapseRow(rowId);
@@ -283,21 +245,11 @@ export const SectionMixin = (Base) => class extends Base {
             return {};
         }
 
-        const userGetRowClass = this.options.gridOptions?.getRowClass;
-
         return {
             getRowClass: (params) => {
-                const classes = [];
                 if (isSummarySectionRow(params.data)) {
-                    classes.push("dinext-table-row--summary");
+                    return "dinext-table-row--summary";
                 }
-                if (typeof userGetRowClass === "function") {
-                    const userClass = userGetRowClass(params);
-                    if (userClass) {
-                        classes.push(...(Array.isArray(userClass) ? userClass : [userClass]));
-                    }
-                }
-                return classes.length ? classes : undefined;
             }
         };
     }

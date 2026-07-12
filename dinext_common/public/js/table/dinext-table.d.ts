@@ -14,6 +14,10 @@
  * - `selection`  — custom range (Community, без Enterprise)
  * - `clipboard`  — custom TSV copy/paste/fill (Community)
  * - `fillHandle`   — Excel-like corner drag copy-fill
+ * - `rowReorder`   — gutter row drag-and-drop reorder
+ * - `selectionStatus` — Excel-like status bar aggregates
+ * - `toolbar`        — floating trigger + slide-down command bar
+ * - `fullscreen`     — native Fullscreen API on container/shell
  * - `formatting` — passthrough styling (→ AG Grid colDef / gridOptions)
  * - `ag-grid`    — passthrough напрямую в AG Grid 35 Community
  *
@@ -37,6 +41,10 @@ export type DinextTableLayer =
     | "selection"
     | "clipboard"
     | "fillHandle"
+    | "rowReorder"
+    | "selectionStatus"
+    | "toolbar"
+    | "fullscreen"
     | "formatting"
     | "ag-grid";
 
@@ -103,7 +111,7 @@ export interface DinextTableSectionMeta {
 export type DinextTableRowData = Record<string, unknown> & DinextTableTreeMeta & DinextTableMergeGroupRowMeta & DinextTableSectionMeta;
 
 /** Пресеты `column.type` из EditorsMixin. @layer editors */
-export type DinextTableColumnTypePreset = "text" | "number" | "integer" | "date";
+export type DinextTableColumnTypePreset = "text" | "number" | "integer" | "date" | "checkbox" | "boolean";
 
 // ---------------------------------------------------------------------------
 // Column
@@ -135,16 +143,20 @@ export interface DinextTableColumnDef {
     /** @layer edit — приоритет выше `options.edit` */
     edit?: boolean | ((row: DinextTableRowData, field: string) => boolean);
 
-    // --- tree col 0 ---
-    /** @layer tree — inner content; indent+chevron добавляет ядро */
+    // --- tree ---
+    /** @layer tree — inner content; indent + chevron добавляет ядро */
     render?: (params: DinextTableCellRendererParams) => HTMLElement | string;
-    /** @layer tree — default true на col 0 */
+    /**
+     * @layer tree
+     * `true` — chevron/indent на этой колонке.
+     * На первой leaf-колонке по умолчанию включено; `false` — отключить.
+     */
     tree?: boolean;
     /** @layer tree — full override без tree chrome */
     cellRenderer?: unknown;
 
     // --- editors ---
-    /** @layer editors — preset: text | number | integer | date */
+    /** @layer editors — preset: text | number | integer | date | checkbox | boolean */
     type?: DinextTableColumnTypePreset | string;
 
     // --- layout @layer ag-grid ---
@@ -190,8 +202,20 @@ export interface DinextTableCoreOptions {
 /** @layer theme */
 export interface DinextTableThemeOptions {
     theme?: {
-        /** @layer theme — vertical cell borders; default true */
+        /** @layer theme — vertical borders in body; default true */
         columnBorder?: boolean;
+        /**
+         * Vertical borders in header. Default: same as `columnBorder`
+         * (Quartz treats header separately from body).
+         */
+        headerColumnBorder?: boolean | Record<string, unknown>;
+        /** AG Grid Quartz `spacing` — base density unit (px number or CSS length) */
+        spacing?: number | string;
+        /** AG Grid Quartz `cellHorizontalPadding` — start/end padding in cells/headers */
+        cellHorizontalPadding?: number | string;
+        /** AG Grid Quartz `wrapperBorderRadius`; also sets `--dinext-table-radius` for status bar */
+        borderRadius?: number | string;
+        wrapperBorderRadius?: number | string;
     };
 }
 
@@ -200,6 +224,8 @@ export interface DinextTableTreeOptions {
     childrenField?: string;
     rowIdField?: string;
     expandedIds?: string[];
+    /** @layer tree — явное поле колонки для chevron/indent (приоритет над `tree: true`) */
+    treeColumnField?: string;
     /** @layer tree — merge-group row metadata field names */
     mergeGroup?: {
         idField?: string;
@@ -312,6 +338,126 @@ export interface DinextTableFillHandleOptions {
     };
 }
 
+/** @layer rowReorder */
+export interface DinextTableRowReorderMove {
+    section: "body" | "summary";
+    parentRowId: string | null;
+    rowId: string;
+    fromIndex: number;
+    toIndex: number;
+    blockSize: number;
+    orderedLocalRowIds: string[];
+    orderedRowIds: string[];
+    rows: DinextTableRowData[];
+}
+
+/** @layer rowReorder */
+export interface DinextTableRowReorderContext {
+    table: DinextTableInstance;
+    source: string;
+    move: DinextTableRowReorderMove;
+}
+
+/** @layer rowReorder */
+export interface DinextTableRowReorderOptions {
+    rowReorder?: {
+        /** Default: true */
+        enabled?: boolean;
+        /** Default: `"gutter"`. `"column"` reserved */
+        handle?: "gutter" | "column";
+        gutterWidth?: number;
+        allowSummary?: boolean;
+        /** Default: `"siblings"`. `false` = top-level body only */
+        allowTree?: "siblings" | false;
+    };
+    /** @layer rowReorder — sync, before commit */
+    onValidateRowReorder?: (ctx: DinextTableRowReorderContext) => boolean | string;
+    /** @layer rowReorder — after commit; false/reject → revert */
+    onRowReorder?: (ctx: DinextTableRowReorderContext) => void | false | Promise<void | false>;
+    /** @layer rowReorder — per-row guard */
+    canReorderRow?: (ctx: {
+        table: DinextTableInstance;
+        row: DinextTableRowData;
+        rowId: string;
+        section: "body" | "summary";
+        parentRowId: string | null;
+    }) => boolean;
+}
+
+/** @layer selectionStatus */
+export interface DinextTableSelectionStatusStats {
+    cellCount: number;
+    numericCount: number;
+    sum: number;
+    average: number | null;
+    min: number | null;
+    max: number | null;
+}
+
+/** @layer selectionStatus */
+export interface DinextTableSelectionStatusOptions {
+    selectionStatus?: {
+        /** Default: selection.enabled */
+        enabled?: boolean;
+        /** Show bar when at least this many cells selected. Default: 2 */
+        minCells?: number;
+        /** Default: ["average", "count", "sum"] */
+        metrics?: Array<"average" | "count" | "sum" | "numericCount" | "min" | "max">;
+        /** Custom text; return "" to hide */
+        format?: (stats: DinextTableSelectionStatusStats, table: DinextTableInstance) => string;
+    };
+}
+
+/** @layer toolbar */
+export interface DinextTableToolbarActionContext {
+    table: DinextTableInstance;
+    api: DinextTableGridApi;
+    event: MouseEvent;
+    closeToolbar: () => void;
+}
+
+/** @layer toolbar */
+export interface DinextTableToolbarItem {
+    id?: string;
+    type?: "button" | "separator";
+    label?: string;
+    title?: string;
+    /** Frappe / Desk icon class, e.g. `icon-refresh` */
+    icon?: string;
+    /** Inline SVG markup for preset icons */
+    iconSvg?: string;
+    /** `end` — right-aligned group (e.g. fullscreen) */
+    align?: "end";
+    disabled?: boolean | ((ctx: DinextTableToolbarActionContext) => boolean);
+    hidden?: boolean | ((ctx: DinextTableToolbarActionContext) => boolean);
+    onClick?: (ctx: DinextTableToolbarActionContext) => void;
+}
+
+/** @layer toolbar */
+export interface DinextTableToolbarOptions {
+    toolbar?: {
+        /** Default: true */
+        enabled?: boolean;
+        defaultPinned?: boolean;
+        /** localStorage key suffix for pinned state */
+        persistKey?: string;
+        /** Default: `["history", "tree", "fullscreen"]`; set `[]` to disable presets */
+        presets?: Array<"history" | "tree" | "clipboard" | "fullscreen">;
+        items?: DinextTableToolbarItem[];
+    };
+}
+
+/** @layer fullscreen */
+export interface DinextTableFullscreenOptions {
+    fullscreen?: {
+        enabled?: boolean;
+        /** `container` (default) or `shell` */
+        target?: "container" | "shell";
+        /** Required when `target: "shell"` */
+        shell?: HTMLElement;
+    };
+}
+
 /** @layer core + ag-grid */
 export interface DinextTableCallbackOptions {
     /** @layer core */
@@ -342,6 +488,10 @@ export interface DinextTableCreateOptions
         DinextTableSelectionOptions,
         DinextTableClipboardOptions,
         DinextTableFillHandleOptions,
+        DinextTableRowReorderOptions,
+        DinextTableSelectionStatusOptions,
+        DinextTableToolbarOptions,
+        DinextTableFullscreenOptions,
         DinextTableCallbackOptions,
         DinextTableAgGridPassthrough {}
 
@@ -373,18 +523,24 @@ export interface DinextTableInstance {
     // --- core lifecycle ---
     /** @layer core */
     refresh(data?: DinextTableRowData[]): void;
-    /** @layer core — keys: data | columns | edit */
-    setOption(key: "data" | "columns" | "edit", value: unknown): void;
+    /** @layer core — keys: data | columns | edit | toolbar | summaryRows, … */
+    setOption(key: "data" | "columns" | "edit" | "toolbar" | "summaryRows", value: unknown): void;
     /** @layer core */
     destroy(): void;
 
     // --- tree ---
+    /** @layer tree — resolved field for chevron/indent, or null */
+    getTreeColumnField(): string | null;
     /** @layer tree */
     toggleRow(rowId: string): void;
     /** @layer tree */
     expandRow(rowId: string): Promise<void>;
     /** @layer tree */
     collapseRow(rowId: string): void;
+    /** @layer tree — expand every expandable row (incl. lazy via onExpandRow) */
+    expandAll(): Promise<void>;
+    /** @layer tree */
+    collapseAll(): void;
     /** @layer tree — lazy load result */
     setRowChildren(rowId: string, children: DinextTableRowData[]): void;
     /** @layer section */
@@ -395,6 +551,30 @@ export interface DinextTableInstance {
     getCellRanges(): DinextTableCellRange[];
     /** @layer selection */
     clearCellSelection(): void;
+    /** @layer selectionStatus — snapshot aggregates for current selection */
+    getSelectionStats(): DinextTableSelectionStatusStats;
+
+    // --- toolbar ---
+    /** @layer toolbar */
+    isToolbarEnabled(): boolean;
+    /** @layer toolbar */
+    getToolbarItems(): DinextTableToolbarItem[];
+    /** @layer toolbar */
+    registerToolbarItem(item: DinextTableToolbarItem): void;
+    /** @layer toolbar */
+    setToolbarItems(items: DinextTableToolbarItem[]): void;
+    /** @layer toolbar */
+    isToolbarPinned(): boolean;
+    /** @layer toolbar */
+    isToolbarOpen(): boolean;
+    /** @layer toolbar */
+    setToolbarPinned(pinned: boolean, opts?: { persist?: boolean }): void;
+    /** @layer toolbar */
+    toggleToolbarPinned(): void;
+    /** @layer toolbar */
+    closeToolbarMenu(): void;
+    /** @layer toolbar */
+    refreshToolbar(): void;
 
     // --- clipboard ---
     /** @layer clipboard */
@@ -411,8 +591,25 @@ export interface DinextTableInstance {
     ): number;
     /** @layer clipboard */
     clearSelectionCells(): number;
-    /** @layer clipboard — AG Grid undo first, else CommandStack */
+    /** @layer clipboard — unified CommandStack (edit, paste, fill, clear) */
     undoClipboard(): boolean;
+    /** @layer clipboard — unified CommandStack (edit, paste, fill, clear) */
+    redoClipboard(): boolean;
+
+    /** @layer rowReorder */
+    isRowReorderEnabled(): boolean;
+
+    // --- fullscreen ---
+    /** @layer fullscreen */
+    isFullscreenEnabled(): boolean;
+    /** @layer fullscreen */
+    isFullscreen(): boolean;
+    /** @layer fullscreen */
+    enterFullscreen(): Promise<boolean>;
+    /** @layer fullscreen */
+    exitFullscreen(): Promise<boolean>;
+    /** @layer fullscreen */
+    toggleFullscreen(): Promise<boolean>;
 
     // --- edit (advanced / used by clipboard) ---
     /** @layer edit — write nested sourceData by path id */

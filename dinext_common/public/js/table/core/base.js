@@ -1,13 +1,17 @@
-import { composeMixins, normalizeColumns } from "./utils.js";
+import { composeMixins, normalizeColumns } from "./shared/utils.js";
 import { ThemeMixin } from "./theme.js";
-import { TreeMixin } from "./tree.js";
-import { EditMixin } from "./edit.js";
-import { EditorsMixin } from "./editors.js";
-import { NavigationMixin } from "./navigation.js";
-import { SectionMixin } from "./section.js";
-import { SelectionMixin } from "./selection.js";
-import { ClipboardMixin } from "./clipboard.js";
-import { FillHandleMixin } from "./fill-handle.js";
+import { TreeMixin } from "./tree/mixin.js";
+import { EditMixin } from "./edit/mixin.js";
+import { EditorsMixin } from "./edit/editors.js";
+import { NavigationMixin } from "./edit/navigation.js";
+import { SectionMixin } from "./section/mixin.js";
+import { SelectionMixin } from "./selection/mixin.js";
+import { ClipboardMixin } from "./selection/clipboard.js";
+import { FillHandleMixin } from "./selection/fill-handle.js";
+import { SelectionStatusMixin } from "./selection/status.js";
+import { RowReorderMixin } from "./row-reorder/mixin.js";
+import { ToolbarMixin } from "./toolbar/mixin.js";
+import { FullscreenMixin } from "./toolbar/fullscreen.js";
 import { GridMixin } from "./grid.js";
 
 const SET_OPTION_HANDLERS = {
@@ -108,6 +112,10 @@ class DinextTable extends composeMixins(
     SelectionMixin,
     ClipboardMixin,
     FillHandleMixin,
+    RowReorderMixin,
+    SelectionStatusMixin,
+    FullscreenMixin,
+    ToolbarMixin,
     GridMixin
 )(DinextTableCore) {}
 

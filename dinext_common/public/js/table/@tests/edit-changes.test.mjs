@@ -6,7 +6,7 @@ import {
     computeRangeFromChanges,
     toPublicCellChange,
     toPublicCellChanges
-} from "../core/edit-changes.js";
+} from "../core/edit/changes.js";
 
 test("computeRangeFromChanges returns null for empty input", () => {
     assert.equal(computeRangeFromChanges([]), null);

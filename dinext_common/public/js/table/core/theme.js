@@ -52,13 +52,15 @@ export const ThemeMixin = (Base) => class extends Base {
 
     applyContainerClasses() {
         this.container.classList.add(THEME_CLASS);
+        this.syncTableRadiusCssVar();
     }
 
     buildAgGridTheme() {
-        const columnBorder = this.options.theme?.columnBorder !== false;
+        const themeOpts = this.options.theme || {};
+        const columnBorder = themeOpts.columnBorder !== false;
         const el = this.container;
 
-        return window.agGrid.themeQuartz.withParams({
+        const params = {
             backgroundColor: resolveCssColor("var(--card-bg)", el),
             foregroundColor: resolveCssColor("var(--text-color)", el),
             borderColor: resolveCssColor(
@@ -69,16 +71,49 @@ export const ThemeMixin = (Base) => class extends Base {
                 "color-mix(in srgb, var(--card-bg), var(--text-color) 2%)",
                 el
             ),
-            columnBorder
-        });
+            // Quartz: columnBorder = body only; header needs headerColumnBorder
+            columnBorder,
+            headerColumnBorder: themeOpts.headerColumnBorder !== undefined
+                ? themeOpts.headerColumnBorder
+                : columnBorder
+        };
+
+        // Official Quartz theme params (no CSS hacks on .ag-cell)
+        if (themeOpts.spacing != null) {
+            params.spacing = themeOpts.spacing;
+        }
+        if (themeOpts.cellHorizontalPadding != null) {
+            params.cellHorizontalPadding = themeOpts.cellHorizontalPadding;
+        }
+        if (themeOpts.borderRadius != null) {
+            params.wrapperBorderRadius = themeOpts.borderRadius;
+        } else if (themeOpts.wrapperBorderRadius != null) {
+            params.wrapperBorderRadius = themeOpts.wrapperBorderRadius;
+        }
+
+        return window.agGrid.themeQuartz.withParams(params);
     }
 
     applyTheme() {
         const isDark = isFrappeDarkTheme();
         this.container.classList.toggle(THEME_CLASS_DARK, isDark);
+        this.syncTableRadiusCssVar();
         if (this.api) {
             this.api.setGridOption("theme", this.buildAgGridTheme());
         }
+    }
+
+    syncTableRadiusCssVar() {
+        const themeOpts = this.options.theme || {};
+        const radius = themeOpts.borderRadius ?? themeOpts.wrapperBorderRadius;
+        if (radius == null) {
+            this.container.style.removeProperty("--dinext-table-radius");
+            return;
+        }
+        this.container.style.setProperty(
+            "--dinext-table-radius",
+            typeof radius === "number" ? `${radius}px` : String(radius)
+        );
     }
 
     watchTheme() {

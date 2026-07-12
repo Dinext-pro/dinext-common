@@ -1,8 +1,40 @@
 .dinext-table {
     height: 100%;
     position: relative;
+    display: flex;
+    flex-direction: column;
     background-color: var(--card-bg);
     color: var(--text-color);
+    --dinext-table-radius: var(--border-radius, var(--ag-wrapper-border-radius, 8px));
+}
+
+.dinext-table-grid-host {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.dinext-table:fullscreen {
+    height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--card-bg);
+}
+
+.dinext-table:fullscreen .dinext-table-grid-host {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+/* Status bar visible: bottom radius moves from grid shell to status bar. */
+.dinext-table.dinext-table--status-bar-visible {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.dinext-table.dinext-table--status-bar-visible .ag-root-wrapper {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
 }
 
 .dinext-table-dark {
@@ -163,10 +195,17 @@
     border-right: 1px solid var(--blue-500, #0289f7);
 }
 
-/* --- fill handle (Excel-like corner drag) --- */
+/* --- fill handle (Excel-like corner drag; mounted inside corner cell) --- */
+
+.dinext-table .ag-cell.dinext-table-cell--fill-handle-host {
+    overflow: visible;
+    z-index: 2;
+}
 
 .dinext-table-fill-handle {
     position: absolute;
+    right: -3px;
+    bottom: -3px;
     width: 6px;
     height: 6px;
     background-color: var(--blue-500, #0289f7);
@@ -175,6 +214,14 @@
     cursor: crosshair;
     z-index: 3;
     pointer-events: auto;
+}
+
+/* Invisible hit area (~18×18) around the 6×6 square — easier to grab. */
+.dinext-table-fill-handle::before {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    cursor: crosshair;
 }
 
 .dinext-table-cell-fill-preview {
@@ -197,6 +244,204 @@
     border-right: 1px dashed var(--blue-500, #0289f7);
 }
 
+/* --- toolbar (in-flow slide-down bar + floating trigger) --- */
+
+.dinext-table-toolbar {
+    position: relative;
+    flex: 0 0 auto;
+    z-index: 2;
+    overflow: visible;
+    --dinext-table-toolbar-trigger-size: 28px;
+    --dinext-table-toolbar-trigger-offset: 6px;
+    --dinext-table-toolbar-trigger-slot: calc(
+        var(--dinext-table-toolbar-trigger-offset)
+        + var(--dinext-table-toolbar-trigger-size)
+        + 8px
+    );
+}
+
+.dinext-table-toolbar-trigger {
+    position: absolute;
+    top: 4px;
+    left: var(--dinext-table-toolbar-trigger-offset);
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--dinext-table-toolbar-trigger-size);
+    height: var(--dinext-table-toolbar-trigger-size);
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--border-radius-sm, 4px);
+    background: transparent;
+    box-shadow: none;
+    color: color-mix(in srgb, var(--text-color) 72%, transparent);
+    cursor: pointer;
+}
+
+.dinext-table-toolbar-trigger:hover,
+.dinext-table-toolbar-trigger:focus-visible {
+    border-color: color-mix(in srgb, var(--text-color) 14%, transparent);
+    background-color: color-mix(in srgb, var(--text-color) 6%, transparent);
+    color: var(--text-color);
+    outline: none;
+}
+
+.dinext-table-toolbar-panel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    padding: 0 8px 0 var(--dinext-table-toolbar-trigger-slot);
+    border-bottom: 1px solid transparent;
+    background-color: color-mix(in srgb, var(--card-bg), var(--text-color) 2%);
+    transition:
+        max-height 0.22s ease,
+        opacity 0.22s ease,
+        padding 0.22s ease,
+        border-color 0.22s ease;
+}
+
+.dinext-table-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.dinext-table-toolbar-group--primary {
+    flex: 1 1 auto;
+}
+
+.dinext-table-toolbar-group--end {
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+.dinext-table--toolbar-pinned .dinext-table-toolbar-panel {
+    flex-wrap: wrap;
+}
+
+.dinext-table--toolbar-open:not(.dinext-table--toolbar-pinned) .dinext-table-toolbar-panel,
+.dinext-table--toolbar-pinned .dinext-table-toolbar-panel {
+    max-height: 64px;
+    opacity: 1;
+    padding: 4px 8px 4px var(--dinext-table-toolbar-trigger-slot);
+    border-bottom-color: color-mix(in srgb, var(--text-color) 10%, transparent);
+}
+
+.dinext-table--toolbar-pinned .dinext-table-toolbar-panel {
+    padding-left: 8px;
+}
+
+.dinext-table--toolbar-open .dinext-table-toolbar,
+.dinext-table--toolbar-pinned .dinext-table-toolbar {
+    border-top-left-radius: var(--dinext-table-radius);
+    border-top-right-radius: var(--dinext-table-radius);
+}
+
+.dinext-table--toolbar-open .ag-root-wrapper,
+.dinext-table--toolbar-pinned .ag-root-wrapper {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+.dinext-table--toolbar-open.dinext-table--status-bar-visible .ag-root-wrapper,
+.dinext-table--toolbar-pinned.dinext-table--status-bar-visible .ag-root-wrapper {
+    border-radius: 0;
+}
+
+.dinext-table--toolbar-pinned .dinext-table-toolbar-trigger {
+    display: none;
+}
+
+.dinext-table-toolbar-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 4px 8px;
+    border: 1px solid transparent;
+    border-radius: var(--border-radius-sm, 4px);
+    background: transparent;
+    color: var(--text-color);
+    font-size: 12px;
+    line-height: 1.2;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.dinext-table-toolbar-item:hover:not(:disabled),
+.dinext-table-toolbar-item:focus-visible:not(:disabled) {
+    border-color: color-mix(in srgb, var(--text-color) 12%, transparent);
+    background-color: color-mix(in srgb, var(--text-color) 6%, transparent);
+    outline: none;
+}
+
+.dinext-table-toolbar-item:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.dinext-table-toolbar-item-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+}
+
+.dinext-table-toolbar-item-label {
+    min-width: 0;
+}
+
+.dinext-table-toolbar-separator {
+    flex: 0 0 auto;
+    align-self: stretch;
+    width: 1px;
+    margin: 2px 4px;
+    background-color: color-mix(in srgb, var(--text-color) 12%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dinext-table-toolbar-panel {
+        transition: none;
+    }
+}
+
+/* --- selection status bar (Excel-like aggregates) --- */
+
+.dinext-table-status-bar {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    min-height: 26px;
+    padding: 4px 10px;
+    border-top: 1px solid color-mix(in srgb, var(--text-color) 12%, transparent);
+    background-color: color-mix(in srgb, var(--card-bg), var(--text-color) 2%);
+    font-size: 12px;
+    line-height: 1.2;
+    color: color-mix(in srgb, var(--text-color) 72%, transparent);
+    user-select: none;
+    white-space: nowrap;
+}
+
+.dinext-table-status-bar:not(.is-hidden) {
+    border-bottom-left-radius: var(--dinext-table-radius);
+    border-bottom-right-radius: var(--dinext-table-radius);
+}
+
+.dinext-table-status-bar.is-hidden {
+    display: none;
+}
+
 /* --- summary section (pinned bottom) --- */
 
 .dinext-table-row--summary {
@@ -206,4 +451,37 @@
 
 .dinext-table-row--summary .dinext-table-cell--readonly {
     opacity: 1;
+}
+
+/* --- Row reorder (gutter drag) --- */
+
+.dinext-table--row-reorder-enabled .ag-center-cols-container .ag-row,
+.dinext-table--row-reorder-enabled .ag-pinned-left-cols-container .ag-row {
+    position: relative;
+}
+
+.dinext-table--row-reorder-enabled.dinext-table--row-reorder-gutter-hover .ag-row:hover {
+    cursor: grab;
+}
+
+.dinext-table--row-reorder-grabbing,
+.dinext-table--row-reorder-grabbing .ag-row {
+    cursor: grabbing !important;
+}
+
+.dinext-table-row--dragging {
+    opacity: 0.45;
+}
+
+.dinext-table-row-reorder-drop-target {
+    background-color: color-mix(in srgb, var(--primary, #249ef0) 8%, transparent);
+}
+
+.dinext-table-row-reorder-drop-indicator {
+    position: absolute;
+    z-index: 6;
+    height: 2px;
+    pointer-events: none;
+    background: var(--primary, #249ef0);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary, #249ef0) 35%, transparent);
 }

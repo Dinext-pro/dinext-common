@@ -1,9 +1,8 @@
-import { cssEscapeAttr, matchKeyboardShortcut } from "./utils.js";
+import { matchKeyboardShortcut, queryAgCellElement } from "../shared/utils.js";
 
 const SELECTION_DEFAULTS = {
     enabled: false,
-    suppressMultiRanges: false,
-    debug: false
+    suppressMultiRanges: false
 };
 
 const RANGE_HIGHLIGHT_CLASSES = [
@@ -65,10 +64,8 @@ export const SelectionMixin = (Base) => class extends Base {
              */
             this._onSelectionMouseDownCapture = () => {
                 this._mouseFocusPending = true;
-                this._selDebug("mousedown-capture: _mouseFocusPending=true");
                 setTimeout(() => {
                     this._mouseFocusPending = false;
-                    this._selDebug("mousedown-capture: _mouseFocusPending reset to false (setTimeout)");
                 }, 0);
             };
             this.container.addEventListener("mousedown", this._onSelectionMouseDownCapture, true);
@@ -92,13 +89,6 @@ export const SelectionMixin = (Base) => class extends Base {
 
     isSelectionEnabled() {
         return !!this.getSelectionOptions().enabled;
-    }
-
-    /** Temporary diagnostics: `selection: { debug: true }`. Prefix-tag every line to grep console output. */
-    _selDebug(...args) {
-        if (this.getSelectionOptions().debug) {
-            // console.log("[dinext-selection]", ...args);
-        }
     }
 
     makeCellRef(node, column) {
@@ -215,11 +205,6 @@ export const SelectionMixin = (Base) => class extends Base {
     refreshSelectionHighlight() {
         this.clearSelectionHighlightDom();
         if (!this.container || !this.api || !this.cellRanges.length) {
-            this._selDebug("refreshSelectionHighlight: nothing to render", {
-                hasContainer: !!this.container,
-                hasApi: !!this.api,
-                cellRangesLength: this.cellRanges.length
-            });
             return;
         }
 
@@ -227,29 +212,22 @@ export const SelectionMixin = (Base) => class extends Base {
         const firstRow = this.api.getFirstDisplayedRowIndex();
         const lastRow = this.api.getLastDisplayedRowIndex();
         if (firstRow == null || lastRow == null || firstRow < 0) {
-            this._selDebug("refreshSelectionHighlight: bad row window", { firstRow, lastRow });
             return;
         }
 
         const box = this.getRangesViewportBox(columns, firstRow, lastRow);
         if (!box) {
-            this._selDebug("refreshSelectionHighlight: buildRangeBounds resolved to null for all ranges", JSON.stringify(this.cellRanges));
             return;
         }
-        this._selDebug("refreshSelectionHighlight: box", box);
 
         for (let rowIndex = box.minRow; rowIndex <= box.maxRow; rowIndex++) {
-            const rowEl = this.container.querySelector(`.ag-row[row-index="${rowIndex}"]`);
-            if (!rowEl) {
-                continue;
-            }
             for (let colIndex = box.minCol; colIndex <= box.maxCol; colIndex++) {
                 const state = this.getCellRangeState(rowIndex, colIndex);
                 if (!state.inRange) {
                     continue;
                 }
                 const colId = columns[colIndex].getColId();
-                const cellEl = rowEl.querySelector(`.ag-cell[col-id="${cssEscapeAttr(colId)}"]`);
+                const cellEl = queryAgCellElement(this.container, rowIndex, colId);
                 if (!cellEl) {
                     continue;
                 }
@@ -266,14 +244,7 @@ export const SelectionMixin = (Base) => class extends Base {
         if (this._isFillDragging) {
             return;
         }
-        this._selDebug("onCellMouseDown", {
-            button: event.event?.button,
-            hasNode: !!event.node?.data,
-            hasColumn: !!event.column,
-            mouseFocusPending: this._mouseFocusPending
-        });
         if (event.event?.button !== 0 || !event.node?.data || !event.column) {
-            this._selDebug("onCellMouseDown: early return (button/node/column guard)");
             return;
         }
         if (!this.shouldApplySelectionToRow(event.node)) {
@@ -284,7 +255,6 @@ export const SelectionMixin = (Base) => class extends Base {
         const domEvent = event.event;
         const shift = !!domEvent.shiftKey;
         const multi = !!(domEvent.ctrlKey || domEvent.metaKey) && !this.getSelectionOptions().suppressMultiRanges;
-        this._selDebug("onCellMouseDown: cellRef", cellRef, "shift", shift, "multi", multi, "cellRangesBefore", JSON.stringify(this.cellRanges), "selectionAnchorBefore", this._selectionAnchor);
 
         this._isExtending = false;
 
@@ -302,7 +272,6 @@ export const SelectionMixin = (Base) => class extends Base {
 
         this.focusedCell = cellRef;
         this._isRangeDragging = true;
-        this._selDebug("onCellMouseDown: cellRangesAfter", JSON.stringify(this.cellRanges), "_isRangeDragging=true");
         this.refreshSelectionHighlight();
     }
 
@@ -311,31 +280,22 @@ export const SelectionMixin = (Base) => class extends Base {
             return;
         }
         if (!this._isRangeDragging || !this._selectionAnchor || !event.node?.data || !event.column) {
-            this._selDebug("onCellMouseOver: skipped", {
-                isRangeDragging: this._isRangeDragging,
-                hasAnchor: !!this._selectionAnchor,
-                hasNode: !!event.node?.data,
-                hasColumn: !!event.column
-            });
             return;
         }
         if (!this.shouldApplySelectionToRow(event.node)) {
             return;
         }
         this.extendActiveRange(this._selectionAnchor, this.makeCellRef(event.node, event.column));
-        this._selDebug("onCellMouseOver: extended", JSON.stringify(this.cellRanges));
         this.refreshSelectionHighlight();
     }
 
     /** Keeps `focusedCell` in sync with AG Grid's own focus; collapses selection to the focused cell unless it's the target of an active drag/shift-extension gesture. */
     handleSelectionCellFocused(event) {
-        this._selDebug("onCellFocused", { rowIndex: event.rowIndex, hasColumn: !!event.column, mouseFocusPending: this._mouseFocusPending });
         if (event.rowIndex == null || !event.column || !this.api) {
             this.focusedCell = null;
             return;
         }
         if (this._mouseFocusPending) {
-            this._selDebug("onCellFocused: skipped (mouseFocusPending, will be handled by onCellMouseDown)");
             return;
         }
         const node = this.api.getDisplayedRowAtIndex(event.rowIndex);
@@ -346,10 +306,8 @@ export const SelectionMixin = (Base) => class extends Base {
         this.focusedCell = this.makeCellRef(node, event.column);
 
         if (this._isRangeDragging || this._isExtending || this._isFillDragging) {
-            this._selDebug("onCellFocused: skip collapse (isRangeDragging/isExtending/isFillDragging)");
             return;
         }
-        this._selDebug("onCellFocused: COLLAPSING cellRanges to focusedCell", this.focusedCell);
         this.cellRanges = [this.makeRange(this.focusedCell, this.focusedCell)];
         this.refreshSelectionHighlight();
     }

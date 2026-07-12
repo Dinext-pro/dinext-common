@@ -51,8 +51,30 @@ frappe.pages["dinext-table-test"].on_page_load = function(wrapper) {
             edit: true,
             selection: { enabled: true },
             clipboard: { enabled: true },
+            rowReorder: { enabled: true },
+            selectionStatus: { enabled: true },
+            toolbar: {
+                enabled: true,
+                persistKey: "dinext-table-test",
+                items: [
+                    {
+                        id: "refresh-data",
+                        label: __("Refresh data"),
+                        icon: "icon-refresh",
+                        onClick: ({ table }) => {
+                            const data = DinextTableTestData.refreshData();
+                            table.refresh(data);
+                            table.setSummaryRows(DinextTableTestData.summaryRows);
+                            setStatus(__("Ready ({0} rows)", [data.length]));
+                        }
+                    }
+                ]
+            },
             onSaveCells: async ({ source, range, changes }) => {
                 console.log("DinextTable onSaveCells", { source, range, count: changes.length, changes });
+            },
+            onRowReorder: async ({ source, move }) => {
+                console.log("DinextTable onRowReorder", { source, move });
             },
             onExpandRow: async ({ rowId, row, table, section }) => {
                 const parentNum = String(row?.id ?? rowId).split(":").pop();
