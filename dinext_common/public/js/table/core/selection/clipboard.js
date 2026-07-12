@@ -1,5 +1,6 @@
-import { matchKeyboardShortcut } from "./utils.js";
-import { CELL_CHANGE_SOURCES } from "./edit-changes.js";
+import { matchKeyboardShortcut } from "../shared/utils.js";
+import { parseBooleanValue } from "../edit/editors.js";
+import { CELL_CHANGE_SOURCES } from "../edit/changes.js";
 
 const CLIPBOARD_DEFAULTS = {
     enabled: undefined
@@ -149,6 +150,50 @@ function createCommandStack(limit) {
     };
 }
 
+export { createCommandStack };
+
+function buildCellChangeCommandEntries(entries) {
+    const undoChanges = entries.map((entry) => ({
+        node: entry.node,
+        field: entry.field,
+        oldValue: entry.newValue,
+        newValue: entry.oldValue,
+        rowIndex: entry.rowIndex,
+        colId: entry.colId
+    }));
+    const redoChanges = entries.map((entry) => ({
+        node: entry.node,
+        field: entry.field,
+        oldValue: entry.oldValue,
+        newValue: entry.newValue,
+        rowIndex: entry.rowIndex,
+        colId: entry.colId
+    }));
+    return { undoChanges, redoChanges };
+}
+
+export function buildCellChangeCommand(table, entries, range) {
+    const { undoChanges, redoChanges } = buildCellChangeCommandEntries(entries);
+    return {
+        undo: () => {
+            table.commitCellChanges({
+                source: CELL_CHANGE_SOURCES.UNDO,
+                changes: undoChanges,
+                range: table.computeRangeFromRawChanges(undoChanges),
+                alreadyApplied: false
+            });
+        },
+        execute: () => {
+            table.commitCellChanges({
+                source: CELL_CHANGE_SOURCES.REDO,
+                changes: redoChanges,
+                range,
+                alreadyApplied: false
+            });
+        }
+    };
+}
+
 /**
  * Custom TSV clipboard for AG Grid Community (no Enterprise clipboard module).
  * Scalar cells only; mutations go through EditMixin.commitCellChanges.
@@ -194,6 +239,9 @@ export const ClipboardMixin = (Base) => class extends Base {
         }
 
         const raw = rowNode.data[field];
+        if (typeof raw === "boolean") {
+            return raw ? "true" : "false";
+        }
         if (typeof colDef.valueFormatter === "function") {
             return colDef.valueFormatter({
                 value: raw,
@@ -223,6 +271,9 @@ export const ClipboardMixin = (Base) => class extends Base {
                 api: this.api,
                 context: this.api?.getGridOption?.("context")
             });
+        }
+        if (colDef.cellDataType === "boolean") {
+            return parseBooleanValue(text);
         }
         return text;
     }
@@ -376,42 +427,15 @@ export const ClipboardMixin = (Base) => class extends Base {
             return 0;
         }
 
-        const undoChanges = entries.map((entry) => ({
-            node: entry.node,
-            field: entry.field,
-            oldValue: entry.newValue,
-            newValue: entry.oldValue,
-            rowIndex: entry.rowIndex,
-            colId: entry.colId
-        }));
-
-        this._clipboardCommandStack.push({
-            undo: () => {
-                this.commitCellChanges({
-                    source: CELL_CHANGE_SOURCES.UNDO,
-                    changes: undoChanges,
-                    range: this.computeRangeFromRawChanges(undoChanges),
-                    alreadyApplied: false
-                });
-            },
-            execute: () => {
-                this.commitCellChanges({
-                    source: CELL_CHANGE_SOURCES.REDO,
-                    changes: entries.map((entry) => ({
-                        node: entry.node,
-                        field: entry.field,
-                        oldValue: entry.oldValue,
-                        newValue: entry.newValue,
-                        rowIndex: entry.rowIndex,
-                        colId: entry.colId
-                    })),
-                    range,
-                    alreadyApplied: false
-                });
-            }
-        });
-
+        this.recordCellChangesForUndo(entries, range);
         return applied;
+    }
+
+    recordCellChangesForUndo(entries, range) {
+        if (!entries?.length || !this._clipboardCommandStack) {
+            return;
+        }
+        this._clipboardCommandStack.push(buildCellChangeCommand(this, entries, range));
     }
 
     async copySelectionToClipboard() {
@@ -598,31 +622,53 @@ export const ClipboardMixin = (Base) => class extends Base {
     }
 
     undoClipboard() {
-        if (typeof this.api?.undoCellEditing === "function" && this.api.undoCellEditing()) {
-            return true;
-        }
         return this._clipboardCommandStack?.undo() ?? false;
     }
 
-    handleClipboardCellKeyDown(event) {
-        if (!this.isClipboardEnabled()) {
+    redoClipboard() {
+        return this._clipboardCommandStack?.redo() ?? false;
+    }
+
+    pushUndoCommand(command) {
+        if (!command || !this._clipboardCommandStack) {
             return;
         }
+        this._clipboardCommandStack.push(command);
+    }
 
+    isUndoRedoEnabled() {
+        return this.isClipboardEnabled() || !!this.options.edit;
+    }
+
+    handleClipboardCellKeyDown(event) {
         const domEvent = event.event;
         if (!domEvent?.key && !domEvent?.code) {
             return;
         }
 
-        const editing = !!this.api?.getEditingCells()?.length;
+        const canUndoRedo = this.isUndoRedoEnabled();
+        const canClipboard = this.isClipboardEnabled();
 
-        if (matchKeyboardShortcut(domEvent, { mod: true, code: "KeyZ", key: "z", shift: false })) {
+        if (canUndoRedo && matchKeyboardShortcut(domEvent, { mod: true, code: "KeyZ", key: "z", shift: false })) {
             domEvent.preventDefault();
             this.undoClipboard();
             return;
         }
+        if (canUndoRedo && matchKeyboardShortcut(domEvent, { mod: true, code: "KeyZ", key: "z", shift: true })) {
+            domEvent.preventDefault();
+            this.redoClipboard();
+            return;
+        }
 
-        if (editing) return;
+        if (!canClipboard) {
+            return;
+        }
+
+        const editing = !!this.api?.getEditingCells()?.length;
+
+        if (editing) {
+            return;
+        }
 
         if (matchKeyboardShortcut(domEvent, { mod: true, code: "KeyC", key: "c" })) {
             domEvent.preventDefault();
@@ -647,6 +693,9 @@ export const ClipboardMixin = (Base) => class extends Base {
     }
 
     buildClipboardGridOptions() {
-        return this.isClipboardEnabled() ? { onCellKeyDown: event => this.handleClipboardCellKeyDown(event) } : {};
+        if (!this.isClipboardEnabled() && !this.options.edit) {
+            return {};
+        }
+        return { onCellKeyDown: event => this.handleClipboardCellKeyDown(event) };
     }
 };

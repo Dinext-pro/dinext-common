@@ -19,6 +19,34 @@ export function parseLocaleNumber(raw) {
     return Number.isFinite(value) ? value : null;
 }
 
+/** Parses boolean from checkbox edit, paste, and fill. Returns null when ambiguous. */
+export function parseBooleanValue(raw) {
+    if (raw == null || raw === "") {
+        return null;
+    }
+    if (typeof raw === "boolean") {
+        return raw;
+    }
+    if (typeof raw === "number") {
+        if (raw === 1) {
+            return true;
+        }
+        if (raw === 0) {
+            return false;
+        }
+        return null;
+    }
+
+    const normalized = String(raw).trim().toLowerCase();
+    if (["true", "1", "yes", "y", "да", "д"].includes(normalized)) {
+        return true;
+    }
+    if (["false", "0", "no", "n", "нет", "н"].includes(normalized)) {
+        return false;
+    }
+    return null;
+}
+
 function localeNumberValueParser(params) {
     return parseLocaleNumber(params.newValue);
 }
@@ -27,6 +55,18 @@ function localeIntegerValueParser(params) {
     const value = parseLocaleNumber(params.newValue);
     return value == null ? null : Math.trunc(value);
 }
+
+function booleanValueParser(params) {
+    return parseBooleanValue(params.newValue);
+}
+
+const CHECKBOX_COLUMN_TYPE = {
+    cellDataType: "boolean",
+    cellRenderer: "agCheckboxCellRenderer",
+    cellEditor: "agCheckboxCellEditor",
+    cellClass: "dinext-table-cell--align-center",
+    valueParser: booleanValueParser
+};
 
 const DEFAULT_COLUMN_TYPES = {
     text: {
@@ -44,7 +84,9 @@ const DEFAULT_COLUMN_TYPES = {
     },
     date: {
         cellDataType: "date"
-    }
+    },
+    checkbox: CHECKBOX_COLUMN_TYPE,
+    boolean: CHECKBOX_COLUMN_TYPE
 };
 
 export const EditorsMixin = (Base) => class extends Base {

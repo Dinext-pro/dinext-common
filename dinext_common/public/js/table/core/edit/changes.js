@@ -1,4 +1,4 @@
-import { getRowSection } from "./sections.js";
+import { getRowSection } from "../section/sections.js";
 
 /** @layer edit — batch cell mutation sources (onValidateCells / onSaveCells). */
 export const CELL_CHANGE_SOURCES = {

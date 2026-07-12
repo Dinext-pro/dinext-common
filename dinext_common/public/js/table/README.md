@@ -17,6 +17,26 @@ frappe.require(["dinext-table.bundle.js"], () => {
 
 ---
 
+## Структура `core/`
+
+Папка — только если **2+ файла** домена. Одиночные модули остаются в корне `core/`.
+
+```
+core/
+  facade.js, base.js, grid.js, theme.js
+  tree/                  — model.js (pure) + expand.js + mixin.js (renderer/expand)
+  shared/utils.js        — mergeGridOptions, rowId/children fields, merge-group, DOM helpers
+  section/               — summary pin, TABLE_SECTIONS
+  edit/                  — commitCellChanges, editors, navigation
+  selection/             — range, clipboard, fill-handle, status bar
+  row-reorder/           — gutter DnD
+  toolbar/               — command bar + fullscreen
+```
+
+Импорт: напрямую из файлов домена (`./edit/mixin.js`, `./tree/model.js`). Без barrel `index.js`.
+
+---
+
 ## Usage guides
 
 Детальные сценарии — в [`usage-guides/`](usage-guides/):
@@ -28,6 +48,7 @@ frappe.require(["dinext-table.bundle.js"], () => {
 | [sections-and-summary.md](usage-guides/sections-and-summary.md) | `summaryRows`, pin bottom, guards |
 | [columns-and-formatting.md](usage-guides/columns-and-formatting.md) | Колонки, presets, styling |
 | [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md) | Range, TSV, fill handle, Tab/Enter |
+| [row-reorder.md](usage-guides/row-reorder.md) | Gutter row drag-and-drop reorder |
 
 ---
 
@@ -112,8 +133,9 @@ DinextTable.create({
 | `selection.enabled` | `false` | Custom range |
 | `clipboard.enabled` | `selection.enabled` | TSV copy/paste |
 | `fillHandle.enabled` | `clipboard.enabled` | Corner drag fill |
+| `rowReorder.enabled` | `true` | Gutter row DnD reorder |
 
-→ [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md).
+→ [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md), [row-reorder.md](usage-guides/row-reorder.md).
 
 ### Callbacks & passthrough
 
@@ -150,7 +172,7 @@ DinextTable.create({
 | `copySelectionToClipboard()` | async TSV |
 | `pasteFromClipboard()` / `fillDownSelection()` / `clearSelectionCells()` | Clipboard batch |
 | `fillRange(sourceBounds, targetBounds, opts?)` | Programmatic fill |
-| `undoClipboard()` | AG Grid undo или CommandStack |
+| `undoClipboard()` / `redoClipboard()` | AG Grid edit undo/redo или CommandStack |
 | `destroy()` | Teardown |
 
 **Properties:** `sourceData`, `summarySourceData`, `summaryRowData`, `rowData`, `columns`, `expandedIds`, `api`, `options`.

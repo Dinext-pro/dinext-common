@@ -47,7 +47,7 @@ Tree chevron: `stopPropagation` — клавиатура не toggle tree.
 - Ctrl/Cmd+Click — отдельный range (если не suppressed).
 - Ctrl/Cmd+A — все видимые ячейки center viewport.
 
-Highlight — CSS на `.ag-cell` DOM (`dinext-table-cell-in-range`, `-range-top/bottom/left/right`). Переподкладка на `onBodyScroll` (virtualization).
+Highlight — CSS на `.ag-cell` DOM (`dinext-table-cell-in-range`, `-range-top/bottom/left/right`). Переподкладка на `onBodyScroll` (virtualization). Lookup ячейки — `queryAgCellElement` (учитывает несколько `.ag-row[row-index=N]` при `pinned` left/right).
 
 Summary rows: по умолчанию **вне** selection (`summary.selection: false`).
 
@@ -69,7 +69,8 @@ Summary rows: по умолчанию **вне** selection (`summary.selection: 
 | Ctrl/Cmd+V | Parse TSV → paste от top-left range |
 | Ctrl/Cmd+D | Fill down верхней строки range |
 | Delete | Clear editable → `null` |
-| Ctrl/Cmd+Z | `api.undoCellEditing()` или CommandStack undo |
+| Ctrl/Cmd+Z | `undoClipboard()` — AG Grid edit undo или CommandStack |
+| Ctrl/Cmd+Shift+Z | `redoClipboard()` — AG Grid edit redo или CommandStack |
 
 Paste/clear/fill-down → `commitCellChanges` → один `onSaveCells` на batch. CommandStack limit 20.
 
@@ -88,6 +89,8 @@ Excel-like drag уголка активного range. Copy-fill паттерн�
 Ось фиксируется при drag (↓/↑/←/→). Идёт через `fillRange` → `source: "fillHandle"`.
 
 Требует `selection.enabled` + `clipboard.enabled` (или явный `fillHandle.enabled`).
+
+DOM: handle монтируется в угловую `.ag-cell` (`right/bottom` CSS), едет со scroll вместе с ячейкой. На `onBodyScroll` — только re-attach после virtualization / hide если угол вне DOM. Host-класс `dinext-table-cell--fill-handle-host` → `overflow: visible`.
 
 Preview CSS: `dinext-table-cell-fill-preview*`.
 

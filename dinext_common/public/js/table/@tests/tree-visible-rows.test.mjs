@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { toVisibleRows } from "../core/tree.js";
+import { toVisibleRows } from "../core/tree/model.js";
 import {
     expandedSet,
     makeChild,

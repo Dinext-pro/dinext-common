@@ -9,9 +9,9 @@
 
 ## Техдолг (sections + tree)
 
-- [ ] **Dedupe expand/collapse** — `expandRow` / `expandSummaryRow`, `collapseRow`, `clearExpandedDescendants` / `clearSummaryExpandedDescendants` (~80 строк зеркала). Вынести internal `_expandTreeRow(rowId, ctx)` в `tree.js`; `ctx`: `{ expandedIds, getChildren, revealChildren, expandCallbackExtra? }`. Body: `revealChildren` → `insertVisibleChildren`; summary: → `syncSummarySection`. **Не** объединять applyTransaction и pin-resync в один механизм. Критерий: 23 unit-теста без изменений + smoke chevron body merge/lazy + pinned summary tree на `/app/dinext-table-test`.
+- [x] **Dedupe expand/collapse** — `expandRow` / `expandSummaryRow`, `collapseRow`, `clearExpandedDescendants` / `clearSummaryExpandedDescendants`. Shared `expandTreeRow` / `collapseTreeRow` / `clearExpandedDescendantIds` в `tree/expand.js`. Body: `revealChildren` → `insertVisibleChildren` (eager only); summary: → `syncSummarySection`. Unit: `@tests/tree-expand.test.mjs`.
 
-- [ ] **`getRowClass` chain** — SectionMixin вручную склеивает user `gridOptions.getRowClass`. Либо добавить `getRowClass` в `GRID_CALLBACK_KEYS` с merge результатов (string[]), либо общий helper `mergeRowClassHandlers`.
+- [x] **`getRowClass` chain** — `chainRowClassHandlers` + merge в `mergeGridOptions`. SectionMixin только отдаёт `dinext-table-row--summary`; user `gridOptions.getRowClass` склеивается автоматически. Unit: `@tests/grid-options-merge.test.mjs`.
 
 ---
 
@@ -35,7 +35,7 @@
 
 - [ ] **Pinned + selection/clipboard edge cases** — focus body↔summary, Ctrl+A, paste bounds; зафиксировать ожидание в гайде или доработать guards.
 
-- [ ] **Unit: tree expand ctx** — после dedupe expand — тесты на helper без DOM (mock ctx).
+- [x] **Unit: tree expand ctx** — `@tests/tree-expand.test.mjs` (mock ctx, no DOM).
 
 ---
 

@@ -1,6 +1,4 @@
-import { cssEscapeAttr } from "./utils.js";
-
-const FILL_HANDLE_SIZE = 6;
+import { queryAgCellElement } from "../shared/utils.js";
 
 const FILL_HANDLE_DEFAULTS = {
     enabled: undefined
@@ -17,11 +15,15 @@ const FILL_PREVIEW_CLASSES = [
 /**
  * Excel-like fill handle on the bottom-right corner of the active range.
  * Drag ↓/↑/←/→ (axis-locked) to copy-fill the source pattern into extension cells.
+ *
+ * Mounted inside the corner .ag-cell (CSS right/bottom) so scroll moves it with the
+ * grid DOM — no left/top sync on every body scroll.
  */
 export const FillHandleMixin = (Base) => class extends Base {
     initFeatures() {
         super.initFeatures();
         this._fillHandleEl = null;
+        this._fillHandleHostCell = null;
         this._isFillDragging = false;
         this._fillSourceBounds = null;
         this._fillTargetBounds = null;
@@ -29,10 +31,8 @@ export const FillHandleMixin = (Base) => class extends Base {
 
     destroyFeatures() {
         this.destroyFillHandleListeners();
-        if (this._fillHandleEl) {
-            this._fillHandleEl.remove();
-            this._fillHandleEl = null;
-        }
+        this.hideFillHandle();
+        this._fillHandleEl = null;
         super.destroyFeatures();
     }
 
@@ -58,15 +58,58 @@ export const FillHandleMixin = (Base) => class extends Base {
     }
 
     ensureFillHandleElement() {
-        if (this._fillHandleEl || !this.container) {
+        // AG Grid may destroy the host cell (virtualization) and take the handle with it.
+        if (this._fillHandleEl && !this._fillHandleEl.isConnected) {
+            this._fillHandleEl = null;
+            this._fillHandleHostCell = null;
+        }
+        if (this._fillHandleEl) {
             return;
         }
         const handle = document.createElement("div");
         handle.className = "dinext-table-fill-handle";
         handle.setAttribute("role", "presentation");
         handle.addEventListener("mousedown", event => this.handleFillHandleMouseDown(event));
-        this.container.appendChild(handle);
         this._fillHandleEl = handle;
+    }
+
+    isSelectionCornerRowDisplayed(maxRowIndex) {
+        const firstRow = this.api?.getFirstDisplayedRowIndex();
+        const lastRow = this.api?.getLastDisplayedRowIndex();
+        if (firstRow == null || lastRow == null || firstRow < 0) {
+            return false;
+        }
+        return maxRowIndex >= firstRow && maxRowIndex <= lastRow;
+    }
+
+    clearFillHandleHost() {
+        if (this._fillHandleHostCell) {
+            this._fillHandleHostCell.classList.remove("dinext-table-cell--fill-handle-host");
+            this._fillHandleHostCell = null;
+        }
+    }
+
+    hideFillHandle() {
+        if (this._fillHandleEl) {
+            this._fillHandleEl.style.display = "none";
+            this._fillHandleEl.remove();
+        }
+        this.clearFillHandleHost();
+    }
+
+    mountFillHandleToCell(cellEl) {
+        if (!this._fillHandleEl || !cellEl) {
+            return;
+        }
+        if (this._fillHandleHostCell && this._fillHandleHostCell !== cellEl) {
+            this._fillHandleHostCell.classList.remove("dinext-table-cell--fill-handle-host");
+        }
+        if (this._fillHandleEl.parentElement !== cellEl) {
+            cellEl.appendChild(this._fillHandleEl);
+        }
+        cellEl.classList.add("dinext-table-cell--fill-handle-host");
+        this._fillHandleHostCell = cellEl;
+        this._fillHandleEl.style.display = "block";
     }
 
     destroyFillHandleListeners() {
@@ -97,41 +140,39 @@ export const FillHandleMixin = (Base) => class extends Base {
     }
 
     getCellElement(rowIndex, colId) {
-        if (!this.container) {
-            return null;
-        }
-        const rowEl = this.container.querySelector(`.ag-row[row-index="${rowIndex}"]`);
-        if (!rowEl) {
-            return null;
-        }
-        return rowEl.querySelector(`.ag-cell[col-id="${cssEscapeAttr(colId)}"]`);
+        return queryAgCellElement(this.container, rowIndex, colId);
     }
 
     updateFillHandle() {
+        if (!this.isFillHandleEnabled()) {
+            return;
+        }
+        this.ensureFillHandleElement();
         if (!this._fillHandleEl) {
             return;
         }
         if (!this.isFillHandleVisible()) {
-            this._fillHandleEl.style.display = "none";
+            this.hideFillHandle();
             return;
         }
 
         const bounds = this.getClipboardTargetBounds();
-        const columns = this.api.getAllDisplayedColumns();
-        const colId = columns[bounds.maxColIndex]?.getColId();
-        const cellEl = colId != null ? this.getCellElement(bounds.maxRowIndex, colId) : null;
-        if (!cellEl) {
-            this._fillHandleEl.style.display = "none";
+        if (!bounds || !this.isSelectionCornerRowDisplayed(bounds.maxRowIndex)) {
+            this.hideFillHandle();
             return;
         }
 
-        const containerRect = this.container.getBoundingClientRect();
-        const cellRect = cellEl.getBoundingClientRect();
-        const half = FILL_HANDLE_SIZE / 2;
+        const columns = this.api.getAllDisplayedColumns();
+        const colId = columns[bounds.maxColIndex]?.getColId();
+        const cellEl = colId != null ? this.getCellElement(bounds.maxRowIndex, colId) : null;
+        // Cell gone (virtualized / scrolled away) → detach. When back in DOM, re-mount.
+        // Position is CSS on the cell — no left/top sync while scrolling.
+        if (!cellEl) {
+            this.hideFillHandle();
+            return;
+        }
 
-        this._fillHandleEl.style.display = "block";
-        this._fillHandleEl.style.left = `${cellRect.right - containerRect.left - half}px`;
-        this._fillHandleEl.style.top = `${cellRect.bottom - containerRect.top - half}px`;
+        this.mountFillHandleToCell(cellEl);
     }
 
     getCellIndicesFromPoint(clientX, clientY) {
@@ -252,10 +293,6 @@ export const FillHandleMixin = (Base) => class extends Base {
         const maxRow = Math.min(maxRowIndex, lastRow);
 
         for (let rowIndex = minRow; rowIndex <= maxRow; rowIndex += 1) {
-            const rowEl = this.container.querySelector(`.ag-row[row-index="${rowIndex}"]`);
-            if (!rowEl) {
-                continue;
-            }
             for (let colIndex = minColIndex; colIndex <= maxColIndex; colIndex += 1) {
                 const state = this.getCellFillPreviewState(
                     rowIndex,
@@ -267,7 +304,7 @@ export const FillHandleMixin = (Base) => class extends Base {
                     continue;
                 }
                 const colId = columns[colIndex].getColId();
-                const cellEl = rowEl.querySelector(`.ag-cell[col-id="${cssEscapeAttr(colId)}"]`);
+                const cellEl = this.getCellElement(rowIndex, colId);
                 if (!cellEl) {
                     continue;
                 }

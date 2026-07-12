@@ -1,21 +1,18 @@
-import { mergeGridOptions } from "./utils.js";
-
-const FEATURE_GRID_OPTION_BUILDERS = [
-    "buildTreeGridOptions",
-    "buildSectionGridOptions",
-    "buildEditGridOptions",
-    "buildEditorsGridOptions",
-    "buildNavigationGridOptions",
-    "buildSelectionGridOptions",
-    "buildClipboardGridOptions",
-    "buildFillHandleGridOptions"
-];
+import { mergeGridOptions } from "./shared/utils.js";
 
 export const GridMixin = (Base) => class extends Base {
     getFeatureGridOptionParts() {
-        return FEATURE_GRID_OPTION_BUILDERS
-            .map(name => (typeof this[name] === "function" ? this[name]() : null))
-            .filter(part => part && Object.keys(part).length);
+        return [
+            this.buildTreeGridOptions?.(),
+            this.buildSectionGridOptions?.(),
+            this.buildEditGridOptions?.(),
+            this.buildEditorsGridOptions?.(),
+            this.buildNavigationGridOptions?.(),
+            this.buildSelectionGridOptions?.(),
+            this.buildClipboardGridOptions?.(),
+            this.buildFillHandleGridOptions?.(),
+            this.buildRowReorderGridOptions?.()
+        ].filter(part => part && Object.keys(part).length);
     }
 
     buildGridOptions() {

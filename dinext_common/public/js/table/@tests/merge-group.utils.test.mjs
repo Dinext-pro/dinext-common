@@ -6,8 +6,8 @@ import {
     getMergeGroupChildInsertOffset,
     isMergeGroupHead,
     shouldSpanMergeGroupRows
-} from "../core/utils.js";
-import { rowIsExpandable } from "../core/tree.js";
+} from "../core/shared/utils.js";
+import { rowIsExpandable } from "../core/tree/model.js";
 import { makeMergeHead, makeMergeTail, makeRow } from "./helpers/fixtures.mjs";
 
 test("getMergeGroupMeta returns null when size < 2", () => {

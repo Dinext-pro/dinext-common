@@ -1,0 +1,403 @@
+import { findAgGridRootElement, findGridMountElement } from "../shared/utils.js";
+import { getPersistStorageKey, normalizeToolbarItem, resolveToolbarFlag } from "./utils.js";
+import { resolveToolbarItems } from "./presets.js";
+
+const TOOLBAR_DEFAULTS = {
+    enabled: true,
+    defaultPinned: false,
+    persistKey: null,
+    presets: ["history", "tree", "fullscreen"],
+    items: []
+};
+
+const MENU_ICON_SVG = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="13" cy="8" r="1.5" fill="currentColor"/></svg>`;
+const PIN_ICON_SVG = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1a1.5 1.5 0 0 0-1.5 1.5V5H4.5A1.5 1.5 0 0 0 3 6.5v1a.5.5 0 0 0 .5.5h3.15L5.9 13.1a.5.5 0 0 0 .8.4L8 12.5l1.3 1a.5.5 0 0 0 .8-.4L9.35 8h3.15a.5.5 0 0 0 .5-.5v-1A1.5 1.5 0 0 0 11.5 5H9.5V2.5A1.5 1.5 0 0 0 8 1z"/></svg>`;
+const UNPIN_ICON_SVG = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1a1.5 1.5 0 0 0-1.5 1.5V5H4.5A1.5 1.5 0 0 0 3 6.5v1a.5.5 0 0 0 .5.5h3.15L5.9 13.1a.5.5 0 0 0 .8.4L8 12.5l1.3 1a.5.5 0 0 0 .8-.4L9.35 8h3.15a.5.5 0 0 0 .5-.5v-1A1.5 1.5 0 0 0 11.5 5H9.5V2.5A1.5 1.5 0 0 0 8 1z" opacity=".45"/><path fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" d="M2.5 13.5 13.5 2.5"/></svg>`;
+
+/**
+ * Table command toolbar: floating trigger, in-flow slide-down panel, preset actions.
+ */
+export const ToolbarMixin = (Base) => class extends Base {
+    initFeatures() {
+        super.initFeatures();
+        this._toolbarEl = null;
+        this._toolbarPanelEl = null;
+        this._toolbarTriggerEl = null;
+        this._toolbarPinned = false;
+        this._toolbarOpen = false;
+        this._toolbarItems = [];
+    }
+
+    destroyFeatures() {
+        this.destroyToolbarListeners();
+        this.clearToolbarDomClasses();
+        this._toolbarEl = null;
+        this._toolbarPanelEl = null;
+        this._toolbarTriggerEl = null;
+        super.destroyFeatures();
+    }
+
+    afterGridCreated() {
+        super.afterGridCreated();
+        if (this.isToolbarEnabled()) {
+            this.loadToolbarPersistedState();
+            this.ensureToolbarDom();
+            this.syncToolbarState();
+        }
+    }
+
+    getToolbarOptions() {
+        return { ...TOOLBAR_DEFAULTS, ...(this.options.toolbar || {}) };
+    }
+
+    isToolbarEnabled() {
+        return !!this.getToolbarOptions().enabled;
+    }
+
+    getToolbarItems() {
+        if (this._toolbarItems.length) {
+            return this._toolbarItems.map((item, index) => normalizeToolbarItem(item, index));
+        }
+        return resolveToolbarItems(this, this.getToolbarOptions());
+    }
+
+    registerToolbarItem(item) {
+        this._toolbarItems = [...this.getToolbarItems(), normalizeToolbarItem(item, this._toolbarItems.length)];
+        this.renderToolbarItems();
+    }
+
+    setToolbarItems(items) {
+        this._toolbarItems = (items || []).map((item, index) => normalizeToolbarItem(item, index));
+        this.renderToolbarItems();
+    }
+
+    isToolbarPinned() {
+        return this._toolbarPinned;
+    }
+
+    isToolbarOpen() {
+        return this._toolbarOpen;
+    }
+
+    loadToolbarPersistedState() {
+        const key = getPersistStorageKey(this.getToolbarOptions().persistKey);
+        if (!key || typeof window === "undefined" || !window.localStorage) {
+            this._toolbarPinned = !!this.getToolbarOptions().defaultPinned;
+            return;
+        }
+        try {
+            const raw = window.localStorage.getItem(key);
+            this._toolbarPinned = raw == null
+                ? !!this.getToolbarOptions().defaultPinned
+                : raw === "1";
+        } catch (_err) {
+            this._toolbarPinned = !!this.getToolbarOptions().defaultPinned;
+        }
+    }
+
+    saveToolbarPersistedState() {
+        const key = getPersistStorageKey(this.getToolbarOptions().persistKey);
+        if (!key || typeof window === "undefined" || !window.localStorage) {
+            return;
+        }
+        try {
+            window.localStorage.setItem(key, this._toolbarPinned ? "1" : "0");
+        } catch (_err) {
+            // ignore quota / privacy mode
+        }
+    }
+
+    getGridHostElement() {
+        return findAgGridRootElement(this.container);
+    }
+
+    ensureToolbarDom() {
+        if (this._toolbarEl || !this.container) {
+            return;
+        }
+
+        const gridMount = findGridMountElement(this.container);
+        const gridHost = this.getGridHostElement();
+        const flexHost = gridMount || gridHost;
+        if (flexHost) {
+            flexHost.classList.add("dinext-table-grid-host");
+        }
+
+        const toolbar = document.createElement("div");
+        toolbar.className = "dinext-table-toolbar";
+
+        const trigger = document.createElement("button");
+        trigger.type = "button";
+        trigger.className = "dinext-table-toolbar-trigger";
+        trigger.setAttribute("aria-label", "Table menu");
+        trigger.setAttribute("aria-haspopup", "true");
+        trigger.innerHTML = MENU_ICON_SVG;
+        trigger.addEventListener("click", event => this.handleToolbarTriggerClick(event));
+
+        const panel = document.createElement("div");
+        panel.className = "dinext-table-toolbar-panel";
+        panel.setAttribute("role", "toolbar");
+
+        toolbar.appendChild(panel);
+        toolbar.appendChild(trigger);
+
+        if (gridMount) {
+            this.container.insertBefore(toolbar, gridMount);
+        } else {
+            this.container.prepend(toolbar);
+        }
+
+        this._toolbarEl = toolbar;
+        this._toolbarTriggerEl = trigger;
+        this._toolbarPanelEl = panel;
+
+        this.renderToolbarItems();
+        this.bindToolbarListeners();
+        this.syncToolbarDomPlacement();
+    }
+
+    syncToolbarDomPlacement() {
+        if (!this._toolbarEl || !this.container) {
+            return;
+        }
+
+        const gridMount = findGridMountElement(this.container);
+        if (gridMount && this._toolbarEl.nextElementSibling !== gridMount) {
+            this.container.insertBefore(this._toolbarEl, gridMount);
+        }
+    }
+
+    bindToolbarListeners() {
+        this.destroyToolbarListeners();
+        this._onToolbarDocumentMouseDown = (event) => {
+            if (!this._toolbarOpen || this._toolbarPinned) {
+                return;
+            }
+            const target = event.target;
+            if (this._toolbarEl?.contains(target)) {
+                return;
+            }
+            this.closeToolbarMenu();
+        };
+        this._onToolbarDocumentKeyDown = (event) => {
+            if (event.key === "Escape") {
+                this.closeToolbarMenu();
+            }
+        };
+        document.addEventListener("mousedown", this._onToolbarDocumentMouseDown);
+        document.addEventListener("keydown", this._onToolbarDocumentKeyDown);
+    }
+
+    destroyToolbarListeners() {
+        if (this._onToolbarDocumentMouseDown) {
+            document.removeEventListener("mousedown", this._onToolbarDocumentMouseDown);
+            this._onToolbarDocumentMouseDown = null;
+        }
+        if (this._onToolbarDocumentKeyDown) {
+            document.removeEventListener("keydown", this._onToolbarDocumentKeyDown);
+            this._onToolbarDocumentKeyDown = null;
+        }
+    }
+
+    clearToolbarDomClasses() {
+        this.container?.classList.remove(
+            "dinext-table--toolbar-enabled",
+            "dinext-table--toolbar-pinned",
+            "dinext-table--toolbar-open"
+        );
+    }
+
+    syncToolbarState() {
+        if (!this.container || !this.isToolbarEnabled()) {
+            return;
+        }
+        this.container.classList.add("dinext-table--toolbar-enabled");
+        this.container.classList.toggle("dinext-table--toolbar-pinned", this._toolbarPinned);
+        this.container.classList.toggle("dinext-table--toolbar-open", this._toolbarOpen && !this._toolbarPinned);
+        if (this._toolbarTriggerEl) {
+            this._toolbarTriggerEl.setAttribute("aria-expanded", String(this._toolbarOpen || this._toolbarPinned));
+        }
+        this.syncToolbarDomPlacement();
+    }
+
+    handleToolbarTriggerClick(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (this._toolbarPinned) {
+            return;
+        }
+        this._toolbarOpen = !this._toolbarOpen;
+        this.syncToolbarState();
+        if (this._toolbarOpen) {
+            this.renderToolbarItems();
+        }
+    }
+
+    closeToolbarMenu() {
+        if (!this._toolbarOpen) {
+            return;
+        }
+        this._toolbarOpen = false;
+        this.syncToolbarState();
+    }
+
+    setToolbarPinned(pinned, { persist = true } = {}) {
+        this._toolbarPinned = !!pinned;
+        if (this._toolbarPinned) {
+            this._toolbarOpen = false;
+        }
+        if (persist) {
+            this.saveToolbarPersistedState();
+        }
+        this.syncToolbarState();
+    }
+
+    toggleToolbarPinned() {
+        this.setToolbarPinned(!this._toolbarPinned);
+    }
+
+    getToolbarActionContext(event) {
+        return {
+            table: this,
+            api: this.api,
+            event,
+            closeToolbar: () => this.closeToolbarMenu()
+        };
+    }
+
+    createToolbarPinButton() {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "dinext-table-toolbar-item dinext-table-toolbar-item--pin";
+        button.setAttribute("role", "button");
+        button.title = this._toolbarPinned ? "Unpin toolbar" : "Pin toolbar";
+        button.innerHTML = this._toolbarPinned ? UNPIN_ICON_SVG : PIN_ICON_SVG;
+        button.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.toggleToolbarPinned();
+            this.renderToolbarItems();
+        });
+        return button;
+    }
+
+    createToolbarItemButton(item) {
+        const ctx = this.getToolbarActionContext();
+        if (resolveToolbarFlag(item.hidden, ctx)) {
+            return null;
+        }
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "dinext-table-toolbar-item";
+        if (item.align === "end") {
+            button.classList.add("dinext-table-toolbar-item--end");
+        }
+        button.setAttribute("role", "button");
+        button.title = item.title || item.label || "";
+        button.disabled = resolveToolbarFlag(item.disabled, ctx);
+
+        if (item.iconSvg) {
+            const icon = document.createElement("span");
+            icon.className = "dinext-table-toolbar-item-icon";
+            icon.setAttribute("aria-hidden", "true");
+            icon.innerHTML = item.iconSvg;
+            button.appendChild(icon);
+        } else if (item.icon) {
+            const icon = document.createElement("span");
+            icon.className = `dinext-table-toolbar-item-icon ${item.icon}`;
+            icon.setAttribute("aria-hidden", "true");
+            button.appendChild(icon);
+        }
+        if (item.label) {
+            const label = document.createElement("span");
+            label.className = "dinext-table-toolbar-item-label";
+            label.textContent = item.label;
+            button.appendChild(label);
+        }
+
+        button.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (button.disabled) {
+                return;
+            }
+            item.onClick?.(this.getToolbarActionContext(event));
+            if (!this._toolbarPinned) {
+                this.closeToolbarMenu();
+            }
+        });
+        return button;
+    }
+
+    appendToolbarItemButton(groupEl, item) {
+        if (item.type === "separator") {
+            const sep = document.createElement("div");
+            sep.className = "dinext-table-toolbar-separator";
+            sep.setAttribute("role", "separator");
+            groupEl.appendChild(sep);
+            return;
+        }
+        const button = this.createToolbarItemButton(item);
+        if (button) {
+            groupEl.appendChild(button);
+        }
+    }
+
+    renderToolbarItems() {
+        if (!this._toolbarPanelEl) {
+            return;
+        }
+
+        const items = this.getToolbarItems();
+        const primaryItems = items.filter(item => item.align !== "end");
+        const endItems = items.filter(item => item.align === "end");
+
+        this._toolbarPanelEl.replaceChildren();
+
+        const primaryGroup = document.createElement("div");
+        primaryGroup.className = "dinext-table-toolbar-group dinext-table-toolbar-group--primary";
+        primaryGroup.appendChild(this.createToolbarPinButton());
+        for (const item of primaryItems) {
+            this.appendToolbarItemButton(primaryGroup, item);
+        }
+
+        const endGroup = document.createElement("div");
+        endGroup.className = "dinext-table-toolbar-group dinext-table-toolbar-group--end";
+        for (const item of endItems) {
+            this.appendToolbarItemButton(endGroup, item);
+        }
+
+        this._toolbarPanelEl.appendChild(primaryGroup);
+        if (endItems.length) {
+            this._toolbarPanelEl.appendChild(endGroup);
+        }
+    }
+
+    refreshToolbar() {
+        this.renderToolbarItems();
+    }
+
+    handleSetOption(key, value) {
+        if (key === "toolbar") {
+            this.options.toolbar = value;
+            if (this.isToolbarEnabled()) {
+                this.ensureToolbarDom();
+                this.renderToolbarItems();
+                this.syncToolbarState();
+            } else {
+                this.closeToolbarMenu();
+                this.destroyToolbarListeners();
+                this.clearToolbarDomClasses();
+                this._toolbarEl?.remove();
+                this._toolbarEl = null;
+                this._toolbarPanelEl = null;
+                this._toolbarTriggerEl = null;
+            }
+            return true;
+        }
+        return super.handleSetOption?.(key, value) ?? false;
+    }
+};
+
+export { normalizeToolbarItem, getPersistStorageKey } from "./utils.js";
