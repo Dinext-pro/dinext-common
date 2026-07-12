@@ -53,6 +53,7 @@ export const ThemeMixin = (Base) => class extends Base {
     applyContainerClasses() {
         this.container.classList.add(THEME_CLASS);
         this.syncTableRadiusCssVar();
+        this.syncAgGridLayoutCssVars();
     }
 
     buildAgGridTheme() {
@@ -98,8 +99,30 @@ export const ThemeMixin = (Base) => class extends Base {
         const isDark = isFrappeDarkTheme();
         this.container.classList.toggle(THEME_CLASS_DARK, isDark);
         this.syncTableRadiusCssVar();
+        this.syncAgGridLayoutCssVars();
         if (this.api) {
             this.api.setGridOption("theme", this.buildAgGridTheme());
+        }
+    }
+
+    syncAgGridLayoutCssVars() {
+        const themeOpts = this.options.theme || {};
+        const radius = themeOpts.borderRadius ?? themeOpts.wrapperBorderRadius;
+
+        if (radius != null) {
+            this.container.style.setProperty(
+                "--dinext-table-radius",
+                typeof radius === "number" ? `${radius}px` : String(radius)
+            );
+        }
+
+        if (themeOpts.cellHorizontalPadding != null) {
+            this.container.style.setProperty(
+                "--ag-cell-horizontal-padding",
+                `${themeOpts.cellHorizontalPadding}px`
+            );
+        } else {
+            this.container.style.removeProperty("--ag-cell-horizontal-padding");
         }
     }
 

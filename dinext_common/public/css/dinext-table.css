@@ -5,10 +5,10 @@
     flex-direction: column;
     background-color: var(--card-bg);
     color: var(--text-color);
-    --dinext-table-radius: var(--border-radius, var(--ag-wrapper-border-radius, 8px));
+    --dinext-table-radius: var(--border-radius, 8px);
 }
 
-/* Legacy ag-grid/bootstrap.css on same page (e.g. Project Workload tab) resets AG tokens to light. */
+/* Legacy ag-grid/bootstrap.css on same page (e.g. Project Workload tab) resets AG tokens. */
 .dinext-table [class*="ag-theme-"] {
     --ag-background-color: var(--card-bg);
     --ag-foreground-color: var(--text-color);
@@ -17,6 +17,27 @@
     --ag-border-color: color-mix(in srgb, var(--text-color) 15%, transparent);
     --ag-secondary-foreground-color: color-mix(in srgb, var(--text-color) 80%, transparent);
     --ag-header-foreground-color: var(--text-color);
+    --ag-wrapper-border-radius: var(--dinext-table-radius);
+    --ag-border-radius: var(--border-radius-sm, 4px);
+    --ag-icon-size: 16px;
+    --ag-checkbox-background-color: var(--card-bg);
+    --ag-checkbox-border-radius: var(--border-radius-sm, 4px);
+    --ag-checkbox-unchecked-color: color-mix(in srgb, var(--text-color) 30%, transparent);
+    --ag-checkbox-checked-color: var(--blue-500, #0289f7);
+    --ag-active-color: var(--blue-500, #0289f7);
+}
+
+.dinext-table .ag-root-wrapper {
+    border-radius: var(--dinext-table-radius);
+}
+
+.dinext-table .ag-checkbox-input-wrapper {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex: none;
 }
 
 .dinext-table-grid-host {
