@@ -8,7 +8,11 @@
     --dinext-table-radius: var(--border-radius, 8px);
 }
 
-/* Legacy ag-grid/bootstrap.css on same page (e.g. Project Workload tab) resets AG tokens. */
+/*
+ * Isolation from legacy class-theme CSS (ag-grid.css / ag-theme-quartz.css).
+ * Those files match [class*=ag-theme-] and reset tokens on Theming API wrappers.
+ * Tokens only — never change .ag-spanned-cell-wrapper display/position (breaks expand).
+ */
 .dinext-table [class*="ag-theme-"] {
     --ag-background-color: var(--card-bg);
     --ag-foreground-color: var(--text-color);
@@ -18,62 +22,17 @@
     --ag-secondary-foreground-color: color-mix(in srgb, var(--text-color) 80%, transparent);
     --ag-header-foreground-color: var(--text-color);
     --ag-wrapper-border-radius: var(--dinext-table-radius);
-    --ag-border-radius: var(--border-radius-sm, 4px);
+    --ag-border-radius: 4px;
     --ag-icon-size: 16px;
     --ag-checkbox-background-color: var(--card-bg);
-    --ag-checkbox-border-radius: var(--border-radius-sm, 4px);
-    --ag-checkbox-unchecked-color: color-mix(in srgb, var(--text-color) 30%, transparent);
+    --ag-checkbox-border-radius: 3px;
+    --ag-checkbox-unchecked-color: color-mix(in srgb, var(--text-color) 35%, transparent);
     --ag-checkbox-checked-color: var(--blue-500, #0289f7);
     --ag-active-color: var(--blue-500, #0289f7);
 }
 
 .dinext-table .ag-root-wrapper {
     border-radius: var(--dinext-table-radius);
-}
-
-/* spanRows: merged checkbox / # / task cells — vertical center in multi-role block */
-.dinext-table .ag-spanned-cell-wrapper {
-    display: flex;
-    align-items: center;
-}
-
-.dinext-table .ag-spanned-cell-wrapper > .ag-spanned-cell {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    height: auto;
-}
-
-.dinext-table .ag-spanned-cell-wrapper .ag-cell-wrapper {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    min-height: 0;
-}
-
-.dinext-table .ag-cell[col-id="_selected"] .ag-spanned-cell-wrapper,
-.dinext-table .ag-cell[col-id="_selected"] .ag-cell-wrapper {
-    justify-content: center;
-}
-
-.dinext-table .ag-checkbox-input-wrapper {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    min-width: 16px;
-    min-height: 16px;
-    flex: none;
-    box-sizing: border-box;
-    border: 1px solid color-mix(in srgb, var(--text-color) 28%, transparent);
-    border-radius: var(--border-radius-sm, 4px);
-    background-color: var(--card-bg);
-}
-
-.dinext-table .ag-checkbox-input-wrapper::before,
-.dinext-table .ag-checkbox-input-wrapper::after {
-    border-radius: inherit;
 }
 
 .dinext-table-grid-host {
@@ -119,13 +78,13 @@
 }
 
 .dinext-table-tree-cell--merge-group {
+    height: 100%;
+    min-height: 100%;
     box-sizing: border-box;
-    align-self: center;
 }
 
-.dinext-table .ag-spanned-cell-wrapper .dinext-table-tree-cell--merge-group {
-    height: auto;
-    min-height: 0;
+.dinext-table .ag-spanned-cell-wrapper > .dinext-table-tree-cell--merge-group {
+    height: 100%;
 }
 
 .dinext-table-tree-lead {
