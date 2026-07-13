@@ -86,11 +86,10 @@ export const ThemeMixin = (Base) => class extends Base {
         if (themeOpts.cellHorizontalPadding != null) {
             params.cellHorizontalPadding = themeOpts.cellHorizontalPadding;
         }
-        if (themeOpts.borderRadius != null) {
-            params.wrapperBorderRadius = themeOpts.borderRadius;
-        } else if (themeOpts.wrapperBorderRadius != null) {
-            params.wrapperBorderRadius = themeOpts.wrapperBorderRadius;
-        }
+
+        const radius = themeOpts.borderRadius ?? themeOpts.wrapperBorderRadius ?? 4;
+        params.borderRadius = radius;
+        params.wrapperBorderRadius = themeOpts.wrapperBorderRadius ?? themeOpts.borderRadius ?? radius;
 
         return window.agGrid.themeQuartz.withParams(params);
     }
