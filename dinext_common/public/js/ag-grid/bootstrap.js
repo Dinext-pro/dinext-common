@@ -1,7 +1,10 @@
 (function() {
     const AG_GRID_VERSION = "35.2.1";
     const AG_GRID_JS = "/assets/dinext_common/js/ag-grid-community.min.js";
-    const AG_GRID_CSS = [
+    // Class-theme CSS — ONLY for legacy grids (ag-theme-quartz*).
+    // DinextTable uses AG Grid Theming API and must NOT load these files:
+    // they match [class*=ag-theme-] and break programmatic theme tokens.
+    const AG_GRID_LEGACY_CSS = [
         "/assets/dinext_common/css/ag-grid.css",
         "/assets/dinext_common/css/ag-theme-quartz.css"
     ];
@@ -39,13 +42,13 @@
         document.head.appendChild(link);
     }
 
+    /** Load JS only. Safe to call from DinextTable / new tables. */
     function ensure() {
         if (window.agGrid && typeof window.agGrid.createGrid === "function") {
             return Promise.resolve(window.agGrid);
         }
 
         if (!agGridPromise) {
-            AG_GRID_CSS.forEach(loadStyleOnce);
             agGridPromise = loadScriptOnce(
                 AG_GRID_JS,
                 () => window.agGrid && typeof window.agGrid.createGrid === "function"
@@ -60,9 +63,22 @@
         return agGridPromise;
     }
 
+    /** Class-theme CSS for legacy ProjectsWorkloadAgGrid / ag-theme-quartz grids. */
+    function ensureLegacyThemeCss() {
+        AG_GRID_LEGACY_CSS.forEach(loadStyleOnce);
+        // Re-enable if DinextTable previously disabled the links.
+        document.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
+            const href = link.getAttribute("href") || "";
+            if (AG_GRID_LEGACY_CSS.some((url) => href.includes(url))) {
+                link.disabled = false;
+            }
+        });
+    }
+
     window.DinextAgGrid = {
         VERSION: AG_GRID_VERSION,
         ensure,
+        ensureLegacyThemeCss,
         loadScriptOnce,
         loadStyleOnce
     };
