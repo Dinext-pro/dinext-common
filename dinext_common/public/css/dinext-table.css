@@ -31,13 +31,49 @@
     border-radius: var(--dinext-table-radius);
 }
 
+/* spanRows: merged checkbox / # / task cells — vertical center in multi-role block */
+.dinext-table .ag-spanned-cell-wrapper {
+    display: flex;
+    align-items: center;
+}
+
+.dinext-table .ag-spanned-cell-wrapper > .ag-spanned-cell {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: auto;
+}
+
+.dinext-table .ag-spanned-cell-wrapper .ag-cell-wrapper {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 0;
+}
+
+.dinext-table .ag-cell[col-id="_selected"] .ag-spanned-cell-wrapper,
+.dinext-table .ag-cell[col-id="_selected"] .ag-cell-wrapper {
+    justify-content: center;
+}
+
 .dinext-table .ag-checkbox-input-wrapper {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 16px;
     height: 16px;
+    min-width: 16px;
+    min-height: 16px;
     flex: none;
+    box-sizing: border-box;
+    border: 1px solid color-mix(in srgb, var(--text-color) 28%, transparent);
+    border-radius: var(--border-radius-sm, 4px);
+    background-color: var(--card-bg);
+}
+
+.dinext-table .ag-checkbox-input-wrapper::before,
+.dinext-table .ag-checkbox-input-wrapper::after {
+    border-radius: inherit;
 }
 
 .dinext-table-grid-host {
@@ -83,13 +119,13 @@
 }
 
 .dinext-table-tree-cell--merge-group {
-    height: 100%;
-    min-height: 100%;
     box-sizing: border-box;
+    align-self: center;
 }
 
-.dinext-table .ag-spanned-cell-wrapper > .dinext-table-tree-cell--merge-group {
-    height: 100%;
+.dinext-table .ag-spanned-cell-wrapper .dinext-table-tree-cell--merge-group {
+    height: auto;
+    min-height: 0;
 }
 
 .dinext-table-tree-lead {
