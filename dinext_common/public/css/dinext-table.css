@@ -35,6 +35,33 @@
     border-radius: var(--dinext-table-radius);
 }
 
+/*
+ * Vertical column separators.
+ * AG default: border-right on position:absolute + overflow:hidden cells.
+ * Next cell paints over that edge (worse at fractional DPR) → center/header/summary
+ * look borderless; only pin edge (last-left-pinned) stays. Draw on LEFT instead.
+ * Honors --ag-column-border (transparent when theme.columnBorder === false).
+ */
+.dinext-table .ag-ltr .ag-cell:not(.ag-cell-first-left-pinned) {
+    border-left: var(--ag-column-border);
+}
+
+.dinext-table .ag-ltr .ag-cell:not(.ag-cell-last-left-pinned) {
+    border-right-color: transparent;
+}
+
+.dinext-table .ag-header-cell:not(.ag-column-first),
+.dinext-table .ag-header-group-cell:not(.ag-column-first) {
+    border-left: var(--ag-header-column-border);
+}
+
+.dinext-table .ag-header-cell::after,
+.dinext-table .ag-header-group-cell::after {
+    /* AG draws header separators on the right via ::after — disable, use border-left. */
+    content: none;
+    display: none;
+}
+
 .dinext-table-grid-host {
     flex: 1 1 auto;
     min-height: 0;
@@ -78,13 +105,13 @@
 }
 
 .dinext-table-tree-cell--merge-group {
-    height: 100%;
-    min-height: 100%;
     box-sizing: border-box;
 }
 
+/* Consumers (e.g. WE v2) pin content to first row; do not force height:100% here —
+ * that vertically centers labels across the full merge span and looks like broken row height. */
 .dinext-table .ag-spanned-cell-wrapper > .dinext-table-tree-cell--merge-group {
-    height: 100%;
+    box-sizing: border-box;
 }
 
 .dinext-table-tree-lead {
@@ -481,11 +508,8 @@
 }
 
 /* --- Row reorder (gutter drag) --- */
-
-.dinext-table--row-reorder-enabled .ag-center-cols-container .ag-row,
-.dinext-table--row-reorder-enabled .ag-pinned-left-cols-container .ag-row {
-    position: relative;
-}
+/* Do NOT set position:relative on .ag-row — AG uses position:absolute + translateY.
+ * relative + translateY doubles vertical gaps (looks like broken span/row height). */
 
 .dinext-table--row-reorder-enabled.dinext-table--row-reorder-gutter-hover .ag-row:hover {
     cursor: grab;
