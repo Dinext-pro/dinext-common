@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "build": "node scripts/build_form_conflict_merge.js",
-    "test:dinext-table": "node dinext_common/public/js/table/@tests/run.mjs"
+    "test:dinext-table": "node dinext_common/public/js/table/@tests/run.mjs",
+    "test:form-conflict-merge": "node scripts/test_form_conflict_merge_logic.mjs && node scripts/test_form_conflict_merge_scenarios.mjs"
   }
 }

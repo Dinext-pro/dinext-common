@@ -1,4 +1,16 @@
-function ensure_highlight_styles() {
+import {
+	CHILD_CELL_CONFLICT_CLASS,
+	CHILD_CELL_SERVER_CLASS,
+	CHILD_ROW_ADDED_CLASS,
+	CHILD_TABLE_REMOVED_CLASS,
+	CONFLICT_HIGHLIGHT_CLASS,
+	HIGHLIGHT_STYLE_ID,
+	SERVER_HIGHLIGHT_CLASS,
+} from "./config.js";
+import { fcm_debug, fcm_doc_label, FCM_LOG_LEVELS } from "./debug.js";
+import { is_child_table_field } from "./applier.js";
+
+export function ensure_highlight_styles() {
 	if (document.getElementById(HIGHLIGHT_STYLE_ID)) return;
 
 	const style = document.createElement("style");
@@ -55,23 +67,23 @@ function ensure_highlight_styles() {
 	document.head.appendChild(style);
 }
 
-function get_field_wrapper(frm, fieldname) {
+export function get_field_wrapper(frm, fieldname) {
 	const field = frm.fields_dict && frm.fields_dict[fieldname];
 	return field && field.$wrapper;
 }
 
-function get_field_label(frm, fieldname) {
+export function get_field_label(frm, fieldname) {
 	const field = frm && frm.fields_dict && frm.fields_dict[fieldname];
 	const df = field && field.df;
 	if (df && df.label) return __(df.label);
 	return fieldname;
 }
 
-function format_field_labels(frm, fieldnames) {
+export function format_field_labels(frm, fieldnames) {
 	return (fieldnames || []).map((fieldname) => get_field_label(frm, fieldname));
 }
 
-function get_alert_duration(cfg, indicator) {
+export function get_alert_duration(cfg, indicator) {
 	const base = Number((cfg && cfg.alert_duration_seconds) || 7);
 	if (indicator === "red") {
 		return Number((cfg && cfg.conflict_alert_duration_seconds) || base * 2);
@@ -79,7 +91,7 @@ function get_alert_duration(cfg, indicator) {
 	return base;
 }
 
-function resolve_user_full_name(user) {
+export function resolve_user_full_name(user) {
 	if (!user) return "";
 	if (frappe.user && frappe.user.full_name) {
 		return frappe.user.full_name(user) || user;
@@ -90,23 +102,23 @@ function resolve_user_full_name(user) {
 	return user;
 }
 
-function format_modifier_prefix(modified_by) {
+export function format_modifier_prefix(modified_by) {
 	if (!modified_by) return "";
 	const current_user = frappe.session && frappe.session.user;
 	if (!current_user || modified_by === current_user) return "";
 	return `${resolve_user_full_name(modified_by)} изменил документ на сервере. `;
 }
 
-function show_fcm_alert(cfg, message, indicator) {
+export function show_fcm_alert(cfg, message, indicator) {
 	frappe.show_alert({ message, indicator }, get_alert_duration(cfg, indicator));
 }
 
-function get_child_table_grid(frm, fieldname) {
+export function get_child_table_grid(frm, fieldname) {
 	const field = frm.fields_dict && frm.fields_dict[fieldname];
 	return field && field.grid;
 }
 
-function child_table_has_highlight_targets(child_analysis) {
+export function child_table_has_highlight_targets(child_analysis) {
 	if (!child_analysis) return false;
 	return Boolean(
 		(child_analysis.changed_rows && child_analysis.changed_rows.length) ||
@@ -115,7 +127,7 @@ function child_table_has_highlight_targets(child_analysis) {
 	);
 }
 
-function get_child_row_label(frm, fieldname, row) {
+export function get_child_row_label(frm, fieldname, row) {
 	if (!row) return "";
 	const grid = get_child_table_grid(frm, fieldname);
 	const docfields = (grid && grid.docfields) || [];
@@ -129,7 +141,7 @@ function get_child_row_label(frm, fieldname, row) {
 	return "";
 }
 
-function find_grid_row_element(grid, row_ref) {
+export function find_grid_row_element(grid, row_ref) {
 	if (!grid || !row_ref) return null;
 
 	if (row_ref.row_name && grid.wrapper) {
@@ -155,12 +167,12 @@ function find_grid_row_element(grid, row_ref) {
 	return null;
 }
 
-function clear_child_table_removed_highlight(frm, fieldname) {
+export function clear_child_table_removed_highlight(frm, fieldname) {
 	const $wrapper = get_field_wrapper(frm, fieldname);
 	if ($wrapper) $wrapper.removeClass(CHILD_TABLE_REMOVED_CLASS);
 }
 
-function clear_child_table_highlights(frm, state, fieldname) {
+export function clear_child_table_highlights(frm, state, fieldname) {
 	const grid = get_child_table_grid(frm, fieldname);
 	if (grid && grid.wrapper) {
 		grid.wrapper
@@ -183,7 +195,7 @@ function clear_child_table_highlights(frm, state, fieldname) {
 	});
 }
 
-function bind_clear_child_highlight_on_edit(frm, state, fieldname, grid) {
+export function bind_clear_child_highlight_on_edit(frm, state, fieldname, grid) {
 	if (!grid || !grid.wrapper) return;
 	grid.wrapper.off(".dinext_fcm_clear_child_highlight");
 	grid.wrapper.on(
@@ -192,7 +204,7 @@ function bind_clear_child_highlight_on_edit(frm, state, fieldname, grid) {
 	);
 }
 
-function highlight_grid_cell($row, child_fieldname, kind) {
+export function highlight_grid_cell($row, child_fieldname, kind) {
 	if (!$row || !$row.length || !child_fieldname) return;
 	const highlight_class = kind === "conflict" ? CHILD_CELL_CONFLICT_CLASS : CHILD_CELL_SERVER_CLASS;
 	const $cell = $row.find(`.grid-static-col[data-fieldname="${child_fieldname}"]`).first();
@@ -201,13 +213,13 @@ function highlight_grid_cell($row, child_fieldname, kind) {
 	$cell.addClass(highlight_class);
 }
 
-function highlight_child_table_removed_border(frm, fieldname) {
+export function highlight_child_table_removed_border(frm, fieldname) {
 	const $wrapper = get_field_wrapper(frm, fieldname);
 	if (!$wrapper) return;
 	$wrapper.addClass(CHILD_TABLE_REMOVED_CLASS);
 }
 
-function highlight_child_table_changes(frm, state, fieldname, child_analysis, attempt) {
+export function highlight_child_table_changes(frm, state, fieldname, child_analysis, attempt) {
 	if (!state.cfg.highlight_server_changes) return;
 	if (!child_table_has_highlight_targets(child_analysis)) return;
 
@@ -284,7 +296,7 @@ function highlight_child_table_changes(frm, state, fieldname, child_analysis, at
 	return missing_rows === 0;
 }
 
-function schedule_child_table_highlights(frm, state, fieldname, child_analysis) {
+export function schedule_child_table_highlights(frm, state, fieldname, child_analysis) {
 	const max_attempts = 12;
 	const retry_ms = 50;
 
@@ -301,7 +313,7 @@ function schedule_child_table_highlights(frm, state, fieldname, child_analysis) 
 	setTimeout(() => run(0), 0);
 }
 
-function apply_field_highlight(frm, state, fieldname, kind, analysis, silent_startup) {
+export function apply_field_highlight(frm, state, fieldname, kind, analysis, silent_startup) {
 	if (silent_startup || !state.cfg.highlight_server_changes) return;
 
 	if (is_child_table_field(frm, fieldname)) {
@@ -315,7 +327,7 @@ function apply_field_highlight(frm, state, fieldname, kind, analysis, silent_sta
 	highlight_field(frm, state, fieldname, kind);
 }
 
-function clear_highlight(frm, state, fieldname) {
+export function clear_highlight(frm, state, fieldname) {
 	const $wrapper = get_field_wrapper(frm, fieldname);
 	if ($wrapper) {
 		$wrapper.removeClass(`${SERVER_HIGHLIGHT_CLASS} ${CONFLICT_HIGHLIGHT_CLASS}`);
@@ -330,7 +342,7 @@ function clear_highlight(frm, state, fieldname) {
 	});
 }
 
-function bind_clear_highlight_on_edit(frm, state, fieldname, $wrapper) {
+export function bind_clear_highlight_on_edit(frm, state, fieldname, $wrapper) {
 	$wrapper.off(".dinext_fcm_clear_highlight");
 	$wrapper.on(
 		"focusin.dinext_fcm_clear_highlight input.dinext_fcm_clear_highlight change.dinext_fcm_clear_highlight keydown.dinext_fcm_clear_highlight",
@@ -338,7 +350,7 @@ function bind_clear_highlight_on_edit(frm, state, fieldname, $wrapper) {
 	);
 }
 
-function highlight_field(frm, state, fieldname, kind) {
+export function highlight_field(frm, state, fieldname, kind) {
 	if (!state.cfg.highlight_server_changes) return;
 	const $wrapper = get_field_wrapper(frm, fieldname);
 	if (!$wrapper) return;
@@ -358,12 +370,12 @@ function highlight_field(frm, state, fieldname, kind) {
 	}, kind === "conflict" ? FCM_LOG_LEVELS.warn : FCM_LOG_LEVELS.info);
 }
 
-function get_form_wrapper(frm) {
+export function get_form_wrapper(frm) {
 	if (!frm || !frm.wrapper) return null;
 	return frm.wrapper.on ? frm.wrapper : $(frm.wrapper);
 }
 
-function clear_all_fcm_highlights(frm, state) {
+export function clear_all_fcm_highlights(frm, state) {
 	const $root = get_form_wrapper(frm);
 	if (!$root) return 0;
 
@@ -396,7 +408,7 @@ function clear_all_fcm_highlights(frm, state) {
 	return count;
 }
 
-function clear_highlights(frm, state) {
+export function clear_highlights(frm, state) {
 	Object.keys(state.highlighted_fields || {}).forEach((fieldname) => {
 		clear_highlight(frm, state, fieldname);
 	});
@@ -408,7 +420,7 @@ function clear_highlights(frm, state) {
 	state.highlighted_child_tables = {};
 }
 
-function show_docinfo_alert(changed_keys, cfg) {
+export function show_docinfo_alert(changed_keys, cfg) {
 	if (!changed_keys.length || !cfg.show_docinfo_alert) return;
 
 	const labels = cfg.docinfo_key_labels || {};
@@ -417,13 +429,13 @@ function show_docinfo_alert(changed_keys, cfg) {
 	show_fcm_alert(cfg, `Обновлены данные документа: ${changed_labels.join(", ")}`, "orange");
 }
 
-function show_realtime_alert(data, frm, cfg) {
+export function show_realtime_alert(data, frm, cfg) {
 	cfg = cfg || {};
 	const prefix = format_modifier_prefix(data && data.modified_by);
 	show_fcm_alert(cfg, `${prefix}Выполняется сверка изменений.`, "orange");
 }
 
-function show_applied_alert(frm, analysis, cfg) {
+export function show_applied_alert(frm, analysis, cfg) {
 	if (!analysis) return;
 	cfg = cfg || {};
 
@@ -446,7 +458,7 @@ function show_applied_alert(frm, analysis, cfg) {
 	show_fcm_alert(cfg, `${prefix}Объект был изменён на сервере, ${messages.join("; ")}`, indicator);
 }
 
-const FormMergeUi = {
+export const FormMergeUi = {
 	apply_field_highlight,
 	child_table_has_highlight_targets,
 	clear_all_fcm_highlights,
