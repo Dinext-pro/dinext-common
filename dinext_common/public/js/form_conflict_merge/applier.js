@@ -1,10 +1,28 @@
-function is_child_table_field(frm, fieldname) {
+import {
+	build_child_row_map,
+	child_row_key,
+	clone_raw_value,
+	equal,
+	merge_child_row,
+	normalize_value,
+	row_equal,
+	snapshot,
+} from "./diff.js";
+import {
+	diff_child_table_snapshots,
+	fcm_debug,
+	fcm_doc_label,
+	FCM_LOG_LEVELS,
+	summarize_field_value,
+} from "./debug.js";
+
+export function is_child_table_field(frm, fieldname) {
 	const field = frm.fields_dict && frm.fields_dict[fieldname];
 	const df = field && field.df;
 	return df && (df.fieldtype === "Table" || df.fieldtype === "Table MultiSelect");
 }
 
-function remove_child_rows_from_locals(rows) {
+export function remove_child_rows_from_locals(rows) {
 	(rows || []).forEach((row) => {
 		if (row && row.doctype && row.name && locals[row.doctype]) {
 			delete locals[row.doctype][row.name];
@@ -12,7 +30,7 @@ function remove_child_rows_from_locals(rows) {
 	});
 }
 
-function write_child_rows_to_form(frm, fieldname, rows, child_doctype) {
+export function write_child_rows_to_form(frm, fieldname, rows, child_doctype) {
 	remove_child_rows_from_locals(frm.doc[fieldname]);
 	frm.doc[fieldname] = [];
 
@@ -36,7 +54,7 @@ function write_child_rows_to_form(frm, fieldname, rows, child_doctype) {
 	frm.refresh_field(fieldname);
 }
 
-function merge_child_table(frm, server_doc, fieldname, state) {
+export function merge_child_table(frm, server_doc, fieldname, state) {
 	const field = frm.fields_dict && frm.fields_dict[fieldname];
 	const child_doctype = field && field.df && field.df.options;
 	const policy = (state.cfg && state.cfg.conflict_policy) || "server_wins";
@@ -105,11 +123,11 @@ function merge_child_table(frm, server_doc, fieldname, state) {
 	);
 }
 
-function apply_child_table(frm, server_doc, fieldname, state) {
+export function apply_child_table(frm, server_doc, fieldname, state) {
 	merge_child_table(frm, server_doc, fieldname, state);
 }
 
-function apply_field(frm, server_doc, fieldname, state) {
+export function apply_field(frm, server_doc, fieldname, state) {
 	if (is_child_table_field(frm, fieldname)) {
 		merge_child_table(frm, server_doc, fieldname, state);
 		return;
@@ -121,7 +139,7 @@ function apply_field(frm, server_doc, fieldname, state) {
 	frm.refresh_field(fieldname);
 }
 
-function apply_modified(frm, server_doc) {
+export function apply_modified(frm, server_doc) {
 	if (!server_doc) return;
 
 	if (server_doc.modified) {
@@ -142,7 +160,7 @@ function apply_modified(frm, server_doc) {
 	}
 }
 
-function update_initial_value(state, server_doc, fieldname, frm) {
+export function update_initial_value(state, server_doc, fieldname, frm) {
 	if (frm && is_child_table_field(frm, fieldname)) {
 		state.initial_values[fieldname] = normalize_value(frm.doc[fieldname]);
 		state.initial_raw_values = state.initial_raw_values || {};
@@ -153,7 +171,7 @@ function update_initial_value(state, server_doc, fieldname, frm) {
 	state.initial_values[fieldname] = normalize_value(server_doc[fieldname]);
 }
 
-function sync_matching_server_values(frm, server_doc, state) {
+export function sync_matching_server_values(frm, server_doc, state) {
 	const local = snapshot(frm.doc, state.fields);
 	const server = snapshot(server_doc, state.fields);
 	const synced_fields = [];
@@ -178,7 +196,7 @@ function sync_matching_server_values(frm, server_doc, state) {
 	}
 }
 
-function mark_clean(frm) {
+export function mark_clean(frm) {
 	frm.doc.__unsaved = 0;
 	const local_doc = locals[frm.doctype] && locals[frm.doctype][frm.docname];
 	if (local_doc) local_doc.__unsaved = 0;
@@ -194,7 +212,7 @@ function mark_clean(frm) {
 	}
 }
 
-const FormValueApplier = {
+export const FormValueApplier = {
 	apply_child_table,
 	apply_field,
 	apply_modified,

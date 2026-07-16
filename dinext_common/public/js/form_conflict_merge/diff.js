@@ -1,10 +1,12 @@
-function is_absent_normalized_value(value) {
+import { SYSTEM_FIELDS } from "./config.js";
+
+export function is_absent_normalized_value(value) {
 	if (value === undefined || value === null) return true;
 	if (value === "") return true;
 	return false;
 }
 
-function normalize_child(row) {
+export function normalize_child(row) {
 	const out = {};
 	Object.keys(row || {})
 		.sort()
@@ -17,7 +19,7 @@ function normalize_child(row) {
 	return out;
 }
 
-function normalize_child_table_rows(value) {
+export function normalize_child_table_rows(value) {
 	if (!Array.isArray(value)) return null;
 
 	return value
@@ -29,14 +31,14 @@ function normalize_child_table_rows(value) {
 		.map((row) => normalize_child(row));
 }
 
-function normalize_value(value) {
+export function normalize_value(value) {
 	if (value === undefined) return null;
 	if (Array.isArray(value)) return normalize_child_table_rows(value);
 	if (value && typeof value === "object") return JSON.parse(JSON.stringify(value));
 	return value;
 }
 
-function is_empty_value(value) {
+export function is_empty_value(value) {
 	if (value === undefined || value === null || value === "") return true;
 	if (typeof value !== "string") return false;
 
@@ -47,7 +49,7 @@ function is_empty_value(value) {
 	return !stripped;
 }
 
-function snapshot(doc, fields) {
+export function snapshot(doc, fields) {
 	const out = {};
 	fields.forEach((fieldname) => {
 		out[fieldname] = normalize_value(doc ? doc[fieldname] : null);
@@ -55,29 +57,29 @@ function snapshot(doc, fields) {
 	return out;
 }
 
-function equal(left, right) {
+export function equal(left, right) {
 	return JSON.stringify(normalize_value(left)) === JSON.stringify(normalize_value(right));
 }
 
-function clone_raw_value(value) {
+export function clone_raw_value(value) {
 	if (value === undefined) return null;
 	if (value && typeof value === "object") return JSON.parse(JSON.stringify(value));
 	return value;
 }
 
-function is_child_table_fieldname(frm, fieldname) {
+export function is_child_table_fieldname(frm, fieldname) {
 	const field = frm && frm.fields_dict && frm.fields_dict[fieldname];
 	const df = field && field.df;
 	return df && (df.fieldtype === "Table" || df.fieldtype === "Table MultiSelect");
 }
 
-function child_row_key(row, index) {
+export function child_row_key(row, index) {
 	if (row && row.name && !row.__islocal) return `name:${row.name}`;
 	if (row && row.__islocal) return `__islocal:${row.idx || index}`;
 	return `idx:${index}`;
 }
 
-function build_child_row_map(rows) {
+export function build_child_row_map(rows) {
 	const map = {};
 	(rows || []).forEach((row, index) => {
 		if (!row) return;
@@ -86,11 +88,11 @@ function build_child_row_map(rows) {
 	return map;
 }
 
-function row_equal(left_row, right_row) {
+export function row_equal(left_row, right_row) {
 	return equal(left_row, right_row);
 }
 
-function classify_child_row_fields(initial_row, local_row, server_row) {
+export function classify_child_row_fields(initial_row, local_row, server_row) {
 	const normalized_keys = new Set([
 		...Object.keys(normalize_child(initial_row || {})),
 		...Object.keys(normalize_child(local_row || {})),
@@ -138,7 +140,7 @@ function classify_child_row_fields(initial_row, local_row, server_row) {
 	return { server_only_fields, local_only_fields, conflict_fields };
 }
 
-function merge_child_row(initial_row, local_row, server_row, policy) {
+export function merge_child_row(initial_row, local_row, server_row, policy) {
 	const merged = clone_raw_value(local_row || server_row || initial_row || {});
 	const { server_only_fields, conflict_fields } = classify_child_row_fields(
 		initial_row || {},
@@ -165,7 +167,7 @@ function merge_child_row(initial_row, local_row, server_row, policy) {
 	return merged;
 }
 
-function child_row_ref(row, key) {
+export function child_row_ref(row, key) {
 	return {
 		row_key: key,
 		row_name: row && row.name && !row.__islocal ? row.name : null,
@@ -174,7 +176,7 @@ function child_row_ref(row, key) {
 	};
 }
 
-function analyze_child_table_merge(initial_rows, local_rows, server_rows, policy) {
+export function analyze_child_table_merge(initial_rows, local_rows, server_rows, policy) {
 	const initial_map = build_child_row_map(initial_rows);
 	const local_map = build_child_row_map(local_rows);
 	const server_map = build_child_row_map(server_rows);
@@ -265,7 +267,7 @@ function analyze_child_table_merge(initial_rows, local_rows, server_rows, policy
 	return { has_server_apply, has_conflicts, has_local_only, changed_rows, added_rows, removed_rows };
 }
 
-function should_preserve_local_seed(state, fieldname, local_value, server_value) {
+export function should_preserve_local_seed(state, fieldname, local_value, server_value) {
 	const seed = state.local_seed_fields && state.local_seed_fields[fieldname];
 	if (!seed || !seed.preserve_when_server_empty) return false;
 
@@ -277,7 +279,7 @@ function should_preserve_local_seed(state, fieldname, local_value, server_value)
 	return !is_empty_value(local_value);
 }
 
-function analyze(frm, server_doc, state) {
+export function analyze(frm, server_doc, state) {
 	const initial = state.initial_values || {};
 	const local = snapshot(frm.doc, state.fields);
 	const server = snapshot(server_doc, state.fields);
@@ -334,14 +336,14 @@ function analyze(frm, server_doc, state) {
 	return { server_only, local_only, conflicts, child_table_changes };
 }
 
-function get_remaining_local_changes(frm, state) {
+export function get_remaining_local_changes(frm, state) {
 	const local = snapshot(frm.doc, state.fields);
 	const initial = state.initial_values || {};
 
 	return state.fields.filter((fieldname) => !equal(local[fieldname], initial[fieldname]));
 }
 
-const FormDiff = {
+export const FormDiff = {
 	analyze,
 	analyze_child_table_merge,
 	build_child_row_map,

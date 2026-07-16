@@ -1,23 +1,14 @@
-/* eslint-disable no-eval */
-const fs = require("fs");
-const path = require("path");
+import path from "path";
+import { fileURLToPath, pathToFileURL } from "url";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..", "dinext_common", "public", "js", "form_conflict_merge");
 
-function loadModule(sources) {
-	const code = sources.map((file) => fs.readFileSync(path.join(root, file), "utf8")).join("\n");
-	const sandbox = { window: {} };
-	sandbox.window = sandbox;
-	const fn = new Function(
-		"window",
-		"frappe",
-		"__",
-		`${code}\nreturn { FormDiff, merge_child_row, analyze_child_table_merge, analyze };`
-	);
-	return fn(sandbox.window, {}, (value) => value);
-}
+globalThis.window = globalThis;
 
-const { FormDiff, merge_child_row, analyze_child_table_merge, analyze } = loadModule(["config.js", "diff.js"]);
+const { FormDiff, merge_child_row, analyze_child_table_merge, analyze } = await import(
+	pathToFileURL(path.join(root, "diff.js")).href
+);
 
 const ROW1 = { name: "atuj9u090i", grade: 10, status: "В оценке / на доработке", idx: 1 };
 const ROW2 = { name: "7h7ao3jv1t", grade: 4, status: "На согласовании", idx: 2 };

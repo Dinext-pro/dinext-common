@@ -1,4 +1,8 @@
-function get_form_resync_fieldnames(frm, cfg) {
+import { clone_raw_value, equal } from "./diff.js";
+import { fcm_debug, fcm_doc_label, FCM_LOG_LEVELS } from "./debug.js";
+import { cancel_pending_reload } from "./merge_engine.js";
+
+export function get_form_resync_fieldnames(frm, cfg) {
 	if (!frm || !cfg || cfg.form_resync_on_server_apply === false) return [];
 
 	const fields = new Set(cfg.form_resync_fields || []);
@@ -12,7 +16,7 @@ function get_form_resync_fieldnames(frm, cfg) {
 	return Array.from(fields);
 }
 
-function detect_form_control_changes(frm, server_doc, state) {
+export function detect_form_control_changes(frm, server_doc, state) {
 	const fieldnames = get_form_resync_fieldnames(frm, state.cfg);
 	if (!fieldnames.length || !server_doc) return [];
 
@@ -22,7 +26,7 @@ function detect_form_control_changes(frm, server_doc, state) {
 	});
 }
 
-function sync_form_control_fields(frm, server_doc, fieldnames) {
+export function sync_form_control_fields(frm, server_doc, fieldnames) {
 	(fieldnames || []).forEach((fieldname) => {
 		if (!server_doc || server_doc[fieldname] === undefined) return;
 		frm.doc[fieldname] = clone_raw_value(server_doc[fieldname]);
@@ -31,7 +35,7 @@ function sync_form_control_fields(frm, server_doc, fieldnames) {
 	});
 }
 
-function resync_form_after_server_apply(frm, server_doc, state, changed_fields) {
+export function resync_form_after_server_apply(frm, server_doc, state, changed_fields) {
 	if (!frm || frm.is_new() || frm.__dinext_fcm_resyncing) return false;
 	if (!changed_fields || !changed_fields.length) return false;
 	if (state.cfg.form_resync_on_server_apply === false) return false;
@@ -71,7 +75,7 @@ function resync_form_after_server_apply(frm, server_doc, state, changed_fields) 
 	return true;
 }
 
-const FormResync = {
+export const FormResync = {
 	detect_form_control_changes,
 	get_form_resync_fieldnames,
 	resync_form_after_server_apply,

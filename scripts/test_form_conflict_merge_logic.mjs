@@ -1,23 +1,14 @@
-/* eslint-disable no-eval */
-const fs = require("fs");
-const path = require("path");
+import path from "path";
+import { fileURLToPath, pathToFileURL } from "url";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..", "dinext_common", "public", "js", "form_conflict_merge");
 
-function loadModule(sources) {
-	const code = sources.map((file) => fs.readFileSync(path.join(root, file), "utf8")).join("\n");
-	const sandbox = { window: {} };
-	sandbox.window = sandbox;
-	const fn = new Function(
-		"window",
-		"frappe",
-		"__",
-		`${code}\nreturn { FormDiff, bump_sync_generation, is_sync_stale };`
-	);
-	return fn(sandbox.window, {}, (value) => value);
-}
+globalThis.window = globalThis;
+globalThis.frappe = globalThis.frappe || {};
 
-const { FormDiff, bump_sync_generation, is_sync_stale } = loadModule(["config.js", "diff.js", "state.js"]);
+const { FormDiff } = await import(pathToFileURL(path.join(root, "diff.js")).href);
+const { bump_sync_generation, is_sync_stale } = await import(pathToFileURL(path.join(root, "state.js")).href);
 
 let passed = 0;
 let failed = 0;
@@ -263,20 +254,13 @@ const frmOther = { doctype: "Issue", docname: "ISS-002", doc: {}, is_new: () => 
 assert(is_sync_stale(syncState, 2, frmOther) === true, "different docname is stale");
 
 // form resync field detection
-const resyncMod = loadModule(["config.js", "diff.js", "state.js", "form_resync.js"]);
-const mockWorkflow = {
+globalThis.frappe.workflow = {
 	get_state_fieldname(doctype) {
 		return doctype === "Task" ? "workflow_state" : null;
 	},
 };
-const resyncFn = new Function(
-	"window",
-	"frappe",
-	`${fs.readFileSync(path.join(root, "config.js"), "utf8")}\n${fs.readFileSync(path.join(root, "diff.js"), "utf8")}\n${fs.readFileSync(path.join(root, "form_resync.js"), "utf8")}\nreturn { detect_form_control_changes, get_form_resync_fieldnames };`
-);
-const { detect_form_control_changes, get_form_resync_fieldnames } = resyncFn(
-	{},
-	{ workflow: mockWorkflow }
+const { detect_form_control_changes, get_form_resync_fieldnames } = await import(
+	pathToFileURL(path.join(root, "form_resync.js")).href
 );
 const resyncCfg = { form_resync_on_server_apply: true, form_resync_fields: [] };
 const resyncFrm = { doctype: "Task", docname: "TASK-1", doc: { docstatus: 0, workflow_state: "Open" } };
