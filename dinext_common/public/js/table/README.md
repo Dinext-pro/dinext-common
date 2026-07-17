@@ -13,7 +13,6 @@ frappe.require(["dinext-table.bundle.js"], () => {
 | Типы IDE | [`dinext-table.d.ts`](dinext-table.d.ts) |
 | Unit-тесты | [`@tests/`](@tests/) — `npm run test:dinext-table` из `apps/dinext_common` |
 | Backlog ядра | [`todo/README.md`](todo/README.md) |
-| Smoke UI | `/app/dinext-table-test` |
 
 ---
 
@@ -187,3 +186,4 @@ DinextTable.create({
 - Домен (формулы итогов, API save) — **только клиент**, не ядро.
 
 План улучшений: [`todo/README.md`](todo/README.md).
+

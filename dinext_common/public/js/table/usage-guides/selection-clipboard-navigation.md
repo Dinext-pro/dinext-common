@@ -8,22 +8,22 @@
 
 ## Navigation
 
-Включена по умолчанию при `edit: true` (или `navigation.enabled`).
+Включена по умолчанию при `edit: true`, либо если у колонок есть `edit` (как WE: global `edit: false` + per-column). Явно: `navigation.enabled`.
 
 | Key | Default | Описание |
 |-----|---------|----------|
-| `navigation.enabled` | `options.edit` | Tab/Enter после edit |
-| `navigation.skipNonEditable` | `true` | Tab/Enter пропускают read-only |
-| `navigation.enterMovesDown` | `true` | Enter → ячейка ниже |
+| `navigation.enabled` | `edit` или column `edit` | Tab + Enter navigation |
+| `navigation.skipNonEditable` | `true` | Tab пропускает read-only |
+| `navigation.enterMovesDown` | `true` | Enter → ниже via AG Grid `enterNavigatesVertically*` |
 | `navigation.tabWraps` | `false` | Tab на границе — wrap |
-| `navigation.isRowNavigable` | `() => true` | Фильтр строк |
-| `navigation.isCellNavigable` | `() => true` | Фильтр ячеек |
+| `navigation.isRowNavigable` | `() => true` | Фильтр строк (Tab) |
+| `navigation.isCellNavigable` | `() => true` | Фильтр ячеек (Tab) |
 
 **Клавиши:**
 
-- **Tab / Shift+Tab** — в edit: commit → следующая navigable ячейка; editable → сразу edit. Вне edit — только фокус.
+- **Tab / Shift+Tab** — commit → следующая navigable (skip read-only); editable → сразу edit. Capture-phase, т.к. bubble `onCellKeyDown` часто после stop-edit.
 - **↑↓←→** — AG Grid default; read-only можно фокусировать, edit блокируется `editable`.
-- **Enter** после edit — вниз (`enterMovesDown`), без авто-edit.
+- **Enter / Shift+Enter** — только AG Grid (`enterNavigatesVertically` + `enterNavigatesVerticallyAfterEdit`): вниз / вверх, без авто-edit. Не skipNonEditable (колонка та же).
 - Printable keys не перехватываются.
 
 Tree chevron: `stopPropagation` — клавиатура не toggle tree.

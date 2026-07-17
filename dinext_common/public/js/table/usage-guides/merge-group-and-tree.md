@@ -2,7 +2,7 @@
 
 Краткий справочник: как собирать отчёты, где несколько **отображаемых** строк объединяются в одной колонке (`rowSpan`), а у группы есть **expand/collapse** (eager или lazy children).
 
-**См. также:** [`../README.md`](../README.md) (общий API), [`../test-data.js`](../test-data.js) + страница `dinext-table-test` (живой demo).
+**См. также:** [`../README.md`](../README.md) (общий API). Живые примеры — WE / Project Budget.
 
 ---
 
@@ -169,19 +169,6 @@ DinextTable.create({
 | span на все колонки «на всякий случай» | лишние ограничения selection/clipboard |
 | sort/filter по merged-отчёту | AG Grid span + sort дают странные результаты |
 | rowSpan через несколько merge-групп | span только внутри одного `mergeGroupId` |
-
----
-
-## Demo в репозитории
-
-| Кейс | Строки test-data |
-|------|------------------|
-| merge + eager | 1–2 |
-| merge + lazy | 3–4 |
-| tree eager | 5, 10 |
-| tree lazy | 7 |
-
-Страница: **DinextTable Test** → Recreate → expand chevron.
 
 ---
 
