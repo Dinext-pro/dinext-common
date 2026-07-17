@@ -38,6 +38,9 @@ function getDocumentFullscreenExit() {
 
 /**
  * Native Fullscreen API for table container or optional shell element.
+ * Domain hooks: options.onFullscreenEnter / onFullscreenExit
+ * (also fullscreen.onEnter / onExit) — fired on real enter/exit transitions
+ * including Esc / browser UI, not only toolbar clicks.
  */
 export const FullscreenMixin = (Base) => class extends Base {
     initFeatures() {
@@ -85,12 +88,60 @@ export const FullscreenMixin = (Base) => class extends Base {
         return this._fullscreenActive;
     }
 
+    buildFullscreenHookContext(active) {
+        return {
+            table: this,
+            element: this.getFullscreenElement(),
+            active: !!active
+        };
+    }
+
+    emitFullscreenEnter() {
+        const ctx = this.buildFullscreenHookContext(true);
+        const nested = this.getFullscreenOptions().onEnter;
+        if (typeof nested === "function") {
+            nested(ctx);
+        }
+        if (typeof this.options.onFullscreenEnter === "function") {
+            this.options.onFullscreenEnter(ctx);
+        }
+    }
+
+    emitFullscreenExit() {
+        const ctx = this.buildFullscreenHookContext(false);
+        const nested = this.getFullscreenOptions().onExit;
+        if (typeof nested === "function") {
+            nested(ctx);
+        }
+        if (typeof this.options.onFullscreenExit === "function") {
+            this.options.onFullscreenExit(ctx);
+        }
+    }
+
+    /**
+     * Sync DOM/class/toolbar with document fullscreen state.
+     * Emits enter/exit only on real transitions.
+     */
     syncFullscreenState() {
         const el = this.getFullscreenElement();
         const active = !!el && getDocumentFullscreenElement() === el;
+        const wasActive = this._fullscreenActive;
+
         this._fullscreenActive = active;
         this.container?.classList.toggle("dinext-table--fullscreen", active);
         this.refreshToolbar?.();
+
+        if (wasActive === active) {
+            return { changed: false, active };
+        }
+
+        if (active) {
+            this.emitFullscreenEnter();
+        } else {
+            this.emitFullscreenExit();
+        }
+        this.notifyGridLayoutChanged();
+        return { changed: true, active };
     }
 
     notifyGridLayoutChanged() {
@@ -108,8 +159,8 @@ export const FullscreenMixin = (Base) => class extends Base {
 
         try {
             await request.call(el);
+            // fullscreenchange usually already ran; sync is idempotent for hooks
             this.syncFullscreenState();
-            this.notifyGridLayoutChanged();
             return this._fullscreenActive;
         } catch (_err) {
             return false;
@@ -126,7 +177,6 @@ export const FullscreenMixin = (Base) => class extends Base {
         try {
             await exit.call(document);
             this.syncFullscreenState();
-            this.notifyGridLayoutChanged();
             return !this._fullscreenActive;
         } catch (_err) {
             return false;
@@ -143,11 +193,7 @@ export const FullscreenMixin = (Base) => class extends Base {
     bindFullscreenListeners() {
         this.unbindFullscreenListeners();
         this._onFullscreenChange = () => {
-            const wasActive = this._fullscreenActive;
             this.syncFullscreenState();
-            if (wasActive && !this._fullscreenActive) {
-                this.notifyGridLayoutChanged();
-            }
         };
         document.addEventListener("fullscreenchange", this._onFullscreenChange);
         document.addEventListener("webkitfullscreenchange", this._onFullscreenChange);

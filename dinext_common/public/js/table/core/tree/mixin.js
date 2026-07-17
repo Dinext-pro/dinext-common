@@ -38,10 +38,21 @@ function mountCellContent(contentEl, params, renderFn) {
     contentEl.textContent = String(params.value ?? "");
 }
 
+/**
+ * When to remount tree cell body (not chevron).
+ * Core: `_rowId` + column `value` only — no domain fields.
+ * Finer key (avatar URL etc.): см. todo/README.md → treeContentKey.
+ */
+function treeContentStableKey(params) {
+	const data = params?.data || {};
+	return `${data._rowId ?? ""}\0${params?.value ?? ""}`;
+}
+
 function createTreeCellRenderer(renderFn) {
     return class TreeComposedCellRenderer {
         init(params) {
             this.params = params;
+            this.contentKey = null;
             this.eGui = document.createElement("div");
             this.eGui.className = "dinext-table-tree-cell";
             this.leadEl = document.createElement("span");
@@ -58,7 +69,7 @@ function createTreeCellRenderer(renderFn) {
                     table.toggleRow(rowId);
                 }
             };
-            this.render(params);
+            this.render(params, { remountContent: true });
         }
 
         renderLead(params) {
@@ -89,7 +100,7 @@ function createTreeCellRenderer(renderFn) {
             this.leadEl.appendChild(spacer);
         }
 
-        render(params) {
+        render(params, { remountContent } = { remountContent: true }) {
             this.params = params;
             const data = params.data || {};
             const table = params.context?.dinextTable;
@@ -101,11 +112,15 @@ function createTreeCellRenderer(renderFn) {
                 !!(mergeMeta && mergeMeta.index === 0 && mergeMeta.size > 1)
             );
             this.renderLead(params);
-            mountCellContent(this.contentEl, params, renderFn);
+            if (remountContent) {
+                mountCellContent(this.contentEl, params, renderFn);
+                this.contentKey = treeContentStableKey(params);
+            }
         }
 
         refresh(params) {
-            this.render(params);
+            const nextKey = treeContentStableKey(params);
+            this.render(params, { remountContent: nextKey !== this.contentKey });
             return true;
         }
 

@@ -13,6 +13,8 @@
 
 - [x] **`getRowClass` chain** — `chainRowClassHandlers` + merge в `mergeGridOptions`. SectionMixin только отдаёт `dinext-table-row--summary`; user `gridOptions.getRowClass` склеивается автоматически. Unit: `@tests/grid-options-merge.test.mjs`.
 
+- [ ] **`treeContentKey` (opt-in)** — tree cell `refresh` уже skip remount body, если `_rowId` + `value` те же (chevron отдельно; меньше мигания `<img>`). Если domain рисует тело из полей вне `value` (avatar URL, meta) и они меняются без смены value — добавить `options.treeContentKey(params) => string` в ключ. Не угадывать domain-поля в ядре. Критерий: WR/другой client реально ловит stale body → API + README + unit.
+
 ---
 
 ## Sections / summary (v2)
@@ -47,6 +49,24 @@
 
 ---
 
+## Sort
+
+- [x] **v1 client sort layer** — `core/sort/` + [sorting.md](../usage-guides/sorting.md): siblings recursive, merge atoms, summary out, lazy `setRowChildren`, clear on row-reorder. Unit: `@tests/sort-model.test.mjs`.
+
+- [ ] **Multi-sort** — `sort.multi: true` + Shift+click (API `cycleSortState` уже имеет ветку).
+
+- [ ] **External / server sort** — `sort.mode: "external"`: только `onSortChange`, не мутировать `data`.
+
+- [ ] **Browser smoke** — header cycle + tree + merge на доменных экранах (WE / P&L).
+
+---
+
+## Fullscreen
+
+- [x] **Enter/exit hooks** — `fullscreen.onEnter` / `onExit` + top-level `onFullscreenEnter` / `onFullscreenExit`; fire on real `fullscreenchange` transitions (Esc included).
+
+---
+
 ## API / docs sync
 
 - [x] **README vs fill-handle** — синхронизировано: fill handle в [selection-clipboard-navigation.md](selection-clipboard-navigation.md).
@@ -60,6 +80,7 @@
 | Триггер | Задача |
 |---------|--------|
 | Снова правим tree expand | Dedupe expand/collapse |
+| Tree body stale при том же `value` (avatar/meta) | `treeContentKey` opt-in |
 | Появился 3-й тип секции (header, side total) | Generic `sections[]` |
 | Summary tree в prod-клиенте | Browser smoke + collision guard |
 | Жалобы на случайный paste в итоги | `summary.edit: false` by default |

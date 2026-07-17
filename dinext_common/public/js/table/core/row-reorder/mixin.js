@@ -12,7 +12,7 @@ import {
 } from "./ops.js";
 
 const ROW_REORDER_DEFAULTS = {
-    enabled: true,
+    enabled: false,
     handle: "gutter",
     gutterWidth: 12,
     allowSummary: false,
@@ -429,6 +429,9 @@ export const RowReorderMixin = (Base) => class extends Base {
     }
 
     refreshAfterRowReorder(section) {
+        // Inner mixins (e.g. Sort) may clear derived state before we rebind rows.
+        super.refreshAfterRowReorder?.(section);
+
         if (section === TABLE_SECTIONS.SUMMARY) {
             if (typeof this.syncSummarySection === "function") {
                 this.syncSummarySection();
