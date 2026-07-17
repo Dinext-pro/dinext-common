@@ -1,6 +1,7 @@
 import { composeMixins, normalizeColumns } from "./shared/utils.js";
 import { ThemeMixin } from "./theme.js";
 import { TreeMixin } from "./tree/mixin.js";
+import { SortMixin } from "./sort/mixin.js";
 import { EditMixin } from "./edit/mixin.js";
 import { EditorsMixin } from "./edit/editors.js";
 import { NavigationMixin } from "./edit/navigation.js";
@@ -105,6 +106,7 @@ class DinextTableCore {
 class DinextTable extends composeMixins(
     ThemeMixin,
     TreeMixin,
+    SortMixin,
     EditMixin,
     EditorsMixin,
     NavigationMixin,

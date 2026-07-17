@@ -4,6 +4,7 @@ export const GridMixin = (Base) => class extends Base {
     getFeatureGridOptionParts() {
         return [
             this.buildTreeGridOptions?.(),
+            this.buildSortGridOptions?.(),
             this.buildSectionGridOptions?.(),
             this.buildEditGridOptions?.(),
             this.buildEditorsGridOptions?.(),

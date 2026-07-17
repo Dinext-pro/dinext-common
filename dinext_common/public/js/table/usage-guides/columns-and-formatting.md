@@ -66,7 +66,9 @@ Row-level: `gridOptions.getRowClass`, `getRowStyle`, `rowClassRules`. Summary ro
 | Key | Value |
 |-----|-------|
 | `resizable` | `true` |
-| `sortable` | `false` |
+| `sortable` | `false` (AG flat sort off; см. [sorting.md](sorting.md)) |
+
+`column.sortable` — флаг **слоя sort** (header cycle), не AG. При `sort.enabled: true` по умолчанию колонка кликабельна; `sortable: false` — opt-out.
 
 При edit ядро также задаёт `enableCellChangeFlash`, `cellClassRules` для readonly.
 

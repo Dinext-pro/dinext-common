@@ -1,6 +1,6 @@
 # DinextTable
 
-Ядро editable-таблицы на **AG Grid 35 Community**. Один `options`-объект, поведение — mixins (`theme`, `tree`, `section`, `edit`, `selection`, `clipboard`, …).
+Ядро editable-таблицы на **AG Grid 35 Community**. Один `options`-объект, поведение — mixins (`theme`, `tree`, `sort`, `section`, `edit`, `selection`, `clipboard`, …).
 
 ```js
 frappe.require(["dinext-table.bundle.js"], () => {
@@ -24,6 +24,7 @@ frappe.require(["dinext-table.bundle.js"], () => {
 core/
   facade.js, base.js, grid.js, theme.js
   tree/                  — model.js (pure) + expand.js + mixin.js (renderer/expand)
+  sort/                  — recursive sibling sort (source tree; not AG flat sort)
   shared/utils.js        — mergeGridOptions, rowId/children fields, merge-group, DOM helpers
   section/               — summary pin, TABLE_SECTIONS
   edit/                  — commitCellChanges, editors, navigation
@@ -44,6 +45,8 @@ core/
 |------|------|
 | [cell-changes.md](usage-guides/cell-changes.md) | Batch edit: `onValidateCells` / `onSaveCells` |
 | [merge-group-and-tree.md](usage-guides/merge-group-and-tree.md) | Merge (`rowSpan`) + tree eager/lazy |
+| [sorting.md](usage-guides/sorting.md) | Client sort: siblings + merge atoms |
+| [fullscreen.md](usage-guides/fullscreen.md) | Shell FS + enter/exit hooks |
 | [sections-and-summary.md](usage-guides/sections-and-summary.md) | `summaryRows`, pin bottom, guards |
 | [columns-and-formatting.md](usage-guides/columns-and-formatting.md) | Колонки, presets, styling |
 | [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md) | Range, TSV, fill handle, Tab/Enter |
@@ -88,7 +91,17 @@ DinextTable.create({
 | `data` | `[]` | Body rows (top-level) |
 | `columns` | `[]` | → [columns-and-formatting.md](usage-guides/columns-and-formatting.md) |
 | `edit` | `false` | Global editable default |
-| `theme.columnBorder` | `true` | Vertical borders |
+| `theme.columnBorder` | `true` | Vertical borders (body) |
+| `theme.headerColumnBorder` | same as `columnBorder` | Vertical borders (header) |
+| `theme.rowBorder` | Quartz default | Horizontal borders between rows |
+| `theme.headerRowBorder` | Quartz default | Horizontal border under header |
+| `theme.wrapperBorder` | Quartz default | Outer wrapper border |
+| `theme.pinnedColumnBorder` | Quartz default | Border between pinned and center |
+| `theme.pinnedRowBorder` | Quartz default | Border between pinned rows and body |
+| `theme.cellHorizontalPadding` | Quartz default | Cell/header horizontal padding; `0` for abutting heatmap cells |
+| `theme.borderRadius` | `4` | Quartz + `--dinext-table-radius` (toolbar/status) |
+
+Borderless heatmap (opt-in): set border flags to `false` + `cellHorizontalPadding: 0`. Quartz `false` alone leaves transparent 1px seams — core maps to `{ width: 0 }`, forces `--ag-*-border*` off, and toggles `.dinext-table--no-row-borders` / `--no-column-borders`. Paint fills on `.ag-cell` (`cellClassRules` / `cellStyle`), not on child renderer wrappers. Unset flags keep default borders.
 
 ### Tree
 
@@ -100,6 +113,29 @@ DinextTable.create({
 | `onExpandRow` | — | Lazy load → `setRowChildren` |
 
 → [merge-group-and-tree.md](usage-guides/merge-group-and-tree.md), tree table в [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md).
+
+### Sort
+
+| Key | Default | Описание |
+|-----|---------|----------|
+| `sort.enabled` | `false` | Opt-in client sort (header click + API) |
+| `sort.state` | `[]` | `[{ field, dir: "asc"\|"desc" }]` |
+| `sort.nulls` | `"last"` | Empty values position |
+| `onSortChange` | — | После apply |
+
+→ [sorting.md](usage-guides/sorting.md). AG `sortable` остаётся `false` — сортируется source-tree.
+
+### Fullscreen
+
+| Key | Default | Описание |
+|-----|---------|----------|
+| `fullscreen.enabled` | `true` | Native Fullscreen API |
+| `fullscreen.target` | `"container"` | `"shell"` — FS на внешний wrapper |
+| `fullscreen.shell` | — | DOM при `target: "shell"` (filters + table и т.п.) |
+| `fullscreen.onEnter` / `onExit` | — | После реального enter/exit (вкл. Esc) |
+| `onFullscreenEnter` / `onFullscreenExit` | — | Top-level alias (оба вызываются, nested первым) |
+
+Domain: что видно в FS — через `shell` + CSS hide siblings, не teleport DOM. Хуки — для class/layout.
 
 ### Summary
 
@@ -132,7 +168,7 @@ DinextTable.create({
 | `selection.enabled` | `false` | Custom range |
 | `clipboard.enabled` | `selection.enabled` | TSV copy/paste |
 | `fillHandle.enabled` | `clipboard.enabled` | Corner drag fill |
-| `rowReorder.enabled` | `true` | Gutter row DnD reorder |
+| `rowReorder.enabled` | `false` | Gutter row DnD reorder (opt-in) |
 
 → [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md), [row-reorder.md](usage-guides/row-reorder.md).
 
@@ -186,4 +222,3 @@ DinextTable.create({
 - Домен (формулы итогов, API save) — **только клиент**, не ядро.
 
 План улучшений: [`todo/README.md`](todo/README.md).
-

@@ -1,4 +1,5 @@
 import { findAgGridRootElement, findGridMountElement } from "../shared/utils.js";
+import { TOOLBAR_ICON_SVG } from "./icons.js";
 import { getPersistStorageKey, normalizeToolbarItem, resolveToolbarFlag } from "./utils.js";
 import { resolveToolbarItems } from "./presets.js";
 
@@ -11,8 +12,6 @@ const TOOLBAR_DEFAULTS = {
 };
 
 const MENU_ICON_SVG = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="13" cy="8" r="1.5" fill="currentColor"/></svg>`;
-const PIN_ICON_SVG = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1a1.5 1.5 0 0 0-1.5 1.5V5H4.5A1.5 1.5 0 0 0 3 6.5v1a.5.5 0 0 0 .5.5h3.15L5.9 13.1a.5.5 0 0 0 .8.4L8 12.5l1.3 1a.5.5 0 0 0 .8-.4L9.35 8h3.15a.5.5 0 0 0 .5-.5v-1A1.5 1.5 0 0 0 11.5 5H9.5V2.5A1.5 1.5 0 0 0 8 1z"/></svg>`;
-const UNPIN_ICON_SVG = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1a1.5 1.5 0 0 0-1.5 1.5V5H4.5A1.5 1.5 0 0 0 3 6.5v1a.5.5 0 0 0 .5.5h3.15L5.9 13.1a.5.5 0 0 0 .8.4L8 12.5l1.3 1a.5.5 0 0 0 .8-.4L9.35 8h3.15a.5.5 0 0 0 .5-.5v-1A1.5 1.5 0 0 0 11.5 5H9.5V2.5A1.5 1.5 0 0 0 8 1z" opacity=".45"/><path fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" d="M2.5 13.5 13.5 2.5"/></svg>`;
 
 /**
  * Table command toolbar: floating trigger, in-flow slide-down panel, preset actions.
@@ -271,7 +270,10 @@ export const ToolbarMixin = (Base) => class extends Base {
         button.className = "dinext-table-toolbar-item dinext-table-toolbar-item--pin";
         button.setAttribute("role", "button");
         button.title = this._toolbarPinned ? "Unpin toolbar" : "Pin toolbar";
-        button.innerHTML = this._toolbarPinned ? UNPIN_ICON_SVG : PIN_ICON_SVG;
+        button.innerHTML = this._toolbarPinned
+            ? TOOLBAR_ICON_SVG.unpin
+            : TOOLBAR_ICON_SVG.pin;
+
         button.addEventListener("click", (event) => {
             event.preventDefault();
             event.stopPropagation();

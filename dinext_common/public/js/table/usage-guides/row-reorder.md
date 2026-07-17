@@ -32,7 +32,7 @@ DinextTable.create({
 
 | Key | Default | Описание |
 |-----|---------|----------|
-| `rowReorder.enabled` | `true` | Gutter DnD; `false` — отключить |
+| `rowReorder.enabled` | `false` | Gutter DnD; `true` — включить |
 | `rowReorder.handle` | `"gutter"` | `"gutter"` (v1). `"column"` — зарезервировано |
 | `rowReorder.gutterWidth` | `12` | Ширина hit-zone слева (px) |
 | `rowReorder.allowSummary` | `false` | Reorder pinned summary |

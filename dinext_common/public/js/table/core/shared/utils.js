@@ -3,6 +3,7 @@ const GRID_CALLBACK_KEYS = new Set([
     "onCellDoubleClicked",
     "onCellClicked",
     "onCellKeyDown",
+    "onColumnHeaderClicked",
     "tabToNextCell",
     "navigateToNextCell",
     "onCellValueChanged",

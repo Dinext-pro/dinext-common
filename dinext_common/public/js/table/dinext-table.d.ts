@@ -8,6 +8,7 @@
  * - `grid`       — mergeGridOptions, defaultColDef ядра
  * - `theme`      — Frappe light/dark sync
  * - `tree`       — N-level expand, lazy load
+ * - `sort`       — recursive sibling sort on source tree (not AG flat sort)
  * - `edit`       — scalar edit, validate/save, undo sync
  * - `editors`    — columnTypes presets (text/number/integer/date)
  * - `navigation` — Tab/Enter Excel-like (AG Grid hooks)
@@ -34,6 +35,7 @@ export type DinextTableLayer =
     | "grid"
     | "theme"
     | "tree"
+    | "sort"
     | "section"
     | "edit"
     | "editors"
@@ -143,6 +145,12 @@ export interface DinextTableColumnDef {
     /** @layer edit — приоритет выше `options.edit` */
     edit?: boolean | ((row: DinextTableRowData, field: string) => boolean);
 
+    /**
+     * @layer sort — when `sort.enabled`, default true; `false` disables header cycle for this col.
+     * AG Grid `sortable` stays false (custom layer).
+     */
+    sortable?: boolean;
+
     // --- tree ---
     /** @layer tree — inner content; indent + chevron добавляет ядро */
     render?: (params: DinextTableCellRendererParams) => HTMLElement | string;
@@ -209,12 +217,29 @@ export interface DinextTableThemeOptions {
          * (Quartz treats header separately from body).
          */
         headerColumnBorder?: boolean | Record<string, unknown>;
+        /** @layer theme — horizontal borders between body rows; Quartz default true */
+        rowBorder?: boolean | Record<string, unknown>;
+        /** @layer theme — horizontal border under header; Quartz default true */
+        headerRowBorder?: boolean | Record<string, unknown>;
+        /** @layer theme — outer wrapper border; Quartz default true */
+        wrapperBorder?: boolean | Record<string, unknown>;
+        /** @layer theme — border between pinned and scroll sections; Quartz default true */
+        pinnedColumnBorder?: boolean | Record<string, unknown>;
+        /** @layer theme — border between pinned rows and body; Quartz default true */
+        pinnedRowBorder?: boolean | Record<string, unknown>;
         /** AG Grid Quartz `spacing` — base density unit (px number or CSS length) */
         spacing?: number | string;
-        /** AG Grid Quartz `cellHorizontalPadding` — start/end padding in cells/headers */
+        /**
+         * AG Grid Quartz `cellHorizontalPadding`.
+         * Heatmap / abutting fills: use `0` together with borders off.
+         */
         cellHorizontalPadding?: number | string;
-        /** AG Grid Quartz `wrapperBorderRadius`; also sets `--dinext-table-radius` for status bar */
+        /**
+         * AG Grid Quartz `borderRadius` / chrome `--dinext-table-radius` (toolbar, status).
+         * Default `4` — same value for Quartz and CSS (always synced).
+         */
         borderRadius?: number | string;
+        /** Overrides wrapper radius; falls back to `borderRadius` / default `4` */
         wrapperBorderRadius?: number | string;
     };
 }
@@ -238,6 +263,46 @@ export interface DinextTableTreeOptions {
         table: DinextTableInstance;
         section?: "body" | "summary";
     }) => void | Promise<void>;
+}
+
+/** @layer sort */
+export type DinextTableSortDir = "asc" | "desc";
+
+/** @layer sort */
+export interface DinextTableSortSpec {
+    field: string;
+    dir: DinextTableSortDir;
+}
+
+/** @layer sort */
+export interface DinextTableSortOptions {
+    sort?: {
+        /** @layer sort — opt-in; default false */
+        enabled?: boolean;
+        /** @layer sort — reserved; v1 single-column only */
+        multi?: boolean;
+        /** @layer sort — empty values position; default "last" */
+        nulls?: "last" | "first";
+        /** @layer sort — initial / controlled state */
+        state?: DinextTableSortSpec[];
+        /** @layer sort — per-field comparator `(a, b, ctx) => number` */
+        comparators?: Record<
+            string,
+            (
+                a: unknown,
+                b: unknown,
+                ctx: {
+                    field: string;
+                    dir: DinextTableSortDir;
+                    rowA: DinextTableRowData;
+                    rowB: DinextTableRowData;
+                    options: DinextTableCreateOptions;
+                }
+            ) => number
+        >;
+    };
+    /** @layer sort — after state change + apply */
+    onSortChange?: (ctx: { sort: DinextTableSortSpec[]; table: DinextTableInstance }) => void;
 }
 
 /** @layer section */
@@ -307,8 +372,18 @@ export interface DinextTableEditOptions {
 /** @layer navigation */
 export interface DinextTableNavigationOptions {
     navigation?: {
+        /**
+         * Default: on when `edit: true` OR any column has `edit` (not `false`).
+         * Set `false` to disable Tab/Enter navigation.
+         */
         enabled?: boolean;
+        /** Tab only — skip read-only when resolving next/prev. */
         skipNonEditable?: boolean;
+        /**
+         * Enter / Shift+Enter via AG Grid
+         * `enterNavigatesVertically` + `enterNavigatesVerticallyAfterEdit`.
+         * @default true
+         */
         enterMovesDown?: boolean;
         tabWraps?: boolean;
         isRowNavigable?: (row: DinextTableRowData) => boolean;
@@ -361,7 +436,7 @@ export interface DinextTableRowReorderContext {
 /** @layer rowReorder */
 export interface DinextTableRowReorderOptions {
     rowReorder?: {
-        /** Default: true */
+        /** Default: false (opt-in) */
         enabled?: boolean;
         /** Default: `"gutter"`. `"column"` reserved */
         handle?: "gutter" | "column";
@@ -447,15 +522,40 @@ export interface DinextTableToolbarOptions {
     };
 }
 
+/** @layer fullscreen — ctx for onEnter / onExit / top-level hooks */
+export interface DinextTableFullscreenHookContext {
+    table: DinextTableInstance;
+    /** Element that owns native fullscreen (`container` or `shell`) */
+    element: HTMLElement | null | undefined;
+    active: boolean;
+}
+
 /** @layer fullscreen */
 export interface DinextTableFullscreenOptions {
     fullscreen?: {
         enabled?: boolean;
         /** `container` (default) or `shell` */
         target?: "container" | "shell";
-        /** Required when `target: "shell"` */
+        /** Required when `target: "shell"` — put filters/chrome inside this el */
         shell?: HTMLElement;
+        /**
+         * After real enter (incl. programmatic). Prefer CSS hide for siblings;
+         * use hook for domain layout tweaks.
+         */
+        onEnter?: (ctx: DinextTableFullscreenHookContext) => void;
+        /** After real exit (toolbar, Esc, browser UI). */
+        onExit?: (ctx: DinextTableFullscreenHookContext) => void;
     };
+    /**
+     * @layer fullscreen — top-level alias of `fullscreen.onEnter`
+     * (both fire if set; nested first).
+     */
+    onFullscreenEnter?: (ctx: DinextTableFullscreenHookContext) => void;
+    /**
+     * @layer fullscreen — top-level alias of `fullscreen.onExit`
+     * (both fire if set; nested first).
+     */
+    onFullscreenExit?: (ctx: DinextTableFullscreenHookContext) => void;
 }
 
 /** @layer core + ag-grid */
@@ -482,6 +582,7 @@ export interface DinextTableCreateOptions
     extends DinextTableCoreOptions,
         DinextTableThemeOptions,
         DinextTableTreeOptions,
+        DinextTableSortOptions,
         DinextTableSectionOptions,
         DinextTableEditOptions,
         DinextTableNavigationOptions,
@@ -523,8 +624,8 @@ export interface DinextTableInstance {
     // --- core lifecycle ---
     /** @layer core */
     refresh(data?: DinextTableRowData[]): void;
-    /** @layer core — keys: data | columns | edit | toolbar | summaryRows, … */
-    setOption(key: "data" | "columns" | "edit" | "toolbar" | "summaryRows", value: unknown): void;
+    /** @layer core — keys: data | columns | edit | toolbar | summaryRows | sort, … */
+    setOption(key: "data" | "columns" | "edit" | "toolbar" | "summaryRows" | "sort", value: unknown): void;
     /** @layer core */
     destroy(): void;
 
@@ -545,6 +646,18 @@ export interface DinextTableInstance {
     setRowChildren(rowId: string, children: DinextTableRowData[]): void;
     /** @layer section */
     setSummaryRows(rows: DinextTableRowData[]): void;
+
+    // --- sort ---
+    /** @layer sort */
+    getSort(): DinextTableSortSpec[];
+    /** @layer sort */
+    setSort(state: DinextTableSortSpec[], opts?: { silent?: boolean }): DinextTableSortSpec[];
+    /** @layer sort */
+    clearSort(opts?: { silent?: boolean }): DinextTableSortSpec[];
+    /** @layer sort */
+    isSortEnabled(): boolean;
+    /** @layer sort */
+    isColumnSortable(field: string): boolean;
 
     // --- selection ---
     /** @layer selection */

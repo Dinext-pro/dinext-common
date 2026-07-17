@@ -5,30 +5,32 @@
     flex-direction: column;
     background-color: var(--card-bg);
     color: var(--text-color);
-    --dinext-table-radius: var(--border-radius, 8px);
+    /* JS syncThemeCssVars always sets this; fallback matches theme.js DEFAULT_BORDER_RADIUS */
+    --dinext-table-radius: 4px;
+    --dinext-table-accent: var(--blue-500, #0289f7);
+    --dinext-table-selection-bg: color-mix(in srgb, var(--dinext-table-accent) 16%, transparent);
+    --dinext-table-fill-preview-bg: color-mix(in srgb, var(--dinext-table-accent) 10%, transparent);
+    --dinext-table-readonly-focus: color-mix(in srgb, var(--text-color) 38%, transparent);
 }
 
 /*
- * Isolation from legacy class-theme CSS (ag-grid.css / ag-theme-quartz.css).
- * Those files match [class*=ag-theme-] and reset tokens on Theming API wrappers.
- * Tokens only — never change .ag-spanned-cell-wrapper display/position (breaks expand).
+ * Legacy class-theme CSS (ag-grid.css) sets light tokens on `[class*=ag-theme-]`.
+ * AG Theming API injects `:where(.ag-theme-params-N)` (specificity 0) → loses to that
+ * rule → white grid on dark Desk. Beat it for DinextTable hosts only.
+ * See also ag-grid/bootstrap.js note on ensureLegacyThemeCss.
  */
-.dinext-table [class*="ag-theme-"] {
+.dinext-table [class*="ag-theme-params"] {
     --ag-background-color: var(--card-bg);
-    --ag-foreground-color: var(--text-color);
     --ag-data-background-color: var(--card-bg);
-    --ag-header-background-color: color-mix(in srgb, var(--card-bg), var(--text-color) 2%);
-    --ag-border-color: color-mix(in srgb, var(--text-color) 15%, transparent);
-    --ag-secondary-foreground-color: color-mix(in srgb, var(--text-color) 80%, transparent);
+    --ag-odd-row-background-color: var(--card-bg);
+    --ag-foreground-color: var(--text-color);
+    --ag-data-color: var(--text-color);
+    --ag-secondary-foreground-color: var(--text-muted, var(--text-color));
     --ag-header-foreground-color: var(--text-color);
-    --ag-wrapper-border-radius: var(--dinext-table-radius);
-    --ag-border-radius: 4px;
-    --ag-icon-size: 16px;
-    --ag-checkbox-background-color: var(--card-bg);
-    --ag-checkbox-border-radius: 3px;
-    --ag-checkbox-unchecked-color: color-mix(in srgb, var(--text-color) 35%, transparent);
-    --ag-checkbox-checked-color: var(--blue-500, #0289f7);
-    --ag-active-color: var(--blue-500, #0289f7);
+    --ag-header-background-color: color-mix(in srgb, var(--card-bg), var(--text-color) 2%);
+    --ag-border-color: color-mix(in srgb, var(--text-color) 10%, transparent);
+    --ag-row-border-color: color-mix(in srgb, var(--text-color) 10%, transparent);
+    --ag-modal-overlay-background-color: color-mix(in srgb, var(--bg-color, var(--card-bg)) 66%, transparent);
 }
 
 .dinext-table .ag-root-wrapper {
@@ -40,7 +42,8 @@
  * AG default: border-right on position:absolute + overflow:hidden cells.
  * Next cell paints over that edge (worse at fractional DPR) → center/header/summary
  * look borderless; only pin edge (last-left-pinned) stays. Draw on LEFT instead.
- * Honors --ag-column-border (transparent when theme.columnBorder === false).
+ * Honors --ag-column-border. When theme.columnBorder === false, ThemeMixin sets
+ * the var to `none` (transparent 1px still shows as gaps between fills).
  */
 .dinext-table .ag-ltr .ag-cell:not(.ag-cell-first-left-pinned) {
     border-left: var(--ag-column-border);
@@ -60,6 +63,59 @@
     /* AG draws header separators on the right via ::after — disable, use border-left. */
     content: none;
     display: none;
+}
+
+/* --- sort layer (custom; AG sortable stays false) --- */
+
+.dinext-table .ag-header-cell.dinext-table-header--sortable {
+    cursor: pointer;
+}
+
+.dinext-table .ag-header-cell.dinext-table-header--sortable .ag-header-cell-label {
+    padding-right: 14px;
+}
+
+.dinext-table .ag-header-cell.dinext-table-header--sortable .ag-header-cell-text::after {
+    content: "";
+    display: inline-block;
+    width: 0;
+    height: 0;
+    margin-left: 5px;
+    vertical-align: middle;
+    border-left: 3.5px solid transparent;
+    border-right: 3.5px solid transparent;
+    opacity: 0.35;
+    border-top: 4px solid currentColor;
+}
+
+.dinext-table .ag-header-cell.dinext-table-header--sort-asc .ag-header-cell-text::after {
+    opacity: 0.9;
+    border-top: none;
+    border-bottom: 4px solid currentColor;
+}
+
+.dinext-table .ag-header-cell.dinext-table-header--sort-desc .ag-header-cell-text::after {
+    opacity: 0.9;
+    border-top: 4px solid currentColor;
+    border-bottom: none;
+}
+
+/* Opt-in heatmap: ThemeMixin toggles these when theme.*Border === false */
+.dinext-table--no-column-borders.dinext-table .ag-ltr .ag-cell,
+.dinext-table--no-column-borders.dinext-table .ag-ltr .ag-header-cell,
+.dinext-table--no-column-borders.dinext-table .ag-ltr .ag-header-group-cell {
+    border-left: none !important;
+    border-right-color: transparent !important;
+}
+
+/* AG: border-bottom: var(--ag-row-border-style) var(--ag-row-border-color) var(--ag-row-border-width) */
+.dinext-table--no-row-borders.dinext-table .ag-row,
+.dinext-table--no-row-borders.dinext-table .ag-header-row,
+.dinext-table--no-row-borders.dinext-table .ag-floating-top,
+.dinext-table--no-row-borders.dinext-table .ag-floating-bottom {
+    border-bottom: none !important;
+    border-bottom-width: 0 !important;
+    border-top-width: 0 !important;
 }
 
 .dinext-table-grid-host {
@@ -91,37 +147,56 @@
     border-bottom-right-radius: 0;
 }
 
-.dinext-table-dark {
-    background-color: var(--card-bg);
-    color: var(--text-color);
-}
-
 .dinext-table-tree-cell {
     display: flex;
     align-items: center;
     gap: 6px;
     min-height: 1em;
     width: 100%;
+    height: 100%;
+    box-sizing: border-box;
 }
 
 .dinext-table-tree-cell--merge-group {
     box-sizing: border-box;
 }
 
-/* Consumers (e.g. WE v2) pin content to first row; do not force height:100% here —
- * that vertically centers labels across the full merge span and looks like broken row height. */
+/* Stretch AG cell host so tree flex centers in rowHeight (not content box).
+ * Skip spanned cells — WE v2 pins merge content to first logical row. */
+.dinext-table .ag-cell:has(.dinext-table-tree-cell):not(:has(.ag-spanned-cell-wrapper)) {
+    display: flex;
+    align-items: center;
+}
+
+.dinext-table .ag-cell:has(.dinext-table-tree-cell):not(:has(.ag-spanned-cell-wrapper)) > .ag-cell-wrapper,
+.dinext-table .ag-cell:has(.dinext-table-tree-cell):not(:has(.ag-spanned-cell-wrapper)) .ag-cell-value {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+}
+
+/* Consumers (e.g. WE v2) pin content to first row of span — height:100% would
+ * vertically center across the full merge and look like broken row height. */
 .dinext-table .ag-spanned-cell-wrapper > .dinext-table-tree-cell--merge-group {
     box-sizing: border-box;
+    height: auto;
+    align-items: flex-start;
 }
 
 .dinext-table-tree-lead {
     display: inline-flex;
+    align-items: center;
     flex-shrink: 0;
 }
 
 .dinext-table-tree-content {
     flex: 1;
     min-width: 0;
+    display: flex;
+    align-items: center;
+    min-height: 0;
 }
 
 .dinext-table-tree-toggle {
@@ -166,87 +241,71 @@
     50% { opacity: 1; }
 }
 
-/* demo: name + avatar in tree column render */
-.dinext-table-name-cell {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-}
-
-.dinext-table-demo-avatar {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--primary) 20%, var(--card-bg));
-    color: var(--text-color);
-    font-size: 11px;
-    font-weight: 600;
-    flex-shrink: 0;
-}
-
-.dinext-table-name-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 /* --- cell / row formatting utilities (AG Grid cellClass / getRowClass) --- */
 
-.dinext-table-cell--align-right {
+.dinext-table .dinext-table-cell--align-right {
     text-align: right;
 }
 
-.dinext-table-cell--align-center {
+.dinext-table .dinext-table-cell--align-center {
     text-align: center;
 }
 
-.dinext-table-cell--negative {
+/*
+ * Checkbox / other widgets: text-align alone does not center flex children.
+ * Span both normal cells and enableCellSpan wrappers.
+ */
+.dinext-table .ag-cell.dinext-table-cell--align-center > .ag-cell-wrapper,
+.dinext-table .ag-cell.dinext-table-cell--align-center .ag-spanned-cell-wrapper > .ag-spanned-cell > .ag-cell-wrapper {
+    justify-content: center;
+    width: 100%;
+}
+
+.dinext-table .dinext-table-cell--negative {
     color: var(--red-500, #e03636);
     font-weight: 600;
 }
 
-.dinext-table-cell--highlight {
+.dinext-table .dinext-table-cell--highlight {
     background-color: color-mix(in srgb, var(--orange-500, #fd9660) 14%, transparent);
     font-weight: 600;
 }
 
 /* Read-only focus ring (gray) instead of AG Grid default blue on .ag-cell-focus */
 .dinext-table .ag-cell.dinext-table-cell--readonly.ag-cell-focus:not(.ag-cell-inline-editing) {
-    --ag-input-focus-border-color: color-mix(in srgb, var(--text-color) 38%, transparent);
+    --ag-input-focus-border-color: var(--dinext-table-readonly-focus);
 }
 
 .dinext-table .ag-ltr .ag-cell-focus.dinext-table-cell--readonly:not(.ag-cell-range-selected):not(.ag-cell-inline-editing),
 .dinext-table .ag-ltr .ag-cell-focus.dinext-table-cell--readonly:not(.ag-cell-range-selected):not(.ag-cell-inline-editing):focus-within,
 .dinext-table .ag-rtl .ag-cell-focus.dinext-table-cell--readonly:not(.ag-cell-range-selected):not(.ag-cell-inline-editing),
 .dinext-table .ag-rtl .ag-cell-focus.dinext-table-cell--readonly:not(.ag-cell-range-selected):not(.ag-cell-inline-editing):focus-within {
-    border-color: color-mix(in srgb, var(--text-color) 38%, transparent) !important;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-color) 38%, transparent);
+    border-color: var(--dinext-table-readonly-focus) !important;
+    box-shadow: inset 0 0 0 1px var(--dinext-table-readonly-focus);
 }
 
 /* --- custom range selection (Community; no ag-grid rangeSelection module) --- */
+/* Beat column-border left/right rules (higher specificity + explicit right color). */
 
-.dinext-table-cell-in-range {
-    background-color: color-mix(in srgb, var(--blue-500, #0289f7) 16%, transparent);
+.dinext-table .ag-cell.dinext-table-cell-in-range {
+    background-color: var(--dinext-table-selection-bg);
 }
 
-.dinext-table-cell-range-top {
-    border-top: 1px solid var(--blue-500, #0289f7);
+.dinext-table .ag-cell.dinext-table-cell-range-top {
+    border-top: 1px solid var(--dinext-table-accent);
 }
 
-.dinext-table-cell-range-bottom {
-    border-bottom: 1px solid var(--blue-500, #0289f7);
+.dinext-table .ag-cell.dinext-table-cell-range-bottom {
+    border-bottom: 1px solid var(--dinext-table-accent);
 }
 
-.dinext-table-cell-range-left {
-    border-left: 1px solid var(--blue-500, #0289f7);
+.dinext-table .ag-ltr .ag-cell.dinext-table-cell-range-left {
+    border-left: 1px solid var(--dinext-table-accent);
 }
 
-.dinext-table-cell-range-right {
-    border-right: 1px solid var(--blue-500, #0289f7);
+.dinext-table .ag-ltr .ag-cell.dinext-table-cell-range-right {
+    border-right: 1px solid var(--dinext-table-accent);
+    border-right-color: var(--dinext-table-accent);
 }
 
 /* --- fill handle (Excel-like corner drag; mounted inside corner cell) --- */
@@ -262,7 +321,7 @@
     bottom: -3px;
     width: 6px;
     height: 6px;
-    background-color: var(--blue-500, #0289f7);
+    background-color: var(--dinext-table-accent);
     border: 1px solid var(--card-bg, #fff);
     box-sizing: border-box;
     cursor: crosshair;
@@ -278,24 +337,25 @@
     cursor: crosshair;
 }
 
-.dinext-table-cell-fill-preview {
-    background-color: color-mix(in srgb, var(--blue-500, #0289f7) 10%, transparent);
+.dinext-table .ag-cell.dinext-table-cell-fill-preview {
+    background-color: var(--dinext-table-fill-preview-bg);
 }
 
-.dinext-table-cell-fill-preview-top {
-    border-top: 1px dashed var(--blue-500, #0289f7);
+.dinext-table .ag-cell.dinext-table-cell-fill-preview-top {
+    border-top: 1px dashed var(--dinext-table-accent);
 }
 
-.dinext-table-cell-fill-preview-bottom {
-    border-bottom: 1px dashed var(--blue-500, #0289f7);
+.dinext-table .ag-cell.dinext-table-cell-fill-preview-bottom {
+    border-bottom: 1px dashed var(--dinext-table-accent);
 }
 
-.dinext-table-cell-fill-preview-left {
-    border-left: 1px dashed var(--blue-500, #0289f7);
+.dinext-table .ag-ltr .ag-cell.dinext-table-cell-fill-preview-left {
+    border-left: 1px dashed var(--dinext-table-accent);
 }
 
-.dinext-table-cell-fill-preview-right {
-    border-right: 1px dashed var(--blue-500, #0289f7);
+.dinext-table .ag-ltr .ag-cell.dinext-table-cell-fill-preview-right {
+    border-right: 1px dashed var(--dinext-table-accent);
+    border-right-color: var(--dinext-table-accent);
 }
 
 /* --- toolbar (in-flow slide-down bar + floating trigger) --- */
@@ -303,7 +363,8 @@
 .dinext-table-toolbar {
     position: relative;
     flex: 0 0 auto;
-    z-index: 2;
+    /* Above AG pinned/header chrome (z-index ~2) — floating trigger overlays header. */
+    z-index: 5;
     overflow: visible;
     --dinext-table-toolbar-trigger-size: 28px;
     --dinext-table-toolbar-trigger-offset: 6px;
@@ -498,12 +559,12 @@
 
 /* --- summary section (pinned bottom) --- */
 
-.dinext-table-row--summary {
+.dinext-table .dinext-table-row--summary {
     font-weight: 600;
     background-color: color-mix(in srgb, var(--text-muted, #748094) 8%, var(--card-bg, #fff));
 }
 
-.dinext-table-row--summary .dinext-table-cell--readonly {
+.dinext-table .dinext-table-row--summary .dinext-table-cell--readonly {
     opacity: 1;
 }
 
@@ -520,11 +581,11 @@
     cursor: grabbing !important;
 }
 
-.dinext-table-row--dragging {
+.dinext-table .dinext-table-row--dragging {
     opacity: 0.45;
 }
 
-.dinext-table-row-reorder-drop-target {
+.dinext-table .dinext-table-row-reorder-drop-target {
     background-color: color-mix(in srgb, var(--primary, #249ef0) 8%, transparent);
 }
 
