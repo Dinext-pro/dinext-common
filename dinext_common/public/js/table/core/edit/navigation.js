@@ -6,11 +6,32 @@ const NAVIGATION_DEFAULTS = {
     isCellNavigable: () => true
 };
 
+/** True when any leaf column opts into edit (global `edit: false` + per-column edit). */
+function columnsAllowEdit(columns) {
+    for (const col of columns || []) {
+        if (Array.isArray(col.children) && col.children.length) {
+            if (columnsAllowEdit(col.children)) return true;
+            continue;
+        }
+        if (col.edit !== undefined && col.edit !== false) return true;
+    }
+    return false;
+}
+
 export const NavigationMixin = (Base) => class extends Base {
-    /** `options.edit` opts navigation in by default; explicit `navigation.enabled` always wins. */
+    /**
+     * Explicit `navigation.enabled` wins.
+     * Default on when global `edit` or any column has `edit` (not `false`).
+     */
     isNavigationEnabled() {
         const enabled = this.options.navigation?.enabled;
-        return enabled !== undefined ? !!enabled : !!this.options.edit;
+        if (enabled !== undefined) {
+            return !!enabled;
+        }
+        if (this.options.edit) {
+            return true;
+        }
+        return columnsAllowEdit(this.columns);
     }
 
     getNavigationOptions() {
@@ -35,26 +56,17 @@ export const NavigationMixin = (Base) => class extends Base {
     isCellEligibleForNavigation(rowNode, column) {
         const nav = this.getNavigationOptions();
         const row = rowNode.data;
-        if (!row) {
-            return false;
-        }
-        if (!nav.isRowNavigable(row)) {
-            return false;
-        }
-        if (!nav.isCellNavigable(row, column.getColDef().field)) {
-            return false;
-        }
-        if (nav.skipNonEditable && !this.isColumnEditableForRow(column, rowNode)) {
-            return false;
-        }
+        if (!row 
+            || !nav.isRowNavigable(row)
+            || !nav.isCellNavigable(row, column.getColDef().field)
+            || (nav.skipNonEditable && !this.isColumnEditableForRow(column, rowNode))
+        ) return false;
         return true;
     }
 
-    /** Scans displayed rows/cols for the next cell matching navigability + editable rules. `null` at grid boundary (no wrap). */
+    /** Next Tab target honouring skipNonEditable. `null` at grid boundary (no wrap unless tabWraps). */
     resolveNextCell({ rowNode, column, direction }) {
-        if (!this.api || !rowNode || !column) {
-            return null;
-        }
+        if (!this.api || !rowNode || !column) return null;
 
         const columns = this.api.getAllDisplayedColumns();
         const colCount = columns.length;
@@ -65,29 +77,23 @@ export const NavigationMixin = (Base) => class extends Base {
             return null;
         }
 
-        const horizontal = direction === "next" || direction === "prev";
-        const step = (direction === "next" || direction === "down") ? 1 : -1;
-        const wrap = horizontal && this.getNavigationOptions().tabWraps;
+        const backwards = direction === "prev";
+        const step = backwards ? -1 : 1;
+        const wrap = this.getNavigationOptions().tabWraps;
         const maxSteps = rowCount * colCount;
 
         for (let i = 0; i < maxSteps; i++) {
-            if (horizontal) {
-                colIndex += step;
-                if (colIndex >= colCount) {
-                    colIndex = 0;
-                    rowIndex += 1;
-                } else if (colIndex < 0) {
-                    colIndex = colCount - 1;
-                    rowIndex -= 1;
-                }
-            } else {
-                rowIndex += step;
+            colIndex += step;
+            if (colIndex >= colCount) {
+                colIndex = 0;
+                rowIndex += 1;
+            } else if (colIndex < 0) {
+                colIndex = colCount - 1;
+                rowIndex -= 1;
             }
 
             if (rowIndex < 0 || rowIndex >= rowCount) {
-                if (!wrap) {
-                    return null;
-                }
+                if (!wrap) return null;
                 rowIndex = ((rowIndex % rowCount) + rowCount) % rowCount;
             }
 
@@ -102,20 +108,16 @@ export const NavigationMixin = (Base) => class extends Base {
     }
 
     moveFocusToResolvedCell(next, { startEditing } = {}) {
-        if (!next || !this.api) {
-            return;
-        }
+        if (!next || !this.api) return;
         this.api.setFocusedCell(next.rowNode.rowIndex, next.column.getColId());
         if (startEditing && this.isColumnEditableForRow(next.column, next.rowNode)) {
             this.api.startEditingCell({ rowIndex: next.rowNode.rowIndex, colKey: next.column.getColId() });
         }
     }
 
-    /** Tab / Enter after edit — honour skipNonEditable; arrow keys use AG Grid default (focus any cell). */
+    /** Outside edit: Tab jumps to next navigable cell. While editing, let AG Grid stop edit first. */
     resolveTabToNextCell(params) {
-        if (params.editing) {
-            return true;
-        }
+        if (params.editing) return true;
 
         const rowNode = this.api.getDisplayedRowAtIndex(params.previousCellPosition.rowIndex);
         if (!rowNode) {
@@ -128,60 +130,73 @@ export const NavigationMixin = (Base) => class extends Base {
             direction: params.backwards ? "prev" : "next"
         });
 
-        if (!next) {
-            return false;
-        }
+        if (!next) return false;
         return { rowIndex: next.rowNode.rowIndex, column: next.column, rowPinned: null };
     }
 
-    /** Records Tab/Enter pressed while a cell is editing; consumed once by handleCellEditingStopped. Printable keys are never touched here. */
-    handleNavigationCellKeyDown(event) {
-        const key = event.event?.key;
-        if (key !== "Tab" && key !== "Enter") {
-            return;
-        }
-        if (!this.api?.getEditingCells()?.length) {
-            return;
-        }
-        this._pendingNavKey = { key, shiftKey: !!event.event.shiftKey };
+    /**
+     * Capture-phase Tab while editing: record intent before the editor stops edit.
+     * Bubble `onCellKeyDown` is often too late (editing already stopped).
+     * Enter is handled by AG Grid `enterNavigatesVerticallyAfterEdit` — not here.
+     */
+    bindTabKeyCapture() {
+        this.unbindTabKeyCapture();
+        if (!this.isNavigationEnabled() || !this.container) return;
+        this._tabKeydownCapture = (domEvent) => {
+            if (domEvent.key !== "Tab") return;
+            if (!this.api?.getEditingCells()?.length) return;
+            this._pendingTabNav = { shiftKey: !!domEvent.shiftKey };
+        };
+        this.container.addEventListener("keydown", this._tabKeydownCapture, true);
     }
 
-    /** Wraps EditMixin's seam: Tab moves to the next navigable cell (and continues editing there); Enter moves down a row when `enterMovesDown`. */
+    unbindTabKeyCapture() {
+        if (this._tabKeydownCapture && this.container) {
+            this.container.removeEventListener("keydown", this._tabKeydownCapture, true);
+        }
+        this._tabKeydownCapture = null;
+    }
+
+    afterGridCreated() {
+        super.afterGridCreated();
+        this.bindTabKeyCapture();
+    }
+
+    destroyFeatures() {
+        this.unbindTabKeyCapture();
+        this._pendingTabNav = null;
+        super.destroyFeatures();
+    }
+
+    /** After edit stop: Tab → next navigable cell and keep editing. */
     handleCellEditingStopped(event) {
         super.handleCellEditingStopped(event);
 
-        const pending = this._pendingNavKey;
-        this._pendingNavKey = null;
-        if (!pending || !this.isNavigationEnabled()) {
-            return;
-        }
+        const pending = this._pendingTabNav;
+        this._pendingTabNav = null;
+        if (!pending || !this.isNavigationEnabled()) return;
 
         const rowNode = event.node;
         const column = event.column;
-        if (!rowNode || !column) {
-            return;
-        }
+        if (!rowNode || !column) return;
 
-        if (pending.key === "Tab") {
-            const next = this.resolveNextCell({ rowNode, column, direction: pending.shiftKey ? "prev" : "next" });
-            setTimeout(() => this.moveFocusToResolvedCell(next, { startEditing: true }), 0);
-            return;
-        }
-
-        if (pending.key === "Enter" && this.getNavigationOptions().enterMovesDown) {
-            const next = this.resolveNextCell({ rowNode, column, direction: "down" });
-            setTimeout(() => this.moveFocusToResolvedCell(next, { startEditing: false }), 0);
-        }
+        const next = this.resolveNextCell({
+            rowNode,
+            column,
+            direction: pending.shiftKey ? "prev" : "next"
+        });
+        setTimeout(() => this.moveFocusToResolvedCell(next, { startEditing: true }), 0);
     }
 
     buildNavigationGridOptions() {
-        if (!this.isNavigationEnabled()) {
-            return {};
-        }
+        if (!this.isNavigationEnabled()) return {};
 
+        const enterMovesDown = this.getNavigationOptions().enterMovesDown;
         return {
-            tabToNextCell: params => this.resolveTabToNextCell(params),
-            onCellKeyDown: event => this.handleNavigationCellKeyDown(event)
+            // Official Excel-style Enter / Shift+Enter (Community).
+            enterNavigatesVertically: enterMovesDown,
+            enterNavigatesVerticallyAfterEdit: enterMovesDown,
+            tabToNextCell: params => this.resolveTabToNextCell(params)
         };
     }
 };
