@@ -1,3 +1,8 @@
 .modal-body .row div[class^="col"] {
     /*flex-basis: auto;/* Корректировка обрезания наименований в окне поиска */
 }
+
+/* Query Report / page toolbar MultiSelectList filters */
+.page-form .multiselect-list.dropdown {
+	width: 100%;
+}
