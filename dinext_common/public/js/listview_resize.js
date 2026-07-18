@@ -7,6 +7,7 @@ frappe.views.BaseList.prototype.refresh = function() {
 
 function makeResizableListview() {
     // Изменение ширины столбцов в List View - тикет ISS-2023-00116
+    if (!cur_list) return;
     const resultContainer = cur_list.$result[0];
     if (!resultContainer) return;
 
