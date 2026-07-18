@@ -1959,6 +1959,9 @@ function refresh_watched_docinfo_blocks(frm, changed_keys) {
 	if (changed_keys.includes("shared") && frm.shared && frm.shared.refresh) {
 		frm.shared.refresh();
 	}
+	if (changed_keys.includes("comments") && frm.timeline && frm.timeline.refresh) {
+		frm.timeline.refresh();
+	}
 }
 
 function apply_docinfo_changes(frm, state, docinfo, opts) {
