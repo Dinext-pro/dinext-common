@@ -14,6 +14,7 @@ function makeResizableListview() {
     const header = resultContainer.querySelector('header');
     if (!header) return;
     const listHeaderSubject = header.querySelector('.list-header-subject');
+    if (!listHeaderSubject) return;
     const listRowContainers = resultContainer.querySelectorAll('.list-row-container');
     listHeaderSubject.classList.add("ellipsis");
     
