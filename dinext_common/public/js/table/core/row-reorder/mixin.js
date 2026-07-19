@@ -7,7 +7,6 @@ import {
     computeTargetInsertIndex,
     getStableRowId,
     reorderSiblingBlock,
-    resolveMergeBlock,
     resolveReorderContext,
     restoreSiblingListOrder
 } from "./ops.js";
@@ -30,7 +29,6 @@ export const RowReorderMixin = (Base) => class extends Base {
         super.initFeatures();
         this._rowReorderDrag = null;
         this._rowReorderDropIndicatorEl = null;
-        this._rowReorderGutterHoverRowId = null;
     }
 
     destroyFeatures() {
@@ -179,7 +177,6 @@ export const RowReorderMixin = (Base) => class extends Base {
             "dinext-table--row-reorder-grabbing",
             "dinext-table--row-reorder-gutter-hover"
         );
-        this._rowReorderGutterHoverRowId = null;
         if (this._rowReorderDropIndicatorEl) {
             this._rowReorderDropIndicatorEl.hidden = true;
         }
@@ -253,14 +250,12 @@ export const RowReorderMixin = (Base) => class extends Base {
     updateRowReorderGutterHover(event) {
         if (!this.isRowReorderEnabled() || this.isRowReorderBlocked()) {
             this.container?.classList.remove("dinext-table--row-reorder-gutter-hover");
-            this._rowReorderGutterHoverRowId = null;
             return;
         }
 
         const rowEl = this.getRowElementFromPoint(event.clientX, event.clientY);
         if (!rowEl || !this.isRowReorderGutterHit(rowEl, event.clientX)) {
             this.container?.classList.remove("dinext-table--row-reorder-gutter-hover");
-            this._rowReorderGutterHoverRowId = null;
             return;
         }
 
@@ -271,7 +266,6 @@ export const RowReorderMixin = (Base) => class extends Base {
         }
 
         this.container.classList.add("dinext-table--row-reorder-gutter-hover");
-        this._rowReorderGutterHoverRowId = getStableRowId(rowNode.data, this.options);
     }
 
     beginRowReorderDrag(rowNode, rowEl) {
@@ -446,32 +440,27 @@ export const RowReorderMixin = (Base) => class extends Base {
         this.setGridOption("rowData", [...(this.rowData || [])]);
     }
 
-    /**
-     * Move a row (or merge atom) one sibling slot up/down — same commit path as gutter DnD.
-     * @param {string} rowId
-     * @param {-1|1} direction
-     */
-    nudgeRowReorder(rowId, direction) {
+    resolveNudgeRowReorder(rowId, direction) {
         if (!rowId || !direction || this.isRowReorderBlocked()) {
-            return false;
+            return null;
         }
 
         const node = this.api?.getRowNode?.(String(rowId));
         const row = node?.data || this.findSourceRow?.(String(rowId));
         if (!row) {
-            return false;
+            return null;
         }
 
         const fakeNode = node || { data: row };
         if (!this.canStartRowReorder(fakeNode)) {
-            return false;
+            return null;
         }
 
         const section = this.resolveRowReorderSection(row);
         const sourceRows = this.getRowReorderSourceRows(section);
         const ctx = resolveReorderContext(sourceRows, String(rowId), this.options);
         if (!ctx) {
-            return false;
+            return null;
         }
 
         const toIndex = computeNudgeToIndex(
@@ -482,40 +471,28 @@ export const RowReorderMixin = (Base) => class extends Base {
             this.options
         );
         if (toIndex == null) {
-            return false;
+            return null;
         }
 
         const orderBefore = collectLocalRowIds(ctx.list, this.options);
-        return this.commitRowReorder({
-            section,
-            ctx,
-            toIndex,
-            orderBefore
-        });
+        return { section, ctx, toIndex, orderBefore };
+    }
+
+    /**
+     * Move a row (or merge atom) one sibling slot up/down — same commit path as gutter DnD.
+     * @param {string} rowId
+     * @param {-1|1} direction
+     */
+    nudgeRowReorder(rowId, direction) {
+        const resolved = this.resolveNudgeRowReorder(rowId, direction);
+        if (!resolved) {
+            return false;
+        }
+        return this.commitRowReorder(resolved);
     }
 
     canNudgeRowReorder(rowId, direction) {
-        if (!rowId || !direction || this.isRowReorderBlocked()) {
-            return false;
-        }
-        const row = this.api?.getRowNode?.(String(rowId))?.data
-            || this.findSourceRow?.(String(rowId));
-        if (!row || !this.canStartRowReorder({ data: row })) {
-            return false;
-        }
-        const section = this.resolveRowReorderSection(row);
-        const sourceRows = this.getRowReorderSourceRows(section);
-        const ctx = resolveReorderContext(sourceRows, String(rowId), this.options);
-        if (!ctx) {
-            return false;
-        }
-        return computeNudgeToIndex(
-            ctx.list,
-            ctx.index,
-            ctx.blockSize,
-            direction,
-            this.options
-        ) != null;
+        return this.resolveNudgeRowReorder(rowId, direction) != null;
     }
 
     commitRowReorder({ section, ctx, toIndex, orderBefore }) {
@@ -523,7 +500,7 @@ export const RowReorderMixin = (Base) => class extends Base {
         const blockSize = ctx.blockSize;
         const listSnapshot = ctx.list.map((row) => ({ ...row }));
 
-        const move = buildRowReorderMovePayload({
+        const validateMove = buildRowReorderMovePayload({
             section,
             parentRowId: ctx.parentRowId,
             rowId: ctx.rowId,
@@ -539,7 +516,7 @@ export const RowReorderMixin = (Base) => class extends Base {
             const validation = onValidateRowReorder({
                 table: this,
                 source: ROW_REORDER_SOURCES.REORDER,
-                move
+                move: validateMove
             });
             if (validation !== true) {
                 return false;
@@ -552,12 +529,15 @@ export const RowReorderMixin = (Base) => class extends Base {
         }
 
         const orderAfter = collectLocalRowIds(ctx.list, this.options);
-        move.orderedLocalRowIds = orderAfter;
-        move.orderedRowIds = orderAfter.map((localId) => (
-            ctx.parentRowId ? `${ctx.parentRowId}:${localId}` : localId
-        ));
-        move.rows = ctx.list.map((row) => ({ ...row }));
-        move.toIndex = toIndex;
+        const move = {
+            ...validateMove,
+            orderedLocalRowIds: orderAfter,
+            orderedRowIds: orderAfter.map((localId) => (
+                ctx.parentRowId ? `${ctx.parentRowId}:${localId}` : localId
+            )),
+            rows: ctx.list.map((row) => ({ ...row })),
+            toIndex
+        };
 
         this.refreshAfterRowReorder(section);
         this.recordRowReorderUndo({
@@ -649,15 +629,3 @@ export const RowReorderMixin = (Base) => class extends Base {
         return opts;
     }
 };
-
-export {
-    buildRowReorderMovePayload,
-    collectLocalRowIds,
-    computeNudgeToIndex,
-    computeTargetInsertIndex,
-    findMergeBlockStartIndex,
-    reorderSiblingBlock,
-    resolveMergeBlock,
-    resolveReorderContext,
-    restoreSiblingListOrder
-} from "./ops.js";

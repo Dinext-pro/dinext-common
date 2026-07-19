@@ -20,7 +20,7 @@ const ROW_CHECK_DEFAULTS = {
     enabled: false,
     unit: ROW_CHECK_UNITS.ROW,
     allowSummary: false,
-    /** Toolbar select-all checkbox (not column header — keeps header slot empty). */
+    /** Toolbar select-all icon control (not column header — keeps header slot empty). */
     selectAll: true,
     width: 36
 };
@@ -48,7 +48,7 @@ function createCheckboxInput({ checked, indeterminate, disabled, onChange }) {
  */
 class RowCheckCellRenderer {
     init(params) {
-        this.table = params.context?.table || params.table;
+        this.table = params.table || params.context?.dinextTable;
         this.eGui = document.createElement("div");
         this.eGui.className = "dinext-table-row-check-cell-inner";
         this.input = null;
@@ -91,8 +91,13 @@ class RowCheckCellRenderer {
             return;
         }
         if (this._boundRowId !== rowId) {
-            this.input = null;
-            this.sync(params);
+            this.eGui.replaceChildren();
+            this.input = createCheckboxInput({
+                checked,
+                onChange: (value) => table.toggleRowCheck(rowId, value)
+            });
+            this.eGui.appendChild(this.input);
+            this._boundRowId = rowId;
             return;
         }
         if (this.input.checked !== checked) {
@@ -124,7 +129,7 @@ export const RowCheckMixin = (Base) => class extends Base {
     }
 
     /**
-     * Auto-injected into toolbar when rowCheck is on (leading select/deselect control).
+     * Auto-injected into toolbar when rowCheck is on (leading select/deselect icon control).
      * Hidden when `rowCheck.selectAll === false`.
      */
     getRowCheckToolbarItems() {
@@ -214,9 +219,7 @@ export const RowCheckMixin = (Base) => class extends Base {
         return this._checkedRowIds.has(id);
     }
 
-    setCheckedRowIds(ids, { silent = false } = {}) {
-        this._checkedRowIds = new Set((ids || []).map(String));
-        this.pruneRowCheckState({ silent: true });
+    applyRowCheckSelectionUi({ silent = false } = {}) {
         this.refreshRowCheckCells();
         if (!silent) {
             this.emitRowCheckChange();
@@ -224,16 +227,18 @@ export const RowCheckMixin = (Base) => class extends Base {
         this.refreshToolbar();
     }
 
+    setCheckedRowIds(ids, { silent = false } = {}) {
+        this._checkedRowIds = new Set((ids || []).map(String));
+        this.pruneRowCheckState({ silent: true });
+        this.applyRowCheckSelectionUi({ silent });
+    }
+
     clearRowCheck({ silent = false } = {}) {
         if (!this._checkedRowIds.size) {
             return;
         }
         this._checkedRowIds.clear();
-        this.refreshRowCheckCells();
-        if (!silent) {
-            this.emitRowCheckChange();
-        }
-        this.refreshToolbar();
+        this.applyRowCheckSelectionUi({ silent });
     }
 
     toggleRowCheck(rowId, checked) {
@@ -252,9 +257,7 @@ export const RowCheckMixin = (Base) => class extends Base {
         } else {
             this._checkedRowIds.delete(id);
         }
-        this.refreshRowCheckCells();
-        this.emitRowCheckChange();
-        this.refreshToolbar();
+        this.applyRowCheckSelectionUi();
     }
 
     setAllRowsChecked(checked) {
@@ -271,9 +274,7 @@ export const RowCheckMixin = (Base) => class extends Base {
                 this._checkedRowIds.delete(id);
             }
         }
-        this.refreshRowCheckCells();
-        this.emitRowCheckChange();
-        this.refreshToolbar();
+        this.applyRowCheckSelectionUi();
     }
 
     collectCheckableRowIds() {
@@ -366,28 +367,36 @@ export const RowCheckMixin = (Base) => class extends Base {
         this.refreshToolbar();
     }
 
+    restoreRowCheckSnapshot({ body, summary, checked, syncSummary }) {
+        replaceArrayContents(this.sourceData, body);
+        if (syncSummary && summary != null) {
+            replaceArrayContents(this.summarySourceData, summary);
+        }
+        this._checkedRowIds = new Set(checked);
+        this.syncRowCheckGrid({ syncSummary });
+        this.emitRowCheckChange();
+    }
+
     recordRowCheckUndo({ beforeBody, afterBody, beforeSummary, afterSummary, beforeChecked, afterChecked, syncSummary }) {
         if (typeof this.pushUndoCommand !== "function") {
             return;
         }
         this.pushUndoCommand({
             undo: () => {
-                replaceArrayContents(this.sourceData, beforeBody);
-                if (syncSummary) {
-                    replaceArrayContents(this.summarySourceData, beforeSummary);
-                }
-                this._checkedRowIds = new Set(beforeChecked);
-                this.syncRowCheckGrid({ syncSummary });
-                this.emitRowCheckChange();
+                this.restoreRowCheckSnapshot({
+                    body: beforeBody,
+                    summary: beforeSummary,
+                    checked: beforeChecked,
+                    syncSummary
+                });
             },
             execute: () => {
-                replaceArrayContents(this.sourceData, afterBody);
-                if (syncSummary) {
-                    replaceArrayContents(this.summarySourceData, afterSummary);
-                }
-                this._checkedRowIds = new Set(afterChecked);
-                this.syncRowCheckGrid({ syncSummary });
-                this.emitRowCheckChange();
+                this.restoreRowCheckSnapshot({
+                    body: afterBody,
+                    summary: afterSummary,
+                    checked: afterChecked,
+                    syncSummary
+                });
             }
         });
     }
@@ -602,13 +611,12 @@ export const RowCheckMixin = (Base) => class extends Base {
         const afterSummary = allowSummary ? cloneRowTree(this.summarySourceData) : null;
 
         const revert = () => {
-            replaceArrayContents(this.sourceData, beforeBody);
-            if (allowSummary) {
-                replaceArrayContents(this.summarySourceData, beforeSummary);
-            }
-            this._checkedRowIds = new Set(beforeChecked);
-            this.syncRowCheckGrid({ syncSummary: allowSummary });
-            this.emitRowCheckChange();
+            this.restoreRowCheckSnapshot({
+                body: beforeBody,
+                summary: beforeSummary,
+                checked: beforeChecked,
+                syncSummary: allowSummary
+            });
         };
 
         const onDeleteRows = this.options.onDeleteRows;
@@ -723,5 +731,3 @@ export const RowCheckMixin = (Base) => class extends Base {
         return this.canNudgeRowReorder?.(ids[0], direction) ?? false;
     }
 };
-
-export { ROW_CHECK_COL_ID, ROW_CHECK_SOURCES, ROW_CHECK_UNITS } from "./constants.js";

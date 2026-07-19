@@ -5,6 +5,35 @@ function canUndoRedo(table) {
     return typeof table.isUndoRedoEnabled === "function" && table.isUndoRedoEnabled();
 }
 
+function createMoveRowToolbarItems() {
+    return [
+        {
+            id: "move-row-up",
+            title: "Move selected row up",
+            iconSvg: TOOLBAR_ICON_SVG.moveUp,
+            disabled: ({ table: instance }) => (
+                typeof instance.canNudgeCheckedRow !== "function"
+                    || !instance.canNudgeCheckedRow(-1)
+            ),
+            onClick: ({ table: instance }) => {
+                instance.nudgeCheckedRow(-1);
+            }
+        },
+        {
+            id: "move-row-down",
+            title: "Move selected row down",
+            iconSvg: TOOLBAR_ICON_SVG.moveDown,
+            disabled: ({ table: instance }) => (
+                typeof instance.canNudgeCheckedRow !== "function"
+                    || !instance.canNudgeCheckedRow(1)
+            ),
+            onClick: ({ table: instance }) => {
+                instance.nudgeCheckedRow(1);
+            }
+        }
+    ];
+}
+
 const TOOLBAR_PRESET_BUILDERS = {
     history(table) {
         if (!canUndoRedo(table)) {
@@ -110,32 +139,7 @@ const TOOLBAR_PRESET_BUILDERS = {
         const reorderOn = typeof table.isRowReorderEnabled === "function"
             && table.isRowReorderEnabled();
         if (reorderOn) {
-            items.push(
-                {
-                    id: "move-row-up",
-                    title: "Move selected row up",
-                    iconSvg: TOOLBAR_ICON_SVG.moveUp,
-                    disabled: ({ table: instance }) => (
-                        typeof instance.canNudgeCheckedRow !== "function"
-                            || !instance.canNudgeCheckedRow(-1)
-                    ),
-                    onClick: ({ table: instance }) => {
-                        instance.nudgeCheckedRow(-1);
-                    }
-                },
-                {
-                    id: "move-row-down",
-                    title: "Move selected row down",
-                    iconSvg: TOOLBAR_ICON_SVG.moveDown,
-                    disabled: ({ table: instance }) => (
-                        typeof instance.canNudgeCheckedRow !== "function"
-                            || !instance.canNudgeCheckedRow(1)
-                    ),
-                    onClick: ({ table: instance }) => {
-                        instance.nudgeCheckedRow(1);
-                    }
-                }
-            );
+            items.push(...createMoveRowToolbarItems());
         }
 
         return items;
@@ -222,7 +226,7 @@ export function resolveToolbarPresetItems(table, presetNames = []) {
             items.push(...builder(table));
         }
     }
-    return items.map((item, index) => normalizeToolbarItem(item, index));
+    return items;
 }
 
 export function resolveToolbarItems(table, toolbarOptions = {}) {
@@ -231,13 +235,14 @@ export function resolveToolbarItems(table, toolbarOptions = {}) {
         typeof table.getRowCheckToolbarItems === "function"
             ? table.getRowCheckToolbarItems()
             : []
-    ).map((item, index) => normalizeToolbarItem(item, index));
+    );
     const presetItems = resolveToolbarPresetItems(table, presets);
-    const customItems = (toolbarOptions.items || []).map((item, index) => normalizeToolbarItem(item, index));
+    const customItems = toolbarOptions.items || [];
 
     const endItems = presetItems.filter(item => item.align === "end");
     const primaryItems = presetItems.filter(item => item.align !== "end");
 
     // Select-all (rowCheck) at end of primary actions, before align:end (fullscreen).
-    return [...primaryItems, ...customItems, ...rowCheckItems, ...endItems];
+    const combined = [...primaryItems, ...customItems, ...rowCheckItems, ...endItems];
+    return combined.map((item, index) => normalizeToolbarItem(item, index));
 }

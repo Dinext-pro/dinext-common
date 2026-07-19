@@ -31,5 +31,7 @@ export const TOOLBAR_ICON_SVG = {
     /** Stacked cards + check — select all rows. */
     selectAll: `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><rect x="5.2" y="5.2" width="8.3" height="8.3" rx="1.2"/><path d="M3.6 10.2V3.6A1.2 1.2 0 0 1 4.8 2.4h6.6"/><path d="M2 8.6V2.8A.8.8 0 0 1 2.8 2h6"/><path d="M7.35 9.05 9.1 10.85l3.05-3.5"/></g></svg>`,
     /** Same stack without check — clear row selection. */
-    selectNone: `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><rect x="5.2" y="5.2" width="8.3" height="8.3" rx="1.2"/><path d="M3.6 10.2V3.6A1.2 1.2 0 0 1 4.8 2.4h6.6"/><path d="M2 8.6V2.8A.8.8 0 0 1 2.8 2h6"/></g></svg>`
+    selectNone: `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><rect x="5.2" y="5.2" width="8.3" height="8.3" rx="1.2"/><path d="M3.6 10.2V3.6A1.2 1.2 0 0 1 4.8 2.4h6.6"/><path d="M2 8.6V2.8A.8.8 0 0 1 2.8 2h6"/></g></svg>`,
+    /** Toolbar trigger menu (three dots). */
+    menu: `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="13" cy="8" r="1.5" fill="currentColor"/></svg>`
 };
