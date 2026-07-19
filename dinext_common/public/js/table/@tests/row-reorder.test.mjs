@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
     collectLocalRowIds,
+    computeNudgeToIndex,
     computeTargetInsertIndex,
     reorderSiblingBlock,
     resolveMergeBlock,
@@ -64,4 +65,19 @@ test("restoreSiblingListOrder reverts permutation", () => {
     assert.deepEqual(collectLocalRowIds(list), ["b", "c", "a"]);
     restoreSiblingListOrder(list, ["a", "b", "c"]);
     assert.deepEqual(collectLocalRowIds(list), ["a", "b", "c"]);
+});
+
+test("computeNudgeToIndex moves single row down/up", () => {
+    const list = [{ id: "a" }, { id: "b" }, { id: "c" }];
+    const down = computeNudgeToIndex(list, 1, 1, 1);
+    assert.equal(down, 3);
+    const copy = list.map((r) => ({ ...r }));
+    assert.equal(reorderSiblingBlock(copy, 1, 1, down), true);
+    assert.deepEqual(collectLocalRowIds(copy), ["a", "c", "b"]);
+
+    const up = computeNudgeToIndex(list, 1, 1, -1);
+    assert.equal(up, 0);
+    const copy2 = list.map((r) => ({ ...r }));
+    assert.equal(reorderSiblingBlock(copy2, 1, 1, up), true);
+    assert.deepEqual(collectLocalRowIds(copy2), ["b", "a", "c"]);
 });

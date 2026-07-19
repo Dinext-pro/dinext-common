@@ -75,6 +75,12 @@
 
 ---
 
+## Row check (done v1)
+
+- [x] **Row check layer** — `core/row-check/` + toolbar preset `rows` (add/delete/duplicate/move ±1) + nudge via row-reorder commit. Guide: [row-check.md](../usage-guides/row-check.md). Domain migrate (WE `_selected`, UT toolbar) — отдельно.
+
+---
+
 ## Когда брать в работу
 
 | Триггер | Задача |

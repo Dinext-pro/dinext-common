@@ -56,6 +56,91 @@ const TOOLBAR_PRESET_BUILDERS = {
         ];
     },
 
+    /**
+     * Opt-in: add / delete / duplicate / move checked rows.
+     * Requires `rowCheck.enabled`.
+     * Move arrows require `rowReorder.enabled` (same reorder contour as gutter DnD).
+     */
+    rows(table) {
+        if (typeof table.isRowCheckEnabled !== "function" || !table.isRowCheckEnabled()) {
+            return [];
+        }
+
+        const checkedCount = () => (
+            typeof table.getCheckedRowIds === "function"
+                ? table.getCheckedRowIds().length
+                : 0
+        );
+
+        const items = [];
+
+        if (typeof table.hasRowCheckAddHook === "function" && table.hasRowCheckAddHook()) {
+            items.push({
+                id: "add-row",
+                title: "Add row",
+                iconSvg: TOOLBAR_ICON_SVG.addRow,
+                onClick: ({ table: instance }) => {
+                    void instance.addRow();
+                }
+            });
+        }
+
+        items.push({
+            id: "delete-rows",
+            title: "Delete selected rows",
+            iconSvg: TOOLBAR_ICON_SVG.deleteRows,
+            disabled: () => checkedCount() === 0,
+            onClick: ({ table: instance }) => {
+                void instance.deleteCheckedRows();
+            }
+        });
+
+        if (typeof table.hasRowCheckDuplicateHook === "function" && table.hasRowCheckDuplicateHook()) {
+            items.push({
+                id: "duplicate-rows",
+                title: "Duplicate selected rows",
+                iconSvg: TOOLBAR_ICON_SVG.duplicateRows,
+                disabled: () => checkedCount() === 0,
+                onClick: ({ table: instance }) => {
+                    void instance.duplicateCheckedRows();
+                }
+            });
+        }
+
+        const reorderOn = typeof table.isRowReorderEnabled === "function"
+            && table.isRowReorderEnabled();
+        if (reorderOn) {
+            items.push(
+                {
+                    id: "move-row-up",
+                    title: "Move selected row up",
+                    iconSvg: TOOLBAR_ICON_SVG.moveUp,
+                    disabled: ({ table: instance }) => (
+                        typeof instance.canNudgeCheckedRow !== "function"
+                            || !instance.canNudgeCheckedRow(-1)
+                    ),
+                    onClick: ({ table: instance }) => {
+                        instance.nudgeCheckedRow(-1);
+                    }
+                },
+                {
+                    id: "move-row-down",
+                    title: "Move selected row down",
+                    iconSvg: TOOLBAR_ICON_SVG.moveDown,
+                    disabled: ({ table: instance }) => (
+                        typeof instance.canNudgeCheckedRow !== "function"
+                            || !instance.canNudgeCheckedRow(1)
+                    ),
+                    onClick: ({ table: instance }) => {
+                        instance.nudgeCheckedRow(1);
+                    }
+                }
+            );
+        }
+
+        return items;
+    },
+
     /** Opt-in: copy/paste/clear/fill-down (hidden from default toolbar). */
     clipboard(table) {
         const canClipboard = typeof table.isClipboardEnabled === "function"
@@ -142,11 +227,17 @@ export function resolveToolbarPresetItems(table, presetNames = []) {
 
 export function resolveToolbarItems(table, toolbarOptions = {}) {
     const presets = toolbarOptions.presets ?? ["history", "tree", "fullscreen"];
+    const rowCheckItems = (
+        typeof table.getRowCheckToolbarItems === "function"
+            ? table.getRowCheckToolbarItems()
+            : []
+    ).map((item, index) => normalizeToolbarItem(item, index));
     const presetItems = resolveToolbarPresetItems(table, presets);
     const customItems = (toolbarOptions.items || []).map((item, index) => normalizeToolbarItem(item, index));
 
     const endItems = presetItems.filter(item => item.align === "end");
     const primaryItems = presetItems.filter(item => item.align !== "end");
 
-    return [...primaryItems, ...customItems, ...endItems];
+    // Select-all (rowCheck) at end of primary actions, before align:end (fullscreen).
+    return [...primaryItems, ...customItems, ...rowCheckItems, ...endItems];
 }

@@ -3,6 +3,7 @@ import { ROW_REORDER_SOURCES } from "./constants.js";
 import {
     buildRowReorderMovePayload,
     collectLocalRowIds,
+    computeNudgeToIndex,
     computeTargetInsertIndex,
     getStableRowId,
     reorderSiblingBlock,
@@ -445,6 +446,78 @@ export const RowReorderMixin = (Base) => class extends Base {
         this.setGridOption("rowData", [...(this.rowData || [])]);
     }
 
+    /**
+     * Move a row (or merge atom) one sibling slot up/down — same commit path as gutter DnD.
+     * @param {string} rowId
+     * @param {-1|1} direction
+     */
+    nudgeRowReorder(rowId, direction) {
+        if (!rowId || !direction || this.isRowReorderBlocked()) {
+            return false;
+        }
+
+        const node = this.api?.getRowNode?.(String(rowId));
+        const row = node?.data || this.findSourceRow?.(String(rowId));
+        if (!row) {
+            return false;
+        }
+
+        const fakeNode = node || { data: row };
+        if (!this.canStartRowReorder(fakeNode)) {
+            return false;
+        }
+
+        const section = this.resolveRowReorderSection(row);
+        const sourceRows = this.getRowReorderSourceRows(section);
+        const ctx = resolveReorderContext(sourceRows, String(rowId), this.options);
+        if (!ctx) {
+            return false;
+        }
+
+        const toIndex = computeNudgeToIndex(
+            ctx.list,
+            ctx.index,
+            ctx.blockSize,
+            direction,
+            this.options
+        );
+        if (toIndex == null) {
+            return false;
+        }
+
+        const orderBefore = collectLocalRowIds(ctx.list, this.options);
+        return this.commitRowReorder({
+            section,
+            ctx,
+            toIndex,
+            orderBefore
+        });
+    }
+
+    canNudgeRowReorder(rowId, direction) {
+        if (!rowId || !direction || this.isRowReorderBlocked()) {
+            return false;
+        }
+        const row = this.api?.getRowNode?.(String(rowId))?.data
+            || this.findSourceRow?.(String(rowId));
+        if (!row || !this.canStartRowReorder({ data: row })) {
+            return false;
+        }
+        const section = this.resolveRowReorderSection(row);
+        const sourceRows = this.getRowReorderSourceRows(section);
+        const ctx = resolveReorderContext(sourceRows, String(rowId), this.options);
+        if (!ctx) {
+            return false;
+        }
+        return computeNudgeToIndex(
+            ctx.list,
+            ctx.index,
+            ctx.blockSize,
+            direction,
+            this.options
+        ) != null;
+    }
+
     commitRowReorder({ section, ctx, toIndex, orderBefore }) {
         const fromIndex = ctx.index;
         const blockSize = ctx.blockSize;
@@ -548,10 +621,14 @@ export const RowReorderMixin = (Base) => class extends Base {
             if (enabled && this.api) {
                 this.ensureRowReorderDropIndicator();
                 this.bindRowReorderListeners();
+                if (this.options.gridOptions?.animateRows === undefined) {
+                    this.setGridOption("animateRows", true);
+                }
             } else {
                 this.destroyRowReorderListeners();
                 this.clearRowReorderUi();
             }
+            this.refreshToolbar?.();
             return true;
         }
         return super.handleSetOption?.(key, value) ?? false;
@@ -562,16 +639,23 @@ export const RowReorderMixin = (Base) => class extends Base {
             return {};
         }
 
-        return {
+        const opts = {
             onBodyScroll: () => this.handleRowReorderBodyScroll()
         };
+        // Soften order changes (gutter + toolbar nudge). Domain may override via gridOptions.
+        if (this.options.gridOptions?.animateRows === undefined) {
+            opts.animateRows = true;
+        }
+        return opts;
     }
 };
 
 export {
     buildRowReorderMovePayload,
     collectLocalRowIds,
+    computeNudgeToIndex,
     computeTargetInsertIndex,
+    findMergeBlockStartIndex,
     reorderSiblingBlock,
     resolveMergeBlock,
     resolveReorderContext,

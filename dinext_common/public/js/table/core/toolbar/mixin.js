@@ -1,6 +1,11 @@
 import { findAgGridRootElement, findGridMountElement } from "../shared/utils.js";
 import { TOOLBAR_ICON_SVG } from "./icons.js";
-import { getPersistStorageKey, normalizeToolbarItem, resolveToolbarFlag } from "./utils.js";
+import {
+    getPersistStorageKey,
+    normalizeToolbarItem,
+    resolveToolbarFlag,
+    resolveToolbarValue
+} from "./utils.js";
 import { resolveToolbarItems } from "./presets.js";
 
 const TOOLBAR_DEFAULTS = {
@@ -296,25 +301,30 @@ export const ToolbarMixin = (Base) => class extends Base {
             button.classList.add("dinext-table-toolbar-item--end");
         }
         button.setAttribute("role", "button");
-        button.title = item.title || item.label || "";
+        const title = resolveToolbarValue(item.title, ctx, "")
+            || resolveToolbarValue(item.label, ctx, "");
+        button.title = title;
         button.disabled = resolveToolbarFlag(item.disabled, ctx);
 
-        if (item.iconSvg) {
+        const iconSvg = resolveToolbarValue(item.iconSvg, ctx, null);
+        const iconClass = resolveToolbarValue(item.icon, ctx, null);
+        if (iconSvg) {
             const icon = document.createElement("span");
             icon.className = "dinext-table-toolbar-item-icon";
             icon.setAttribute("aria-hidden", "true");
-            icon.innerHTML = item.iconSvg;
+            icon.innerHTML = iconSvg;
             button.appendChild(icon);
-        } else if (item.icon) {
+        } else if (iconClass) {
             const icon = document.createElement("span");
-            icon.className = `dinext-table-toolbar-item-icon ${item.icon}`;
+            icon.className = `dinext-table-toolbar-item-icon ${iconClass}`;
             icon.setAttribute("aria-hidden", "true");
             button.appendChild(icon);
         }
-        if (item.label) {
+        const labelText = resolveToolbarValue(item.label, ctx, "");
+        if (labelText) {
             const label = document.createElement("span");
             label.className = "dinext-table-toolbar-item-label";
-            label.textContent = item.label;
+            label.textContent = labelText;
             button.appendChild(label);
         }
 
@@ -332,6 +342,53 @@ export const ToolbarMixin = (Base) => class extends Base {
         return button;
     }
 
+    createToolbarItemCheckbox(item) {
+        const ctx = this.getToolbarActionContext();
+        if (resolveToolbarFlag(item.hidden, ctx)) {
+            return null;
+        }
+
+        const wrap = document.createElement("label");
+        wrap.className = "dinext-table-toolbar-item dinext-table-toolbar-item--checkbox";
+        if (item.align === "end") {
+            wrap.classList.add("dinext-table-toolbar-item--end");
+        }
+        wrap.title = item.title || item.label || "";
+
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.className = "dinext-table-toolbar-checkbox-input";
+        input.disabled = resolveToolbarFlag(item.disabled, ctx);
+        input.checked = resolveToolbarFlag(item.checked, ctx);
+        input.indeterminate = resolveToolbarFlag(item.indeterminate, ctx);
+        input.setAttribute("aria-label", item.title || item.label || "Toggle");
+
+        input.addEventListener("click", (event) => {
+            event.stopPropagation();
+        });
+        input.addEventListener("change", (event) => {
+            event.stopPropagation();
+            if (input.disabled) {
+                return;
+            }
+            item.onChange?.({
+                ...this.getToolbarActionContext(event),
+                checked: !!input.checked
+            });
+            // Keep menu open while multi-selecting rows (pinned or not).
+            this.renderToolbarItems();
+        });
+
+        wrap.appendChild(input);
+        if (item.label) {
+            const label = document.createElement("span");
+            label.className = "dinext-table-toolbar-item-label";
+            label.textContent = item.label;
+            wrap.appendChild(label);
+        }
+        return wrap;
+    }
+
     appendToolbarItemButton(groupEl, item) {
         if (item.type === "separator") {
             const sep = document.createElement("div");
@@ -340,9 +397,11 @@ export const ToolbarMixin = (Base) => class extends Base {
             groupEl.appendChild(sep);
             return;
         }
-        const button = this.createToolbarItemButton(item);
-        if (button) {
-            groupEl.appendChild(button);
+        const el = item.type === "checkbox"
+            ? this.createToolbarItemCheckbox(item)
+            : this.createToolbarItemButton(item);
+        if (el) {
+            groupEl.appendChild(el);
         }
     }
 
@@ -402,4 +461,4 @@ export const ToolbarMixin = (Base) => class extends Base {
     }
 };
 
-export { normalizeToolbarItem, getPersistStorageKey } from "./utils.js";
+export { normalizeToolbarItem, getPersistStorageKey, resolveToolbarValue } from "./utils.js";

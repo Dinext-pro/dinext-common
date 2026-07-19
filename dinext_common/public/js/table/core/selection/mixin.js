@@ -91,6 +91,11 @@ export const SelectionMixin = (Base) => class extends Base {
         return !!this.getSelectionOptions().enabled;
     }
 
+    /** Override in feature layers (e.g. rowCheck) to exclude system columns from cell ranges. */
+    shouldApplySelectionToColumn(column) {
+        return !!column;
+    }
+
     makeCellRef(node, column) {
         return { rowId: this.getEditRowId(node.data), colId: column.getColId() };
     }
@@ -250,6 +255,9 @@ export const SelectionMixin = (Base) => class extends Base {
         if (!this.shouldApplySelectionToRow(event.node)) {
             return;
         }
+        if (!this.shouldApplySelectionToColumn(event.column)) {
+            return;
+        }
 
         const cellRef = this.makeCellRef(event.node, event.column);
         const domEvent = event.event;
@@ -285,6 +293,9 @@ export const SelectionMixin = (Base) => class extends Base {
         if (!this.shouldApplySelectionToRow(event.node)) {
             return;
         }
+        if (!this.shouldApplySelectionToColumn(event.column)) {
+            return;
+        }
         this.extendActiveRange(this._selectionAnchor, this.makeCellRef(event.node, event.column));
         this.refreshSelectionHighlight();
     }
@@ -302,6 +313,9 @@ export const SelectionMixin = (Base) => class extends Base {
         if (!node?.data) {
             return;
         }
+        if (!this.shouldApplySelectionToColumn(event.column)) {
+            return;
+        }
 
         this.focusedCell = this.makeCellRef(node, event.column);
 
@@ -315,19 +329,35 @@ export const SelectionMixin = (Base) => class extends Base {
     resolveSelectionStep({ rowIndex, colIndex, columns, direction }) {
         let r = rowIndex;
         let c = colIndex;
-        if (direction === "up") r -= 1;
-        if (direction === "down") r += 1;
-        if (direction === "left") c -= 1;
-        if (direction === "right") c += 1;
+        const rowCount = this.api.getDisplayedRowCount();
+        const colCount = columns.length;
+        const maxSteps = rowCount + colCount;
 
-        if (r < 0 || r >= this.api.getDisplayedRowCount() || c < 0 || c >= columns.length) {
-            return null;
+        for (let step = 0; step < maxSteps; step += 1) {
+            if (direction === "up") r -= 1;
+            if (direction === "down") r += 1;
+            if (direction === "left") c -= 1;
+            if (direction === "right") c += 1;
+
+            if (r < 0 || r >= rowCount || c < 0 || c >= colCount) {
+                return null;
+            }
+
+            const rowNode = this.api.getDisplayedRowAtIndex(r);
+            if (!rowNode?.data || !this.shouldApplySelectionToRow(rowNode)) {
+                return null;
+            }
+            if (!this.shouldApplySelectionToColumn(columns[c])) {
+                // Skip system cols (e.g. rowCheck); keep stepping in the same direction.
+                continue;
+            }
+            return {
+                rowIndex: r,
+                colId: columns[c].getColId(),
+                rowId: this.getEditRowId(rowNode.data)
+            };
         }
-        const rowNode = this.api.getDisplayedRowAtIndex(r);
-        if (!rowNode?.data || !this.shouldApplySelectionToRow(rowNode)) {
-            return null;
-        }
-        return { rowIndex: r, colId: columns[c].getColId(), rowId: this.getEditRowId(rowNode.data) };
+        return null;
     }
 
     handleSelectionCellKeyDown(event) {

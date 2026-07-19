@@ -12,7 +12,8 @@ export const GridMixin = (Base) => class extends Base {
             this.buildSelectionGridOptions?.(),
             this.buildClipboardGridOptions?.(),
             this.buildFillHandleGridOptions?.(),
-            this.buildRowReorderGridOptions?.()
+            this.buildRowReorderGridOptions?.(),
+            this.buildRowCheckGridOptions?.()
         ].filter(part => part && Object.keys(part).length);
     }
 

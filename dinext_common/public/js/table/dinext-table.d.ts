@@ -16,6 +16,7 @@
  * - `clipboard`  — custom TSV copy/paste/fill (Community)
  * - `fillHandle`   — Excel-like corner drag copy-fill
  * - `rowReorder`   — gutter row drag-and-drop reorder
+ * - `rowCheck`     — checkbox column + checked Set + row mutations / nudge
  * - `selectionStatus` — Excel-like status bar aggregates
  * - `toolbar`        — floating trigger + slide-down command bar
  * - `fullscreen`     — native Fullscreen API on container/shell
@@ -44,6 +45,7 @@ export type DinextTableLayer =
     | "clipboard"
     | "fillHandle"
     | "rowReorder"
+    | "rowCheck"
     | "selectionStatus"
     | "toolbar"
     | "fullscreen"
@@ -459,6 +461,82 @@ export interface DinextTableRowReorderOptions {
     }) => boolean;
 }
 
+/** @layer rowCheck */
+export type DinextTableRowCheckUnit = "row" | "mergeHead";
+
+/** @layer rowCheck */
+export interface DinextTableRowCheckChangeContext {
+    table: DinextTableInstance;
+    source: string;
+    selectedRowIds: string[];
+    selectedRows: DinextTableRowData[];
+}
+
+/** @layer rowCheck */
+export interface DinextTableRowCheckMutationContext {
+    table: DinextTableInstance;
+    source: string;
+    rowIds: string[];
+    rows: DinextTableRowData[];
+}
+
+/** @layer rowCheck */
+export interface DinextTableRowCheckOptions {
+    rowCheck?: {
+        /** Default: false (opt-in) */
+        enabled?: boolean;
+        /**
+         * `"row"` — each checkable row.
+         * `"mergeHead"` — only merge head; inject col uses spanRows (enableCellSpan auto-on).
+         */
+        unit?: DinextTableRowCheckUnit;
+        allowSummary?: boolean;
+        /**
+         * Toolbar select/deselect-all icon (leading). Default: true.
+         * Column header stays empty — no reserved header control.
+         */
+        selectAll?: boolean;
+        width?: number;
+    };
+    /** @layer rowCheck */
+    onRowCheckChange?: (ctx: DinextTableRowCheckChangeContext) => void;
+    /** @layer rowCheck — per-row guard */
+    canCheckRow?: (ctx: {
+        table: DinextTableInstance;
+        row: DinextTableRowData;
+        rowId: string;
+        section: "body" | "summary";
+    }) => boolean;
+    /**
+     * @layer rowCheck — return plain row to append; `false`/`null` aborts. Core inserts + undo.
+     */
+    onAddRow?: (ctx: {
+        table: DinextTableInstance;
+        source: string;
+    }) => DinextTableRowData | false | null | undefined | Promise<DinextTableRowData | false | null | undefined>;
+    /**
+     * @layer rowCheck — sync before delete; only `false` rejects (omit / other → allow).
+     */
+    onValidateDeleteRows?: (ctx: DinextTableRowCheckMutationContext) => boolean | void;
+    /**
+     * @layer rowCheck — after optimistic remove; `false`/throw → revert source + checks.
+     * Optional: without hook core still removes checked rows from source.
+     */
+    onDeleteRows?: (
+        ctx: DinextTableRowCheckMutationContext
+    ) => void | false | Promise<void | false>;
+    /**
+     * @layer rowCheck — sync before duplicate; only `false` rejects.
+     */
+    onValidateDuplicateRows?: (ctx: DinextTableRowCheckMutationContext) => boolean | void;
+    /**
+     * @layer rowCheck — return non-empty plain rows[] to insert after last checked id.
+     */
+    onDuplicateRows?: (
+        ctx: DinextTableRowCheckMutationContext
+    ) => DinextTableRowData[] | false | null | undefined | Promise<DinextTableRowData[] | false | null | undefined>;
+}
+
 /** @layer selectionStatus */
 export interface DinextTableSelectionStatusStats {
     cellCount: number;
@@ -494,7 +572,7 @@ export interface DinextTableToolbarActionContext {
 /** @layer toolbar */
 export interface DinextTableToolbarItem {
     id?: string;
-    type?: "button" | "separator";
+    type?: "button" | "separator" | "checkbox";
     label?: string;
     title?: string;
     /** Frappe / Desk icon class, e.g. `icon-refresh` */
@@ -506,6 +584,12 @@ export interface DinextTableToolbarItem {
     disabled?: boolean | ((ctx: DinextTableToolbarActionContext) => boolean);
     hidden?: boolean | ((ctx: DinextTableToolbarActionContext) => boolean);
     onClick?: (ctx: DinextTableToolbarActionContext) => void;
+    /** @layer toolbar — `type: "checkbox"` */
+    checked?: boolean | ((ctx: DinextTableToolbarActionContext) => boolean);
+    /** @layer toolbar — `type: "checkbox"` tri-state */
+    indeterminate?: boolean | ((ctx: DinextTableToolbarActionContext) => boolean);
+    /** @layer toolbar — `type: "checkbox"` */
+    onChange?: (ctx: DinextTableToolbarActionContext & { checked: boolean }) => void;
 }
 
 /** @layer toolbar */
@@ -517,7 +601,7 @@ export interface DinextTableToolbarOptions {
         /** localStorage key suffix for pinned state */
         persistKey?: string;
         /** Default: `["history", "tree", "fullscreen"]`; set `[]` to disable presets */
-        presets?: Array<"history" | "tree" | "clipboard" | "fullscreen">;
+        presets?: Array<"history" | "tree" | "rows" | "clipboard" | "fullscreen">;
         items?: DinextTableToolbarItem[];
     };
 }
@@ -590,6 +674,7 @@ export interface DinextTableCreateOptions
         DinextTableClipboardOptions,
         DinextTableFillHandleOptions,
         DinextTableRowReorderOptions,
+        DinextTableRowCheckOptions,
         DinextTableSelectionStatusOptions,
         DinextTableToolbarOptions,
         DinextTableFullscreenOptions,
@@ -711,6 +796,38 @@ export interface DinextTableInstance {
 
     /** @layer rowReorder */
     isRowReorderEnabled(): boolean;
+    /** @layer rowReorder — one sibling slot; used by toolbar move arrows */
+    nudgeRowReorder(rowId: string, direction: -1 | 1): boolean;
+    /** @layer rowReorder */
+    canNudgeRowReorder(rowId: string, direction: -1 | 1): boolean;
+
+    // --- rowCheck ---
+    /** @layer rowCheck */
+    isRowCheckEnabled(): boolean;
+    /** @layer rowCheck */
+    getCheckedRowIds(): string[];
+    /** @layer rowCheck */
+    getCheckedRows(): DinextTableRowData[];
+    /** @layer rowCheck */
+    isRowChecked(rowOrId: DinextTableRowData | string | number): boolean;
+    /** @layer rowCheck */
+    setCheckedRowIds(ids: string[], opts?: { silent?: boolean }): void;
+    /** @layer rowCheck */
+    clearRowCheck(opts?: { silent?: boolean }): void;
+    /** @layer rowCheck */
+    toggleRowCheck(rowId: string, checked?: boolean): void;
+    /** @layer rowCheck */
+    setAllRowsChecked(checked: boolean): void;
+    /** @layer rowCheck */
+    addRow(): Promise<boolean>;
+    /** @layer rowCheck */
+    deleteCheckedRows(): Promise<boolean>;
+    /** @layer rowCheck */
+    duplicateCheckedRows(): Promise<boolean>;
+    /** @layer rowCheck */
+    nudgeCheckedRow(direction: -1 | 1): boolean;
+    /** @layer rowCheck */
+    canNudgeCheckedRow(direction: -1 | 1): boolean;
 
     // --- fullscreen ---
     /** @layer fullscreen */
