@@ -5,3 +5,9 @@
 tags
 node_modules
 __pycache__
+# --- dinext workspace ---
+fixtures/client_script.json
+fixtures/server_script.json
+public/dist/
+dist/
+build/
