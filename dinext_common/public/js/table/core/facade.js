@@ -2,6 +2,7 @@ import { DinextTable } from "./base.js";
 import { createMergeGroupSpanRows } from "./shared/utils.js";
 import { CELL_CHANGE_SOURCES } from "./edit/changes.js";
 import { ROW_REORDER_SOURCES } from "./row-reorder/constants.js";
+import { ROW_CHECK_COL_ID, ROW_CHECK_SOURCES, ROW_CHECK_UNITS } from "./row-check/constants.js";
 
 const ASSETS = [
     "/assets/dinext_common/css/dinext-table.css",
@@ -25,6 +26,9 @@ DinextTable.load = loadAgGrid;
 DinextTable.createMergeGroupSpanRows = createMergeGroupSpanRows;
 DinextTable.CELL_CHANGE_SOURCES = CELL_CHANGE_SOURCES;
 DinextTable.ROW_REORDER_SOURCES = ROW_REORDER_SOURCES;
+DinextTable.ROW_CHECK_COL_ID = ROW_CHECK_COL_ID;
+DinextTable.ROW_CHECK_SOURCES = ROW_CHECK_SOURCES;
+DinextTable.ROW_CHECK_UNITS = ROW_CHECK_UNITS;
 DinextTable.create = async function(options) {
     await loadAgGrid();
     if (!options?.container) {

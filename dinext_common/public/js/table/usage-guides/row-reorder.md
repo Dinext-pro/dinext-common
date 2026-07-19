@@ -32,11 +32,14 @@ DinextTable.create({
 
 | Key | Default | Описание |
 |-----|---------|----------|
-| `rowReorder.enabled` | `false` | Gutter DnD; `true` — включить |
+| `rowReorder.enabled` | `false` | Reorder contour: gutter DnD + toolbar ↑↓ (preset `rows`) + `nudgeRowReorder` |
 | `rowReorder.handle` | `"gutter"` | `"gutter"` (v1). `"column"` — зарезервировано |
 | `rowReorder.gutterWidth` | `12` | Ширина hit-zone слева (px) |
 | `rowReorder.allowSummary` | `false` | Reorder pinned summary |
 | `rowReorder.allowTree` | `"siblings"` | `"siblings"` — внутри одного `parent.children`; `false` — только top-level `data` |
+
+При `enabled: true` ядро ставит `animateRows: true`, если domain не задал `gridOptions.animateRows`.
+Toolbar move arrows (preset `rows` + `rowCheck`) появляются только вместе с этим флагом — один контур.
 
 ---
 

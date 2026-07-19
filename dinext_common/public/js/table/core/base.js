@@ -11,6 +11,7 @@ import { ClipboardMixin } from "./selection/clipboard.js";
 import { FillHandleMixin } from "./selection/fill-handle.js";
 import { SelectionStatusMixin } from "./selection/status.js";
 import { RowReorderMixin } from "./row-reorder/mixin.js";
+import { RowCheckMixin } from "./row-check/mixin.js";
 import { ToolbarMixin } from "./toolbar/mixin.js";
 import { FullscreenMixin } from "./toolbar/fullscreen.js";
 import { GridMixin } from "./grid.js";
@@ -115,6 +116,7 @@ class DinextTable extends composeMixins(
     ClipboardMixin,
     FillHandleMixin,
     RowReorderMixin,
+    RowCheckMixin,
     SelectionStatusMixin,
     FullscreenMixin,
     ToolbarMixin,

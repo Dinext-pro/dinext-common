@@ -5,6 +5,53 @@ import {
     getRowIdField
 } from "../shared/utils.js";
 
+/** Index of merge head for a row inside a sibling list; plain rows → same index. */
+export function findMergeBlockStartIndex(list, index, options = {}) {
+    if (!Array.isArray(list) || index < 0 || index >= list.length) {
+        return -1;
+    }
+    const meta = getMergeGroupMeta(list[index], options);
+    if (!meta) {
+        return index;
+    }
+    return index - meta.index;
+}
+
+/**
+ * Destination `toIndex` for {@link reorderSiblingBlock} — one sibling slot up/down.
+ * @param {number} direction — negative = up, positive = down
+ * @returns {number|null}
+ */
+export function computeNudgeToIndex(list, fromIndex, blockSize, direction, options = {}) {
+    if (!Array.isArray(list) || blockSize < 1 || fromIndex < 0) {
+        return null;
+    }
+
+    if (direction < 0) {
+        if (fromIndex <= 0) {
+            return null;
+        }
+        const prevStart = findMergeBlockStartIndex(list, fromIndex - 1, options);
+        return prevStart < 0 ? null : prevStart;
+    }
+
+    if (direction > 0) {
+        const nextIndex = fromIndex + blockSize;
+        if (nextIndex >= list.length) {
+            return null;
+        }
+        const nextStart = findMergeBlockStartIndex(list, nextIndex, options);
+        if (nextStart < 0) {
+            return null;
+        }
+        const nextMeta = getMergeGroupMeta(list[nextStart], options);
+        const nextSize = nextMeta ? nextMeta.size : 1;
+        return nextStart + nextSize;
+    }
+
+    return null;
+}
+
 export function getStableRowId(row, options = {}) {
     if (row?._rowId !== undefined) {
         return String(row._rowId);

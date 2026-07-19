@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { normalizeToolbarItem, getPersistStorageKey } from "../core/toolbar/utils.js";
+import {
+    normalizeToolbarItem,
+    getPersistStorageKey,
+    resolveToolbarValue
+} from "../core/toolbar/utils.js";
 import { findAgGridRootElement, findGridMountElement } from "../core/shared/utils.js";
 
 function makeElement({ className = "", children = [], querySelectorResult = null } = {}) {
@@ -103,8 +107,44 @@ test("normalizeToolbarItem maps separator with id fallback", () => {
     });
 });
 
+test("normalizeToolbarItem maps checkbox fields", () => {
+    const onChange = () => {};
+    const checked = () => true;
+    assert.deepEqual(
+        normalizeToolbarItem({
+            type: "checkbox",
+            id: "select-all-rows",
+            title: "Select all rows",
+            checked,
+            indeterminate: false,
+            onChange
+        }, 0),
+        {
+            type: "checkbox",
+            id: "select-all-rows",
+            label: "",
+            title: "Select all rows",
+            align: null,
+            disabled: undefined,
+            hidden: undefined,
+            checked,
+            indeterminate: false,
+            onChange
+        }
+    );
+});
+
 test("getPersistStorageKey returns namespaced key or null", () => {
     assert.equal(getPersistStorageKey(null), null);
     assert.equal(getPersistStorageKey(""), null);
     assert.equal(getPersistStorageKey("we-v2"), "dinext-table:toolbar:we-v2");
+});
+
+test("resolveToolbarValue resolves functions and statics", () => {
+    assert.equal(resolveToolbarValue("Select all", {}, ""), "Select all");
+    assert.equal(
+        resolveToolbarValue(({ table }) => (table.all ? "Clear" : "Select"), { table: { all: true } }, ""),
+        "Clear"
+    );
+    assert.equal(resolveToolbarValue(null, {}, "fallback"), "fallback");
 });

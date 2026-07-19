@@ -503,6 +503,21 @@
     cursor: not-allowed;
 }
 
+.dinext-table-toolbar-item--checkbox {
+    cursor: pointer;
+    user-select: none;
+}
+
+.dinext-table-toolbar-checkbox-input {
+    margin: 0;
+    cursor: pointer;
+}
+
+.dinext-table-toolbar-item--checkbox:has(.dinext-table-toolbar-checkbox-input:disabled) {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 .dinext-table-toolbar-item-icon {
     display: inline-flex;
     flex-shrink: 0;
@@ -596,4 +611,32 @@
     pointer-events: none;
     background: var(--primary, #249ef0);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary, #249ef0) 35%, transparent);
+}
+
+/* --- Row check (system checkbox column) --- */
+
+.dinext-table .dinext-table-row-check-cell,
+.dinext-table .dinext-table-row-check-header {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+/* System check col: never show edit/value-change flash (enableCellChangeFlash is grid-wide). */
+.dinext-table .dinext-table-row-check-cell.ag-cell-data-changed,
+.dinext-table .dinext-table-row-check-cell.ag-cell-data-changed-animation {
+    background-color: transparent !important;
+    transition: none !important;
+}
+
+.dinext-table .dinext-table-row-check-cell-inner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.dinext-table .dinext-table-row-check-input {
+    margin: 0;
+    cursor: pointer;
 }

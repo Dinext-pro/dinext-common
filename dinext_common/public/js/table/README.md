@@ -29,7 +29,8 @@ core/
   section/               — summary pin, TABLE_SECTIONS
   edit/                  — commitCellChanges, editors, navigation
   selection/             — range, clipboard, fill-handle, status bar
-  row-reorder/           — gutter DnD
+  row-reorder/           — gutter DnD + nudge ±1
+  row-check/             — checkbox col + checked Set + row mutations
   toolbar/               — command bar + fullscreen
 ```
 
@@ -51,6 +52,7 @@ core/
 | [columns-and-formatting.md](usage-guides/columns-and-formatting.md) | Колонки, presets, styling |
 | [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md) | Range, TSV, fill handle, Tab/Enter |
 | [row-reorder.md](usage-guides/row-reorder.md) | Gutter row drag-and-drop reorder |
+| [row-check.md](usage-guides/row-check.md) | Checkbox col, toolbar rows, nudge |
 
 ---
 
@@ -168,9 +170,12 @@ Domain: что видно в FS — через `shell` + CSS hide siblings, не
 | `selection.enabled` | `false` | Custom range |
 | `clipboard.enabled` | `selection.enabled` | TSV copy/paste |
 | `fillHandle.enabled` | `clipboard.enabled` | Corner drag fill |
-| `rowReorder.enabled` | `false` | Gutter row DnD reorder (opt-in) |
+| `rowReorder.enabled` | `false` | Reorder contour: gutter + toolbar ↑↓ + nudge; auto `animateRows` |
+| `rowCheck.enabled` | `false` | Checkbox col + checked Set; toolbar select/deselect icon |
+| `rowCheck.unit` | `"row"` | `"mergeHead"` — check only merge head + span |
+| `toolbar.presets` | `history/tree/fullscreen` | Opt-in: `"rows"`, `"clipboard"` |
 
-→ [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md), [row-reorder.md](usage-guides/row-reorder.md).
+→ [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md), [row-reorder.md](usage-guides/row-reorder.md), [row-check.md](usage-guides/row-check.md).
 
 ### Callbacks & passthrough
 
@@ -191,6 +196,8 @@ Domain: что видно в FS — через `shell` + CSS hide siblings, не
 | `DinextTable.create(options)` | `load()` → instance |
 | `DinextTable.createMergeGroupSpanRows(options?)` | Helper для `spanRows` |
 | `DinextTable.CELL_CHANGE_SOURCES` | Константы `source` |
+| `DinextTable.ROW_CHECK_COL_ID` | Reserved system col id |
+| `DinextTable.ROW_CHECK_UNITS` | `"row"` \| `"mergeHead"` |
 
 ---
 
@@ -208,6 +215,9 @@ Domain: что видно в FS — через `shell` + CSS hide siblings, не
 | `pasteFromClipboard()` / `fillDownSelection()` / `clearSelectionCells()` | Clipboard batch |
 | `fillRange(sourceBounds, targetBounds, opts?)` | Programmatic fill |
 | `undoClipboard()` / `redoClipboard()` | AG Grid edit undo/redo или CommandStack |
+| `getCheckedRowIds()` / `setCheckedRowIds` / `clearRowCheck` | Row check Set |
+| `addRow()` / `deleteCheckedRows()` / `duplicateCheckedRows()` | Row mutations |
+| `nudgeCheckedRow(±1)` | Move one checked row (row-reorder commit) |
 | `destroy()` | Teardown |
 
 **Properties:** `sourceData`, `summarySourceData`, `summaryRowData`, `rowData`, `columns`, `expandedIds`, `api`, `options`.
