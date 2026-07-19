@@ -1,8 +1,7 @@
 import {
     getChildrenField,
     getMergeGroupMeta,
-    getRowIdField,
-    isMergeGroupHead
+    getRowIdField
 } from "../shared/utils.js";
 import { getStableRowId } from "../row-reorder/ops.js";
 import { isSummarySectionRow } from "../section/sections.js";
@@ -33,6 +32,38 @@ export function replaceArrayContents(target, next) {
     target.splice(0, target.length, ...(next || []));
 }
 
+/** Path id for a source row (`101` / `101:5`), preferring stamped `_rowId`. */
+function resolveSourceRowPathId(row, parentPath, options = {}) {
+    if (row?._rowId !== undefined) {
+        return String(row._rowId);
+    }
+    const localId = String(row?.[getRowIdField(options)]);
+    return parentPath ? `${parentPath}:${localId}` : localId;
+}
+
+/**
+ * DFS over source tree.
+ * @param {object[]} rows
+ * @param {object} options
+ * @param {(row: object, id: string, parentPath: string | null) => void} visitor
+ */
+function walkSourceTree(rows, options, visitor) {
+    const childrenField = getChildrenField(options);
+
+    function walk(list, parentPath) {
+        for (const row of list || []) {
+            const id = resolveSourceRowPathId(row, parentPath, options);
+            visitor(row, id, parentPath);
+            const children = row?.[childrenField];
+            if (Array.isArray(children) && children.length) {
+                walk(children, id);
+            }
+        }
+    }
+
+    walk(rows, null);
+}
+
 /**
  * Whether a source/displayed row may show a checkbox and enter the checked Set.
  * @param {object} row
@@ -53,83 +84,41 @@ export function isRowCheckable(row, options = {}, checkOpts = {}) {
         if (meta && meta.index !== 0) {
             return false;
         }
-        return meta == null || isMergeGroupHead(row, options);
+        return true;
     }
 
     return true;
-}
-
-/** Path id for a source row (`101` / `101:5`), preferring stamped `_rowId`. */
-export function resolveSourceRowPathId(row, parentPath, options = {}) {
-    if (row?._rowId !== undefined) {
-        return String(row._rowId);
-    }
-    const localId = String(row?.[getRowIdField(options)]);
-    return parentPath ? `${parentPath}:${localId}` : localId;
 }
 
 /**
  * DFS over source tree; returns stable path ids of checkable rows.
  */
 export function collectCheckableRowIds(rows, options = {}, checkOpts = {}) {
-    const childrenField = getChildrenField(options);
     const ids = [];
-
-    function walk(list, parentPath) {
-        for (const row of list || []) {
-            const id = resolveSourceRowPathId(row, parentPath, options);
-            if (isRowCheckable(row, options, checkOpts)) {
-                ids.push(id);
-            }
-            const children = row?.[childrenField];
-            if (Array.isArray(children) && children.length) {
-                walk(children, id);
-            }
+    walkSourceTree(rows, options, (row, id) => {
+        if (isRowCheckable(row, options, checkOpts)) {
+            ids.push(id);
         }
-    }
-
-    walk(rows, null);
+    });
     return ids;
 }
 
 export function resolveCheckedRows(rows, checkedIds, options = {}) {
     const want = new Set((checkedIds || []).map(String));
-    const childrenField = getChildrenField(options);
     const found = [];
-
-    function walk(list, parentPath) {
-        for (const row of list || []) {
-            const id = resolveSourceRowPathId(row, parentPath, options);
-            if (want.has(id)) {
-                found.push(row);
-            }
-            const children = row?.[childrenField];
-            if (Array.isArray(children) && children.length) {
-                walk(children, id);
-            }
+    walkSourceTree(rows, options, (row, id) => {
+        if (want.has(id)) {
+            found.push(row);
         }
-    }
-
-    walk(rows, null);
+    });
     return found;
 }
 
-export function collectAllStableRowIds(rows, options = {}) {
-    const childrenField = getChildrenField(options);
+function collectAllStableRowIds(rows, options = {}) {
     const ids = [];
-
-    function walk(list, parentPath) {
-        for (const row of list || []) {
-            const id = resolveSourceRowPathId(row, parentPath, options);
-            ids.push(id);
-            const children = row?.[childrenField];
-            if (Array.isArray(children) && children.length) {
-                walk(children, id);
-            }
-        }
-    }
-
-    walk(rows, null);
+    walkSourceTree(rows, options, (_row, id) => {
+        ids.push(id);
+    });
     return ids;
 }
 
@@ -175,7 +164,6 @@ export function removeCheckedRowsFromSource(sourceRows, rowIds, options = {}) {
 
     const idSet = new Set(rowIds.map(String));
     const childrenField = getChildrenField(options);
-    const rowIdField = getRowIdField(options);
     const removed = [];
 
     function removeFromList(list, parentPath) {
@@ -185,11 +173,10 @@ export function removeCheckedRowsFromSource(sourceRows, rowIds, options = {}) {
         let i = 0;
         while (i < list.length) {
             const row = list[i];
-            const localId = String(row[rowIdField]);
-            const stableId = parentPath ? `${parentPath}:${localId}` : localId;
+            const stableId = resolveSourceRowPathId(row, parentPath, options);
             const meta = getMergeGroupMeta(row, options);
 
-            if (idSet.has(stableId) || (row._rowId != null && idSet.has(String(row._rowId)))) {
+            if (idSet.has(stableId)) {
                 if (meta && meta.index !== 0) {
                     i += 1;
                     continue;
@@ -227,17 +214,15 @@ export function insertRowsAfter(sourceRows, afterRowId, newRows, options = {}) {
     }
 
     const childrenField = getChildrenField(options);
-    const rowIdField = getRowIdField(options);
     const target = String(afterRowId);
 
     function findAndInsert(list, parentPath) {
         for (let i = 0; i < list.length; i += 1) {
             const row = list[i];
-            const localId = String(row[rowIdField]);
-            const stableId = parentPath ? `${parentPath}:${localId}` : localId;
+            const stableId = resolveSourceRowPathId(row, parentPath, options);
             const meta = getMergeGroupMeta(row, options);
 
-            if (stableId === target || (row._rowId != null && String(row._rowId) === target)) {
+            if (stableId === target) {
                 const size = meta && meta.index === 0 ? meta.size : 1;
                 list.splice(i + size, 0, ...newRows);
                 return true;

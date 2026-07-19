@@ -16,8 +16,6 @@ const TOOLBAR_DEFAULTS = {
     items: []
 };
 
-const MENU_ICON_SVG = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="13" cy="8" r="1.5" fill="currentColor"/></svg>`;
-
 /**
  * Table command toolbar: floating trigger, in-flow slide-down panel, preset actions.
  */
@@ -29,7 +27,8 @@ export const ToolbarMixin = (Base) => class extends Base {
         this._toolbarTriggerEl = null;
         this._toolbarPinned = false;
         this._toolbarOpen = false;
-        this._toolbarItems = [];
+        this._toolbarCustomItems = [];
+        this._toolbarItemsOverride = null;
     }
 
     destroyFeatures() {
@@ -59,19 +58,22 @@ export const ToolbarMixin = (Base) => class extends Base {
     }
 
     getToolbarItems() {
-        if (this._toolbarItems.length) {
-            return this._toolbarItems.map((item, index) => normalizeToolbarItem(item, index));
+        if (this._toolbarItemsOverride != null) {
+            return this._toolbarItemsOverride;
         }
-        return resolveToolbarItems(this, this.getToolbarOptions());
+        return [...resolveToolbarItems(this, this.getToolbarOptions()), ...this._toolbarCustomItems];
     }
 
     registerToolbarItem(item) {
-        this._toolbarItems = [...this.getToolbarItems(), normalizeToolbarItem(item, this._toolbarItems.length)];
+        this._toolbarCustomItems = [
+            ...this._toolbarCustomItems,
+            normalizeToolbarItem(item, this._toolbarCustomItems.length)
+        ];
         this.renderToolbarItems();
     }
 
     setToolbarItems(items) {
-        this._toolbarItems = (items || []).map((item, index) => normalizeToolbarItem(item, index));
+        this._toolbarItemsOverride = (items || []).map((item, index) => normalizeToolbarItem(item, index));
         this.renderToolbarItems();
     }
 
@@ -111,17 +113,13 @@ export const ToolbarMixin = (Base) => class extends Base {
         }
     }
 
-    getGridHostElement() {
-        return findAgGridRootElement(this.container);
-    }
-
     ensureToolbarDom() {
         if (this._toolbarEl || !this.container) {
             return;
         }
 
         const gridMount = findGridMountElement(this.container);
-        const gridHost = this.getGridHostElement();
+        const gridHost = findAgGridRootElement(this.container);
         const flexHost = gridMount || gridHost;
         if (flexHost) {
             flexHost.classList.add("dinext-table-grid-host");
@@ -135,7 +133,7 @@ export const ToolbarMixin = (Base) => class extends Base {
         trigger.className = "dinext-table-toolbar-trigger";
         trigger.setAttribute("aria-label", "Table menu");
         trigger.setAttribute("aria-haspopup", "true");
-        trigger.innerHTML = MENU_ICON_SVG;
+        trigger.innerHTML = TOOLBAR_ICON_SVG.menu;
         trigger.addEventListener("click", event => this.handleToolbarTriggerClick(event));
 
         const panel = document.createElement("div");
@@ -460,5 +458,3 @@ export const ToolbarMixin = (Base) => class extends Base {
         return super.handleSetOption?.(key, value) ?? false;
     }
 };
-
-export { normalizeToolbarItem, getPersistStorageKey, resolveToolbarValue } from "./utils.js";
