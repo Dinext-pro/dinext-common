@@ -104,7 +104,8 @@ export function collectCheckableRowIds(rows, options = {}, checkOpts = {}) {
 }
 
 export function resolveCheckedRows(rows, checkedIds, options = {}) {
-    const want = new Set((checkedIds || []).map(String));
+    // Accept Set or array (mixin passes `_checkedRowIds` Set).
+    const want = new Set([...(checkedIds || [])].map(String));
     const found = [];
     walkSourceTree(rows, options, (row, id) => {
         if (want.has(id)) {
@@ -137,7 +138,7 @@ export function resolveSelectAllState(checkableIds, checkedIds) {
     if (!checkable.length) {
         return "unchecked";
     }
-    const checked = new Set((checkedIds || []).map(String));
+    const checked = new Set([...(checkedIds || [])].map(String));
     let n = 0;
     for (const id of checkable) {
         if (checked.has(String(id))) {

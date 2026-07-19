@@ -208,30 +208,28 @@ export const TreeMixin = (Base) => class extends Base {
     refreshTreeToggle(rowId) {
         const treeField = this.getTreeColumnField();
         const node = this.api?.getRowNode(String(rowId));
-        if (!treeField || !node) {
-            return;
-        }
-        this.api.refreshCells({
-            rowNodes: [node],
-            columns: [treeField],
-            force: true
-        });
+        if (!treeField || !node) return;
+        this.api.refreshCells({ rowNodes: [node], columns: [treeField], force: true });
+    }
+
+    /** Force chevron/lead re-render (rowData replace alone may reuse cells without refresh). */
+    refreshAllTreeToggles() {
+        const treeField = this.getTreeColumnField();
+        if (!treeField || !this.api) return;
+        this.api.refreshCells({columns: [treeField], force: true });
     }
 
     setRowLoading(rowId, loading) {
         const node = this.api?.getRowNode(String(rowId));
-        if (node?.data) {
-            node.data._treeLoading = loading;
-        }
+        if (node?.data) node.data._treeLoading = loading;
         this.refreshTreeToggle(rowId);
     }
 
     setRowChildren(rowId, children) {
         rowId = String(rowId);
         const row = this.findSourceRow(rowId);
-        if (!row) {
-            return;
-        }
+        if (!row) return;
+        
         const childrenField = this.getChildrenField();
         row[childrenField] = children;
 
@@ -251,9 +249,7 @@ export const TreeMixin = (Base) => class extends Base {
 
     insertVisibleChildren(rowId) {
         const parentRow = this.findSourceRow(rowId);
-        if (!parentRow) {
-            return;
-        }
+        if (!parentRow) return;
 
         const parentLevel = this.getRowLevel(rowId);
         const childRows = flattenExpandedChildren(
@@ -263,9 +259,7 @@ export const TreeMixin = (Base) => class extends Base {
             this.expandedIds,
             this.options
         );
-        if (!childRows.length) {
-            return;
-        }
+        if (!childRows.length) return;
 
         const parentNode = this.api?.getRowNode(rowId);
         const insertOffset = getMergeGroupChildInsertOffset(parentRow, this.options);
@@ -286,9 +280,7 @@ export const TreeMixin = (Base) => class extends Base {
             }
         });
 
-        if (!toRemove.length) {
-            return;
-        }
+        if (!toRemove.length) return;
 
         this.api.applyTransaction({ remove: toRemove });
         this.syncRowDataFromGrid();
@@ -328,9 +320,8 @@ export const TreeMixin = (Base) => class extends Base {
     buildTreeColumnDefs() {
         const treeField = this.getTreeColumnField();
         const columnDefs = super.buildColumnDefs();
-        if (!treeField) {
-            return columnDefs;
-        }
+        if (!treeField) return columnDefs;
+
         return this.applyTreeRendererToColumnDefs(columnDefs, treeField);
     }
 
@@ -378,9 +369,8 @@ export const TreeMixin = (Base) => class extends Base {
     }
 
     async expandAll() {
-        if (!this.hasNestedRows()) {
-            return;
-        }
+        if (!this.hasNestedRows()) return;
+        
         const rowIds = collectExpandableRowIds(this.sourceData, this.options);
         for (const rowId of rowIds) {
             await this.expandRow(rowId);
@@ -388,13 +378,15 @@ export const TreeMixin = (Base) => class extends Base {
     }
 
     collapseAll() {
-        if (!this.hasNestedRows()) {
-            return;
-        }
+        if (!this.hasNestedRows()) return;
+        
         this.expandedIds.clear();
         this.syncVisibleRows();
         if (this.api) {
             this.api.setGridOption("rowData", [...this.rowData]);
+            // Parents stay in grid with same getRowId — without force refresh chevrons
+            // keep is-expanded from before (toolbar Collapse all).
+            this.refreshAllTreeToggles();
         }
     }
 };

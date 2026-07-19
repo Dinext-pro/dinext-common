@@ -583,6 +583,30 @@
     opacity: 1;
 }
 
+/*
+ * Pinned-bottom / summary vertical center.
+ * AG Grid normally centers via line-height ≈ rowHeight. With empty body (or
+ * overlay / fractional layout) that line-height can diverge from the cell box
+ * until a later reflow — numbers sit top-aligned until body rows appear.
+ * Flex stretch (same idea as tree cells) keeps summary centered always.
+ */
+.dinext-table .ag-floating-bottom .ag-cell,
+.dinext-table .ag-pinned-left-floating-bottom .ag-cell,
+.dinext-table .ag-pinned-right-floating-bottom .ag-cell {
+    display: flex;
+    align-items: center;
+}
+
+.dinext-table .ag-floating-bottom .ag-cell > .ag-cell-wrapper,
+.dinext-table .ag-pinned-left-floating-bottom .ag-cell > .ag-cell-wrapper,
+.dinext-table .ag-pinned-right-floating-bottom .ag-cell > .ag-cell-wrapper {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+}
+
 /* --- Row reorder (gutter drag) --- */
 /* Do NOT set position:relative on .ag-row — AG uses position:absolute + translateY.
  * relative + translateY doubles vertical gaps (looks like broken span/row height). */
