@@ -7,10 +7,12 @@ frappe.views.BaseList.prototype.refresh = function() {
 
 function makeResizableListview() {
     // Изменение ширины столбцов в List View - тикет ISS-2023-00116
+    if (!cur_list) return;
     const resultContainer = cur_list.$result[0];
     if (!resultContainer) return;
 
     const header = resultContainer.querySelector('header');
+    if (!header) return;
     const listHeaderSubject = header.querySelector('.list-header-subject');
     const listRowContainers = resultContainer.querySelectorAll('.list-row-container');
     listHeaderSubject.classList.add("ellipsis");

@@ -1,0 +1,23 @@
+{
+  "status": "changed",
+  "changed_paths_preview": [
+    "enabled",
+    "script"
+  ],
+  "field_diffs": [
+    {
+      "path": "enabled",
+      "change_type": "changed",
+      "file_value": 1,
+      "db_value": 0,
+      "text_diff": null
+    },
+    {
+      "path": "script",
+      "change_type": "changed",
+      "file_value": "line 1\nline 2 updated\nline 3",
+      "db_value": "line 1\nline 2\nline 3",
+      "text_diff": "--- db\n+++ fixture\n@@ -1,3 +1,3 @@\n line 1\n-line 2\n+line 2 updated\n line 3"
+    }
+  ]
+}
