@@ -1,3 +1,8 @@
+import { DateCellEditor, dateValueFormatter, dateValueParser } from "./date-editor.js";
+import { parseDateValue } from "./date-utils.js";
+
+export { parseDateValue, DateCellEditor };
+
 /** Parses user input with comma or dot decimal separator. Returns null for empty/invalid. */
 export function parseLocaleNumber(raw) {
     if (raw == null || raw === "") {
@@ -83,7 +88,13 @@ const DEFAULT_COLUMN_TYPES = {
         valueParser: localeIntegerValueParser
     },
     date: {
-        cellDataType: "date"
+        // Contract only: ISO YYYY-MM-DD | null. No Desk calendar in core.
+        // Interactive editor → column.cellEditor (see usage-guides/date-columns.md).
+        // Optional native fallback: DinextTable.DateCellEditor.
+        cellDataType: "text",
+        valueParser: dateValueParser,
+        valueFormatter: dateValueFormatter,
+        cellClass: "dinext-table-cell--align-center"
     },
     checkbox: CHECKBOX_COLUMN_TYPE,
     boolean: CHECKBOX_COLUMN_TYPE

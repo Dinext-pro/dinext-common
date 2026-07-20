@@ -114,7 +114,11 @@ export interface DinextTableSectionMeta {
 /** Строка данных клиента (+ опционально tree meta в grid). */
 export type DinextTableRowData = Record<string, unknown> & DinextTableTreeMeta & DinextTableMergeGroupRowMeta & DinextTableSectionMeta;
 
-/** Пресеты `column.type` из EditorsMixin. @layer editors */
+/**
+ * Пресеты `column.type` из EditorsMixin. @layer editors
+ * `date` = ISO string contract + parser/formatter (no default cellEditor).
+ * See usage-guides/date-columns.md.
+ */
 export type DinextTableColumnTypePreset = "text" | "number" | "integer" | "date" | "checkbox" | "boolean";
 
 // ---------------------------------------------------------------------------

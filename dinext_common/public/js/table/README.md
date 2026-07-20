@@ -50,6 +50,7 @@ core/
 | [fullscreen.md](usage-guides/fullscreen.md) | Shell FS + enter/exit hooks |
 | [sections-and-summary.md](usage-guides/sections-and-summary.md) | `summaryRows`, pin bottom, guards |
 | [columns-and-formatting.md](usage-guides/columns-and-formatting.md) | Колонки, presets, styling |
+| [date-columns.md](usage-guides/date-columns.md) | `type: date`, ISO, fill, Frappe cellEditor |
 | [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md) | Range, TSV, fill handle, Tab/Enter |
 | [row-reorder.md](usage-guides/row-reorder.md) | Gutter row drag-and-drop reorder |
 | [row-check.md](usage-guides/row-check.md) | Checkbox col, toolbar rows, nudge |

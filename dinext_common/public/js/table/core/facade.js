@@ -1,6 +1,8 @@
 import { DinextTable } from "./base.js";
 import { createMergeGroupSpanRows } from "./shared/utils.js";
 import { CELL_CHANGE_SOURCES } from "./edit/changes.js";
+import { DateCellEditor } from "./edit/date-editor.js";
+import { parseDateValue, toIsoDateString } from "./edit/date-utils.js";
 import { ROW_REORDER_SOURCES } from "./row-reorder/constants.js";
 import { ROW_CHECK_COL_ID, ROW_CHECK_SOURCES, ROW_CHECK_UNITS } from "./row-check/constants.js";
 
@@ -29,6 +31,10 @@ DinextTable.ROW_REORDER_SOURCES = ROW_REORDER_SOURCES;
 DinextTable.ROW_CHECK_COL_ID = ROW_CHECK_COL_ID;
 DinextTable.ROW_CHECK_SOURCES = ROW_CHECK_SOURCES;
 DinextTable.ROW_CHECK_UNITS = ROW_CHECK_UNITS;
+/** Optional native `<input type="date">` — not default for `type: "date"`. */
+DinextTable.DateCellEditor = DateCellEditor;
+DinextTable.parseDateValue = parseDateValue;
+DinextTable.toIsoDateString = toIsoDateString;
 DinextTable.create = async function(options) {
     await loadAgGrid();
     if (!options?.container) {
