@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseBooleanValue, parseLocaleNumber } from "../core/edit/editors.js";
+import { parseBooleanValue, parseDateValue, parseLocaleNumber } from "../core/edit/editors.js";
 
 test("parseBooleanValue accepts booleans and common literals", () => {
     assert.equal(parseBooleanValue(true), true);
@@ -24,4 +24,14 @@ test("parseBooleanValue returns null for empty or unknown input", () => {
 test("parseLocaleNumber still parses decimals", () => {
     assert.equal(parseLocaleNumber("1,5"), 1.5);
     assert.equal(parseLocaleNumber("2"), 2);
+});
+
+test("parseDateValue normalizes to ISO YYYY-MM-DD", () => {
+    assert.equal(parseDateValue("2026-07-19"), "2026-07-19");
+    assert.equal(parseDateValue("2026-07-19T12:00:00"), "2026-07-19");
+    assert.equal(parseDateValue("19.07.2026"), "2026-07-19");
+    assert.equal(parseDateValue("19/07/2026"), "2026-07-19");
+    assert.equal(parseDateValue(""), null);
+    assert.equal(parseDateValue(null), null);
+    assert.equal(parseDateValue("not-a-date"), null);
 });

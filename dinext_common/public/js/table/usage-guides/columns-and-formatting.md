@@ -31,9 +31,12 @@
 | `text` | `text` | — |
 | `number` | `number` | `--align-right`, locale `valueParser` |
 | `integer` | `number` | как `number`, `Math.trunc` |
-| `date` | `date` | — |
+| `date` | `text` | ISO `YYYY-MM-DD` \| `null`; `valueParser` / `valueFormatter`; **без** default `cellEditor` |
+| `checkbox` / `boolean` | `boolean` | AG checkbox renderer/editor |
 
-`parseLocaleNumber` — экспорт из `editors.js` для своих `valueParser`.
+`parseLocaleNumber` / `parseDateValue` — экспорт из `editors.js`.
+
+**Date columns:** полный гайд — [`date-columns.md`](date-columns.md). Desk calendar (`ControlDate`) — в domain `cellEditor`, не в preset.
 
 ---
 
