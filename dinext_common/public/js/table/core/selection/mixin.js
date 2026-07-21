@@ -245,8 +245,33 @@ export const SelectionMixin = (Base) => class extends Base {
         }
     }
 
+    /** Clear range drag + highlight so row-reorder DnD owns the pointer. */
+    suppressSelectionForRowReorder() {
+        this._isRangeDragging = false;
+        this._isExtending = false;
+        this._mouseFocusPending = false;
+        if (this.cellRanges?.length) {
+            this.cellRanges = [];
+            this.refreshSelectionHighlight();
+        }
+    }
+
+    isSelectionBlockedByRowReorder(domEvent) {
+        if (this.isRowReorderDragging?.()) {
+            return true;
+        }
+        if (!this.isRowReorderEnabled?.() || !domEvent || typeof this.isRowReorderGutterHit !== "function") {
+            return false;
+        }
+        const rowEl = domEvent.target?.closest?.(".ag-row");
+        return !!(rowEl && this.isRowReorderGutterHit(rowEl, domEvent.clientX));
+    }
+
     handleSelectionCellMouseDown(event) {
         if (this._isFillDragging) {
+            return;
+        }
+        if (this.isSelectionBlockedByRowReorder(event.event)) {
             return;
         }
         if (event.event?.button !== 0 || !event.node?.data || !event.column) {
@@ -284,7 +309,7 @@ export const SelectionMixin = (Base) => class extends Base {
     }
 
     handleSelectionCellMouseOver(event) {
-        if (this._isFillDragging) {
+        if (this._isFillDragging || this.isRowReorderDragging?.()) {
             return;
         }
         if (!this._isRangeDragging || !this._selectionAnchor || !event.node?.data || !event.column) {
@@ -302,6 +327,9 @@ export const SelectionMixin = (Base) => class extends Base {
 
     /** Keeps `focusedCell` in sync with AG Grid's own focus; collapses selection to the focused cell unless it's the target of an active drag/shift-extension gesture. */
     handleSelectionCellFocused(event) {
+        if (this.isRowReorderDragging?.()) {
+            return;
+        }
         if (event.rowIndex == null || !event.column || !this.api) {
             this.focusedCell = null;
             return;

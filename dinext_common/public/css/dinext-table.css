@@ -618,23 +618,38 @@
 .dinext-table--row-reorder-grabbing,
 .dinext-table--row-reorder-grabbing .ag-row {
     cursor: grabbing !important;
+    user-select: none !important;
+}
+
+.dinext-table--row-reorder-grabbing.dinext-table--row-reorder-drop-invalid,
+.dinext-table--row-reorder-grabbing.dinext-table--row-reorder-drop-invalid .ag-row {
+    cursor: not-allowed !important;
 }
 
 .dinext-table .dinext-table-row--dragging {
-    opacity: 0.45;
+    opacity: 0.4;
+    filter: saturate(0.85);
 }
 
-.dinext-table .dinext-table-row-reorder-drop-target {
-    background-color: color-mix(in srgb, var(--primary, #249ef0) 8%, transparent);
-}
-
-.dinext-table-row-reorder-drop-indicator {
+/* Nest-into: overlay frame (AG .ag-row outline/bg are clipped or overridden). */
+.dinext-table-row-reorder-drop-inside-frame {
     position: absolute;
-    z-index: 6;
-    height: 2px;
+    z-index: 8;
     pointer-events: none;
-    background: var(--primary, #249ef0);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary, #249ef0) 35%, transparent);
+    box-sizing: border-box;
+    border: 2px solid color-mix(in srgb, CanvasText 42%, transparent);
+    border-radius: 2px;
+    background: transparent;
+}
+
+/* Sibling insert: gap band between rows (neutral gray). */
+.dinext-table-row-reorder-drop-gap {
+    position: absolute;
+    z-index: 8;
+    pointer-events: none;
+    border-radius: 2px;
+    background: color-mix(in srgb, CanvasText 42%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, CanvasText 22%, transparent);
 }
 
 /* --- Row check (system checkbox column) --- */

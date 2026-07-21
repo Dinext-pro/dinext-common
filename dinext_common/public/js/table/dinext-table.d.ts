@@ -426,15 +426,34 @@ export interface DinextTableFillHandleOptions {
 }
 
 /** @layer rowReorder */
+export type DinextTableRowReorderPosition = "before" | "after" | "inside";
+
+/** @layer rowReorder */
+export type DinextTableRowReorderTreeMode = false | "siblings" | "reparent";
+
+/** @layer rowReorder */
 export interface DinextTableRowReorderMove {
     section: "body" | "summary";
+    /** Drop zone relative to `targetRowId` */
+    position: DinextTableRowReorderPosition;
+    /** Hover row that defined the drop */
+    targetRowId: string;
+    /** Destination parent (`null` = top-level). Alias of `toParentRowId`. */
     parentRowId: string | null;
+    fromParentRowId: string | null;
+    toParentRowId: string | null;
+    /** Path id before move */
     rowId: string;
+    /** Path id after move (changes on reparent) */
+    newRowId: string;
     fromIndex: number;
     toIndex: number;
     blockSize: number;
+    /** Destination sibling list order after move */
     orderedLocalRowIds: string[];
     orderedRowIds: string[];
+    /** Source sibling list order after move (differs on reparent) */
+    fromOrderedLocalRowIds?: string[];
     rows: DinextTableRowData[];
 }
 
@@ -454,8 +473,13 @@ export interface DinextTableRowReorderOptions {
         handle?: "gutter" | "column";
         gutterWidth?: number;
         allowSummary?: boolean;
-        /** Default: `"siblings"`. `false` = top-level body only */
-        allowTree?: "siblings" | false;
+        /**
+         * Default: `"siblings"`.
+         * - `false` — top-level body only
+         * - `"siblings"` — before/after within same parent
+         * - `"reparent"` — cross-parent before/after + nest inside
+         */
+        allowTree?: DinextTableRowReorderTreeMode;
     };
     /** @layer rowReorder — sync, before commit */
     onValidateRowReorder?: (ctx: DinextTableRowReorderContext) => boolean | string;
@@ -806,6 +830,8 @@ export interface DinextTableInstance {
 
     /** @layer rowReorder */
     isRowReorderEnabled(): boolean;
+    /** @layer rowReorder — true while gutter drag active */
+    isRowReorderDragging(): boolean;
     /** @layer rowReorder — one sibling slot; used by toolbar move arrows */
     nudgeRowReorder(rowId: string, direction: -1 | 1): boolean;
     /** @layer rowReorder */

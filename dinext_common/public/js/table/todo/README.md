@@ -81,6 +81,20 @@
 
 ---
 
+## Row reorder tree (done)
+
+- [x] **Tree reparent DnD** — `allowTree: "reparent"`: before/after cross-parent + nest inside, gap/frame UX, expand-after-drop (no hover expand), path remap (`expandedIds` / checked), selection muted while dragging. Guide: [row-reorder.md](../usage-guides/row-reorder.md). Unit: `@tests/row-reorder.test.mjs`.
+
+### Follow-ups
+
+- [ ] **Persist consumers** — Task tree / WE: `onRowReorder` + server parent/order (сейчас UI-only smoke на Task).
+- [ ] **Lazy nest merge** — drop inside unloaded parent → children = [moved]; `expandRow` skips `onExpandRow` (уже не empty). Нужен merge server children + moved row.
+- [ ] **Domain side-effects** — gantt/filters sync после reorder (`onTreeChange` сейчас не из reorder).
+- [ ] **Sort + reorder** — DnD blocked while sorted; UX clear-sort on drag start?
+- [ ] **Merge reparent** — blocked by design (flatten); confirm product need.
+
+---
+
 ## Когда брать в работу
 
 | Триггер | Задача |
