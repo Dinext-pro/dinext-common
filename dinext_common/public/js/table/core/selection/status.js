@@ -20,7 +20,7 @@ const METRIC_LABELS = {
 
 /**
  * Excel-like status bar under the grid: Average | Count | Sum for multi-cell selection.
- * Depends on SelectionMixin ranges; numeric values via raw data + locale parse fallback.
+ * Depends on SelectionMixin ranges; numeric values via getCellValue + locale parse fallback.
  */
 export function resolveNumericCellValue(raw, displayValue) {
     if (typeof raw === "number" && Number.isFinite(raw)) return raw;
@@ -196,7 +196,9 @@ export const SelectionStatusMixin = (Base) => class extends Base {
 
         for (const { rowNode, column } of cells) {
             const field = column.getColDef().field;
-            const raw = rowNode.data[field];
+            const raw = typeof this.api?.getCellValue === "function"
+                ? this.api.getCellValue({ colKey: column, rowNode })
+                : rowNode.data[field];
             const displayValue = typeof this.getCellDisplayValue === "function"
                 ? this.getCellDisplayValue(rowNode, column)
                 : raw;

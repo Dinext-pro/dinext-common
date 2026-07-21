@@ -231,8 +231,12 @@ export const ClipboardMixin = (Base) => class extends Base {
             return "";
         }
 
-        if (typeof this.api?.getValue === "function") {
-            const formatted = this.api.getValue(column, rowNode);
+        if (typeof this.api?.getCellValue === "function") {
+            const formatted = this.api.getCellValue({
+                colKey: column,
+                rowNode,
+                useFormatter: true
+            });
             if (formatted != null && formatted !== "") {
                 return formatted;
             }
