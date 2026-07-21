@@ -12,6 +12,7 @@ test("resolveNumericCellValue parses raw and formatted numbers", () => {
     assert.equal(resolveNumericCellValue("1,5", ""), 1.5);
     assert.equal(resolveNumericCellValue("n/a", "2 500,75"), 2500.75);
     assert.equal(resolveNumericCellValue("text", "text"), null);
+    assert.equal(resolveNumericCellValue(12.5, "12.5%"), 12.5);
 });
 
 test("buildSelectionStats computes sum average min max", () => {

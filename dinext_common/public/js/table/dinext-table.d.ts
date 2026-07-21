@@ -61,7 +61,13 @@ export interface DinextTableGridApi {
     getAllDisplayedColumns(): Array<{ getColId(): string; getColDef(): Record<string, unknown> }>;
     getFirstDisplayedRowIndex(): number | null;
     getLastDisplayedRowIndex(): number | null;
-    getValue(key: { rowNode: unknown; colDef: { field?: string }; column?: unknown }): unknown;
+    /** AG Grid CellApi — respects valueGetter; optional valueFormatter. */
+    getCellValue(params: {
+        colKey: string | unknown;
+        rowNode: unknown;
+        useFormatter?: boolean;
+        from?: string;
+    }): unknown;
     getEditingCells(): unknown[];
     setFocusedCell(rowIndex: number, colKey: string): void;
     startEditingCell(params: { rowIndex: number; colKey: string }): void;
