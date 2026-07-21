@@ -2,6 +2,7 @@ import { createMergeGroupSpanRows } from "../shared/utils.js";
 import { TABLE_SECTIONS } from "../section/sections.js";
 import { TOOLBAR_ICON_SVG } from "../toolbar/icons.js";
 import { ROW_CHECK_COL_ID, ROW_CHECK_SOURCES, ROW_CHECK_UNITS } from "./constants.js";
+import { remapPathIdsForBlockMove } from "../row-reorder/ops.js";
 import {
     cloneRowTree,
     collectCheckableRowIds,
@@ -126,6 +127,18 @@ export const RowCheckMixin = (Base) => class extends Base {
 
     isRowCheckEnabled() {
         return !!this.getRowCheckOptions().enabled;
+    }
+
+    /** @layer rowReorder — keep checked ids in sync when path prefix changes. */
+    remapRowPathIdsAfterReorder(fromParentRowId, toParentRowId, localIds) {
+        if (this._checkedRowIds?.size) {
+            remapPathIdsForBlockMove(this._checkedRowIds, {
+                fromParentRowId,
+                toParentRowId,
+                localIds
+            });
+        }
+        super.remapRowPathIdsAfterReorder?.(fromParentRowId, toParentRowId, localIds);
     }
 
     /**

@@ -12,19 +12,27 @@
 DinextTable.create({
     container,
     data: [
-        { id: 1, name: "Alpha" },
-        { id: 2, name: "Beta" },
-        { id: 3, name: "Gamma" }
+        { id: 1, name: "Alpha", children: [{ id: 11, name: "Child" }] },
+        { id: 2, name: "Beta" }
     ],
     columns: [{ field: "name", flex: 1 }],
-    rowReorder: { enabled: true },
+    rowReorder: {
+        enabled: true,
+        allowTree: "reparent" // false | "siblings" | "reparent"
+    },
     onValidateRowReorder({ table, source, move }) {
         return true; // false → drop отменяется до commit
     },
     onRowReorder: async ({ table, source, move }) => {
         await frappe.call({
             method: "my_app.api.reorder_rows",
-            args: { ordered_ids: move.orderedRowIds }
+            args: {
+                row_id: move.rowId,
+                new_row_id: move.newRowId,
+                parent: move.toParentRowId,
+                position: move.position,
+                ordered_ids: move.orderedRowIds
+            }
         });
     }
 });
@@ -36,21 +44,38 @@ DinextTable.create({
 | `rowReorder.handle` | `"gutter"` | `"gutter"` (v1). `"column"` — зарезервировано |
 | `rowReorder.gutterWidth` | `12` | Ширина hit-zone слева (px) |
 | `rowReorder.allowSummary` | `false` | Reorder pinned summary |
-| `rowReorder.allowTree` | `"siblings"` | `"siblings"` — внутри одного `parent.children`; `false` — только top-level `data` |
+| `rowReorder.allowTree` | `"siblings"` | см. [Tree modes](#tree-modes) |
 
 При `enabled: true` ядро ставит `animateRows: true`, если domain не задал `gridOptions.animateRows`.
-Toolbar move arrows (preset `rows` + `rowCheck`) появляются только вместе с этим флагом — один контур.
+Toolbar move arrows (preset `rows` + `rowCheck`) появляются только вместе с этим флагом — один контур. Стрелки = ±1 sibling (не reparent).
 
 ---
 
-## UX
+## Tree modes
 
-1. Навести на **левый gutter** строки (первые 12px по умолчанию) → `cursor: grab`.
-2. Зажать ЛКМ в gutter → drag, строка полупрозрачная.
-3. Отпустить над другой строкой **того же sibling-уровня** → commit.
-4. Линия-индикатор показывает позицию вставки (до/после midpoint строки).
+| `allowTree` | Поведение |
+|-------------|-----------|
+| `false` | Только top-level строки в `data` |
+| `"siblings"` | before/after **внутри одного** `parent.children` (или top-level) |
+| `"reparent"` | before/after **между** parents + **inside** (стать child) |
 
-Gutter отделён от tree-chevron и selection — chevron кликается как раньше.
+---
+
+## UX (как в tree)
+
+1. Левый край строки (gutter) → `cursor: grab` → drag.
+2. Зоны:
+
+| Зона | Позиция | Визуал |
+|------|---------|--------|
+| Верх / низ | `before` / `after` — между | Подсветка **щели** между строками |
+| Середина | `inside` — внутрь (`reparent`) | Серая **рамка-overlay** по bounds строки |
+
+3. Невалидный drop → `not-allowed`.
+4. Нет auto-expand на hover; после drop под свёрнутый parent → `expandRow`.
+5. Outdent: `before`/`after` на parent.
+
+Gutter отделён от tree-chevron и selection.
 
 ---
 
@@ -62,24 +87,24 @@ Sync, **до** изменения `sourceData`. Reject → операция не
 
 ```js
 onValidateRowReorder({ table, source, move }) {
-    if (move.section === "summary") return false;
+    if (move.position === "inside" && move.targetRowId === "locked") return false;
     return true;
 }
 ```
 
 ### `onRowReorder`
 
-После optimistic commit. `false` / throw → revert порядка + `sourceData`.
+После optimistic commit. `false` / throw → revert порядка + path ids.
 
 ```js
 onRowReorder: async ({ table, source, move }) => {
-    // persist
+    // persist parent + order
 }
 ```
 
 ### `canReorderRow` (опционально)
 
-Per-row guard:
+Per-row guard на **старт** drag:
 
 ```js
 canReorderRow({ table, row, rowId, section, parentRowId }) {
@@ -94,89 +119,79 @@ canReorderRow({ table, row, rowId, section, parentRowId }) {
 | Поле | Описание |
 |------|----------|
 | `section` | `"body"` \| `"summary"` |
-| `parentRowId` | `null` для top-level; `"101"` для nested |
-| `rowId` | stable id перетаскиваемой строки (`_rowId` или path) |
-| `fromIndex` / `toIndex` | индексы в **sibling-массиве** (`data` или `parent.children`) |
+| `position` | `"before"` \| `"after"` \| `"inside"` |
+| `targetRowId` | строка, над которой отпустили |
+| `parentRowId` | destination parent (`null` = top-level); = `toParentRowId` |
+| `fromParentRowId` / `toParentRowId` | parent до / после |
+| `rowId` / `newRowId` | path id до / после (на reparent меняется) |
+| `fromIndex` / `toIndex` | индексы в sibling-массивах (pre-removal) |
 | `blockSize` | `1` или размер merge-group |
-| `orderedLocalRowIds` | local ids в sibling-списке после move |
-| `orderedRowIds` | full path ids (`101:5`) после move |
-| `rows` | snapshot sibling-списка после move |
+| `orderedLocalRowIds` / `orderedRowIds` | порядок **destination** sibling-списка после move |
+| `fromOrderedLocalRowIds` | порядок source-списка после move (при reparent) |
+| `rows` | snapshot destination sibling-списка после move |
 
 ---
 
 ## Undo / Redo
 
-Reorder попадает в общий **CommandStack** (toolbar Undo/Redo, Ctrl+Z). Отдельный `source` в row-reorder layer: `rowReorder` (см. `ROW_REORDER_SOURCES`).
+Reorder в общем **CommandStack** (toolbar Undo/Redo, Ctrl+Z). Source: `rowReorder` (`ROW_REORDER_SOURCES`).
+
+Reparent undo восстанавливает оба sibling-списка и path ids (`expandedIds`, checked rows).
 
 ---
 
-## Guards (v1)
+## Guards
 
 | Условие | Поведение |
 |---------|-----------|
 | Summary row | blocked, пока `allowSummary: true` |
-| Merge tail row | blocked — тянуть только **head** (весь блок) |
-| Разные parent в tree | drop запрещён |
+| Merge tail row | drag blocked — тянуть только **head** (весь блок) |
+| Merge block + nest / nested parent | reparent/nest blocked (flatten tree предполагает merge на top-level) |
+| Drop into self / descendant | blocked (cycle) |
+| `allowTree: "siblings"` + другой parent | drop запрещён |
+| `allowTree: false` | только top-level |
 | Active cell edit | DnD blocked |
 | Column sort active | DnD blocked |
-| `allowTree: false` | только top-level строки в `data` |
-
----
-
-## Tree
-
-При `allowTree: "siblings"` (default):
-
-- Перестановка только среди **direct siblings** (один `parent.children` или top-level `data`).
-- Nested `children` в `sourceData` обновляются на месте; затем `syncVisibleRows()` + refresh grid.
-- Lazy children (`onExpandRow`) — reorder после load, как у eager.
-
-**Не поддерживается в v1:** перенос строки между разными parents (cross-level move).
 
 ---
 
 ## Merge groups
 
-Head row (`mergeGroupIndex === 0`) тащит **весь блок** (`mergeGroupSize` строк) в `sourceData`.
+Head (`mergeGroupIndex === 0`) тащит **весь блок**. Tail — не draggable.
 
-Tail rows (`mergeGroupIndex > 0`) — не draggable.
+Sibling reorder merge на top-level — как раньше. Cross-parent / inside для merge-блока — нет.
 
 ---
 
 ## Summary
 
-По умолчанию summary **не** reorderable. Opt-in:
-
 ```js
 rowReorder: { enabled: true, allowSummary: true },
-onRowReorder({ move }) {
-    if (move.section === "summary") { /* save summary order */ }
-}
 ```
 
-Summary refresh через `syncSummarySection()` (не `applyTransaction`).
+Summary refresh через `syncSummarySection()`.
 
 ---
 
-## Roadmap (не v1 — зафиксировано для возврата)
+## Roadmap
 
 | Фича | Статус |
 |------|--------|
-| `handle: "column"` — отдельная grip-колонка | reserved |
-| Cross-parent tree move | not planned v1 |
+| `handle: "column"` | reserved |
+| Cross-parent + nest (`reparent`) | **done** |
 | Keyboard a11y (Alt+↑/↓) | planned |
-| Reorder при pagination / server-side row model | out of scope |
-| `rowReorder.allowWhenSorted: true` | not planned — sort и manual order конфликтуют |
-| Toolbar preset `row-reorder` | not needed (always gutter) |
+| Reorder при pagination / SSRM | out of scope |
+| `allowWhenSorted` | not planned |
+| Multi-row drag (не merge) | not planned |
 
 ---
 
-## Потребителю (WE и др.)
+## Потребителю
 
-1. Включить `rowReorder: { enabled: true }`.
-2. В `onRowReorder` отправить `move.orderedRowIds` или `orderedLocalRowIds` + `parentRowId`.
-3. При tree — уточнять `parentRowId` на сервере.
-4. Не включать одновременно column sort и reorder без сброса sort.
+1. Плоский порядок: `allowTree: false` или `"siblings"`.
+2. Полный tree-DnD: `allowTree: "reparent"`.
+3. В `onRowReorder` persist `toParentRowId` + `orderedLocalRowIds` (или `orderedRowIds`) + при необходимости `newRowId`.
+4. Не держать active column sort вместе с manual reorder.
 
 ---
 
@@ -184,9 +199,9 @@ Summary refresh через `syncSummarySection()` (не `applyTransaction`).
 
 | Файл | Назначение |
 |------|------------|
-| `core/row-reorder/mixin.js` | Mixin: gutter DnD, commit, undo |
-| `core/row-reorder/ops.js` | Pure ops (sibling list, merge block) |
-| `core/row-reorder/constants.js` | `ROW_REORDER_SOURCES` |
+| `core/row-reorder/mixin.js` | Gutter DnD, zones UX, commit, undo |
+| `core/row-reorder/ops.js` | Pure ops (sibling + reparent) |
+| `core/row-reorder/constants.js` | sources, positions, tree modes |
 | `@tests/row-reorder.test.mjs` | Unit-тесты ops |
 
-Mixin order в `base.js`: после `FillHandleMixin`, до `SelectionStatusMixin`. См. также [`../README.md`](../README.md) — структура `core/`.
+Mixin order в `base.js`: после `FillHandleMixin`, до `RowCheckMixin`.

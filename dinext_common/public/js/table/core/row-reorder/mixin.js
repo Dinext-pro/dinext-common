@@ -1,13 +1,25 @@
 import { isSummarySectionRow, TABLE_SECTIONS } from "../section/sections.js";
-import { ROW_REORDER_SOURCES } from "./constants.js";
+import {
+    ROW_REORDER_INDICATOR_BASE_LEFT_PX,
+    ROW_REORDER_POSITIONS,
+    ROW_REORDER_SOURCES,
+    ROW_REORDER_TREE_INDENT_PX,
+    ROW_REORDER_TREE_MODES
+} from "./constants.js";
 import {
     buildRowReorderMovePayload,
+    collectDraggedRowIds,
     collectLocalRowIds,
     computeNudgeToIndex,
-    computeTargetInsertIndex,
+    getLocalRowId,
+    getSiblingListForParent,
     getStableRowId,
-    reorderSiblingBlock,
+    moveRowBlock,
+    remapPathIdsForBlockMove,
+    resolveDropPosition,
+    resolveDropTarget,
     resolveReorderContext,
+    restoreCrossParentOrders,
     restoreSiblingListOrder
 } from "./ops.js";
 
@@ -16,8 +28,11 @@ const ROW_REORDER_DEFAULTS = {
     handle: "gutter",
     gutterWidth: 12,
     allowSummary: false,
-    /** `"siblings"` — reorder within same parent list; `false` — top-level body rows only */
-    allowTree: "siblings"
+    /**
+     * `false` | `"siblings"` | `"reparent"`
+     * Default `"siblings"` — safe for existing consumers; set `"reparent"` for full tree DnD.
+     */
+    allowTree: ROW_REORDER_TREE_MODES.SIBLINGS
 };
 
 /**
@@ -28,7 +43,8 @@ export const RowReorderMixin = (Base) => class extends Base {
     initFeatures() {
         super.initFeatures();
         this._rowReorderDrag = null;
-        this._rowReorderDropIndicatorEl = null;
+        this._rowReorderDropGapEl = null;
+        this._rowReorderDropInsideEl = null;
     }
 
     destroyFeatures() {
@@ -48,6 +64,17 @@ export const RowReorderMixin = (Base) => class extends Base {
 
     getRowReorderOptions() {
         return { ...ROW_REORDER_DEFAULTS, ...(this.options.rowReorder || {}) };
+    }
+
+    getRowReorderTreeMode() {
+        const mode = this.getRowReorderOptions().allowTree;
+        if (mode === ROW_REORDER_TREE_MODES.REPARENT) {
+            return ROW_REORDER_TREE_MODES.REPARENT;
+        }
+        if (mode === ROW_REORDER_TREE_MODES.OFF) {
+            return ROW_REORDER_TREE_MODES.OFF;
+        }
+        return ROW_REORDER_TREE_MODES.SIBLINGS;
     }
 
     isRowReorderEnabled() {
@@ -110,7 +137,7 @@ export const RowReorderMixin = (Base) => class extends Base {
             return false;
         }
 
-        if (this.getRowReorderOptions().allowTree === false && ctx.parentRowId != null) {
+        if (this.getRowReorderTreeMode() === ROW_REORDER_TREE_MODES.OFF && ctx.parentRowId != null) {
             return false;
         }
 
@@ -161,31 +188,58 @@ export const RowReorderMixin = (Base) => class extends Base {
     }
 
     ensureRowReorderDropIndicator() {
-        if (this._rowReorderDropIndicatorEl || !this.container) {
+        if (!this.container) {
             return;
         }
-        const indicator = document.createElement("div");
-        indicator.className = "dinext-table-row-reorder-drop-indicator";
-        indicator.setAttribute("aria-hidden", "true");
-        indicator.hidden = true;
-        this.container.appendChild(indicator);
-        this._rowReorderDropIndicatorEl = indicator;
+        if (!this._rowReorderDropGapEl) {
+            const gap = document.createElement("div");
+            gap.className = "dinext-table-row-reorder-drop-gap";
+            gap.setAttribute("aria-hidden", "true");
+            gap.hidden = true;
+            this.container.appendChild(gap);
+            this._rowReorderDropGapEl = gap;
+        }
+        if (!this._rowReorderDropInsideEl) {
+            // Overlay frame — AG .ag-row outline/bg are clipped or overridden.
+            const frame = document.createElement("div");
+            frame.className = "dinext-table-row-reorder-drop-inside-frame";
+            frame.setAttribute("aria-hidden", "true");
+            frame.hidden = true;
+            this.container.appendChild(frame);
+            this._rowReorderDropInsideEl = frame;
+        }
     }
 
     clearRowReorderUi() {
         this.container?.classList.remove(
             "dinext-table--row-reorder-grabbing",
-            "dinext-table--row-reorder-gutter-hover"
+            "dinext-table--row-reorder-gutter-hover",
+            "dinext-table--row-reorder-drop-invalid"
         );
-        if (this._rowReorderDropIndicatorEl) {
-            this._rowReorderDropIndicatorEl.hidden = true;
-        }
+        this.hideRowReorderDropVisuals();
         this.container?.querySelectorAll(".ag-row.dinext-table-row--dragging").forEach((el) => {
             el.classList.remove("dinext-table-row--dragging");
         });
-        this.container?.querySelectorAll(".ag-row.dinext-table-row-reorder-drop-target").forEach((el) => {
-            el.classList.remove("dinext-table-row-reorder-drop-target");
-        });
+    }
+
+    setRowReorderDropInvalid(invalid) {
+        this.container?.classList.toggle("dinext-table--row-reorder-drop-invalid", !!invalid);
+    }
+
+    /** Left offset for between-row gap band (align with tree level). */
+    resolveRowReorderGapLeft(rowEl, indentLevel) {
+        const level = Math.max(0, Number(indentLevel) || 0);
+        const treeCell = rowEl?.querySelector?.(".dinext-table-tree-cell");
+        if (treeCell && this.container) {
+            const containerRect = this.container.getBoundingClientRect();
+            const cellRect = treeCell.getBoundingClientRect();
+            const pad = Number.parseFloat(treeCell.style.paddingLeft) || 0;
+            return Math.max(
+                ROW_REORDER_INDICATOR_BASE_LEFT_PX,
+                cellRect.left - containerRect.left + pad
+            );
+        }
+        return ROW_REORDER_INDICATOR_BASE_LEFT_PX + level * ROW_REORDER_TREE_INDENT_PX;
     }
 
     bindRowReorderListeners() {
@@ -208,8 +262,10 @@ export const RowReorderMixin = (Base) => class extends Base {
                 return;
             }
 
+            // Capture: beat AG Grid / selection cellMouseDown (they run at target).
             event.preventDefault();
             event.stopPropagation();
+            event.stopImmediatePropagation?.();
             this.beginRowReorderDrag(rowNode, rowEl);
         };
 
@@ -227,14 +283,14 @@ export const RowReorderMixin = (Base) => class extends Base {
             }
         };
 
-        this.container.addEventListener("mousedown", this._onRowReorderMouseDown);
+        this.container.addEventListener("mousedown", this._onRowReorderMouseDown, true);
         document.addEventListener("mousemove", this._onRowReorderMouseMove);
         document.addEventListener("mouseup", this._onRowReorderMouseUp);
     }
 
     destroyRowReorderListeners() {
         if (this._onRowReorderMouseDown && this.container) {
-            this.container.removeEventListener("mousedown", this._onRowReorderMouseDown);
+            this.container.removeEventListener("mousedown", this._onRowReorderMouseDown, true);
         }
         if (this._onRowReorderMouseMove) {
             document.removeEventListener("mousemove", this._onRowReorderMouseMove);
@@ -277,22 +333,29 @@ export const RowReorderMixin = (Base) => class extends Base {
             return;
         }
 
-        const orderBefore = collectLocalRowIds(ctx.list, this.options);
+        const fromList = ctx.list;
         this._rowReorderDrag = {
             rowId,
             section,
             sourceRows,
             ctx,
-            orderBefore,
-            dropTargetIndex: null,
-            dropRowEl: null,
+            fromOrderBefore: collectLocalRowIds(fromList, this.options),
+            dropTarget: null,
             dragRowEls: this.collectDisplayedRowElementsForBlock(ctx, section)
         };
+
+        // DnD and cell range selection must not run together.
+        this.suppressSelectionForRowReorder?.();
 
         this.container.classList.add("dinext-table--row-reorder-grabbing");
         for (const el of this._rowReorderDrag.dragRowEls) {
             el.classList.add("dinext-table-row--dragging");
         }
+    }
+
+    /** True while gutter row-drag is active (selection/clipboard layers check this). */
+    isRowReorderDragging() {
+        return !!this._rowReorderDrag;
     }
 
     collectDisplayedRowElementsForBlock(ctx, section) {
@@ -301,26 +364,14 @@ export const RowReorderMixin = (Base) => class extends Base {
             return elements;
         }
 
-        const rowIdField = this.options.rowIdField || "id";
-        const blockLocalIds = new Set(
-            ctx.list
-                .slice(ctx.index, ctx.index + ctx.blockSize)
-                .map((row) => String(row[rowIdField]))
-        );
+        const draggedIds = new Set(collectDraggedRowIds(ctx, this.options));
 
         this.api.forEachNode((node) => {
             if (!node.data || this.resolveRowReorderSection(node.data) !== section) {
                 return;
             }
             const stableId = getStableRowId(node.data, this.options);
-            const localId = String(stableId).split(":").pop();
-            if (!blockLocalIds.has(localId)) {
-                return;
-            }
-            if (ctx.parentRowId != null && !String(stableId).startsWith(`${ctx.parentRowId}:`)) {
-                return;
-            }
-            if (ctx.parentRowId == null && String(stableId).includes(":")) {
+            if (!draggedIds.has(stableId)) {
                 return;
             }
             const rowIndex = node.rowIndex;
@@ -342,63 +393,145 @@ export const RowReorderMixin = (Base) => class extends Base {
             return;
         }
 
-        drag.dropRowEl?.classList.remove("dinext-table-row-reorder-drop-target");
-        drag.dropRowEl = null;
-        drag.dropTargetIndex = null;
+        drag.dropTarget = null;
 
         const hoverRowEl = this.getRowElementFromPoint(event.clientX, event.clientY);
         if (!hoverRowEl) {
-            this.hideRowReorderDropIndicator();
+            this.hideRowReorderDropVisuals();
+            this.setRowReorderDropInvalid(true);
             return;
         }
 
         const hoverNode = this.getDisplayedRowNodeFromElement(hoverRowEl);
         if (!hoverNode?.data) {
-            this.hideRowReorderDropIndicator();
+            this.hideRowReorderDropVisuals();
+            this.setRowReorderDropInvalid(true);
             return;
         }
 
         const hoverRowId = getStableRowId(hoverNode.data, this.options);
-        const hoverCtx = resolveReorderContext(drag.sourceRows, hoverRowId, this.options);
-        if (!hoverCtx) {
-            this.hideRowReorderDropIndicator();
-            return;
-        }
-
+        const allowTree = this.getRowReorderTreeMode();
+        const allowInside = allowTree === ROW_REORDER_TREE_MODES.REPARENT;
         const rect = hoverRowEl.getBoundingClientRect();
-        const insertBefore = event.clientY < rect.top + rect.height / 2;
-        const targetIndex = computeTargetInsertIndex(drag.ctx, hoverCtx, insertBefore);
-        if (targetIndex == null) {
-            this.hideRowReorderDropIndicator();
+        const position = resolveDropPosition(event.clientY - rect.top, rect.height, allowInside);
+
+        const dropTarget = resolveDropTarget({
+            sourceRows: drag.sourceRows,
+            dragCtx: drag.ctx,
+            hoverRowId,
+            position,
+            allowTree,
+            options: this.options
+        });
+
+        if (!dropTarget) {
+            this.hideRowReorderDropVisuals();
+            this.setRowReorderDropInvalid(true);
             return;
         }
 
-        drag.dropTargetIndex = targetIndex;
-        drag.dropRowEl = hoverRowEl;
-        hoverRowEl.classList.add("dinext-table-row-reorder-drop-target");
-        this.showRowReorderDropIndicator(hoverRowEl, insertBefore);
+        drag.dropTarget = dropTarget;
+        this.setRowReorderDropInvalid(false);
+
+        if (dropTarget.position === ROW_REORDER_POSITIONS.INSIDE) {
+            this.hideRowReorderDropGap();
+            this.showRowReorderDropInside(hoverRowEl);
+        } else {
+            this.hideRowReorderDropInside();
+            this.showRowReorderDropGap(hoverRowEl, dropTarget);
+        }
     }
 
-    showRowReorderDropIndicator(rowEl, insertBefore) {
-        const indicator = this._rowReorderDropIndicatorEl;
-        if (!indicator || !this.container) {
+    /** Union rect of all AG pin slices for the same displayed row-index. */
+    getRowReorderRowBounds(rowEl) {
+        if (!rowEl || !this.container) {
+            return null;
+        }
+        const rowIndex = rowEl.getAttribute("row-index");
+        const safeIndex = rowIndex == null
+            ? null
+            : (typeof CSS !== "undefined" && typeof CSS.escape === "function"
+                ? CSS.escape(String(rowIndex))
+                : String(rowIndex));
+        const slices = safeIndex != null
+            ? [...this.container.querySelectorAll(`.ag-row[row-index="${safeIndex}"]`)]
+            : [rowEl];
+        if (!slices.length) {
+            return null;
+        }
+
+        let left = Infinity;
+        let top = Infinity;
+        let right = -Infinity;
+        let bottom = -Infinity;
+        for (const el of slices) {
+            const r = el.getBoundingClientRect();
+            left = Math.min(left, r.left);
+            top = Math.min(top, r.top);
+            right = Math.max(right, r.right);
+            bottom = Math.max(bottom, r.bottom);
+        }
+        return { left, top, right, bottom, width: right - left, height: bottom - top };
+    }
+
+    showRowReorderDropGap(rowEl, dropTarget) {
+        const gapEl = this._rowReorderDropGapEl;
+        if (!gapEl || !this.container || !dropTarget) {
+            return;
+        }
+
+        const gapHeight = 4;
+        const containerRect = this.container.getBoundingClientRect();
+        const rowRect = rowEl.getBoundingClientRect();
+        const edge = dropTarget.position === ROW_REORDER_POSITIONS.BEFORE
+            ? rowRect.top
+            : rowRect.bottom;
+        const top = edge - (gapHeight / 2) - containerRect.top + this.container.scrollTop;
+        const left = this.resolveRowReorderGapLeft(rowEl, dropTarget.indentLevel);
+
+        gapEl.hidden = false;
+        gapEl.style.height = `${gapHeight}px`;
+        gapEl.style.top = `${top}px`;
+        gapEl.style.left = `${left}px`;
+        gapEl.style.right = "0";
+        gapEl.style.width = "";
+    }
+
+    showRowReorderDropInside(rowEl) {
+        const frame = this._rowReorderDropInsideEl;
+        if (!frame || !this.container) {
+            return;
+        }
+        const bounds = this.getRowReorderRowBounds(rowEl);
+        if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+            this.hideRowReorderDropInside();
             return;
         }
 
         const containerRect = this.container.getBoundingClientRect();
-        const rowRect = rowEl.getBoundingClientRect();
-        const top = insertBefore ? rowRect.top : rowRect.bottom;
-
-        indicator.hidden = false;
-        indicator.style.top = `${top - containerRect.top + this.container.scrollTop}px`;
-        indicator.style.left = "0";
-        indicator.style.right = "0";
+        frame.hidden = false;
+        frame.style.top = `${bounds.top - containerRect.top + this.container.scrollTop}px`;
+        frame.style.left = `${bounds.left - containerRect.left + this.container.scrollLeft}px`;
+        frame.style.width = `${bounds.width}px`;
+        frame.style.height = `${bounds.height}px`;
+        frame.style.right = "auto";
     }
 
-    hideRowReorderDropIndicator() {
-        if (this._rowReorderDropIndicatorEl) {
-            this._rowReorderDropIndicatorEl.hidden = true;
+    hideRowReorderDropGap() {
+        if (this._rowReorderDropGapEl) {
+            this._rowReorderDropGapEl.hidden = true;
         }
+    }
+
+    hideRowReorderDropInside() {
+        if (this._rowReorderDropInsideEl) {
+            this._rowReorderDropInsideEl.hidden = true;
+        }
+    }
+
+    hideRowReorderDropVisuals() {
+        this.hideRowReorderDropGap();
+        this.hideRowReorderDropInside();
     }
 
     finishRowReorderDrag() {
@@ -406,20 +539,28 @@ export const RowReorderMixin = (Base) => class extends Base {
         this._rowReorderDrag = null;
         this.clearRowReorderUi();
 
-        if (!drag || drag.dropTargetIndex == null) {
+        if (!drag?.dropTarget) {
             return;
         }
 
         this.commitRowReorder({
             section: drag.section,
             ctx: drag.ctx,
-            toIndex: drag.dropTargetIndex,
-            orderBefore: drag.orderBefore
+            dropTarget: drag.dropTarget,
+            fromOrderBefore: drag.fromOrderBefore
         });
     }
 
-    applySiblingListOrder(section, ctx, orderedLocalIds) {
-        restoreSiblingListOrder(ctx.list, orderedLocalIds, this.options);
+    applySiblingListOrder(section, parentRowId, orderedLocalIds) {
+        const list = getSiblingListForParent(
+            this.getRowReorderSourceRows(section),
+            parentRowId,
+            this.options
+        );
+        if (!list) {
+            return;
+        }
+        restoreSiblingListOrder(list, orderedLocalIds, this.options);
         this.refreshAfterRowReorder(section);
     }
 
@@ -438,6 +579,21 @@ export const RowReorderMixin = (Base) => class extends Base {
             this.syncVisibleRows();
         }
         this.setGridOption("rowData", [...(this.rowData || [])]);
+        this.refreshAllTreeToggles?.();
+    }
+
+    remapRowPathIdsAfterReorder(fromParentRowId, toParentRowId, localIds) {
+        if (fromParentRowId === toParentRowId) {
+            return;
+        }
+        if (this.expandedIds) {
+            remapPathIdsForBlockMove(this.expandedIds, {
+                fromParentRowId,
+                toParentRowId,
+                localIds
+            });
+        }
+        super.remapRowPathIdsAfterReorder?.(fromParentRowId, toParentRowId, localIds);
     }
 
     resolveNudgeRowReorder(rowId, direction) {
@@ -474,8 +630,26 @@ export const RowReorderMixin = (Base) => class extends Base {
             return null;
         }
 
-        const orderBefore = collectLocalRowIds(ctx.list, this.options);
-        return { section, ctx, toIndex, orderBefore };
+        const dropTarget = {
+            position: direction < 0 ? ROW_REORDER_POSITIONS.BEFORE : ROW_REORDER_POSITIONS.AFTER,
+            targetRowId: ctx.rowId,
+            fromParentRowId: ctx.parentRowId,
+            toParentRowId: ctx.parentRowId,
+            fromIndex: ctx.index,
+            toIndex,
+            blockSize: ctx.blockSize,
+            rowId: ctx.rowId,
+            newRowId: ctx.rowId,
+            indentLevel: ctx.parentRowId == null ? 0 : String(ctx.parentRowId).split(":").length,
+            sameParent: true
+        };
+
+        return {
+            section,
+            ctx,
+            dropTarget,
+            fromOrderBefore: collectLocalRowIds(ctx.list, this.options)
+        };
     }
 
     /**
@@ -495,19 +669,49 @@ export const RowReorderMixin = (Base) => class extends Base {
         return this.resolveNudgeRowReorder(rowId, direction) != null;
     }
 
-    commitRowReorder({ section, ctx, toIndex, orderBefore }) {
-        const fromIndex = ctx.index;
-        const blockSize = ctx.blockSize;
-        const listSnapshot = ctx.list.map((row) => ({ ...row }));
-
-        const validateMove = buildRowReorderMovePayload({
-            section,
-            parentRowId: ctx.parentRowId,
-            rowId: ctx.rowId,
+    commitRowReorder({ section, ctx, dropTarget, fromOrderBefore }) {
+        const sourceRows = this.getRowReorderSourceRows(section);
+        const {
+            fromParentRowId,
+            toParentRowId,
             fromIndex,
             toIndex,
             blockSize,
-            list: listSnapshot,
+            position,
+            targetRowId,
+            rowId,
+            newRowId
+        } = dropTarget;
+
+        const destListBefore = getSiblingListForParent(sourceRows, toParentRowId, this.options);
+        if (!destListBefore) {
+            return false;
+        }
+
+        const toOrderBefore = dropTarget.sameParent
+            ? fromOrderBefore
+            : collectLocalRowIds(destListBefore, this.options);
+
+        const movedLocalIds = [];
+        for (let i = 0; i < blockSize; i++) {
+            const row = ctx.list[fromIndex + i];
+            if (row) {
+                movedLocalIds.push(getLocalRowId(row, this.options));
+            }
+        }
+
+        const validateMove = buildRowReorderMovePayload({
+            section,
+            position,
+            targetRowId,
+            fromParentRowId,
+            toParentRowId,
+            rowId,
+            newRowId,
+            fromIndex,
+            toIndex,
+            blockSize,
+            destList: destListBefore,
             options: this.options
         });
 
@@ -523,34 +727,70 @@ export const RowReorderMixin = (Base) => class extends Base {
             }
         }
 
-        const applied = reorderSiblingBlock(ctx.list, fromIndex, blockSize, toIndex);
+        const applied = moveRowBlock(sourceRows, {
+            fromParentRowId,
+            fromIndex,
+            blockSize,
+            toParentRowId,
+            toIndex
+        }, this.options);
         if (!applied) {
             return false;
         }
 
-        const orderAfter = collectLocalRowIds(ctx.list, this.options);
+        this.remapRowPathIdsAfterReorder(fromParentRowId, toParentRowId, movedLocalIds);
+
+        const destList = getSiblingListForParent(sourceRows, toParentRowId, this.options);
+        const fromList = getSiblingListForParent(sourceRows, fromParentRowId, this.options);
+        const toOrderAfter = collectLocalRowIds(destList, this.options);
+        const fromOrderAfter = dropTarget.sameParent
+            ? toOrderAfter
+            : collectLocalRowIds(fromList, this.options);
+
         const move = {
             ...validateMove,
-            orderedLocalRowIds: orderAfter,
-            orderedRowIds: orderAfter.map((localId) => (
-                ctx.parentRowId ? `${ctx.parentRowId}:${localId}` : localId
+            orderedLocalRowIds: toOrderAfter,
+            orderedRowIds: toOrderAfter.map((localId) => (
+                toParentRowId ? `${toParentRowId}:${localId}` : localId
             )),
-            rows: ctx.list.map((row) => ({ ...row })),
-            toIndex
+            rows: (destList || []).map((row) => ({ ...row })),
+            fromOrderedLocalRowIds: fromOrderAfter
         };
 
         this.refreshAfterRowReorder(section);
+
+        // No expand-on-hover. After drop under a collapsed parent — open it
+        // so the moved row is visible (lazy: expandRow loads if children still empty).
+        if (
+            toParentRowId != null
+            && typeof this.expandRow === "function"
+            && !this.isRowExpanded?.(toParentRowId)
+        ) {
+            Promise.resolve(this.expandRow(toParentRowId)).catch((err) => {
+                console.error("DinextTable: expand after row-reorder failed", err);
+            });
+        }
+
         this.recordRowReorderUndo({
             section,
-            ctx,
-            orderBefore,
-            orderAfter
+            dropTarget,
+            movedLocalIds,
+            fromOrderBefore,
+            toOrderBefore,
+            fromOrderAfter,
+            toOrderAfter
         });
 
         const onRowReorder = this.options.onRowReorder;
         if (typeof onRowReorder === "function") {
             const revert = () => {
-                this.applySiblingListOrder(section, ctx, orderBefore);
+                this.revertRowReorderMove({
+                    section,
+                    dropTarget,
+                    movedLocalIds,
+                    fromOrderBefore,
+                    toOrderBefore
+                });
             };
 
             Promise.resolve(onRowReorder({
@@ -572,24 +812,90 @@ export const RowReorderMixin = (Base) => class extends Base {
         return true;
     }
 
-    recordRowReorderUndo({ section, ctx, orderBefore, orderAfter }) {
+    rebuildCrossParentOrders(section, fromParentRowId, toParentRowId, fromOrder, toOrder) {
+        const sourceRows = this.getRowReorderSourceRows(section);
+        const fromList = getSiblingListForParent(sourceRows, fromParentRowId, this.options);
+        const toList = getSiblingListForParent(sourceRows, toParentRowId, this.options);
+        if (!fromList || !toList) {
+            return false;
+        }
+        return restoreCrossParentOrders(fromList, toList, fromOrder, toOrder, this.options);
+    }
+
+    revertRowReorderMove({
+        section,
+        dropTarget,
+        movedLocalIds,
+        fromOrderBefore,
+        toOrderBefore
+    }) {
+        const { fromParentRowId, toParentRowId, sameParent } = dropTarget;
+
+        if (sameParent) {
+            this.applySiblingListOrder(section, toParentRowId, fromOrderBefore);
+            return;
+        }
+
+        this.rebuildCrossParentOrders(
+            section,
+            fromParentRowId,
+            toParentRowId,
+            fromOrderBefore,
+            toOrderBefore
+        );
+        this.remapRowPathIdsAfterReorder(toParentRowId, fromParentRowId, movedLocalIds);
+        this.refreshAfterRowReorder(section);
+    }
+
+    recordRowReorderUndo({
+        section,
+        dropTarget,
+        movedLocalIds,
+        fromOrderBefore,
+        toOrderBefore,
+        fromOrderAfter,
+        toOrderAfter
+    }) {
         if (typeof this.pushUndoCommand !== "function") {
             return;
         }
 
+        const { fromParentRowId, toParentRowId, sameParent } = dropTarget;
+
         this.pushUndoCommand({
             undo: () => {
-                this.applySiblingListOrder(section, ctx, orderBefore);
+                this.revertRowReorderMove({
+                    section,
+                    dropTarget,
+                    movedLocalIds,
+                    fromOrderBefore,
+                    toOrderBefore
+                });
             },
             execute: () => {
-                this.applySiblingListOrder(section, ctx, orderAfter);
+                if (sameParent) {
+                    this.applySiblingListOrder(section, toParentRowId, toOrderAfter);
+                    return;
+                }
+                this.rebuildCrossParentOrders(
+                    section,
+                    fromParentRowId,
+                    toParentRowId,
+                    fromOrderAfter,
+                    toOrderAfter
+                );
+                this.remapRowPathIdsAfterReorder(fromParentRowId, toParentRowId, movedLocalIds);
+                if (toParentRowId != null) {
+                    this.expandedIds?.add(String(toParentRowId));
+                }
+                this.refreshAfterRowReorder(section);
             }
         });
     }
 
     handleRowReorderBodyScroll() {
         if (this._rowReorderDrag) {
-            this.hideRowReorderDropIndicator();
+            this.hideRowReorderDropVisuals();
         }
     }
 

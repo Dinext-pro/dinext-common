@@ -4,6 +4,7 @@ import {
     getMergeGroupMeta,
     getRowIdField
 } from "../shared/utils.js";
+import { ROW_REORDER_POSITIONS, ROW_REORDER_TREE_MODES } from "./constants.js";
 
 /** Index of merge head for a row inside a sibling list; plain rows → same index. */
 export function findMergeBlockStartIndex(list, index, options = {}) {
@@ -63,6 +64,21 @@ export function getLocalRowId(row, options = {}) {
     return String(row?.[getRowIdField(options)]);
 }
 
+export function buildFullRowId(parentRowId, localId) {
+    const local = String(localId);
+    return parentRowId ? `${parentRowId}:${local}` : local;
+}
+
+/** True when `candidateId` is `ancestorId` or nested under it. */
+export function isSelfOrDescendantId(ancestorId, candidateId) {
+    if (ancestorId == null || candidateId == null) {
+        return false;
+    }
+    const ancestor = String(ancestorId);
+    const candidate = String(candidateId);
+    return candidate === ancestor || candidate.startsWith(`${ancestor}:`);
+}
+
 /** Mutable sibling array + parent path id (`null` = top-level body list). */
 export function resolveSiblingContainer(sourceRows, rowId, options = {}) {
     if (!Array.isArray(sourceRows)) {
@@ -86,6 +102,27 @@ export function resolveSiblingContainer(sourceRows, rowId, options = {}) {
     }
 
     return { list: parent[childrenField], parentRowId };
+}
+
+/** Sibling list for a parent id; creates `children` array when missing. */
+export function getSiblingListForParent(sourceRows, parentRowId, options = {}) {
+    if (!Array.isArray(sourceRows)) {
+        return null;
+    }
+    if (parentRowId == null || parentRowId === "") {
+        return sourceRows;
+    }
+
+    const parent = findSourceRowInData(sourceRows, parentRowId, options);
+    if (!parent) {
+        return null;
+    }
+
+    const childrenField = getChildrenField(options);
+    if (!Array.isArray(parent[childrenField])) {
+        parent[childrenField] = [];
+    }
+    return parent[childrenField];
 }
 
 export function findIndexInSiblingList(list, rowId, options = {}) {
@@ -139,43 +176,215 @@ export function resolveReorderContext(sourceRows, rowId, options = {}) {
     };
 }
 
+/**
+ * Drop anchor for any visible row (merge tails resolve to their block).
+ * Unlike {@link resolveReorderContext}, tails are valid hover targets.
+ */
+export function resolveDropAnchorContext(sourceRows, rowId, options = {}) {
+    const container = resolveSiblingContainer(sourceRows, rowId, options);
+    if (!container) {
+        return null;
+    }
+
+    const index = findIndexInSiblingList(container.list, rowId, options);
+    if (index < 0) {
+        return null;
+    }
+
+    const meta = getMergeGroupMeta(container.list[index], options);
+    if (!meta) {
+        return {
+            list: container.list,
+            parentRowId: container.parentRowId,
+            index,
+            blockSize: 1,
+            rowId: String(rowId),
+            headRowId: String(rowId)
+        };
+    }
+
+    const blockStart = index - meta.index;
+    const head = container.list[blockStart];
+    const headLocalId = getLocalRowId(head, options);
+    const headRowId = buildFullRowId(container.parentRowId, headLocalId);
+
+    return {
+        list: container.list,
+        parentRowId: container.parentRowId,
+        index: blockStart,
+        blockSize: meta.size,
+        rowId: String(rowId),
+        headRowId
+    };
+}
+
 export function collectLocalRowIds(list, options = {}) {
     return (list || []).map((row) => getLocalRowId(row, options));
 }
 
 export function collectFullRowIds(list, parentRowId, options = {}) {
-    return (list || []).map((row) => {
-        const localId = getLocalRowId(row, options);
-        return parentRowId ? `${parentRowId}:${localId}` : localId;
-    });
+    return (list || []).map((row) => buildFullRowId(parentRowId, getLocalRowId(row, options)));
+}
+
+export function collectDraggedRowIds(dragCtx, options = {}) {
+    const ids = [];
+    for (let i = 0; i < dragCtx.blockSize; i++) {
+        const row = dragCtx.list[dragCtx.index + i];
+        if (!row) {
+            continue;
+        }
+        ids.push(buildFullRowId(dragCtx.parentRowId, getLocalRowId(row, options)));
+    }
+    return ids;
+}
+
+export function canNestIntoRow(row, options = {}) {
+    if (!row) {
+        return false;
+    }
+    const meta = getMergeGroupMeta(row, options);
+    if (meta && meta.index !== 0) {
+        return false;
+    }
+    return true;
 }
 
 /**
- * @param {object} dragCtx — resolveReorderContext result
- * @param {object} hoverCtx — resolveReorderContext for hover row
- * @param {boolean} insertBefore — drop above hover block midpoint
+ * @param {number} offsetY — pointer Y relative to row top
+ * @param {number} height — row height
+ * @param {boolean} allowInside
+ * @returns {"before"|"after"|"inside"}
  */
-export function computeTargetInsertIndex(dragCtx, hoverCtx, insertBefore) {
-    if (!dragCtx || !hoverCtx) {
+export function resolveDropPosition(offsetY, height, allowInside) {
+    if (!(height > 0)) {
+        return ROW_REORDER_POSITIONS.AFTER;
+    }
+    const ratio = offsetY / height;
+    if (allowInside) {
+        if (ratio < 0.28) {
+            return ROW_REORDER_POSITIONS.BEFORE;
+        }
+        if (ratio > 0.72) {
+            return ROW_REORDER_POSITIONS.AFTER;
+        }
+        return ROW_REORDER_POSITIONS.INSIDE;
+    }
+    return ratio < 0.5 ? ROW_REORDER_POSITIONS.BEFORE : ROW_REORDER_POSITIONS.AFTER;
+}
+
+/**
+ * Resolve a concrete drop into sourceData coordinates.
+ * `toIndex` is always the pre-removal insert index in the destination list
+ * (same convention as {@link computeNudgeToIndex} / {@link reorderSiblingBlock}).
+ *
+ * @returns {null|{
+ *   position: string,
+ *   targetRowId: string,
+ *   fromParentRowId: string|null,
+ *   toParentRowId: string|null,
+ *   fromIndex: number,
+ *   toIndex: number,
+ *   blockSize: number,
+ *   rowId: string,
+ *   newRowId: string,
+ *   indentLevel: number,
+ *   sameParent: boolean
+ * }}
+ */
+export function resolveDropTarget({
+    sourceRows,
+    dragCtx,
+    hoverRowId,
+    position,
+    allowTree = ROW_REORDER_TREE_MODES.SIBLINGS,
+    options = {}
+}) {
+    if (!dragCtx || hoverRowId == null || !position) {
         return null;
     }
-    if (dragCtx.parentRowId !== hoverCtx.parentRowId) {
+
+    if (allowTree === ROW_REORDER_TREE_MODES.OFF && dragCtx.parentRowId != null) {
         return null;
     }
 
-    let targetIndex = insertBefore ? hoverCtx.index : hoverCtx.index + hoverCtx.blockSize;
-    const fromIndex = dragCtx.index;
-    const blockSize = dragCtx.blockSize;
-
-    if (fromIndex < targetIndex) {
-        targetIndex -= blockSize;
-    }
-
-    if (targetIndex === fromIndex) {
+    const draggedIds = collectDraggedRowIds(dragCtx, options);
+    const anchor = resolveDropAnchorContext(sourceRows, hoverRowId, options);
+    if (!anchor) {
         return null;
     }
 
-    return targetIndex;
+    let toParentRowId;
+    let toIndex;
+    let indentLevel;
+
+    if (position === ROW_REORDER_POSITIONS.INSIDE) {
+        if (allowTree !== ROW_REORDER_TREE_MODES.REPARENT) {
+            return null;
+        }
+        const nestRow = findSourceRowInData(sourceRows, anchor.headRowId, options);
+        if (!canNestIntoRow(nestRow, options)) {
+            return null;
+        }
+        if (draggedIds.some((id) => isSelfOrDescendantId(id, anchor.headRowId))) {
+            return null;
+        }
+        // Merge atoms stay top-level only (visible tree flatten assumes that).
+        if (dragCtx.blockSize > 1) {
+            return null;
+        }
+
+        toParentRowId = anchor.headRowId;
+        const destList = getSiblingListForParent(sourceRows, toParentRowId, options);
+        if (!destList) {
+            return null;
+        }
+        toIndex = destList.length;
+        indentLevel = String(toParentRowId).split(":").length;
+    } else {
+        toParentRowId = anchor.parentRowId;
+        toIndex = position === ROW_REORDER_POSITIONS.BEFORE
+            ? anchor.index
+            : anchor.index + anchor.blockSize;
+        indentLevel = toParentRowId == null ? 0 : String(toParentRowId).split(":").length;
+
+        if (allowTree === ROW_REORDER_TREE_MODES.OFF && toParentRowId != null) {
+            return null;
+        }
+        if (allowTree === ROW_REORDER_TREE_MODES.SIBLINGS && toParentRowId !== dragCtx.parentRowId) {
+            return null;
+        }
+        if (dragCtx.blockSize > 1 && toParentRowId != null && toParentRowId !== dragCtx.parentRowId) {
+            return null;
+        }
+        if (toParentRowId != null
+            && draggedIds.some((id) => isSelfOrDescendantId(id, toParentRowId))) {
+            return null;
+        }
+    }
+
+    const sameParent = dragCtx.parentRowId === toParentRowId;
+    if (sameParent
+        && toIndex >= dragCtx.index
+        && toIndex <= dragCtx.index + dragCtx.blockSize) {
+        return null;
+    }
+
+    const localId = String(dragCtx.rowId).split(":").pop();
+    const newRowId = buildFullRowId(toParentRowId, localId);
+
+    return {
+        position,
+        targetRowId: String(hoverRowId),
+        fromParentRowId: dragCtx.parentRowId,
+        toParentRowId,
+        fromIndex: dragCtx.index,
+        toIndex,
+        blockSize: dragCtx.blockSize,
+        rowId: dragCtx.rowId,
+        newRowId,
+        indentLevel,
+        sameParent
+    };
 }
 
 export function reorderSiblingBlock(list, fromIndex, blockSize, toIndex) {
@@ -198,6 +407,38 @@ export function reorderSiblingBlock(list, fromIndex, blockSize, toIndex) {
         insertAt -= blockSize;
     }
     list.splice(insertAt, 0, ...block);
+    return true;
+}
+
+/**
+ * Move a block between sibling lists (or within one).
+ * `toIndex` — pre-removal insert index in the destination list.
+ */
+export function moveRowBlock(sourceRows, {
+    fromParentRowId,
+    fromIndex,
+    blockSize,
+    toParentRowId,
+    toIndex
+}, options = {}) {
+    const fromList = getSiblingListForParent(sourceRows, fromParentRowId, options);
+    const toList = getSiblingListForParent(sourceRows, toParentRowId, options);
+    if (!fromList || !toList || blockSize < 1) {
+        return false;
+    }
+    if (fromIndex < 0 || fromIndex + blockSize > fromList.length) {
+        return false;
+    }
+    if (toIndex < 0 || toIndex > toList.length) {
+        return false;
+    }
+
+    if (fromList === toList) {
+        return reorderSiblingBlock(fromList, fromIndex, blockSize, toIndex);
+    }
+
+    const block = fromList.splice(fromIndex, blockSize);
+    toList.splice(toIndex, 0, ...block);
     return true;
 }
 
@@ -226,28 +467,117 @@ export function restoreSiblingListOrder(list, orderedLocalIds, options = {}) {
     return true;
 }
 
+/**
+ * Rebuild two sibling lists after a cross-parent move (undo/redo).
+ * `rowPool` must contain every row referenced by either order (moved + stayers).
+ */
+export function restoreCrossParentOrders(
+    fromList,
+    toList,
+    fromOrderedLocalIds,
+    toOrderedLocalIds,
+    options = {}
+) {
+    if (!Array.isArray(fromList) || !Array.isArray(toList)) {
+        return false;
+    }
+
+    const rowIdField = getRowIdField(options);
+    const pool = new Map();
+    for (const row of fromList) {
+        pool.set(String(row[rowIdField]), row);
+    }
+    for (const row of toList) {
+        pool.set(String(row[rowIdField]), row);
+    }
+
+    const build = (order) => (order || []).map((id) => pool.get(String(id))).filter(Boolean);
+    const nextFrom = build(fromOrderedLocalIds);
+    const nextTo = build(toOrderedLocalIds);
+
+    fromList.splice(0, fromList.length, ...nextFrom);
+    toList.splice(0, toList.length, ...nextTo);
+    return true;
+}
+
+/** Remap path ids in a Set when a row (subtree root) changes parent path. */
+export function remapPathIdSet(idSet, fromRowId, toRowId) {
+    if (!idSet || fromRowId == null || toRowId == null) {
+        return;
+    }
+    const from = String(fromRowId);
+    const to = String(toRowId);
+    if (from === to) {
+        return;
+    }
+
+    const next = [];
+    for (const id of [...idSet]) {
+        const cur = String(id);
+        if (cur === from) {
+            idSet.delete(cur);
+            next.push(to);
+        } else if (cur.startsWith(`${from}:`)) {
+            idSet.delete(cur);
+            next.push(`${to}${cur.slice(from.length)}`);
+        }
+    }
+    for (const id of next) {
+        idSet.add(id);
+    }
+}
+
+/**
+ * Remap every moved top-level block row (merge heads/tails) and their descendant paths.
+ */
+export function remapPathIdsForBlockMove(idSet, {
+    fromParentRowId,
+    toParentRowId,
+    localIds
+}) {
+    if (!idSet || fromParentRowId === toParentRowId) {
+        return;
+    }
+    for (const localId of localIds || []) {
+        remapPathIdSet(
+            idSet,
+            buildFullRowId(fromParentRowId, localId),
+            buildFullRowId(toParentRowId, localId)
+        );
+    }
+}
+
 export function buildRowReorderMovePayload({
     section,
-    parentRowId,
+    position,
+    targetRowId,
+    fromParentRowId,
+    toParentRowId,
     rowId,
+    newRowId,
     fromIndex,
     toIndex,
     blockSize,
-    list,
+    destList,
     options = {}
 }) {
-    const orderedLocalRowIds = collectLocalRowIds(list, options);
-    const orderedRowIds = collectFullRowIds(list, parentRowId, options);
+    const orderedLocalRowIds = collectLocalRowIds(destList, options);
+    const orderedRowIds = collectFullRowIds(destList, toParentRowId, options);
 
     return {
         section,
-        parentRowId,
+        position,
+        targetRowId,
+        parentRowId: toParentRowId,
+        fromParentRowId,
+        toParentRowId,
         rowId,
+        newRowId,
         fromIndex,
         toIndex,
         blockSize,
         orderedLocalRowIds,
         orderedRowIds,
-        rows: list.map((row) => ({ ...row }))
+        rows: (destList || []).map((row) => ({ ...row }))
     };
 }

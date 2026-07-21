@@ -142,7 +142,7 @@ Move = тот же контур что gutter (`rowReorder.enabled` обязат
 |------|--------|
 | Sync `_selected` field ↔ Set | out of scope (dual source) |
 | Auto `unit` from merge meta | not planned |
-| Cross-parent nudge | same as row-reorder v1 |
+| Cross-parent nudge | toolbar ±1 stays sibling-only; DnD reparent → `rowReorder.allowTree: "reparent"` |
 | Keyboard a11y for check col | planned |
 
 ---
