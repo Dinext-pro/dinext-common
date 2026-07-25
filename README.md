@@ -16,11 +16,12 @@ Dinext Common — общее Frappe-приложение платформы Dine
 
 - Общий брендинг Dinext для Desk и сайта через `app_logo_url`, `app_icon` и `website_context` в `dinext_common/hooks.py`
 - Настройка сайта через fixtures: `Website Settings`, `Navbar Settings`, `Data Cleanup Rules`, контент главной страницы Dinext, включённые записи `Server Script` и записи `Custom Field` модуля `Dinext Common`
-- Глобальные улучшения Desk через `app_include_js`:
+- Глобальные улучшения Desk через `app_include_js` / `app_include_css`:
   - `breadcrumbs_update.js`
   - `listview_resize.js`
   - `dinext-desk.js`
   - `dashboard_filters_fix.js`
+  - `workspace_sidebar_hover.js` + `workspace_sidebar_hover.css` — icon-rail и hover-overlay для списка workspace
 - `sticky-datatable.js` только для DocType `Project` через `doctype_js`
 - Стандартная тема сайта `Dinext Theme` в `dinext_common/dinext_common/website_theme/dinext_theme/`
 - Встроенные frontend-библиотеки:
@@ -79,9 +80,26 @@ bench build --app dinext_common
 - `breadcrumbs_update.js` сохраняет контекст workspace в breadcrumbs и поддерживает копирование последнего элемента
 - `listview_resize.js` сохраняет ширины колонок списка в `localStorage`
 - `dinext-desk.js` настраивает диалог About и показывает версии установленных приложений
-- `dashboard_filters_fix.js` улучшает динамическую фильтрацию дашборда для `_assign` и `_liked_by`
+- `dashboard_filters_format.js` улучшает динамическую фильтрацию дашборда для `_assign` и `_liked_by`
+- `workspace_sidebar_hover.js` на странице Workspaces: кнопка sidebar переключает полный вид и полоску с иконками; при наведении на свёрнутый sidebar меню временно открывается **поверх** контента (без сдвига основной колонки); состояние свёртки хранится в `localStorage`
 
 Для DocType `Project` подключается `sticky-datatable.js` — виртуализированная таблица с закреплением строк на базе `frappe-datatable.min.js` и `hyperlist.js`.
+
+### Workspace sidebar hover-expand
+
+По умолчанию функция **включена**. Отключение — через `site_config.json` сайта:
+
+```json
+{
+  "dinext_workspace_sidebar_hover_expand": 0
+}
+```
+
+Отсутствие ключа или значение `1` / `true` оставляет поведение включённым. После изменения конфига выполните `bench --site your-site.local clear-cache` и обновите Desk (или перелогиньтесь), чтобы подтянуть bootinfo.
+
+Временное открытие по hover — fixed-overlay поверх рабочей области; ширина основного экрана не меняется. Полное разворачивание по кнопке toggle по-прежнему занимает колонку в layout.
+
+На мобильной ширине остаётся стандартный overlay Frappe. List/form sidebar не затрагивается.
 
 ### Fixture Analysis
 
@@ -188,8 +206,9 @@ frappe.require(["/assets/dinext_common/js/echarts.min.js"], function () {
 - `app_logo_url = "/assets/dinext_common/images/DI_SQ_NBG.png"`
 - `app_icon = "/assets/dinext_common/images/DINEXT_FAVICON.ico"`
 - `website_context` задаёт favicon и splash для публичного сайта
-- `app_include_css = "/assets/dinext_common/css/common.css"`
-- `app_include_js` подключает общие скрипты Desk глобально
+- `app_include_css` подключает `common.css` и `workspace_sidebar_hover.css`
+- `app_include_js` подключает общие скрипты Desk глобально (включая `workspace_sidebar_hover.js`)
+- `extend_bootinfo = ["dinext_common.boot.extend_bootinfo"]` — передаёт флаг `dinext_workspace_sidebar_hover_expand` из `site_config` в Desk
 - `doctype_js = {"Project": "public/js/sticky-datatable.js"}`
 
 Fixtures, экспортируемые приложением:

@@ -1,0 +1,165 @@
+/* Workspace sidebar icon-rail + animated fixed hover flyout (dinext_common).
+   Desktop only (Frappe lg = 992px). Mobile keeps standard Frappe overlay. */
+
+@media (min-width: 992px) {
+	body.dinext-ws-sidebar-collapsed {
+		--dinext-ws-rail-pad-left: 16px;
+	}
+
+	body.dinext-ws-sidebar-collapsed .layout-side-section:has(.desk-sidebar) {
+		flex: 0 0 56px !important;
+		max-width: 56px !important;
+		width: 56px !important;
+		min-width: 56px !important;
+		padding-right: 0 !important;
+		padding-left: 0;
+		position: relative;
+		overflow: hidden;
+	}
+
+	/* Keep main on the same flex row (Bootstrap .row uses flex-wrap: wrap). */
+	body.dinext-ws-sidebar-collapsed .layout-main-section-wrapper {
+		flex: 1 1 0% !important;
+		max-width: none !important;
+		min-width: 0 !important;
+		width: auto !important;
+		padding-left: 0 !important;
+	}
+
+	body.dinext-ws-sidebar-collapsed
+		.layout-main:has(.desk-sidebar)
+		.layout-main-section {
+		margin-left: 0;
+		padding-left: 0;
+	}
+
+	body.dinext-ws-sidebar-collapsed .layout-main:has(.desk-sidebar) .layout-side-section {
+		padding-right: 0 !important;
+	}
+
+	/* Fixed rail / flyout: width animates between rail and open */
+	body.dinext-ws-sidebar-collapsed
+		.layout-side-section:has(.desk-sidebar)
+		.list-sidebar.overlay-sidebar {
+		position: fixed !important;
+		width: 56px !important;
+		min-width: 56px !important;
+		max-width: none !important;
+		padding: 0 4px 12px var(--dinext-ws-rail-pad-left, 16px);
+		overflow-x: hidden;
+		overflow-y: auto;
+		z-index: 1010;
+		background-color: var(--fg-color);
+		box-shadow: none;
+		border-radius: 0;
+		transition:
+			width 0.2s ease,
+			min-width 0.2s ease,
+			box-shadow 0.2s ease,
+			border-radius 0.2s ease;
+		/* top / left / height set inline from getBoundingClientRect */
+	}
+
+	/* Hide scrollbar in icon-rail; wheel scroll still works */
+	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
+		.layout-side-section:has(.desk-sidebar)
+		.list-sidebar.overlay-sidebar {
+		scrollbar-width: none;
+		-ms-overflow-style: none;
+		padding-left: var(--dinext-ws-rail-pad-left, 16px) !important;
+		padding-right: 4px !important;
+	}
+
+	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
+		.layout-side-section:has(.desk-sidebar)
+		.list-sidebar.overlay-sidebar::-webkit-scrollbar {
+		display: none;
+		width: 0;
+		height: 0;
+	}
+
+	body.dinext-ws-sidebar-collapsed.dinext-ws-sidebar-hover-open
+		.layout-side-section:has(.desk-sidebar),
+	body.dinext-ws-sidebar-collapsed.dinext-ws-sidebar-hover-open
+		.layout-main:has(.desk-sidebar) {
+		overflow: visible !important;
+	}
+
+	body.dinext-ws-sidebar-collapsed.dinext-ws-sidebar-hover-open
+		.layout-side-section:has(.desk-sidebar)
+		.list-sidebar.overlay-sidebar {
+		width: 220px !important;
+		min-width: 220px !important;
+		padding: 0 12px 12px var(--dinext-ws-rail-pad-left, 16px);
+		box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.12));
+		border-radius: 0 var(--border-radius-md, 8px) var(--border-radius-md, 8px) 0;
+	}
+
+	/* Hide text/controls but keep row boxes so rail matches expanded row count/spacing. */
+	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
+		.desk-sidebar
+		.sidebar-item-label,
+	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
+		.desk-sidebar
+		.sidebar-item-control {
+		visibility: hidden;
+		width: 0 !important;
+		min-width: 0 !important;
+		max-width: 0 !important;
+		margin: 0 !important;
+		padding: 0 !important;
+		overflow: hidden;
+		opacity: 0;
+		pointer-events: none;
+		flex: 0 0 0 !important;
+	}
+
+	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
+		.desk-sidebar
+		.standard-sidebar-label {
+		visibility: hidden;
+		pointer-events: none;
+		white-space: nowrap !important;
+		overflow: hidden !important;
+		max-height: 18px; /* single-line as in expanded; avoid wrap in 56px rail */
+	}
+
+	/* Frappe uses margin-left: -10px on draggable containers; cancel while collapsed (rail + hover-open). */
+	body.dinext-ws-sidebar-collapsed .desk-sidebar .sidebar-item-container {
+		margin-left: 0 !important;
+	}
+
+	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
+		.desk-sidebar
+		.desk-sidebar-item.standard-sidebar-item {
+		justify-content: flex-start;
+		padding-left: 0;
+		padding-right: 0;
+	}
+
+	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
+		.desk-sidebar
+		.item-anchor {
+		justify-content: flex-start;
+		padding-left: 0;
+		padding-right: 0;
+		min-width: 0;
+	}
+
+	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
+		.desk-sidebar
+		.sidebar-item-icon {
+		margin-right: 0;
+	}
+
+	body.dinext-ws-sidebar-collapsed .desk-sidebar .sidebar-item-icon {
+		color: var(--text-color);
+		--icon-stroke: var(--text-color);
+	}
+
+	body.dinext-ws-sidebar-collapsed
+		.desk-sidebar
+		.standard-sidebar-item:hover {
+		background-color: var(--subtle-fg);
+	}
+}
