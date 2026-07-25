@@ -125,8 +125,8 @@
 	}
 
 	/* Frappe uses margin-left: -10px on draggable containers; cancel while collapsed (rail + hover-open). */
-	body.dinext-ws-sidebar-collapsed .desk-sidebar .sidebar-item-container {
-		margin-left: 0 !important;
+	body.dinext-ws-sidebar-collapsed .desk-sidebar .standard-sidebar-section.nested-container {
+		padding-left: 10px;
 	}
 
 	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
