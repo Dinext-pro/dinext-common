@@ -63,11 +63,22 @@
 		background-color: var(--fg-color);
 		box-shadow: none;
 		border-radius: 0;
+		border-right: 1px solid color-mix(in srgb, var(--border-color) 90%, transparent);
 		transition:
 			width 0.2s ease,
 			min-width 0.2s ease,
 			box-shadow 0.2s ease,
-			border-radius 0.2s ease;
+			border-radius 0.2s ease,
+			border-color 0.2s ease;
+	}
+
+	body.dinext-ws-sidebar-collapsed
+		.layout-side-section:has(.desk-sidebar)
+		.list-sidebar.overlay-sidebar:has(.desk-sidebar):hover,
+	body.dinext-ws-sidebar-collapsed.dinext-ws-sidebar-hover-open
+		.layout-side-section:has(.desk-sidebar)
+		.list-sidebar.overlay-sidebar:has(.desk-sidebar) {
+		border-right-color: var(--dark-border-color);
 	}
 
 	/* Hide scrollbar in icon-rail; wheel scroll still works */
