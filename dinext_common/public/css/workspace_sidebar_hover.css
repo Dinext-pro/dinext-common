@@ -109,6 +109,19 @@
 		.desk-sidebar
 		.standard-sidebar-label {
 		white-space: nowrap !important;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	/* Frappe sets display:flex on .item-anchor only under Workspaces;
+	   on List/Form the label stays inline and text-overflow cannot ellipsis. */
+	body.dinext-ws-sidebar-collapsed.dinext-ws-sidebar-hover-open
+		.desk-sidebar
+		.sidebar-item-label {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
 		text-overflow: ellipsis;
 	}
 
@@ -157,9 +170,13 @@
 	body.dinext-ws-sidebar-collapsed
 		.desk-sidebar
 		.standard-sidebar-item .item-anchor {
+		display: flex;
+		align-items: center;
 		padding: 3px 0px 3px 0px;
 		white-space: nowrap;
 		flex: 1;
+		min-width: 0;
+		overflow: hidden;
 	}
 
 	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
@@ -202,6 +219,11 @@
 		.desk-sidebar
 		.sidebar-item-container {
 		margin-left: 0px;
+	}
+	body.dinext-ws-sidebar-collapsed
+		.desk-sidebar
+		.sidebar-item-container[item-is-hidden="1"] {
+		display: none;
 	}
 	body.dinext-ws-sidebar-collapsed
 		.desk-sidebar
