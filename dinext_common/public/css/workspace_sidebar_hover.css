@@ -1,12 +1,15 @@
-/* Workspace sidebar icon-rail + animated fixed hover flyout (dinext_common).
+/* Workspace sidebar icon-rail + absolute hover flyout (dinext_common).
    Desktop only (Frappe lg = 992px). Mobile keeps standard Frappe overlay. */
 
 @media (min-width: 992px) {
 	body.dinext-ws-sidebar-collapsed {
-		--dinext-ws-rail-pad-left: 16px;
+		--dinext-ws-rail-pad-left: 15px;
 	}
 
-	body.dinext-ws-sidebar-collapsed .layout-side-section:has(.desk-sidebar) {
+	/* Collapsed spacer: Workspaces native side-section or dedicated rail column. */
+	body.dinext-ws-sidebar-collapsed
+		.layout-side-section:has(.desk-sidebar):not(.dinext-ws-rail-section),
+	body.dinext-ws-sidebar-collapsed .layout-side-section.dinext-ws-rail-section {
 		flex: 0 0 56px !important;
 		max-width: 56px !important;
 		width: 56px !important;
@@ -15,6 +18,7 @@
 		padding-left: 0;
 		position: relative;
 		overflow: hidden;
+		align-self: stretch;
 	}
 
 	/* Keep main on the same flex row (Bootstrap .row uses flex-wrap: wrap). */
@@ -33,19 +37,26 @@
 		padding-left: 0;
 	}
 
-	body.dinext-ws-sidebar-collapsed .layout-main:has(.desk-sidebar) .layout-side-section {
+	body.dinext-ws-sidebar-collapsed
+		.layout-main:has(.desk-sidebar)
+		.layout-side-section:has(.desk-sidebar),
+	body.dinext-ws-sidebar-collapsed .layout-side-section.dinext-ws-rail-section {
 		padding-right: 0 !important;
 	}
 
-	/* Fixed rail / flyout: width animates between rail and open */
+	/* Absolute rail / flyout fills the side-section column (no JS geometry). */
 	body.dinext-ws-sidebar-collapsed
 		.layout-side-section:has(.desk-sidebar)
-		.list-sidebar.overlay-sidebar {
-		position: fixed !important;
+		.list-sidebar.overlay-sidebar:has(.desk-sidebar) {
+		position: absolute !important;
+		top: 0;
+		left: 0;
+		bottom: 0;
+		height: auto !important;
 		width: 56px !important;
 		min-width: 56px !important;
 		max-width: none !important;
-		padding: 0 4px 12px var(--dinext-ws-rail-pad-left, 16px);
+		padding: 0 4px 12px var(--dinext-ws-rail-pad-left, 15px);
 		overflow-x: hidden;
 		overflow-y: auto;
 		z-index: 1010;
@@ -57,22 +68,21 @@
 			min-width 0.2s ease,
 			box-shadow 0.2s ease,
 			border-radius 0.2s ease;
-		/* top / left / height set inline from getBoundingClientRect */
 	}
 
 	/* Hide scrollbar in icon-rail; wheel scroll still works */
 	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
 		.layout-side-section:has(.desk-sidebar)
-		.list-sidebar.overlay-sidebar {
+		.list-sidebar.overlay-sidebar:has(.desk-sidebar) {
 		scrollbar-width: none;
 		-ms-overflow-style: none;
-		padding-left: var(--dinext-ws-rail-pad-left, 16px) !important;
+		padding-left: var(--dinext-ws-rail-pad-left, 15px) !important;
 		padding-right: 4px !important;
 	}
 
 	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
 		.layout-side-section:has(.desk-sidebar)
-		.list-sidebar.overlay-sidebar::-webkit-scrollbar {
+		.list-sidebar.overlay-sidebar:has(.desk-sidebar)::-webkit-scrollbar {
 		display: none;
 		width: 0;
 		height: 0;
@@ -87,12 +97,19 @@
 
 	body.dinext-ws-sidebar-collapsed.dinext-ws-sidebar-hover-open
 		.layout-side-section:has(.desk-sidebar)
-		.list-sidebar.overlay-sidebar {
+		.list-sidebar.overlay-sidebar:has(.desk-sidebar) {
 		width: 220px !important;
 		min-width: 220px !important;
-		padding: 0 12px 12px var(--dinext-ws-rail-pad-left, 16px);
+		padding: 0 12px 12px var(--dinext-ws-rail-pad-left, 15px);
 		box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.12));
 		border-radius: 0 var(--border-radius-md, 8px) var(--border-radius-md, 8px) 0;
+	}
+
+	body.dinext-ws-sidebar-collapsed.dinext-ws-sidebar-hover-open
+		.desk-sidebar
+		.standard-sidebar-label {
+		white-space: nowrap !important;
+		text-overflow: ellipsis;
 	}
 
 	/* Hide text/controls but keep row boxes so rail matches expanded row count/spacing. */
@@ -102,6 +119,7 @@
 	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
 		.desk-sidebar
 		.sidebar-item-control {
+		display: none;
 		visibility: hidden;
 		width: 0 !important;
 		min-width: 0 !important;
@@ -125,16 +143,23 @@
 	}
 
 	/* Frappe uses margin-left: -10px on draggable containers; cancel while collapsed (rail + hover-open). */
-	body.dinext-ws-sidebar-collapsed .desk-sidebar .standard-sidebar-section.nested-container {
-		padding-left: 10px;
+	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open) .desk-sidebar .standard-sidebar-section.nested-container {
+		padding-left: 0px;
 	}
 
-	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
+	body.dinext-ws-sidebar-collapsed
 		.desk-sidebar
 		.desk-sidebar-item.standard-sidebar-item {
 		justify-content: flex-start;
-		padding-left: 0;
-		padding-right: 0;
+		padding: 0px;
+	}
+	
+	body.dinext-ws-sidebar-collapsed
+		.desk-sidebar
+		.standard-sidebar-item .item-anchor {
+		padding: 3px 0px 3px 0px;
+		white-space: nowrap;
+		flex: 1;
 	}
 
 	body.dinext-ws-sidebar-collapsed:not(.dinext-ws-sidebar-hover-open)
@@ -161,5 +186,30 @@
 		.desk-sidebar
 		.standard-sidebar-item:hover {
 		background-color: var(--subtle-fg);
+	}
+
+	/* List/Form/Report/Page: hide edit controls in rail + flyout; tighten page-head. */
+	body.dinext-ws-sidebar-collapsed:not([data-route^="Workspaces"])
+		.desk-sidebar
+		.sidebar-item-control .drag-handle,
+	body.dinext-ws-sidebar-collapsed:not([data-route^="Workspaces"])
+		.desk-sidebar
+		.sidebar-item-control .setting-btn.dropdown-btn {
+		display: none !important;
+	}
+
+	body.dinext-ws-sidebar-collapsed
+		.desk-sidebar
+		.sidebar-item-container {
+		margin-left: 0px;
+	}
+	body.dinext-ws-sidebar-collapsed
+		.desk-sidebar
+		.sidebar-child-item.nested-container {
+		margin-left: 10px;
+	}
+
+	body.dinext-ws-sidebar-collapsed .page-head {
+		margin-bottom: 0;
 	}
 }
