@@ -1,8 +1,8 @@
 /**
- * Workspace sidebar icon-rail + animated hover flyout (position:fixed overlay).
+ * Workspace sidebar icon-rail + animated hover flyout (position:absolute overlay).
  * Desktop only. Enabled when frappe.boot.dinext_workspace_sidebar_hover_expand is true.
- * Mounts .desk-sidebar into Workspaces native side-section, or a dedicated
- * .dinext-ws-rail-section column (56px) on other Desk routes. Geometry is CSS-only.
+ * Mounts .desk-sidebar into a dedicated .dinext-ws-rail-section column in
+ * .row.layout-main on all Desk routes (Workspaces, List, Form, …). Geometry is CSS-only.
  */
 (function () {
 	const STORAGE_KEY = "dinext_workspace_sidebar_collapsed";
@@ -92,24 +92,6 @@
 		}
 	}
 
-	function get_workspaces_side_section($wrapper) {
-		const $layout = $wrapper.find(".row.layout-main").first();
-		if (!$layout.length) {
-			return $();
-		}
-		let $side = $layout
-			.children(`.layout-side-section:not(.${RAIL_SECTION_CLASS})`)
-			.first();
-		if ($side.length) {
-			$side.show();
-			return $side;
-		}
-		$side = $('<div class="col-lg-2 layout-side-section"></div>');
-		$layout.prepend($side);
-		ensure_main_flex_col($layout);
-		return $side;
-	}
-
 	function get_or_create_rail_section($wrapper) {
 		const $layout = $wrapper.find(".row.layout-main").first();
 		if (!$layout.length) {
@@ -129,10 +111,22 @@
 	}
 
 	function get_mount_side_section($wrapper) {
-		if (is_workspaces_route()) {
-			return get_workspaces_side_section($wrapper);
-		}
 		return get_or_create_rail_section($wrapper);
+	}
+
+	function hide_empty_native_side_sections($wrapper) {
+		if (!$wrapper || !$wrapper.length) {
+			return;
+		}
+		$wrapper
+			.find(".row.layout-main")
+			.first()
+			.children(`.layout-side-section:not(.${RAIL_SECTION_CLASS})`)
+			.each(function () {
+				if (!$(this).find(".desk-sidebar").length) {
+					$(this).hide();
+				}
+			});
 	}
 
 	function unbind_hover($side_section) {
@@ -160,6 +154,7 @@
 		}
 		remove_legacy_rail_host();
 		$side.show();
+		hide_empty_native_side_sections($side.closest(".page-container"));
 		return $list;
 	}
 
@@ -415,7 +410,7 @@
 		}
 
 		const $wrapper = $(page.wrapper);
-		const $side = get_workspaces_side_section($wrapper);
+		const $side = get_or_create_rail_section($wrapper);
 		if (!$side.length) {
 			return;
 		}
@@ -465,9 +460,9 @@
 		if (active_page) {
 			restore_frappe_toggle(active_page);
 		}
-		// Return desk sidebar to Workspaces page so DOM stays consistent.
+		// Return desk sidebar to Workspaces page rail so DOM stays consistent.
 		if (frappe.workspace && frappe.workspace.page && frappe.workspace.page.wrapper) {
-			const $home = get_workspaces_side_section($(frappe.workspace.page.wrapper));
+			const $home = get_or_create_rail_section($(frappe.workspace.page.wrapper));
 			if ($home.length) {
 				mount_desk_sidebar($home);
 			}

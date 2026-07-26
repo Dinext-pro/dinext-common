@@ -6,9 +6,7 @@
 		--dinext-ws-rail-pad-left: 15px;
 	}
 
-	/* Collapsed spacer: Workspaces native side-section or dedicated rail column. */
-	body.dinext-ws-sidebar-collapsed
-		.layout-side-section:has(.desk-sidebar):not(.dinext-ws-rail-section),
+	/* Collapsed spacer: dedicated rail column. */
 	body.dinext-ws-sidebar-collapsed .layout-side-section.dinext-ws-rail-section {
 		flex: 0 0 56px !important;
 		max-width: 56px !important;
@@ -37,9 +35,6 @@
 		padding-left: 0;
 	}
 
-	body.dinext-ws-sidebar-collapsed
-		.layout-main:has(.desk-sidebar)
-		.layout-side-section:has(.desk-sidebar),
 	body.dinext-ws-sidebar-collapsed .layout-side-section.dinext-ws-rail-section {
 		padding-right: 0 !important;
 	}
@@ -59,7 +54,7 @@
 		padding: 0 4px 12px var(--dinext-ws-rail-pad-left, 15px);
 		overflow-x: hidden;
 		overflow-y: auto;
-		z-index: 1010;
+		z-index: 9;
 		background-color: var(--fg-color);
 		box-shadow: none;
 		border-radius: 0;
