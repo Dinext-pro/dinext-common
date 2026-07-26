@@ -37,6 +37,11 @@
 		return !!(route && route[0] === "Workspaces");
 	}
 
+	function get_route_str_safe() {
+		const route = frappe.get_route && frappe.get_route();
+		return Array.isArray(route) ? route.join("/") : "";
+	}
+
 	function get_pinned_collapsed() {
 		return localStorage.getItem(STORAGE_KEY) === "1";
 	}
@@ -70,7 +75,7 @@
 		if (frappe.container && frappe.container.page && frappe.container.page.page) {
 			return frappe.container.page.page;
 		}
-		const route = frappe.get_route_str && frappe.get_route_str();
+		const route = get_route_str_safe();
 		if (route && frappe.ui.pages[route]) {
 			return frappe.ui.pages[route];
 		}
@@ -165,9 +170,13 @@
 		if (!(frappe.standard_pages && typeof frappe.standard_pages.Workspaces === "function")) {
 			return false;
 		}
+		// Page() calls frappe.get_route_str().join — wait until router finished set_route().
+		if (!Array.isArray(frappe.get_route && frappe.get_route())) {
+			return false;
+		}
 		if (!frappe.pages["Workspaces"]) {
 			// Page() registers under frappe.get_route_str() — preserve the active route entry.
-			const route_str = frappe.get_route_str && frappe.get_route_str();
+			const route_str = get_route_str_safe();
 			const saved_page = route_str ? frappe.ui.pages[route_str] : null;
 			try {
 				frappe.standard_pages.Workspaces();
