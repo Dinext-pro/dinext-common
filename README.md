@@ -81,7 +81,7 @@ bench build --app dinext_common
 - `listview_resize.js` сохраняет ширины колонок списка в `localStorage`
 - `dinext-desk.js` настраивает диалог About и показывает версии установленных приложений
 - `dashboard_filters_format.js` улучшает динамическую фильтрацию дашборда для `_assign` и `_liked_by`
-- `workspace_sidebar_hover.js` на странице Workspaces: кнопка sidebar переключает полный вид и полоску с иконками; при наведении на свёрнутый sidebar меню временно открывается **поверх** контента (без сдвига основной колонки); состояние свёртки хранится в `localStorage`
+- `workspace_sidebar_hover.js` — icon-rail workspace-меню на всём Desk: на Workspaces кнопка sidebar переключает полный вид и полоску с иконками; на List/Form/прочих экранах свёрнутый rail показывается принудительно. При наведении меню временно открывается **поверх** контента (без сдвига основной колонки). Состояние свёртки на Workspaces хранится в `localStorage`. DOM меню всегда в `.row.layout-main > .layout-side-section` активной страницы.
 
 Для DocType `Project` подключается `sticky-datatable.js` — виртуализированная таблица с закреплением строк на базе `frappe-datatable.min.js` и `hyperlist.js`.
 
@@ -97,9 +97,11 @@ bench build --app dinext_common
 
 Отсутствие ключа или значение `1` / `true` оставляет поведение включённым. После изменения конфига выполните `bench --site your-site.local clear-cache` и обновите Desk (или перелогиньтесь), чтобы подтянуть bootinfo.
 
-Временное открытие по hover — fixed-overlay поверх рабочей области; ширина основного экрана не меняется. Полное разворачивание по кнопке toggle по-прежнему занимает колонку в layout.
+Временное открытие по hover — fixed-overlay поверх рабочей области; ширина основного экрана не меняется. Полное разворачивание по кнопке toggle (только на Workspaces) по-прежнему занимает колонку в layout.
 
-На мобильной ширине остаётся стандартный overlay Frappe. List/form sidebar не затрагивается.
+На List/Form/Report и других экранах Desk свёрнутый workspace rail монтируется в `.layout-side-section` текущей страницы (при необходимости колонка создаётся). List/form sidebar остаётся рядом и не превращается в icon-rail; кнопка toggle страницы управляет ими, не workspace-меню.
+
+На мобильной ширине остаётся стандартный overlay Frappe.
 
 ### Fixture Analysis
 
