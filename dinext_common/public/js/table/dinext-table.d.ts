@@ -652,6 +652,11 @@ export interface DinextTableToolbarItem {
     iconSvg?: string;
     /** `end` — right-aligned group (e.g. fullscreen) */
     align?: "end";
+    /**
+     * @layer toolbar — layout zone. `toolbar.items` default `"custom"`
+     * (middle band between presets and fullscreen).
+     */
+    zone?: "custom" | null;
     disabled?: boolean | ((ctx: DinextTableToolbarActionContext) => boolean);
     hidden?: boolean | ((ctx: DinextTableToolbarActionContext) => boolean);
     /** Pressed / toggle-on visual (e.g. filter row open) */

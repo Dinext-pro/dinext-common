@@ -16,7 +16,11 @@ export function resolveToolbarValue(value, ctx, fallback = "") {
 
 export function normalizeToolbarItem(item, index) {
     if (!item || item.type === "separator") {
-        return { type: "separator", id: item?.id || `sep-${index}` };
+        return {
+            type: "separator",
+            id: item?.id || `sep-${index}`,
+            zone: item?.zone || null
+        };
     }
     if (item.type === "checkbox") {
         return {
@@ -25,6 +29,7 @@ export function normalizeToolbarItem(item, index) {
             label: item.label || "",
             title: item.title || item.label || "",
             align: item.align || null,
+            zone: item.zone || null,
             disabled: item.disabled,
             hidden: item.hidden,
             checked: item.checked,
@@ -37,6 +42,7 @@ export function normalizeToolbarItem(item, index) {
             type: "custom",
             id: item.id || `custom-${index}`,
             align: item.align || null,
+            zone: item.zone || null,
             hidden: item.hidden,
             element: item.element || null,
             render: item.render
@@ -50,6 +56,7 @@ export function normalizeToolbarItem(item, index) {
         icon: item.icon || null,
         iconSvg: item.iconSvg || null,
         align: item.align || null,
+        zone: item.zone || null,
         disabled: item.disabled,
         hidden: item.hidden,
         active: item.active,

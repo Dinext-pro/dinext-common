@@ -138,22 +138,34 @@ test("resolveToolbarItems places fullscreen preset on the end group", () => {
     assert.equal(endItems.every(item => item.align === "end"), true);
 });
 
-test("resolveToolbarItems merges custom items before end-aligned presets", () => {
+test("resolveToolbarItems puts domain items in custom zone after filter, before end", () => {
+    const filterItem = {
+        id: "filter",
+        title: "Filter columns",
+        iconSvg: "<svg></svg>",
+        onClick: () => {}
+    };
     const table = {
         options: { edit: true },
         isUndoRedoEnabled: () => true,
         hasNestedRows: () => false,
+        getFilterToolbarItems: () => [filterItem],
         isFullscreenEnabled: () => true,
         isFullscreen: () => false
     };
 
     const items = resolveToolbarItems(table, {
         presets: ["history", "fullscreen"],
-        items: [{ id: "custom", label: "Custom" }]
+        items: [{ id: "domain", label: "Domain" }]
     });
 
-    const customIndex = items.findIndex(item => item.id === "custom");
+    const undoIndex = items.findIndex(item => item.id === "undo");
+    const filterIndex = items.findIndex(item => item.id === "filter");
+    const domainIndex = items.findIndex(item => item.id === "domain");
     const fullscreenIndex = items.findIndex(item => item.id === "fullscreen");
-    assert.ok(customIndex >= 0);
-    assert.ok(fullscreenIndex > customIndex);
+    assert.ok(undoIndex >= 0);
+    assert.ok(filterIndex > undoIndex);
+    assert.ok(domainIndex > filterIndex);
+    assert.ok(fullscreenIndex > domainIndex);
+    assert.equal(items[domainIndex].zone, "custom");
 });
