@@ -95,6 +95,9 @@ export const RowReorderMixin = (Base) => class extends Base {
         if (this.isGridSorted()) {
             return true;
         }
+        if (typeof this.isFilterActive === "function" && this.isFilterActive()) {
+            return true;
+        }
         if (this._rowReorderDrag) {
             return true;
         }

@@ -32,6 +32,16 @@ export function normalizeToolbarItem(item, index) {
             onChange: item.onChange
         };
     }
+    if (item.type === "custom") {
+        return {
+            type: "custom",
+            id: item.id || `custom-${index}`,
+            align: item.align || null,
+            hidden: item.hidden,
+            element: item.element || null,
+            render: item.render
+        };
+    }
     return {
         type: "button",
         id: item.id || `item-${index}`,
@@ -42,10 +52,9 @@ export function normalizeToolbarItem(item, index) {
         align: item.align || null,
         disabled: item.disabled,
         hidden: item.hidden,
+        active: item.active,
         onClick: item.onClick
     };
 }
 
-export function getPersistStorageKey(persistKey) {
-    return persistKey ? `dinext-table:toolbar:${persistKey}` : null;
-}
+export { getPersistStorageKey } from "./persist.js";

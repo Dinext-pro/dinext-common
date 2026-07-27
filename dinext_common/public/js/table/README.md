@@ -25,6 +25,7 @@ core/
   facade.js, base.js, grid.js, theme.js
   tree/                  — model.js (pure) + expand.js + mixin.js (renderer/expand)
   sort/                  — recursive sibling sort (source tree; not AG flat sort)
+  filter/                — column filter (flat-first; floating row + toolbar)
   shared/utils.js        — mergeGridOptions, rowId/children fields, merge-group, DOM helpers
   section/               — summary pin, TABLE_SECTIONS
   edit/                  — commitCellChanges, editors, navigation
@@ -47,6 +48,7 @@ core/
 | [cell-changes.md](usage-guides/cell-changes.md) | Batch edit: `onValidateCells` / `onSaveCells` |
 | [merge-group-and-tree.md](usage-guides/merge-group-and-tree.md) | Merge (`rowSpan`) + tree eager/lazy |
 | [sorting.md](usage-guides/sorting.md) | Client sort: siblings + merge atoms |
+| [filtering.md](usage-guides/filtering.md) | Column filter: toolbar search + row under header |
 | [fullscreen.md](usage-guides/fullscreen.md) | Shell FS + enter/exit hooks |
 | [sections-and-summary.md](usage-guides/sections-and-summary.md) | `summaryRows`, pin bottom, guards |
 | [columns-and-formatting.md](usage-guides/columns-and-formatting.md) | Колонки, presets, styling |
@@ -128,6 +130,17 @@ Borderless heatmap (opt-in): set border flags to `false` + `cellHorizontalPaddin
 
 → [sorting.md](usage-guides/sorting.md). AG `sortable` остаётся `false` — сортируется source-tree.
 
+### Filter
+
+| Key | Default | Описание |
+|-----|---------|----------|
+| `filter.enabled` | `true` | Column filter layer + toolbar search |
+| `filter.active` | `false` | Filter row под header (toolbar toggle) |
+| `filter.state` | `{}` | `{ field: query }` — Keep при закрытии UI |
+| `onFilterChange` | — | После смены state / active |
+
+→ [filtering.md](usage-guides/filtering.md). Tree: match + ancestors.
+
 ### Fullscreen
 
 | Key | Default | Описание |
@@ -175,7 +188,32 @@ Domain: что видно в FS — через `shell` + CSS hide siblings, не
 | `rowReorder.allowTree` | `"siblings"` | `false` \| `"siblings"` \| `"reparent"` (cross-parent + nest) |
 | `rowCheck.enabled` | `false` | Checkbox col + checked Set; toolbar select/deselect icon |
 | `rowCheck.unit` | `"row"` | `"mergeHead"` — check only merge head + span |
-| `toolbar.presets` | `history/tree/fullscreen` | Opt-in: `"rows"`, `"clipboard"` |
+| `toolbar.enabled` | `true` | Command toolbar |
+| `toolbar.defaultPinned` | `true` | Панель видна сразу (pin) |
+| `toolbar.persistKey` | `null` | localStorage UI per table: pin + filter (`dinext-table:toolbar:${key}`) |
+| `toolbar.presets` | `history/tree/fullscreen` | Filter icon auto при `filter.enabled`; opt-in: `"rows"`, `"clipboard"` |
+| `toolbar.items` | `[]` | button / checkbox / separator / **custom** (DOM panel) |
+
+Custom panel example:
+
+```js
+toolbar: {
+  items: [{
+    id: "domain-actions",
+    type: "custom",
+    align: "end",
+    render: ({ host, table }) => {
+      host.replaceChildren(); // or return a fresh element
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-xs btn-default";
+      btn.textContent = "Do thing";
+      btn.onclick = () => { /* use table */ };
+      return btn;
+    }
+  }]
+}
+```
 
 → [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md), [row-reorder.md](usage-guides/row-reorder.md), [row-check.md](usage-guides/row-check.md).
 
@@ -219,6 +257,7 @@ Domain: что видно в FS — через `shell` + CSS hide siblings, не
 | `undoClipboard()` / `redoClipboard()` | AG Grid edit undo/redo или CommandStack |
 | `getCheckedRowIds()` / `setCheckedRowIds` / `clearRowCheck` | Row check Set |
 | `addRow()` / `deleteCheckedRows()` / `duplicateCheckedRows()` | Row mutations |
+| `toggleFilterRow` / `getFilter` / `setFilter` / `clearFilter` | Column filter |
 | `nudgeCheckedRow(±1)` | Move one checked row (row-reorder commit) |
 | `destroy()` | Teardown |
 

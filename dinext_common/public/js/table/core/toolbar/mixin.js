@@ -1,16 +1,26 @@
 import { findAgGridRootElement, findGridMountElement } from "../shared/utils.js";
 import { TOOLBAR_ICON_SVG } from "./icons.js";
 import {
-    getPersistStorageKey,
     normalizeToolbarItem,
     resolveToolbarFlag,
     resolveToolbarValue
 } from "./utils.js";
+import {
+    parseUiPersistRaw,
+    readUiPersistRaw,
+    writeUiPersist
+} from "./persist.js";
 import { resolveToolbarItems } from "./presets.js";
 
 const TOOLBAR_DEFAULTS = {
     enabled: true,
-    defaultPinned: false,
+    /** Show toolbar panel by default (pin). Flip false to start collapsed. */
+    defaultPinned: true,
+    /**
+     * Opt-in localStorage key suffix for UI snapshot (pin + filter).
+     * Storage: `dinext-table:toolbar:${persistKey}` → JSON `{ pinned, filter }`.
+     * Per-table: unique key (e.g. `work-efforts:${project}`).
+     */
     persistKey: null,
     presets: ["history", "tree", "fullscreen"],
     items: []
@@ -29,24 +39,19 @@ export const ToolbarMixin = (Base) => class extends Base {
         this._toolbarOpen = false;
         this._toolbarCustomItems = [];
         this._toolbarItemsOverride = null;
+        /** @type {Map<string, HTMLElement>} reuse hosts across renderToolbarItems */
+        this._toolbarCustomHosts = new Map();
     }
 
     destroyFeatures() {
         this.destroyToolbarListeners();
         this.clearToolbarDomClasses();
+        this._toolbarCustomHosts?.clear();
+        this._toolbarCustomHosts = null;
         this._toolbarEl = null;
         this._toolbarPanelEl = null;
         this._toolbarTriggerEl = null;
         super.destroyFeatures();
-    }
-
-    afterGridCreated() {
-        super.afterGridCreated();
-        if (this.isToolbarEnabled()) {
-            this.loadToolbarPersistedState();
-            this.ensureToolbarDom();
-            this.syncToolbarState();
-        }
     }
 
     getToolbarOptions() {
@@ -85,31 +90,64 @@ export const ToolbarMixin = (Base) => class extends Base {
         return this._toolbarOpen;
     }
 
+    /**
+     * Load pin + filter snapshot from localStorage (`toolbar.persistKey`).
+     * Legacy `"1"`/`"0"` still supported. Filter part applied via FilterMixin hook.
+     */
     loadToolbarPersistedState() {
-        const key = getPersistStorageKey(this.getToolbarOptions().persistKey);
-        if (!key || typeof window === "undefined" || !window.localStorage) {
-            this._toolbarPinned = !!this.getToolbarOptions().defaultPinned;
+        const opts = this.getToolbarOptions();
+        const defaultPinned = !!opts.defaultPinned;
+        this._uiPersistFilter = null;
+
+        if (!opts.persistKey) {
+            this._toolbarPinned = defaultPinned;
             return;
         }
-        try {
-            const raw = window.localStorage.getItem(key);
-            this._toolbarPinned = raw == null
-                ? !!this.getToolbarOptions().defaultPinned
-                : raw === "1";
-        } catch (_err) {
-            this._toolbarPinned = !!this.getToolbarOptions().defaultPinned;
+
+        const raw = readUiPersistRaw(opts.persistKey);
+        if (raw == null) {
+            this._toolbarPinned = defaultPinned;
+            return;
         }
+
+        const parsed = parseUiPersistRaw(raw);
+        this._toolbarPinned = parsed.pinned != null ? parsed.pinned : defaultPinned;
+        this._uiPersistFilter = parsed.filter;
     }
 
+    /** Persist pin + filter UI/state (same key as pin-only legacy). */
     saveToolbarPersistedState() {
-        const key = getPersistStorageKey(this.getToolbarOptions().persistKey);
-        if (!key || typeof window === "undefined" || !window.localStorage) {
+        this.saveUiPersistedState();
+    }
+
+    saveUiPersistedState() {
+        if (this._uiPersistRestoring) {
             return;
         }
-        try {
-            window.localStorage.setItem(key, this._toolbarPinned ? "1" : "0");
-        } catch (_err) {
-            // ignore quota / privacy mode
+        const persistKey = this.getToolbarOptions().persistKey;
+        if (!persistKey) {
+            return;
+        }
+        writeUiPersist(persistKey, {
+            pinned: !!this._toolbarPinned,
+            filter: {
+                active: !!this._filterRowOpen,
+                state: typeof this.getFilter === "function" ? this.getFilter() : {}
+            }
+        });
+    }
+
+    afterGridCreated() {
+        // Persist key lives on toolbar.*; restore pin + filter before inner afterGridCreated.
+        this._uiPersistRestoring = true;
+        this.loadToolbarPersistedState();
+        this.applyLoadedUiPersistFilter?.();
+        this._uiPersistRestoring = false;
+
+        super.afterGridCreated();
+        if (this.isToolbarEnabled()) {
+            this.ensureToolbarDom();
+            this.syncToolbarState();
         }
     }
 
@@ -303,6 +341,9 @@ export const ToolbarMixin = (Base) => class extends Base {
             || resolveToolbarValue(item.label, ctx, "");
         button.title = title;
         button.disabled = resolveToolbarFlag(item.disabled, ctx);
+        const isActive = resolveToolbarFlag(item.active, ctx);
+        button.classList.toggle("dinext-table-toolbar-item--active", isActive);
+        button.setAttribute("aria-pressed", String(isActive));
 
         const iconSvg = resolveToolbarValue(item.iconSvg, ctx, null);
         const iconClass = resolveToolbarValue(item.icon, ctx, null);
@@ -387,7 +428,52 @@ export const ToolbarMixin = (Base) => class extends Base {
         return wrap;
     }
 
-    appendToolbarItemButton(groupEl, item) {
+    /**
+     * Mount host for `type: "custom"` — reuse by id across refreshes.
+     * @returns {HTMLElement|null}
+     */
+    createToolbarItemCustom(item) {
+        const ctx = this.getToolbarActionContext();
+        if (resolveToolbarFlag(item.hidden, ctx)) {
+            return null;
+        }
+
+        const id = item.id || "custom";
+        let host = this._toolbarCustomHosts?.get(id);
+        if (!host) {
+            host = document.createElement("div");
+            host.className = "dinext-table-toolbar-custom";
+            host.dataset.toolbarCustomId = id;
+            this._toolbarCustomHosts?.set(id, host);
+        }
+        if (item.align === "end") {
+            host.classList.add("dinext-table-toolbar-custom--end");
+        } else {
+            host.classList.remove("dinext-table-toolbar-custom--end");
+        }
+
+        const renderCtx = {
+            ...ctx,
+            host
+        };
+
+        if (typeof item.render === "function") {
+            const result = item.render(renderCtx);
+            if (result instanceof HTMLElement && result !== host) {
+                if (host.firstChild !== result || host.childNodes.length !== 1) {
+                    host.replaceChildren(result);
+                }
+            }
+        } else if (item.element instanceof HTMLElement) {
+            if (host.firstChild !== item.element || host.childNodes.length !== 1) {
+                host.replaceChildren(item.element);
+            }
+        }
+
+        return host;
+    }
+
+    appendToolbarItem(groupEl, item, usedCustomIds) {
         if (item.type === "separator") {
             const sep = document.createElement("div");
             sep.className = "dinext-table-toolbar-separator";
@@ -395,11 +481,31 @@ export const ToolbarMixin = (Base) => class extends Base {
             groupEl.appendChild(sep);
             return;
         }
+        if (item.type === "custom") {
+            const el = this.createToolbarItemCustom(item);
+            if (el) {
+                usedCustomIds?.add(item.id || "custom");
+                groupEl.appendChild(el);
+            }
+            return;
+        }
         const el = item.type === "checkbox"
             ? this.createToolbarItemCheckbox(item)
             : this.createToolbarItemButton(item);
         if (el) {
             groupEl.appendChild(el);
+        }
+    }
+
+    /** Drop custom hosts that are no longer in the item list. */
+    pruneToolbarCustomHosts(usedIds) {
+        if (!this._toolbarCustomHosts) {
+            return;
+        }
+        for (const id of [...this._toolbarCustomHosts.keys()]) {
+            if (!usedIds.has(id)) {
+                this._toolbarCustomHosts.delete(id);
+            }
         }
     }
 
@@ -411,6 +517,7 @@ export const ToolbarMixin = (Base) => class extends Base {
         const items = this.getToolbarItems();
         const primaryItems = items.filter(item => item.align !== "end");
         const endItems = items.filter(item => item.align === "end");
+        const usedCustomIds = new Set();
 
         this._toolbarPanelEl.replaceChildren();
 
@@ -418,19 +525,20 @@ export const ToolbarMixin = (Base) => class extends Base {
         primaryGroup.className = "dinext-table-toolbar-group dinext-table-toolbar-group--primary";
         primaryGroup.appendChild(this.createToolbarPinButton());
         for (const item of primaryItems) {
-            this.appendToolbarItemButton(primaryGroup, item);
+            this.appendToolbarItem(primaryGroup, item, usedCustomIds);
         }
 
         const endGroup = document.createElement("div");
         endGroup.className = "dinext-table-toolbar-group dinext-table-toolbar-group--end";
         for (const item of endItems) {
-            this.appendToolbarItemButton(endGroup, item);
+            this.appendToolbarItem(endGroup, item, usedCustomIds);
         }
 
         this._toolbarPanelEl.appendChild(primaryGroup);
         if (endItems.length) {
             this._toolbarPanelEl.appendChild(endGroup);
         }
+        this.pruneToolbarCustomHosts(usedCustomIds);
     }
 
     refreshToolbar() {
@@ -448,6 +556,7 @@ export const ToolbarMixin = (Base) => class extends Base {
                 this.closeToolbarMenu();
                 this.destroyToolbarListeners();
                 this.clearToolbarDomClasses();
+                this._toolbarCustomHosts?.clear();
                 this._toolbarEl?.remove();
                 this._toolbarEl = null;
                 this._toolbarPanelEl = null;

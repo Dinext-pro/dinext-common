@@ -95,6 +95,16 @@
 
 ---
 
+## Filter (column search)
+
+Гайд: [filtering.md](../usage-guides/filtering.md).  
+Решения: tree **A** (match + ancestors, v2); toggle **Keep** state; scope **flat-first**.
+
+- [x] **Filter layer** — `core/filter/` + auto toolbar search (как rowCheck) + floating row + tree match+ancestors + unit `@tests/filter-model.test.mjs`.
+- [x] **Filter row UI** — AG floatingFilter + noop parent filter; `filterable: false` opt-out; system cols без инпута.
+
+---
+
 ## Когда брать в работу
 
 | Триггер | Задача |
