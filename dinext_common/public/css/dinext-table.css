@@ -404,12 +404,13 @@
 
 .dinext-table-toolbar-panel {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: 8px;
     flex-wrap: nowrap;
     overflow: hidden;
     max-height: 0;
     opacity: 0;
+    /* No vertical pad — groups pad; zone seps / scrollbar can span full bar height. */
     padding: 0 8px 0 var(--dinext-table-toolbar-trigger-slot);
     border-bottom: 1px solid transparent;
     background-color: color-mix(in srgb, var(--card-bg), var(--text-color) 2%);
@@ -424,30 +425,51 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    padding: 4px 0;
     min-width: 0;
 }
 
+/* Standard: pin, presets, filter, rowCheck — never shrink (overflow must not spill past zone sep). */
 .dinext-table-toolbar-group--primary {
+    flex: 0 0 auto;
+    min-width: max-content;
+}
+
+/* Domain zone — takes leftover width, h-scroll when items overflow. */
+.dinext-table-toolbar-group--custom {
     flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
 }
 
 .dinext-table-toolbar-group--end {
     flex: 0 0 auto;
+    min-width: max-content;
     margin-left: auto;
 }
 
-/* Domain custom panel (type: "custom") — flex host, no card chrome. */
+.dinext-table-toolbar-panel--has-custom .dinext-table-toolbar-group--end {
+    margin-left: 0;
+}
+
+/* Icon-only end actions: equal pad so gap-to-sep matches pad-to-panel-edge. */
+.dinext-table-toolbar-group--end .dinext-table-toolbar-item:not(:has(.dinext-table-toolbar-item-label)) {
+    padding-left: 6px;
+    padding-right: 6px;
+}
+
+/* Host for type: "custom" item — no card chrome. */
 .dinext-table-toolbar-custom {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    flex: 0 1 auto;
-    min-width: 0;
-    max-width: 100%;
+    flex: 0 0 auto;
 }
 
-.dinext-table--toolbar-pinned .dinext-table-toolbar-panel {
+.dinext-table--toolbar-pinned .dinext-table-toolbar-panel:not(.dinext-table-toolbar-panel--has-custom) {
     flex-wrap: wrap;
 }
 
@@ -455,7 +477,7 @@
 .dinext-table--toolbar-pinned .dinext-table-toolbar-panel {
     max-height: 64px;
     opacity: 1;
-    padding: 4px 8px 4px var(--dinext-table-toolbar-trigger-slot);
+    padding: 0 8px 0 var(--dinext-table-toolbar-trigger-slot);
     border-bottom-color: color-mix(in srgb, var(--text-color) 10%, transparent);
 }
 
@@ -550,8 +572,12 @@
     flex: 0 0 auto;
     align-self: stretch;
     width: 1px;
-    margin: 2px 4px;
+    margin: 0;
     background-color: color-mix(in srgb, var(--text-color) 12%, transparent);
+}
+
+.dinext-table-toolbar-separator--zone {
+    background-color: color-mix(in srgb, var(--text-color) 18%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

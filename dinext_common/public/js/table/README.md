@@ -192,7 +192,9 @@ Domain: что видно в FS — через `shell` + CSS hide siblings, не
 | `toolbar.defaultPinned` | `true` | Панель видна сразу (pin) |
 | `toolbar.persistKey` | `null` | localStorage UI per table: pin + filter (`dinext-table:toolbar:${key}`) |
 | `toolbar.presets` | `history/tree/fullscreen` | Filter icon auto при `filter.enabled`; opt-in: `"rows"`, `"clipboard"` |
-| `toolbar.items` | `[]` | button / checkbox / separator / **custom** (DOM panel) |
+| `toolbar.items` | `[]` | Domain zone (между presets и fullscreen): button / checkbox / separator / **custom** |
+
+Layout: `[ pin | presets | filter | rowCheck ] | [ items… h-scroll ] | [ fullscreen ]`
 
 Custom panel example:
 
@@ -201,7 +203,6 @@ toolbar: {
   items: [{
     id: "domain-actions",
     type: "custom",
-    align: "end",
     render: ({ host, table }) => {
       host.replaceChildren(); // or return a fresh element
       const btn = document.createElement("button");

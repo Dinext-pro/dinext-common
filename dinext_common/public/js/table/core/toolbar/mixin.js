@@ -72,7 +72,10 @@ export const ToolbarMixin = (Base) => class extends Base {
     registerToolbarItem(item) {
         this._toolbarCustomItems = [
             ...this._toolbarCustomItems,
-            normalizeToolbarItem(item, this._toolbarCustomItems.length)
+            normalizeToolbarItem(
+                { ...item, zone: item?.zone || "custom" },
+                this._toolbarCustomItems.length
+            )
         ];
         this.renderToolbarItems();
     }
@@ -509,17 +512,36 @@ export const ToolbarMixin = (Base) => class extends Base {
         }
     }
 
+    createToolbarZoneSeparator() {
+        const sep = document.createElement("div");
+        sep.className = "dinext-table-toolbar-separator dinext-table-toolbar-separator--zone";
+        sep.setAttribute("role", "separator");
+        sep.setAttribute("aria-orientation", "vertical");
+        return sep;
+    }
+
     renderToolbarItems() {
         if (!this._toolbarPanelEl) {
             return;
         }
 
         const items = this.getToolbarItems();
-        const primaryItems = items.filter(item => item.align !== "end");
-        const endItems = items.filter(item => item.align === "end");
+        const ctx = this.getToolbarActionContext();
+        const isVisible = (item) => !resolveToolbarFlag(item.hidden, ctx);
+        const endItems = items.filter(item => item.align === "end" && isVisible(item));
+        const domainItems = items.filter(
+            item => item.align !== "end" && item.zone === "custom" && isVisible(item)
+        );
+        const primaryItems = items.filter(
+            item => item.align !== "end" && item.zone !== "custom"
+        );
         const usedCustomIds = new Set();
 
         this._toolbarPanelEl.replaceChildren();
+        this._toolbarPanelEl.classList.toggle(
+            "dinext-table-toolbar-panel--has-custom",
+            domainItems.length > 0
+        );
 
         const primaryGroup = document.createElement("div");
         primaryGroup.className = "dinext-table-toolbar-group dinext-table-toolbar-group--primary";
@@ -527,17 +549,32 @@ export const ToolbarMixin = (Base) => class extends Base {
         for (const item of primaryItems) {
             this.appendToolbarItem(primaryGroup, item, usedCustomIds);
         }
+        this._toolbarPanelEl.appendChild(primaryGroup);
 
-        const endGroup = document.createElement("div");
-        endGroup.className = "dinext-table-toolbar-group dinext-table-toolbar-group--end";
-        for (const item of endItems) {
-            this.appendToolbarItem(endGroup, item, usedCustomIds);
+        if (domainItems.length) {
+            this._toolbarPanelEl.appendChild(this.createToolbarZoneSeparator());
+
+            const customGroup = document.createElement("div");
+            customGroup.className = "dinext-table-toolbar-group dinext-table-toolbar-group--custom";
+            for (const item of domainItems) {
+                this.appendToolbarItem(customGroup, item, usedCustomIds);
+            }
+            this._toolbarPanelEl.appendChild(customGroup);
+
+            if (endItems.length) {
+                this._toolbarPanelEl.appendChild(this.createToolbarZoneSeparator());
+            }
         }
 
-        this._toolbarPanelEl.appendChild(primaryGroup);
         if (endItems.length) {
+            const endGroup = document.createElement("div");
+            endGroup.className = "dinext-table-toolbar-group dinext-table-toolbar-group--end";
+            for (const item of endItems) {
+                this.appendToolbarItem(endGroup, item, usedCustomIds);
+            }
             this._toolbarPanelEl.appendChild(endGroup);
         }
+
         this.pruneToolbarCustomHosts(usedCustomIds);
     }
 

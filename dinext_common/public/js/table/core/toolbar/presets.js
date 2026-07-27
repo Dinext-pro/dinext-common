@@ -253,19 +253,22 @@ export function resolveToolbarItems(table, toolbarOptions = {}) {
             : []
     );
     const presetItems = resolveToolbarPresetItems(table, presets);
-    const customItems = toolbarOptions.items || [];
+    const domainItems = (toolbarOptions.items || []).map(item => ({
+        ...item,
+        zone: item.zone || "custom"
+    }));
 
     const endItems = presetItems.filter(item => item.align === "end");
     const primaryItems = presetItems.filter(item => item.align !== "end")
         // Avoid duplicate when consumer still lists presets: ["filter"].
         .filter(item => item.id !== "filter");
 
-    // Filter + select-all before align:end (fullscreen). Filter always when enabled.
+    // Zones: primary (presets+filter+rowCheck) | custom (domain) | end (fullscreen).
     const combined = [
         ...primaryItems,
-        ...customItems,
         ...filterItems,
         ...rowCheckItems,
+        ...domainItems,
         ...endItems
     ];
     return combined.map((item, index) => normalizeToolbarItem(item, index));

@@ -64,6 +64,7 @@ test("normalizeToolbarItem maps button fields with stable id fallback", () => {
         icon: null,
         iconSvg: null,
         align: null,
+        zone: null,
         disabled: undefined,
         hidden: undefined,
         active: undefined,
@@ -90,6 +91,7 @@ test("normalizeToolbarItem preserves explicit id and title", () => {
             icon: "icon-refresh",
             iconSvg: null,
             align: null,
+            zone: null,
             disabled: true,
             hidden: undefined,
             active: undefined,
@@ -101,11 +103,13 @@ test("normalizeToolbarItem preserves explicit id and title", () => {
 test("normalizeToolbarItem maps separator with id fallback", () => {
     assert.deepEqual(normalizeToolbarItem({ type: "separator" }, 2), {
         type: "separator",
-        id: "sep-2"
+        id: "sep-2",
+        zone: null
     });
     assert.deepEqual(normalizeToolbarItem(null, 1), {
         type: "separator",
-        id: "sep-1"
+        id: "sep-1",
+        zone: null
     });
 });
 
@@ -127,6 +131,7 @@ test("normalizeToolbarItem maps checkbox fields", () => {
             label: "",
             title: "Select all rows",
             align: null,
+            zone: null,
             disabled: undefined,
             hidden: undefined,
             checked,
@@ -144,6 +149,7 @@ test("normalizeToolbarItem maps custom panel fields", () => {
             type: "custom",
             id: "domain-actions",
             align: "end",
+            zone: "custom",
             element,
             render,
             hidden: false
@@ -152,6 +158,7 @@ test("normalizeToolbarItem maps custom panel fields", () => {
             type: "custom",
             id: "domain-actions",
             align: "end",
+            zone: "custom",
             hidden: false,
             element,
             render
