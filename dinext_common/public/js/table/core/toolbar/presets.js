@@ -86,6 +86,17 @@ const TOOLBAR_PRESET_BUILDERS = {
     },
 
     /**
+     * @deprecated Prefer auto-inject via `table.getFilterToolbarItems()` (always on when enabled).
+     * Kept so explicit `presets: ["filter"]` does not break.
+     */
+    filter(table) {
+        if (typeof table.getFilterToolbarItems === "function") {
+            return table.getFilterToolbarItems();
+        }
+        return [];
+    },
+
+    /**
      * Opt-in: add / delete / duplicate / move checked rows.
      * Requires `rowCheck.enabled`.
      * Move arrows require `rowReorder.enabled` (same reorder contour as gutter DnD).
@@ -231,6 +242,11 @@ export function resolveToolbarPresetItems(table, presetNames = []) {
 
 export function resolveToolbarItems(table, toolbarOptions = {}) {
     const presets = toolbarOptions.presets ?? ["history", "tree", "fullscreen"];
+    const filterItems = (
+        typeof table.getFilterToolbarItems === "function"
+            ? table.getFilterToolbarItems()
+            : []
+    );
     const rowCheckItems = (
         typeof table.getRowCheckToolbarItems === "function"
             ? table.getRowCheckToolbarItems()
@@ -240,9 +256,17 @@ export function resolveToolbarItems(table, toolbarOptions = {}) {
     const customItems = toolbarOptions.items || [];
 
     const endItems = presetItems.filter(item => item.align === "end");
-    const primaryItems = presetItems.filter(item => item.align !== "end");
+    const primaryItems = presetItems.filter(item => item.align !== "end")
+        // Avoid duplicate when consumer still lists presets: ["filter"].
+        .filter(item => item.id !== "filter");
 
-    // Select-all (rowCheck) at end of primary actions, before align:end (fullscreen).
-    const combined = [...primaryItems, ...customItems, ...rowCheckItems, ...endItems];
+    // Filter + select-all before align:end (fullscreen). Filter always when enabled.
+    const combined = [
+        ...primaryItems,
+        ...customItems,
+        ...filterItems,
+        ...rowCheckItems,
+        ...endItems
+    ];
     return combined.map((item, index) => normalizeToolbarItem(item, index));
 }

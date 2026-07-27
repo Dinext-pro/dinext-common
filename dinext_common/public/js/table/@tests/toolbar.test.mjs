@@ -66,6 +66,7 @@ test("normalizeToolbarItem maps button fields with stable id fallback", () => {
         align: null,
         disabled: undefined,
         hidden: undefined,
+        active: undefined,
         onClick: undefined
     });
 });
@@ -91,6 +92,7 @@ test("normalizeToolbarItem preserves explicit id and title", () => {
             align: null,
             disabled: true,
             hidden: undefined,
+            active: undefined,
             onClick
         }
     );
@@ -132,6 +134,30 @@ test("normalizeToolbarItem maps checkbox fields", () => {
             onChange
         }
     );
+});
+
+test("normalizeToolbarItem maps custom panel fields", () => {
+    const render = () => {};
+    const element = { nodeName: "DIV" };
+    assert.deepEqual(
+        normalizeToolbarItem({
+            type: "custom",
+            id: "domain-actions",
+            align: "end",
+            element,
+            render,
+            hidden: false
+        }, 2),
+        {
+            type: "custom",
+            id: "domain-actions",
+            align: "end",
+            hidden: false,
+            element,
+            render
+        }
+    );
+    assert.equal(normalizeToolbarItem({ type: "custom" }, 1).id, "custom-1");
 });
 
 test("getPersistStorageKey returns namespaced key or null", () => {

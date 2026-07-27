@@ -5,6 +5,7 @@ export const GridMixin = (Base) => class extends Base {
         return [
             this.buildTreeGridOptions?.(),
             this.buildSortGridOptions?.(),
+            this.buildFilterGridOptions?.(),
             this.buildSectionGridOptions?.(),
             this.buildEditGridOptions?.(),
             this.buildEditorsGridOptions?.(),

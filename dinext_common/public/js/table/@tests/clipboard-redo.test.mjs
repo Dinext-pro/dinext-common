@@ -71,11 +71,18 @@ test("buildCellChangeCommand undo/redo restores values in LIFO order", () => {
     assert.equal(commits.at(-1).source, CELL_CHANGE_SOURCES.REDO);
 });
 
-test("default toolbar exposes history, optional tree, and fullscreen only", () => {
+test("default toolbar exposes history, filter (auto), optional tree, and fullscreen", () => {
+    const filterItem = {
+        id: "filter",
+        title: "Filter columns",
+        iconSvg: "<svg></svg>",
+        onClick: () => {}
+    };
     const flatTable = {
         options: { edit: true },
         isUndoRedoEnabled: () => true,
         hasNestedRows: () => false,
+        getFilterToolbarItems: () => [filterItem],
         isFullscreenEnabled: () => true,
         isFullscreen: () => false
     };
@@ -83,6 +90,7 @@ test("default toolbar exposes history, optional tree, and fullscreen only", () =
     const flatItems = resolveToolbarItems(flatTable, { items: [] });
     assert.ok(flatItems.some(item => item.id === "undo"));
     assert.ok(flatItems.some(item => item.id === "redo"));
+    assert.ok(flatItems.some(item => item.id === "filter"));
     assert.ok(!flatItems.some(item => item.id === "expand-all"));
     assert.ok(!flatItems.some(item => item.id === "copy"));
     assert.ok(flatItems.some(item => item.id === "fullscreen"));
@@ -96,6 +104,7 @@ test("default toolbar exposes history, optional tree, and fullscreen only", () =
     const treeItems = resolveToolbarItems(treeTable, { items: [] });
     assert.ok(treeItems.some(item => item.id === "expand-all"));
     assert.ok(treeItems.some(item => item.id === "collapse-all"));
+    assert.ok(treeItems.some(item => item.id === "filter"));
 });
 
 test("clipboard preset remains opt-in without undo buttons", () => {

@@ -163,6 +163,16 @@ export interface DinextTableColumnDef {
      */
     sortable?: boolean;
 
+    /**
+     * @layer filter — when `filter.enabled`, default true; `false` hides floating filter input.
+     */
+    filterable?: boolean;
+    /**
+     * @layer filter — override kind for operators (`text` \| `number` \| `date`).
+     * Default from `type` / `cellDataType`.
+     */
+    filterKind?: "text" | "number" | "date";
+
     // --- tree ---
     /** @layer tree — inner content; indent + chevron добавляет ядро */
     render?: (params: DinextTableCellRendererParams) => HTMLElement | string;
@@ -315,6 +325,27 @@ export interface DinextTableSortOptions {
     };
     /** @layer sort — after state change + apply */
     onSortChange?: (ctx: { sort: DinextTableSortSpec[]; table: DinextTableInstance }) => void;
+}
+
+/** @layer filter — `{ field: query }` */
+export type DinextTableFilterState = Record<string, string>;
+
+/** @layer filter */
+export interface DinextTableFilterOptions {
+    filter?: {
+        /** @layer filter — default true */
+        enabled?: boolean;
+        /** @layer filter — floating filter row visible; default false (Keep state on close) */
+        active?: boolean;
+        /** @layer filter — initial / controlled `{ field: query }` */
+        state?: DinextTableFilterState;
+    };
+    /** @layer filter — after state / active change */
+    onFilterChange?: (ctx: {
+        filter: DinextTableFilterState;
+        active: boolean;
+        table: DinextTableInstance;
+    }) => void;
 }
 
 /** @layer section */
@@ -599,14 +630,20 @@ export interface DinextTableSelectionStatusOptions {
 export interface DinextTableToolbarActionContext {
     table: DinextTableInstance;
     api: DinextTableGridApi;
-    event: MouseEvent;
+    event?: MouseEvent;
     closeToolbar: () => void;
+}
+
+/** @layer toolbar — ctx for `type: "custom"` render */
+export interface DinextTableToolbarCustomRenderContext extends DinextTableToolbarActionContext {
+    /** Stable mount node reused across toolbar refreshes (same item id) */
+    host: HTMLElement;
 }
 
 /** @layer toolbar */
 export interface DinextTableToolbarItem {
     id?: string;
-    type?: "button" | "separator" | "checkbox";
+    type?: "button" | "separator" | "checkbox" | "custom";
     label?: string;
     title?: string;
     /** Frappe / Desk icon class, e.g. `icon-refresh` */
@@ -617,6 +654,8 @@ export interface DinextTableToolbarItem {
     align?: "end";
     disabled?: boolean | ((ctx: DinextTableToolbarActionContext) => boolean);
     hidden?: boolean | ((ctx: DinextTableToolbarActionContext) => boolean);
+    /** Pressed / toggle-on visual (e.g. filter row open) */
+    active?: boolean | ((ctx: DinextTableToolbarActionContext) => boolean);
     onClick?: (ctx: DinextTableToolbarActionContext) => void;
     /** @layer toolbar — `type: "checkbox"` */
     checked?: boolean | ((ctx: DinextTableToolbarActionContext) => boolean);
@@ -624,6 +663,16 @@ export interface DinextTableToolbarItem {
     indeterminate?: boolean | ((ctx: DinextTableToolbarActionContext) => boolean);
     /** @layer toolbar — `type: "checkbox"` */
     onChange?: (ctx: DinextTableToolbarActionContext & { checked: boolean }) => void;
+    /**
+     * @layer toolbar — `type: "custom"` ready DOM (mounted into host).
+     * Prefer `render` when UI must refresh with toolbar.
+     */
+    element?: HTMLElement;
+    /**
+     * @layer toolbar — `type: "custom"` build/update into `host`.
+     * Return an HTMLElement to place inside host, or mutate `host` and return void.
+     */
+    render?: (ctx: DinextTableToolbarCustomRenderContext) => HTMLElement | void;
 }
 
 /** @layer toolbar */
@@ -631,11 +680,17 @@ export interface DinextTableToolbarOptions {
     toolbar?: {
         /** Default: true */
         enabled?: boolean;
+        /** Default: true — panel visible (pinned) on first open */
         defaultPinned?: boolean;
-        /** localStorage key suffix for pinned state */
+        /**
+         * localStorage key suffix for UI snapshot (per table instance).
+         * Key: `dinext-table:toolbar:${persistKey}`.
+         * Value JSON: `{ pinned, filter: { active, state } }` (legacy `"1"`/`"0"` still read).
+         * Omit → no persist.
+         */
         persistKey?: string;
-        /** Default: `["history", "tree", "fullscreen"]`; set `[]` to disable presets */
-        presets?: Array<"history" | "tree" | "rows" | "clipboard" | "fullscreen">;
+        /** Default: `["history", "tree", "fullscreen"]`; filter icon auto via `filter.enabled` */
+        presets?: Array<"history" | "tree" | "filter" | "rows" | "clipboard" | "fullscreen">;
         items?: DinextTableToolbarItem[];
     };
 }
@@ -701,6 +756,7 @@ export interface DinextTableCreateOptions
         DinextTableThemeOptions,
         DinextTableTreeOptions,
         DinextTableSortOptions,
+        DinextTableFilterOptions,
         DinextTableSectionOptions,
         DinextTableEditOptions,
         DinextTableNavigationOptions,
@@ -777,6 +833,28 @@ export interface DinextTableInstance {
     isSortEnabled(): boolean;
     /** @layer sort */
     isColumnSortable(field: string): boolean;
+
+    // --- filter ---
+    /** @layer filter */
+    getFilter(): DinextTableFilterState;
+    /** @layer filter */
+    setFilter(state: DinextTableFilterState, opts?: { silent?: boolean }): DinextTableFilterState;
+    /** @layer filter */
+    setFilterField(field: string, query: string, opts?: { silent?: boolean }): DinextTableFilterState;
+    /** @layer filter */
+    clearFilter(opts?: { silent?: boolean }): DinextTableFilterState;
+    /** @layer filter */
+    isFilterEnabled(): boolean;
+    /** @layer filter — floating filter row visible */
+    isFilterRowOpen(): boolean;
+    /** @layer filter — non-empty state applied (UI may be closed) */
+    isFilterActive(): boolean;
+    /** @layer filter */
+    toggleFilterRow(force?: boolean): boolean;
+    /** @layer filter */
+    isColumnFilterable(field: string): boolean;
+    /** @layer filter — toolbar auto-inject when enabled */
+    getFilterToolbarItems(): DinextTableToolbarItem[];
 
     // --- selection ---
     /** @layer selection */
