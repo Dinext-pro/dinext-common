@@ -4,6 +4,14 @@
 @media (min-width: 992px) {
 	body.dinext-ws-sidebar-collapsed {
 		--dinext-ws-rail-pad-left: 15px;
+		--dinext-ws-flyout-width: 220px;
+	}
+
+	/* Wide screens (Bootstrap xxl): wider hover flyout for long labels. */
+	@media (min-width: 1400px) {
+		body.dinext-ws-sidebar-collapsed {
+			--dinext-ws-flyout-width: 350px;
+		}
 	}
 
 	/* Collapsed spacer: dedicated rail column. */
@@ -104,8 +112,8 @@
 	body.dinext-ws-sidebar-collapsed.dinext-ws-sidebar-hover-open
 		.layout-side-section:has(.desk-sidebar)
 		.list-sidebar.overlay-sidebar:has(.desk-sidebar) {
-		width: 220px !important;
-		min-width: 220px !important;
+		width: var(--dinext-ws-flyout-width, 220px) !important;
+		min-width: var(--dinext-ws-flyout-width, 220px) !important;
 		padding: 0 12px 12px var(--dinext-ws-rail-pad-left, 15px);
 		box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.12));
 		border-radius: 0 var(--border-radius-md, 8px) var(--border-radius-md, 8px) 0;
