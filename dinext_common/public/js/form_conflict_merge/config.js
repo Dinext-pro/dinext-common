@@ -1,4 +1,4 @@
-const DEFAULT_CONFIG = {
+export const DEFAULT_CONFIG = {
 	// Если пусто, отслеживаются все поддерживаемые non-child поля формы.
 	// Если указан список, он становится явным allowlist.
 	fields: [],
@@ -64,7 +64,7 @@ const DEFAULT_CONFIG = {
 	form_resync_fields: [],
 };
 
-const SYSTEM_FIELDS = [
+export const SYSTEM_FIELDS = [
 	"name",
 	"owner",
 	"creation",
@@ -86,10 +86,10 @@ const SYSTEM_FIELDS = [
 	"__needs_refresh",
 ];
 
-const HIGHLIGHT_STYLE_ID = "dinext-form-conflict-merge-highlight-style";
-const SERVER_HIGHLIGHT_CLASS = "dinext-fcm-highlight-server";
-const CONFLICT_HIGHLIGHT_CLASS = "dinext-fcm-highlight-conflict";
-const CHILD_CELL_SERVER_CLASS = "dinext-fcm-highlight-child-server";
-const CHILD_CELL_CONFLICT_CLASS = "dinext-fcm-highlight-child-conflict";
-const CHILD_ROW_ADDED_CLASS = "dinext-fcm-highlight-child-row-added";
-const CHILD_TABLE_REMOVED_CLASS = "dinext-fcm-highlight-child-removed";
+export const HIGHLIGHT_STYLE_ID = "dinext-form-conflict-merge-highlight-style";
+export const SERVER_HIGHLIGHT_CLASS = "dinext-fcm-highlight-server";
+export const CONFLICT_HIGHLIGHT_CLASS = "dinext-fcm-highlight-conflict";
+export const CHILD_CELL_SERVER_CLASS = "dinext-fcm-highlight-child-server";
+export const CHILD_CELL_CONFLICT_CLASS = "dinext-fcm-highlight-child-conflict";
+export const CHILD_ROW_ADDED_CLASS = "dinext-fcm-highlight-child-row-added";
+export const CHILD_TABLE_REMOVED_CLASS = "dinext-fcm-highlight-child-removed";

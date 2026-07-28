@@ -1,3 +1,23 @@
+import {
+	CHILD_CELL_CONFLICT_CLASS,
+	CHILD_CELL_SERVER_CLASS,
+	CHILD_ROW_ADDED_CLASS,
+	CHILD_TABLE_REMOVED_CLASS,
+	CONFLICT_HIGHLIGHT_CLASS,
+	DEFAULT_CONFIG,
+	HIGHLIGHT_STYLE_ID,
+	SERVER_HIGHLIGHT_CLASS,
+	SYSTEM_FIELDS,
+} from "./config.js";
+import { FormMergeDebug } from "./debug.js";
+import { FormMergeState } from "./state.js";
+import { FormDiff } from "./diff.js";
+import { FormMergeUi } from "./ui.js";
+import { FormValueApplier } from "./applier.js";
+import { FormDocInfoWatcher } from "./docinfo_watcher.js";
+import { FormStartup } from "./startup.js";
+import { FormMergeEngine } from "./merge_engine.js";
+
 const FormConflictMergeConfig = {
 	CHILD_CELL_CONFLICT_CLASS,
 	CHILD_CELL_SERVER_CLASS,
@@ -10,6 +30,7 @@ const FormConflictMergeConfig = {
 	SYSTEM_FIELDS,
 };
 
+window.dinext_common = window.dinext_common || {};
 window.dinext_common.formConflictMerge = {
 	install: FormMergeEngine.install,
 	apply_local_seed: FormStartup.apply_local_seed,
