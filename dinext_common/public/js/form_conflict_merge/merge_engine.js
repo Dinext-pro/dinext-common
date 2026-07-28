@@ -378,7 +378,7 @@ export function confirm_conflicts(frm, conflicts, cfg) {
 				dialog.hide();
 				resolve("local_wins");
 			},
-			secondary_action_label: "Взять значения сервера",
+			secondary_action_label: __("Take server values"),
 			secondary_action() {
 				dialog.hide();
 				resolve("server_wins");
@@ -386,7 +386,7 @@ export function confirm_conflicts(frm, conflicts, cfg) {
 		});
 
 		dialog.$wrapper.find(".modal-footer").prepend(
-			$(`<button class="btn btn-default btn-sm">${__("Отменить сохранение")}</button>`).on("click", () => {
+			$(`<button class="btn btn-default btn-sm">${__("Cancel save")}</button>`).on("click", () => {
 				dialog.hide();
 				resolve("block");
 			})
@@ -464,7 +464,7 @@ export function before_save(frm) {
 		return confirm_conflicts(frm, analysis.conflicts, state.cfg).then((decision) => {
 			if (decision === "block") {
 				frappe.validated = false;
-				frappe.throw("Сохранение отменено: документ был изменён на сервере.");
+				frappe.throw(__("Save cancelled: the document was changed on the server."));
 			}
 
 			if (decision === "server_wins") {
@@ -497,7 +497,7 @@ export function start_deferred_services(frm, state) {
 
 export function install(frm, opts) {
 	opts = opts || {};
-	if (!frm || !frm.doctype) frappe.throw("FormConflictMerge: вызовите из onload(frm)");
+	if (!frm || !frm.doctype) frappe.throw(__("FormConflictMerge: call from onload(frm)"));
 
 	const cfg = Object.assign({}, DEFAULT_CONFIG, opts);
 	const state_key = `${frm.doctype}::${frm.docname}`;
