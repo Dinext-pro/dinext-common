@@ -1,10 +1,16 @@
-function get_docinfo(frm) {
+import { equal } from "./diff.js";
+import { get_state } from "./state.js";
+import { show_docinfo_alert } from "./ui.js";
+import { fcm_debug, fcm_doc_label } from "./debug.js";
+import { is_merge_ready, is_startup_warmup_active } from "./startup.js";
+
+export function get_docinfo(frm) {
 	if (frm.get_docinfo) return frm.get_docinfo() || {};
 	const docinfo_by_doctype = frappe.model.docinfo && frappe.model.docinfo[frm.doctype];
 	return (docinfo_by_doctype && docinfo_by_doctype[frm.docname]) || {};
 }
 
-function normalize_docinfo_object(value) {
+export function normalize_docinfo_object(value) {
 	if (Array.isArray(value)) {
 		return value
 			.map((item) => normalize_docinfo_object(item))
@@ -24,11 +30,11 @@ function normalize_docinfo_object(value) {
 	return value === undefined ? null : value;
 }
 
-function get_docinfo_keys(cfg) {
+export function get_docinfo_keys(cfg) {
 	return Array.isArray(cfg.watch_docinfo_keys) ? cfg.watch_docinfo_keys.filter(Boolean) : [];
 }
 
-function snapshot_docinfo(frm, state, docinfo) {
+export function snapshot_docinfo(frm, state, docinfo) {
 	const source = docinfo || get_docinfo(frm);
 	const out = {};
 
@@ -39,7 +45,7 @@ function snapshot_docinfo(frm, state, docinfo) {
 	return out;
 }
 
-function peek_changed_docinfo_keys(state, docinfo) {
+export function peek_changed_docinfo_keys(state, docinfo) {
 	const previous = state.docinfo_values || {};
 	const current = snapshot_docinfo(null, state, docinfo);
 	const changed = [];
@@ -51,11 +57,11 @@ function peek_changed_docinfo_keys(state, docinfo) {
 	return changed;
 }
 
-function commit_docinfo_snapshot(state, docinfo) {
+export function commit_docinfo_snapshot(state, docinfo) {
 	state.docinfo_values = snapshot_docinfo(null, state, docinfo);
 }
 
-function get_changed_docinfo_keys(frm, state, docinfo) {
+export function get_changed_docinfo_keys(frm, state, docinfo) {
 	const changed = peek_changed_docinfo_keys(state, docinfo);
 	if (changed.length) {
 		commit_docinfo_snapshot(state, docinfo);
@@ -63,7 +69,7 @@ function get_changed_docinfo_keys(frm, state, docinfo) {
 	return changed;
 }
 
-function mark_docinfo_self_change(state, keys) {
+export function mark_docinfo_self_change(state, keys) {
 	const expires_at = Date.now() + Number(state.cfg.docinfo_self_change_suppress_ms || 0);
 	if (!expires_at) return;
 
@@ -73,7 +79,7 @@ function mark_docinfo_self_change(state, keys) {
 	});
 }
 
-function filter_self_docinfo_changes(state, changed_keys) {
+export function filter_self_docinfo_changes(state, changed_keys) {
 	const now = Date.now();
 	const self_changes = state.docinfo_self_changes || {};
 
@@ -89,7 +95,7 @@ function filter_self_docinfo_changes(state, changed_keys) {
 	});
 }
 
-function init_docinfo_self_change_markers(frm, state) {
+export function init_docinfo_self_change_markers(frm, state) {
 	const watched_keys = get_docinfo_keys(state.cfg);
 	if (!watched_keys.length || state.docinfo_self_change_markers_ready) return;
 	state.docinfo_self_change_markers_ready = true;
@@ -113,7 +119,7 @@ function init_docinfo_self_change_markers(frm, state) {
 	}
 }
 
-function fetch_docinfo(frm) {
+export function fetch_docinfo(frm) {
 	return new Promise((resolve, reject) => {
 		frappe.call({
 			method: "frappe.desk.form.load.get_docinfo",
@@ -129,7 +135,7 @@ function fetch_docinfo(frm) {
 	});
 }
 
-function refresh_watched_docinfo_blocks(frm, changed_keys) {
+export function refresh_watched_docinfo_blocks(frm, changed_keys) {
 	if (changed_keys.includes("assignments") && frm.assign_to && frm.assign_to.refresh) {
 		frm.assign_to.refresh();
 	}
@@ -144,7 +150,7 @@ function refresh_watched_docinfo_blocks(frm, changed_keys) {
 	}
 }
 
-function apply_docinfo_changes(frm, state, docinfo, opts) {
+export function apply_docinfo_changes(frm, state, docinfo, opts) {
 	opts = opts || {};
 	const changed_keys = peek_changed_docinfo_keys(state, docinfo);
 	if (!changed_keys.length) return [];
@@ -171,7 +177,7 @@ function apply_docinfo_changes(frm, state, docinfo, opts) {
 	return changed_keys;
 }
 
-function check_docinfo_changes(frm, state, opts) {
+export function check_docinfo_changes(frm, state, opts) {
 	state = state || get_state(frm);
 	opts = opts || {};
 
@@ -191,11 +197,11 @@ function check_docinfo_changes(frm, state, opts) {
 		.catch(() => []);
 }
 
-function refresh_docinfo(frm, state, opts) {
+export function refresh_docinfo(frm, state, opts) {
 	return check_docinfo_changes(frm, state, opts);
 }
 
-function init_docinfo_polling(frm, state) {
+export function init_docinfo_polling(frm, state) {
 	if (!state.cfg.refresh_docinfo_on_server_apply && !get_docinfo_keys(state.cfg).length) return;
 
 	const interval = Number(state.cfg.poll_server_changes_interval_ms || 0);
@@ -215,7 +221,7 @@ function init_docinfo_polling(frm, state) {
 	}, interval);
 }
 
-const FormDocInfoWatcher = {
+export const FormDocInfoWatcher = {
 	apply_docinfo_changes,
 	check_docinfo_changes,
 	commit_docinfo_snapshot,
