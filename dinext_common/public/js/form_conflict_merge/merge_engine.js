@@ -337,7 +337,7 @@ function confirm_conflicts(frm, conflicts, cfg) {
 		});
 
 		dialog.$wrapper.find(".modal-footer").prepend(
-			$(`<button class="btn btn-default btn-sm">${__("Отменить сохранение")}</button>`).on("click", () => {
+			$(`<button class="btn btn-default btn-sm">${__("Cancel save")}</button>`).on("click", () => {
 				dialog.hide();
 				resolve("block");
 			})

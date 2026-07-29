@@ -1,0 +1,27 @@
+Apps and DocTypes,Приложения и DocType
+Cancel save,Отменить сохранение
+chars,симв.
+Copy Apps Version,Копировать версии приложений
+Database,База данных
+Details,Детали
+Dinext ERP Platform,Платформа Dinext ERP
+Dinext Plafrom,Платформа Dinext
+Expand/collapse,Развернуть/свернуть
+Fixture,Fixture
+Fixture Analysis,Анализ fixtures
+Installed Apps,Установленные приложения
+lines,стр.
+Loading fixture overview...,Загрузка обзора fixtures...
+Loading record details...,Загрузка деталей записи...
+Loading records...,Загрузка записей...
+Loading versions...,Загрузка версий...
+No installed apps with fixtures were discovered.,Не найдено установленных приложений с fixtures.
+No records match the current filters.,Нет записей по текущим фильтрам.
+Open in System,Открыть в системе
+Select a DocType to inspect records.,Выберите DocType для просмотра записей.
+Select a record to inspect field diffs.,Выберите запись для просмотра различий полей.
+Show full value,Показать полное значение
+Status,Статус
+Text diff,Текстовый diff
+The selected record has no field-level differences.,У выбранной записи нет различий на уровне полей.
+Unable to load fixture analysis data.,Не удалось загрузить данные анализа fixtures.
