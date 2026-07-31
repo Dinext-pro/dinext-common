@@ -1,6 +1,6 @@
 include:
   - project: 'erpnext/dinext/dinext_control_center'
-    ref: 42d65c10e86bb37f3446e551b669438e752aaad4
+    ref: 98d79777fa7b73717f55754e874bbe926272bbc7
     file: '/ci/gitflow-guard.yml'
 
 # BEGIN DINEXT IMMUTABLE GITFLOW GUARD
