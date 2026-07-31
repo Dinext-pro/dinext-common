@@ -1,0 +1,9 @@
+include:
+  - project: 'erpnext/dinext/dinext_control_center'
+    ref: 98d79777fa7b73717f55754e874bbe926272bbc7
+    file: '/ci/gitflow-guard.yml'
+
+# BEGIN DINEXT IMMUTABLE GITFLOW GUARD
+gitflow:mr-guard:
+  extends: .gitflow-guard-mr
+# END DINEXT IMMUTABLE GITFLOW GUARD
