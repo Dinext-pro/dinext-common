@@ -80,7 +80,7 @@ bench build --app dinext_common
 - `breadcrumbs_update.js` сохраняет контекст workspace в breadcrumbs и поддерживает копирование последнего элемента
 - `listview_resize.js` сохраняет ширины колонок списка в `localStorage`
 - `dinext-desk.js` настраивает диалог About и показывает версии установленных приложений
-- `dashboard_filters_format.js` улучшает динамическую фильтрацию дашборда для `_assign` и `_liked_by`
+- `dashboard_filters_fix.js` улучшает динамическую фильтрацию дашборда для `_assign` и `_liked_by`
 - `workspace_sidebar_hover.js` — icon-rail workspace-меню на всём Desk: на Workspaces кнопка sidebar переключает полный вид и полоску с иконками; на List/Form/прочих экранах свёрнутый rail показывается принудительно. При наведении меню временно открывается **поверх** контента (без сдвига основной колонки). Состояние свёртки на Workspaces хранится в `localStorage`. DOM меню всегда в `.row.layout-main > .layout-side-section` активной страницы.
 
 Для DocType `Project` подключается `sticky-datatable.js` — виртуализированная таблица с закреплением строк на базе `frappe-datatable.min.js` и `hyperlist.js`.
