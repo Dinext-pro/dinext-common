@@ -20,3 +20,7 @@
 - app-specific rules в `.cursor/rules/`, если они относятся только к этому приложению.
 
 Если нужный shared-артефакт отсутствует локально, не создавай его в этом репозитории. Добавляй или обновляй его в `dinext-docs`.
+
+## OpenSpec Store
+
+Планы (proposal / design / specs / tasks) читать и создавать только в центральном Store `dinext-docs`. Локально допустим только `openspec/config.yaml` с `store: dinext-docs`. Реализация кода — в этом репозитории. См. `../dinext-docs/process/development-management/openspec-store.md`.
