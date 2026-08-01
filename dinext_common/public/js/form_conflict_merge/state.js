@@ -1,7 +1,12 @@
-const registry = (window.__dinext_form_conflict_merge_registry =
+import { SYSTEM_FIELDS } from "./config.js";
+import { normalize_value, snapshot, clone_raw_value, is_empty_value } from "./diff.js";
+import { fcm_debug, fcm_doc_label, fcm_debug_state_snapshot } from "./debug.js";
+import { clear_highlights } from "./ui.js";
+
+export const registry = (window.__dinext_form_conflict_merge_registry =
 	window.__dinext_form_conflict_merge_registry || {});
 
-function get_state(frm) {
+export function get_state(frm) {
 	const key = `${frm.doctype}::${frm.docname}`;
 	registry[key] = registry[key] || {};
 	const state = registry[key];
@@ -9,23 +14,23 @@ function get_state(frm) {
 	return state;
 }
 
-function is_sync_stale(state, generation, frm) {
+export function is_sync_stale(state, generation, frm) {
 	if (!state || !frm || !frm.doc || frm.is_new()) return true;
 	if (state.doc_key !== `${frm.doctype}::${frm.docname}`) return true;
 	if (state.sync_generation !== generation) return true;
 	return false;
 }
 
-function bump_sync_generation(state) {
+export function bump_sync_generation(state) {
 	state.sync_generation = (state.sync_generation || 0) + 1;
 	return state.sync_generation;
 }
 
-function is_child_table(df) {
+export function is_child_table(df) {
 	return df && (df.fieldtype === "Table" || df.fieldtype === "Table MultiSelect");
 }
 
-function is_child_table_included(df, cfg) {
+export function is_child_table_included(df, cfg) {
 	if (!is_child_table(df)) return true;
 	if (cfg.include_child_tables === false) return false;
 	if (Array.isArray(cfg.include_child_tables)) return cfg.include_child_tables.includes(df.fieldname);
@@ -33,7 +38,7 @@ function is_child_table_included(df, cfg) {
 	return !excluded.has(df.fieldname);
 }
 
-function is_mergeable_field(df) {
+export function is_mergeable_field(df) {
 	if (!df || !df.fieldname) return false;
 	if (SYSTEM_FIELDS.includes(df.fieldname)) return false;
 	if (["Section Break", "Column Break", "Tab Break"].includes(df.fieldtype)) return false;
@@ -41,15 +46,15 @@ function is_mergeable_field(df) {
 	return true;
 }
 
-function is_supported_field(df, cfg) {
+export function is_supported_field(df, cfg) {
 	return is_mergeable_field(df) && is_child_table_included(df, cfg);
 }
 
-function unique_fields(fields) {
+export function unique_fields(fields) {
 	return Array.from(new Set((fields || []).filter(Boolean)));
 }
 
-function get_fields(frm, cfg) {
+export function get_fields(frm, cfg) {
 	const meta_fields = frm.meta.fields || [];
 	const fields_by_name = {};
 	meta_fields.forEach((df) => {
@@ -76,26 +81,26 @@ function get_fields(frm, cfg) {
 	});
 }
 
-function import_pending_local_seeds(frm, state) {
+export function import_pending_local_seeds(frm, state) {
 	const pending = frm.__dinext_fcm_local_seeds || {};
 	Object.keys(pending).forEach((fieldname) => {
 		mark_local_seed(frm, fieldname, pending[fieldname]);
 	});
 }
 
-function clear_local_seed(frm, fieldname) {
+export function clear_local_seed(frm, fieldname) {
 	const state = get_state(frm);
 	if (state.local_seed_fields) delete state.local_seed_fields[fieldname];
 	if (frm.__dinext_fcm_local_seeds) delete frm.__dinext_fcm_local_seeds[fieldname];
 }
 
-function clear_local_seeds(frm) {
+export function clear_local_seeds(frm) {
 	const state = get_state(frm);
 	state.local_seed_fields = {};
 	frm.__dinext_fcm_local_seeds = {};
 }
 
-function mark_local_seed(frm, fieldname, opts) {
+export function mark_local_seed(frm, fieldname, opts) {
 	if (!frm || !fieldname) return;
 	opts = opts || {};
 
@@ -119,7 +124,7 @@ function mark_local_seed(frm, fieldname, opts) {
 	}
 }
 
-function refresh_initial(frm) {
+export function refresh_initial(frm) {
 	const state = get_state(frm);
 	if (!state.installed) return;
 	state.initial_values = snapshot(frm.doc, state.fields);
@@ -149,7 +154,7 @@ function refresh_initial(frm) {
 	fcm_debug_state_snapshot(state, frm, "refresh_initial_snapshot");
 }
 
-const FormMergeState = {
+export const FormMergeState = {
 	bump_sync_generation,
 	clear_local_seed,
 	clear_local_seeds,

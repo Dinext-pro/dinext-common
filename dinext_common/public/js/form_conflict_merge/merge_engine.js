@@ -1,4 +1,53 @@
-function cancel_deferred_services(state) {
+import { DEFAULT_CONFIG } from "./config.js";
+import {
+	bump_sync_generation,
+	clear_local_seeds,
+	get_fields,
+	get_state,
+	import_pending_local_seeds,
+	is_sync_stale,
+	refresh_initial,
+	registry,
+} from "./state.js";
+import { analyze, get_remaining_local_changes, snapshot } from "./diff.js";
+import {
+	apply_field,
+	apply_modified,
+	is_child_table_field,
+	mark_clean,
+	sync_matching_server_values,
+	update_initial_value,
+} from "./applier.js";
+import {
+	apply_field_highlight,
+	clear_all_fcm_highlights,
+	clear_highlights,
+	ensure_highlight_styles,
+	format_field_labels,
+	show_applied_alert,
+	show_realtime_alert,
+} from "./ui.js";
+import { detect_form_control_changes, resync_form_after_server_apply } from "./form_resync.js";
+import {
+	init_docinfo_polling,
+	init_docinfo_self_change_markers,
+	refresh_docinfo,
+	snapshot_docinfo,
+} from "./docinfo_watcher.js";
+import { is_merge_ready, is_startup_warmup_active, start_startup_warmup } from "./startup.js";
+import {
+	fcm_debug,
+	fcm_debug_analysis,
+	fcm_debug_child_tables,
+	fcm_debug_local_drift,
+	fcm_debug_state_snapshot,
+	fcm_doc_label,
+	FCM_LOG_LEVELS,
+	FCM_LOG_PREFIX,
+	is_fcm_debug_enabled,
+} from "./debug.js";
+
+export function cancel_deferred_services(state) {
 	if (!state) return;
 	if (state.poll_timer) {
 		clearInterval(state.poll_timer);
@@ -15,7 +64,7 @@ function cancel_deferred_services(state) {
 	state.pollers_ready = false;
 }
 
-function cancel_bound_pollers(frm, except_key) {
+export function cancel_bound_pollers(frm, except_key) {
 	Object.keys(registry).forEach((key) => {
 		if (key === except_key) return;
 		const bound = registry[key];
@@ -32,13 +81,13 @@ function cancel_bound_pollers(frm, except_key) {
 	});
 }
 
-function cancel_pending_reload(frm) {
+export function cancel_pending_reload(frm) {
 	if (frm.debounced_reload_doc && frm.debounced_reload_doc.cancel) {
 		frm.debounced_reload_doc.cancel();
 	}
 }
 
-function apply_server_changes(frm, server_doc, state, opts) {
+export function apply_server_changes(frm, server_doc, state, opts) {
 	opts = opts || {};
 	if (frm && frm.__dinext_fcm_resyncing) return { server_only: [], local_only: [], conflicts: [], applied_server: [], applied_conflicts: [] };
 
@@ -117,7 +166,7 @@ function apply_server_changes(frm, server_doc, state, opts) {
 	return analysis;
 }
 
-function handle_doc_update(data) {
+export function handle_doc_update(data) {
 	const frm = cur_frm;
 	if (!frm || !frm.doc || frm.is_new() || !data) return;
 	if (frm.__dinext_fcm_resyncing) return;
@@ -198,13 +247,13 @@ function handle_doc_update(data) {
 	}
 }
 
-function init_listener() {
+export function init_listener() {
 	if (window.__dinext_form_conflict_merge_listener_ready) return;
 	window.__dinext_form_conflict_merge_listener_ready = true;
 	frappe.realtime.on("doc_update", handle_doc_update);
 }
 
-function check_server_changes(frm) {
+export function check_server_changes(frm) {
 	if (!frm || !frm.doc || frm.is_new()) return Promise.resolve();
 	if (frm.__dinext_fcm_resyncing) return Promise.resolve();
 	const state = get_state(frm);
@@ -287,7 +336,7 @@ function check_server_changes(frm) {
 	});
 }
 
-function init_polling(frm, state) {
+export function init_polling(frm, state) {
 	const interval = Number(state.cfg.poll_server_changes_interval_ms || 0);
 	if (!interval || interval < 1000) return;
 
@@ -305,7 +354,7 @@ function init_polling(frm, state) {
 	}, interval);
 }
 
-function confirm_conflicts(frm, conflicts, cfg) {
+export function confirm_conflicts(frm, conflicts, cfg) {
 	if (!conflicts.length) return Promise.resolve("continue");
 	if (cfg.conflict_policy === "local_wins") return Promise.resolve("local_wins");
 	if (cfg.conflict_policy === "server_wins") return Promise.resolve("server_wins");
@@ -329,7 +378,7 @@ function confirm_conflicts(frm, conflicts, cfg) {
 				dialog.hide();
 				resolve("local_wins");
 			},
-			secondary_action_label: "Взять значения сервера",
+			secondary_action_label: __("Take server values"),
 			secondary_action() {
 				dialog.hide();
 				resolve("server_wins");
@@ -337,7 +386,7 @@ function confirm_conflicts(frm, conflicts, cfg) {
 		});
 
 		dialog.$wrapper.find(".modal-footer").prepend(
-			$(`<button class="btn btn-default btn-sm">${__("Отменить сохранение")}</button>`).on("click", () => {
+			$(`<button class="btn btn-default btn-sm">${__("Cancel save")}</button>`).on("click", () => {
 				dialog.hide();
 				resolve("block");
 			})
@@ -347,7 +396,7 @@ function confirm_conflicts(frm, conflicts, cfg) {
 	});
 }
 
-function fetch_server_doc(frm) {
+export function fetch_server_doc(frm) {
 	return new Promise((resolve, reject) => {
 		frappe.call({
 			method: "frappe.client.get",
@@ -364,7 +413,7 @@ function fetch_server_doc(frm) {
 	});
 }
 
-function before_save(frm) {
+export function before_save(frm) {
 	if (frm.is_new()) return Promise.resolve();
 
 	const state = get_state(frm);
@@ -415,7 +464,7 @@ function before_save(frm) {
 		return confirm_conflicts(frm, analysis.conflicts, state.cfg).then((decision) => {
 			if (decision === "block") {
 				frappe.validated = false;
-				frappe.throw("Сохранение отменено: документ был изменён на сервере.");
+				frappe.throw(__("Save cancelled: the document was changed on the server."));
 			}
 
 			if (decision === "server_wins") {
@@ -434,7 +483,7 @@ function before_save(frm) {
 	});
 }
 
-function start_deferred_services(frm, state) {
+export function start_deferred_services(frm, state) {
 	if (state.pollers_ready) return;
 	state.pollers_ready = true;
 	fcm_debug(state, "pollers_start", {
@@ -446,9 +495,9 @@ function start_deferred_services(frm, state) {
 	init_docinfo_polling(frm, state);
 }
 
-function install(frm, opts) {
+export function install(frm, opts) {
 	opts = opts || {};
-	if (!frm || !frm.doctype) frappe.throw("FormConflictMerge: вызовите из onload(frm)");
+	if (!frm || !frm.doctype) frappe.throw(__("FormConflictMerge: call from onload(frm)"));
 
 	const cfg = Object.assign({}, DEFAULT_CONFIG, opts);
 	const state_key = `${frm.doctype}::${frm.docname}`;
@@ -528,7 +577,7 @@ function install(frm, opts) {
 	});
 }
 
-const FormMergeEngine = {
+export const FormMergeEngine = {
 	analyze,
 	apply_server_changes,
 	before_save,

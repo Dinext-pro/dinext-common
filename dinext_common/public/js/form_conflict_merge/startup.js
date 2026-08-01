@@ -1,19 +1,31 @@
-function is_startup_warmup_active(state) {
+import { get_state, mark_local_seed, refresh_initial } from "./state.js";
+import { snapshot_docinfo } from "./docinfo_watcher.js";
+import { mark_clean } from "./applier.js";
+import {
+	fcm_debug,
+	fcm_debug_local_drift,
+	fcm_debug_state_snapshot,
+	fcm_doc_label,
+	summarize_field_value,
+} from "./debug.js";
+import { start_deferred_services } from "./merge_engine.js";
+
+export function is_startup_warmup_active(state) {
 	return Boolean(state.startup_warmup_until && Date.now() < state.startup_warmup_until);
 }
 
-function is_merge_ready(state) {
+export function is_merge_ready(state) {
 	if (!state || !state.installed) return false;
 	if (Number(state.cfg.startup_warmup_ms || 0) > 0 && !state.startup_baseline_ready) return false;
 	return true;
 }
 
-function get_form_wrapper(frm) {
+export function get_form_wrapper(frm) {
 	if (!frm.wrapper) return null;
 	return frm.wrapper.on ? frm.wrapper : $(frm.wrapper);
 }
 
-function bind_startup_user_touch_marker(frm, state) {
+export function bind_startup_user_touch_marker(frm, state) {
 	const $wrapper = get_form_wrapper(frm);
 	if (!$wrapper || !$wrapper.on || state.startup_user_touch_marker_ready) return;
 	state.startup_user_touch_marker_ready = true;
@@ -28,7 +40,7 @@ function bind_startup_user_touch_marker(frm, state) {
 	);
 }
 
-function finish_startup_warmup(frm, state) {
+export function finish_startup_warmup(frm, state) {
 	const current = cur_frm;
 	if (!current || current.doctype !== frm.doctype || current.docname !== frm.docname) return;
 
@@ -52,7 +64,7 @@ function finish_startup_warmup(frm, state) {
 	start_deferred_services(frm, state);
 }
 
-function start_startup_warmup(frm, state) {
+export function start_startup_warmup(frm, state) {
 	const warmup_ms = Number(state.cfg.startup_warmup_ms || 0);
 	state.startup_user_touched = false;
 	state.startup_docinfo_baseline_ready = false;
@@ -83,7 +95,7 @@ function start_startup_warmup(frm, state) {
 	state.startup_warmup_timer = setTimeout(() => finish_startup_warmup(frm, state), warmup_ms);
 }
 
-function set_startup_value(frm, fieldname, value, opts) {
+export function set_startup_value(frm, fieldname, value, opts) {
 	if (!frm || !fieldname) return Promise.resolve();
 
 	mark_local_seed(frm, fieldname, opts);
@@ -110,9 +122,9 @@ function set_startup_value(frm, fieldname, value, opts) {
 	});
 }
 
-const apply_local_seed = set_startup_value;
+export const apply_local_seed = set_startup_value;
 
-const FormStartup = {
+export const FormStartup = {
 	apply_local_seed,
 	bind_startup_user_touch_marker,
 	finish_startup_warmup,
