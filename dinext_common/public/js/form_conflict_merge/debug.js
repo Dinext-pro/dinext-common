@@ -1,11 +1,16 @@
-const FCM_LOG_PREFIX = "[FCM]";
+import { equal, normalize_value, snapshot } from "./diff.js";
+import { get_state } from "./state.js";
+import { is_startup_warmup_active } from "./startup.js";
+import { is_child_table_field } from "./applier.js";
 
-const FCM_LOG_LEVELS = {
+export const FCM_LOG_PREFIX = "[FCM]";
+
+export const FCM_LOG_LEVELS = {
 	info: "info",
 	warn: "warn",
 };
 
-function is_fcm_debug_enabled(state) {
+export function is_fcm_debug_enabled(state) {
 	if (window.__dinext_fcm_debug) return true;
 	try {
 		if (window.localStorage && window.localStorage.getItem("dinext_fcm_debug") === "1") return true;
@@ -15,12 +20,12 @@ function is_fcm_debug_enabled(state) {
 	return Boolean(state && state.cfg && state.cfg.debug_log);
 }
 
-function fcm_doc_label(frm) {
+export function fcm_doc_label(frm) {
 	if (!frm || !frm.doctype) return "?";
 	return `${frm.doctype}/${frm.docname || "new"}`;
 }
 
-function count_child_table_rows(value) {
+export function count_child_table_rows(value) {
 	const rows = Array.isArray(value) ? value : [];
 	return {
 		total: rows.length,
@@ -30,7 +35,7 @@ function count_child_table_rows(value) {
 	};
 }
 
-function child_table_row_keys(value, limit) {
+export function child_table_row_keys(value, limit) {
 	if (!Array.isArray(value)) return [];
 	return value.slice(0, limit || 40).map((row, index) => ({
 		key: (row && (row.name || row.idx)) || `row-${index}`,
@@ -41,7 +46,7 @@ function child_table_row_keys(value, limit) {
 	}));
 }
 
-function diff_child_table_rows(left, right) {
+export function diff_child_table_rows(left, right) {
 	const left_rows = Array.isArray(left) ? left : [];
 	const right_rows = Array.isArray(right) ? right : [];
 
@@ -66,7 +71,7 @@ function diff_child_table_rows(left, right) {
 	return { removed, added, changed };
 }
 
-function diff_child_table_snapshots(initial, local, server) {
+export function diff_child_table_snapshots(initial, local, server) {
 	const out = {
 		raw: {
 			initial: count_child_table_rows(initial),
@@ -92,7 +97,7 @@ function diff_child_table_snapshots(initial, local, server) {
 	return out;
 }
 
-function explain_field_classification(fieldname, initial, local, server) {
+export function explain_field_classification(fieldname, initial, local, server) {
 	const local_changed = !equal(local, initial);
 	const server_changed = !equal(server, initial);
 	const local_server_equal = equal(local, server);
@@ -105,7 +110,7 @@ function explain_field_classification(fieldname, initial, local, server) {
 	return "unknown";
 }
 
-function summarize_field_value(value) {
+export function summarize_field_value(value) {
 	if (value === undefined) return { kind: "undefined" };
 	if (value === null) return { kind: "null" };
 	if (Array.isArray(value)) {
@@ -126,7 +131,7 @@ function summarize_field_value(value) {
 	return { kind: typeof value, preview: JSON.stringify(value).slice(0, 160) };
 }
 
-function fcm_emit(level, event, entry) {
+export function fcm_emit(level, event, entry) {
 	const payload = Object.assign({ ts: new Date().toISOString(), event }, entry || {});
 	if (level === FCM_LOG_LEVELS.warn) {
 		console.warn(FCM_LOG_PREFIX, event, payload);
@@ -135,12 +140,12 @@ function fcm_emit(level, event, entry) {
 	console.info(FCM_LOG_PREFIX, event, payload);
 }
 
-function fcm_debug(state, event, payload, level) {
+export function fcm_debug(state, event, payload, level) {
 	if (!is_fcm_debug_enabled(state)) return;
 	fcm_emit(level || FCM_LOG_LEVELS.info, event, payload);
 }
 
-function fcm_debug_state_snapshot(state, frm, label) {
+export function fcm_debug_state_snapshot(state, frm, label) {
 	if (!is_fcm_debug_enabled(state)) return;
 
 	const tracked = (state.fields || []).slice(0, 40);
@@ -175,7 +180,7 @@ function fcm_debug_state_snapshot(state, frm, label) {
 	});
 }
 
-function fcm_debug_analysis(state, frm, analysis, extra) {
+export function fcm_debug_analysis(state, frm, analysis, extra) {
 	if (!is_fcm_debug_enabled(state) || !analysis) return;
 
 	const initial = state.initial_values || {};
@@ -255,7 +260,7 @@ function fcm_debug_analysis(state, frm, analysis, extra) {
 	);
 }
 
-function fcm_debug_local_drift(state, frm, label) {
+export function fcm_debug_local_drift(state, frm, label) {
 	if (!is_fcm_debug_enabled(state) || !state.initial_values) return;
 
 	const initial = state.initial_values;
@@ -287,7 +292,7 @@ function fcm_debug_local_drift(state, frm, label) {
 	);
 }
 
-function fcm_debug_child_tables(state, frm, label, server_doc, extra) {
+export function fcm_debug_child_tables(state, frm, label, server_doc, extra) {
 	if (!is_fcm_debug_enabled(state) || !frm || !frm.doc) return;
 
 	const child_fields = (state.fields || []).filter((fieldname) => is_child_table_field(frm, fieldname));
@@ -329,7 +334,7 @@ function fcm_debug_child_tables(state, frm, label, server_doc, extra) {
 	);
 }
 
-function dump_debug_state(frm) {
+export function dump_debug_state(frm) {
 	frm = frm || cur_frm;
 	if (!frm || !frm.doc) return null;
 
@@ -355,7 +360,7 @@ function dump_debug_state(frm) {
 	return payload;
 }
 
-const FormMergeDebug = {
+export const FormMergeDebug = {
 	child_table_row_keys,
 	count_child_table_rows,
 	diff_child_table_rows,
