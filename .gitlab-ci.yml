@@ -6,4 +6,3 @@ include:
 
 variables:
   DINEXT_CONTROL_CENTER_REF: "feat/dinext-development-rollout"
-# refreshed for template fix
