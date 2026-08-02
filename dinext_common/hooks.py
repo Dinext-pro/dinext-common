@@ -185,9 +185,9 @@ doctype_js = {"Project" : "public/js/sticky-datatable.js"}
 # ---------------
 # Override standard doctype classes
 
-# override_doctype_class = {
-# 	"ToDo": "custom_app.overrides.CustomToDo"
-# }
+override_doctype_class = {
+	"Company": "dinext_common.setup.company.DinextCompany",
+}
 
 # Document Events
 # ---------------
@@ -230,9 +230,12 @@ doctype_js = {"Project" : "public/js/sticky-datatable.js"}
 # Overriding Methods
 # ------------------------------
 #
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "dinext_common.event.get_events"
-# }
+override_whitelisted_methods = {
+	"erpnext.accounts.doctype.account.chart_of_accounts.chart_of_accounts.get_charts_for_country": (
+		"dinext_common.setup.chart_of_accounts.get_charts_for_country"
+	),
+	"erpnext.accounts.utils.get_coa": "dinext_common.setup.chart_of_accounts.get_coa",
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
