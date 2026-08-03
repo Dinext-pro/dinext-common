@@ -50,8 +50,8 @@ def get_charts_for_country(country, with_standard=False):
 	)
 
 	charts = list(erpnext_get_charts_for_country(country, with_standard=with_standard) or [])
-	if DINEXT_CHART_NAME not in charts:
-		charts.append(DINEXT_CHART_NAME)
+	charts = [c for c in charts if c != DINEXT_CHART_NAME]
+	charts.insert(0, DINEXT_CHART_NAME)
 	return charts
 
 

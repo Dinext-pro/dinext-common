@@ -71,13 +71,41 @@ class TestDinextChartOfAccounts(FrappeTestCase):
 
 	def test_get_charts_for_country_includes_dinext(self):
 		charts = get_charts_for_country("Russian Federation", with_standard=True)
-		self.assertIn(DINEXT_CHART_NAME, charts)
+		self.assertEqual(charts[0], DINEXT_CHART_NAME)
+		self.assertEqual(charts.count(DINEXT_CHART_NAME), 1)
 		self.assertIn("Standard", charts)
 
 	def test_get_coa_preview_for_dinext_roots(self):
 		accounts = get_coa("Account", "All Accounts", chart=DINEXT_CHART_NAME)
 		values = {row["value"] for row in accounts}
 		self.assertTrue({"Активы", "Обязательства", "Доход", "Расход", "Капитал"}.issubset(values))
+
+	def test_empty_chart_of_accounts_defaults_to_dinext(self):
+		company_name = f"Default COA {random_string(5)}"
+		abbr = random_string(4).upper()
+		company = frappe.get_doc(
+			{
+				"doctype": "Company",
+				"company_name": company_name,
+				"abbr": abbr,
+				"default_currency": "RUB",
+				"country": "Russian Federation",
+				"create_chart_of_accounts_based_on": "Standard Template",
+			}
+		)
+		try:
+			company.insert(ignore_permissions=True)
+			company.reload()
+			self.assertEqual(company.chart_of_accounts, DINEXT_CHART_NAME)
+			account_names = frappe.get_all(
+				"Account",
+				filters={"company": company_name},
+				pluck="account_name",
+			)
+			for root in ("Активы", "Обязательства", "Доход", "Расход", "Капитал"):
+				self.assertIn(root, account_names)
+		finally:
+			_cleanup_company(company_name)
 
 	def test_company_with_dinext_chart_creates_accounts(self):
 		company_name = f"Dinext COA {random_string(5)}"
