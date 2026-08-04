@@ -36,11 +36,11 @@ const DEFAULT_CONFIG = {
 	watch_docinfo_keys: [],
 	show_docinfo_alert: true,
 	docinfo_key_labels: {
-		assignments: "назначения",
-		attachments: "вложения",
-		shared: "доступы",
-		communications: "сообщения",
-		comments: "комментарии",
+		assignments: "assignments",
+		attachments: "attachments",
+		shared: "shares",
+		communications: "communications",
+		comments: "comments",
 	},
 	docinfo_self_change_suppress_ms: 10000,
 

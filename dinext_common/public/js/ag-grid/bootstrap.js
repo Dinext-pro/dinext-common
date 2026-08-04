@@ -51,7 +51,7 @@
                 () => window.agGrid && typeof window.agGrid.createGrid === "function"
             ).then(() => {
                 if (!window.agGrid || typeof window.agGrid.createGrid !== "function") {
-                    throw new Error("AG Grid не загрузился");
+                    throw new Error(__("Failed to load AG Grid"));
                 }
                 return window.agGrid;
             });

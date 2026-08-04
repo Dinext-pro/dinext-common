@@ -314,22 +314,22 @@ function confirm_conflicts(frm, conflicts, cfg) {
 	return new Promise((resolve) => {
 		const conflict_labels = format_field_labels(frm, conflicts).join(", ");
 		const message = [
-			"Документ был изменён на сервере, и часть полей конфликтует с вашими правками.",
+			__("The document was modified on the server and some fields conflict with your edits."),
 			"",
-			`Конфликтующие поля: ${conflict_labels}`,
+			__("Conflicting fields: {0}", [conflict_labels]),
 			"",
-			"Выберите, как продолжить сохранение.",
+			__("Choose how to continue saving."),
 		].join("<br>");
 
 		const dialog = new frappe.ui.Dialog({
-			title: "Конфликт изменений",
+			title: __("Change Conflict"),
 			fields: [{ fieldtype: "HTML", fieldname: "message", options: message }],
-			primary_action_label: "Сохранить мои значения",
+			primary_action_label: __("Keep my values"),
 			primary_action() {
 				dialog.hide();
 				resolve("local_wins");
 			},
-			secondary_action_label: "Взять значения сервера",
+			secondary_action_label: __("Use server values"),
 			secondary_action() {
 				dialog.hide();
 				resolve("server_wins");
@@ -415,7 +415,7 @@ function before_save(frm) {
 		return confirm_conflicts(frm, analysis.conflicts, state.cfg).then((decision) => {
 			if (decision === "block") {
 				frappe.validated = false;
-				frappe.throw("Сохранение отменено: документ был изменён на сервере.");
+				frappe.throw(__("Save cancelled: the document was modified on the server."));
 			}
 
 			if (decision === "server_wins") {
@@ -448,7 +448,7 @@ function start_deferred_services(frm, state) {
 
 function install(frm, opts) {
 	opts = opts || {};
-	if (!frm || !frm.doctype) frappe.throw("FormConflictMerge: вызовите из onload(frm)");
+	if (!frm || !frm.doctype) frappe.throw("FormConflictMerge: call from onload(frm)");
 
 	const cfg = Object.assign({}, DEFAULT_CONFIG, opts);
 	const state_key = `${frm.doctype}::${frm.docname}`;
@@ -503,7 +503,7 @@ function install(frm, opts) {
 
 	if (is_fcm_debug_enabled(state)) {
 		console.info(
-			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, highlight_child_table, local_drift, form_resync_*. dump: dinext_common.formConflictMerge.dump_debug_state()`
+			`${FCM_LOG_PREFIX} debug ON for ${fcm_doc_label(frm)}. Console filter: FCM. Events: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, highlight_child_table, local_drift, form_resync_*. dump: dinext_common.formConflictMerge.dump_debug_state()`
 		);
 		fcm_debug_state_snapshot(state, frm, "install_snapshot");
 	}

@@ -83,11 +83,11 @@ const DEFAULT_CONFIG = {
 	watch_docinfo_keys: [],
 	show_docinfo_alert: true,
 	docinfo_key_labels: {
-		assignments: "назначения",
-		attachments: "вложения",
-		shared: "доступы",
-		communications: "сообщения",
-		comments: "комментарии",
+		assignments: "assignments",
+		attachments: "attachments",
+		shared: "shares",
+		communications: "communications",
+		comments: "comments",
 	},
 	docinfo_self_change_suppress_ms: 10000,
 
@@ -1146,7 +1146,7 @@ function format_modifier_prefix(modified_by) {
 	if (!modified_by) return "";
 	const current_user = frappe.session && frappe.session.user;
 	if (!current_user || modified_by === current_user) return "";
-	return `${resolve_user_full_name(modified_by)} изменил документ на сервере. `;
+	return __("{0} modified the document on the server. ", [resolve_user_full_name(modified_by)]);
 }
 
 function show_fcm_alert(cfg, message, indicator) {
@@ -1464,15 +1464,15 @@ function show_docinfo_alert(changed_keys, cfg) {
 	if (!changed_keys.length || !cfg.show_docinfo_alert) return;
 
 	const labels = cfg.docinfo_key_labels || {};
-	const changed_labels = changed_keys.map((key) => labels[key] || key);
+	const changed_labels = changed_keys.map((key) => __(labels[key] || key));
 
-	show_fcm_alert(cfg, `Обновлены данные документа: ${changed_labels.join(", ")}`, "orange");
+	show_fcm_alert(cfg, __("Document data updated: {0}", [changed_labels.join(", ")]), "orange");
 }
 
 function show_realtime_alert(data, frm, cfg) {
 	cfg = cfg || {};
 	const prefix = format_modifier_prefix(data && data.modified_by);
-	show_fcm_alert(cfg, `${prefix}Выполняется сверка изменений.`, "orange");
+	show_fcm_alert(cfg, `${prefix}${__("Reconciling changes.")}`, "orange");
 }
 
 function show_applied_alert(frm, analysis, cfg) {
@@ -1486,16 +1486,22 @@ function show_applied_alert(frm, analysis, cfg) {
 	const prefix = format_modifier_prefix(analysis.server_modified_by);
 	const messages = [];
 	if (applied_server.length) {
-		messages.push(`обновлены поля: ${format_field_labels(frm, applied_server).join(", ")}`);
+		messages.push(__("updated fields: {0}", [format_field_labels(frm, applied_server).join(", ")]));
 	}
 	if (applied_conflicts.length) {
 		messages.push(
-			`сервер перезаписал локальные правки: ${format_field_labels(frm, applied_conflicts).join(", ")}`
+			__("server overwrote local edits: {0}", [
+				format_field_labels(frm, applied_conflicts).join(", "),
+			])
 		);
 	}
 
 	const indicator = applied_conflicts.length ? "red" : "orange";
-	show_fcm_alert(cfg, `${prefix}Объект был изменён на сервере, ${messages.join("; ")}`, indicator);
+	show_fcm_alert(
+		cfg,
+		`${prefix}${__("The document was modified on the server, {0}", [messages.join("; ")])}`,
+		indicator
+	);
 }
 
 const FormMergeUi = {
@@ -2499,22 +2505,22 @@ function confirm_conflicts(frm, conflicts, cfg) {
 	return new Promise((resolve) => {
 		const conflict_labels = format_field_labels(frm, conflicts).join(", ");
 		const message = [
-			"Документ был изменён на сервере, и часть полей конфликтует с вашими правками.",
+			__("The document was modified on the server and some fields conflict with your edits."),
 			"",
-			`Конфликтующие поля: ${conflict_labels}`,
+			__("Conflicting fields: {0}", [conflict_labels]),
 			"",
-			"Выберите, как продолжить сохранение.",
+			__("Choose how to continue saving."),
 		].join("<br>");
 
 		const dialog = new frappe.ui.Dialog({
-			title: "Конфликт изменений",
+			title: __("Change Conflict"),
 			fields: [{ fieldtype: "HTML", fieldname: "message", options: message }],
-			primary_action_label: "Сохранить мои значения",
+			primary_action_label: __("Keep my values"),
 			primary_action() {
 				dialog.hide();
 				resolve("local_wins");
 			},
-			secondary_action_label: "Взять значения сервера",
+			secondary_action_label: __("Use server values"),
 			secondary_action() {
 				dialog.hide();
 				resolve("server_wins");
@@ -2600,7 +2606,7 @@ function before_save(frm) {
 		return confirm_conflicts(frm, analysis.conflicts, state.cfg).then((decision) => {
 			if (decision === "block") {
 				frappe.validated = false;
-				frappe.throw("Сохранение отменено: документ был изменён на сервере.");
+				frappe.throw(__("Save cancelled: the document was modified on the server."));
 			}
 
 			if (decision === "server_wins") {
@@ -2633,7 +2639,7 @@ function start_deferred_services(frm, state) {
 
 function install(frm, opts) {
 	opts = opts || {};
-	if (!frm || !frm.doctype) frappe.throw("FormConflictMerge: вызовите из onload(frm)");
+	if (!frm || !frm.doctype) frappe.throw("FormConflictMerge: call from onload(frm)");
 
 	const cfg = Object.assign({}, DEFAULT_CONFIG, opts);
 	const state_key = `${frm.doctype}::${frm.docname}`;
@@ -2688,7 +2694,7 @@ function install(frm, opts) {
 
 	if (is_fcm_debug_enabled(state)) {
 		console.info(
-			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, highlight_child_table, local_drift, form_resync_*. dump: dinext_common.formConflictMerge.dump_debug_state()`
+			`${FCM_LOG_PREFIX} debug ON for ${fcm_doc_label(frm)}. Console filter: FCM. Events: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, highlight_child_table, local_drift, form_resync_*. dump: dinext_common.formConflictMerge.dump_debug_state()`
 		);
 		fcm_debug_state_snapshot(state, frm, "install_snapshot");
 	}
