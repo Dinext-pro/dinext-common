@@ -176,7 +176,8 @@ export function createMergeGroupSpanRows(options = {}) {
 }
 
 export function normalizeColumn(col, globalEdit) {
-    const { edit, render, tree, children, ...rest } = col;
+    // treeContentKey — domain-only; wired by TreeMixin, not AG colDef.
+    const { edit, render, tree, treeContentKey, children, ...rest } = col;
 
     if (Array.isArray(children) && children.length) {
         return {
