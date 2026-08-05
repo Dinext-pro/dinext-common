@@ -41,14 +41,22 @@ function mountCellContent(contentEl, params, renderFn) {
 /**
  * When to remount tree cell body (not chevron).
  * Core: `_rowId` + column `value` only — no domain fields.
- * Finer key (avatar URL etc.): см. todo/README.md → treeContentKey.
+ * Domain extras: column `treeContentKey(params) => string` (e.g. dep flags).
  */
-function treeContentStableKey(params) {
+function treeContentStableKey(params, contentKeyFn) {
 	const data = params?.data || {};
-	return `${data._rowId ?? ""}\0${params?.value ?? ""}`;
+	const base = `${data._rowId ?? ""}\0${params?.value ?? ""}`;
+	if (typeof contentKeyFn !== "function") {
+		return base;
+	}
+	const extra = contentKeyFn(params);
+	if (extra == null || extra === "") {
+		return base;
+	}
+	return `${base}\0${extra}`;
 }
 
-function createTreeCellRenderer(renderFn) {
+function createTreeCellRenderer(renderFn, contentKeyFn) {
     return class TreeComposedCellRenderer {
         init(params) {
             this.params = params;
@@ -114,12 +122,12 @@ function createTreeCellRenderer(renderFn) {
             this.renderLead(params);
             if (remountContent) {
                 mountCellContent(this.contentEl, params, renderFn);
-                this.contentKey = treeContentStableKey(params);
+                this.contentKey = treeContentStableKey(params, contentKeyFn);
             }
         }
 
         refresh(params) {
-            const nextKey = treeContentStableKey(params);
+            const nextKey = treeContentStableKey(params, contentKeyFn);
             this.render(params, { remountContent: nextKey !== this.contentKey });
             return true;
         }
@@ -312,7 +320,10 @@ export const TreeMixin = (Base) => class extends Base {
 
             return {
                 ...col,
-                cellRenderer: createTreeCellRenderer(rawCol.render)
+                cellRenderer: createTreeCellRenderer(
+                    rawCol.render,
+                    rawCol.treeContentKey
+                )
             };
         });
     }
