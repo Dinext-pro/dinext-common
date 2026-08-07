@@ -2,7 +2,8 @@ import {
     getChildrenField,
     getMergeGroupChildInsertOffset,
     getMergeGroupMeta,
-    getRowIdField
+    getRowIdField,
+    getTreeSourceRowId
 } from "../shared/utils.js";
 import {
     collectExpandableRowIds,
@@ -175,8 +176,31 @@ export const TreeMixin = (Base) => class extends Base {
         this.rowData = toVisibleRows(this.sourceData, this.expandedIds, this.options);
     }
 
+    resolveProjectedSourceRowId(rowId, { includeLeaf = false } = {}) {
+        const displayParts = String(rowId).split(":");
+        const sourceParts = [...displayParts];
+        const limit = includeLeaf ? displayParts.length : Math.max(displayParts.length - 1, 0);
+        for (let index = 0; index < limit; index++) {
+            const displayPath = displayParts.slice(0, index + 1).join(":");
+            const visibleRow = (this.rowData || []).find(
+                (row) => String(row?._rowId) === displayPath
+            );
+            const sourceLocalId = getTreeSourceRowId(visibleRow);
+            if (sourceLocalId != null) {
+                sourceParts[index] = sourceLocalId;
+            }
+        }
+        return sourceParts.join(":");
+    }
+
     findSourceRow(rowId) {
-        return findSourceRowInData(this.sourceData, rowId, this.options);
+        const sourceRowId = this.resolveProjectedSourceRowId(rowId);
+        return findSourceRowInData(this.sourceData, sourceRowId, this.options);
+    }
+
+    findTreeSourceRow(rowId) {
+        const sourceRowId = this.resolveProjectedSourceRowId(rowId, { includeLeaf: true });
+        return findSourceRowInData(this.sourceData, sourceRowId, this.options);
     }
 
     isRowExpanded(rowId) {
@@ -184,7 +208,7 @@ export const TreeMixin = (Base) => class extends Base {
     }
 
     getSourceChildren(rowId) {
-        const row = this.findSourceRow(rowId);
+        const row = this.findTreeSourceRow(rowId);
         if (!row) {
             return [];
         }
@@ -235,7 +259,7 @@ export const TreeMixin = (Base) => class extends Base {
 
     setRowChildren(rowId, children) {
         rowId = String(rowId);
-        const row = this.findSourceRow(rowId);
+        const row = this.findTreeSourceRow(rowId);
         if (!row) return;
         
         const childrenField = this.getChildrenField();
@@ -256,7 +280,7 @@ export const TreeMixin = (Base) => class extends Base {
     }
 
     insertVisibleChildren(rowId) {
-        const parentRow = this.findSourceRow(rowId);
+        const parentRow = this.findTreeSourceRow(rowId);
         if (!parentRow) return;
 
         const parentLevel = this.getRowLevel(rowId);
