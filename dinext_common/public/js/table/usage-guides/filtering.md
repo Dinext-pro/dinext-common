@@ -25,6 +25,9 @@ DinextTable.create({
         enabled: true,       // default true
         active: false,       // UI filter row visible (toolbar toggle)
         state: {},           // { [field]: string }
+        mergeMatchMode: "atom",    // "rows" → only matching merge rows
+        mergeAncestorMode: "atom", // "head" → compact merge ancestor in tree
+        mergeInheritedFields: [],  // head-owned fields inherited by merge tails
     },
     columns: [
         { field: "name", headerName: "Name" },
@@ -40,6 +43,9 @@ DinextTable.create({
 | `filter.enabled` | `true` | Layer + search icon в toolbar (auto-inject) |
 | `filter.active` | `false` | Filter row под header |
 | `filter.state` | `{}` | `{ field: queryString }` |
+| `filter.mergeMatchMode` | `"atom"` | `"rows"` оставляет только совпавшие строки внутри merge-группы и пересобирает display merge |
+| `filter.mergeAncestorMode` | `"atom"` | `"head"` оставляет одну head-строку merge-группы, если совпал только tree-потомок |
+| `filter.mergeInheritedFields` | `[]` | Поля merged-head, которые tail-строки наследуют при фильтрации |
 | `column.filterable` | `true` если layer on | `false` — нет инпута |
 | `onFilterChange` | — | После смены `state` / `active` / clear |
 
@@ -102,7 +108,7 @@ table.isColumnFilterable("name");
 | Кейс | Поведение |
 |------|-----------|
 | Flat | hide rows без match |
-| Merge-группа | atom целиком; match если **любой** ряд атома проходит |
+| Merge-группа | self-match: atom целиком или совпавшие rows по `mergeMatchMode`; descendant-only: atom или head по `mergeAncestorMode` |
 | Summary | **вне** filter (всегда visible) |
 | Selection | при apply — clear ranges |
 | Row-check / delete | display layer; checked Set / source не трогаем |
@@ -117,6 +123,9 @@ table.isColumnFilterable("name");
 ## Tree
 
 Политика: **match + ancestors**. Не matching siblings/descendants скрыты.  
+При активном filter expand не добавляет строки напрямую из source: видимость
+потомков остаётся результатом той же filter projection. Lazy children после
+загрузки запускают один повторный расчёт projection.
 Collapse после clear filter — прежний `expandedIds` пользователя.
 
 ---

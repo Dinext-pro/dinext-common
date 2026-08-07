@@ -339,6 +339,21 @@ export interface DinextTableFilterOptions {
         active?: boolean;
         /** @layer filter — initial / controlled `{ field: query }` */
         state?: DinextTableFilterState;
+        /**
+         * @layer filter — matching rows inside a merge group.
+         * `"atom"` (default) keeps the whole group; `"rows"` keeps matching rows only.
+         */
+        mergeMatchMode?: "atom" | "rows";
+        /**
+         * @layer filter — merge atom kept only as an ancestor of a tree match.
+         * `"atom"` (default) keeps all tails; `"head"` renders one context head.
+         */
+        mergeAncestorMode?: "atom" | "head";
+        /**
+         * @layer filter — head-owned merged fields inherited by role/tail rows
+         * for filtering and display projection.
+         */
+        mergeInheritedFields?: string[];
     };
     /** @layer filter — after state / active change */
     onFilterChange?: (ctx: {
