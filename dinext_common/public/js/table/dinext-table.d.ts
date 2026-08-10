@@ -425,6 +425,13 @@ export interface DinextTableEditOptions {
     onSaveCells?: (ctx: DinextTableCellChangeContext) => void | false | Promise<void | false>;
     /** @layer edit + ag-grid — onCellEditRequest pipeline */
     readOnlyEdit?: boolean;
+    /**
+     * @layer edit — Sheets-like: plain click starts edit when the cell was already focused.
+     * First click still only focuses/selects. Skips dblclick (`detail !== 1`), modifiers,
+     * checkbox columns, fill-handle, and multi-cell selection.
+     * Default: on when `edit: true` OR any column has `edit` (not `false`).
+     */
+    clickWhenActive?: boolean;
 }
 
 /** @layer navigation */

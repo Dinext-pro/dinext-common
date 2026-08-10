@@ -3,6 +3,13 @@ import {
     computeRangeFromChanges,
     toPublicCellChanges
 } from "./changes.js";
+import {
+    isCheckboxColumnDef,
+    resolveClickWhenActiveEnabled,
+    selectionBlocksClickWhenActive,
+    shouldStartEditOnActiveClick,
+    snapshotFocusedCell
+} from "./click-when-active.js";
 import { getRowSection } from "../section/sections.js";
 import { getRowIdField } from "../shared/utils.js";
 
@@ -19,6 +26,38 @@ function isReadOnlyCellClass(params) {
 }
 
 export const EditMixin = (Base) => class extends Base {
+    initFeatures() {
+        super.initFeatures();
+        this._focusedBeforePointer = null;
+        this._onEditMouseDownCapture = (domEvent) => {
+            if (!this.isClickWhenActiveEnabled()) {
+                this._focusedBeforePointer = null;
+                return;
+            }
+            // Capture before AG Grid moves focus (cellFocused fires before cellMouseDown).
+            this._focusedBeforePointer = snapshotFocusedCell(this.api);
+            if (domEvent?.button === 0) {
+                // Keep snapshot only for this pointer gesture.
+                this._editPointerActive = true;
+            }
+        };
+        this.container?.addEventListener("mousedown", this._onEditMouseDownCapture, true);
+    }
+
+    destroyFeatures() {
+        if (this._onEditMouseDownCapture && this.container) {
+            this.container.removeEventListener("mousedown", this._onEditMouseDownCapture, true);
+        }
+        this._onEditMouseDownCapture = null;
+        this._focusedBeforePointer = null;
+        this._editPointerActive = false;
+        super.destroyFeatures();
+    }
+
+    isClickWhenActiveEnabled() {
+        return resolveClickWhenActiveEnabled(this.options, this.columns);
+    }
+
     /** `_rowId` (tree path) when present, else the plain `rowIdField` value (flat). */
     getEditRowId(row) {
         if (!row) {
@@ -204,6 +243,46 @@ export const EditMixin = (Base) => class extends Base {
     /** Extension seam for later mixins (navigation/selection); no-op for now. */
     handleCellEditingStopped(event) {}
 
+    handleEditCellClicked(event) {
+        if (!this.isClickWhenActiveEnabled() || !this.api) {
+            return;
+        }
+
+        const domEvent = event.event;
+        const column = event.column;
+        const node = event.node;
+        if (!domEvent || !column || !node || node.rowIndex == null) {
+            return;
+        }
+
+        if (this.isSelectionBlockedByRowReorder?.(domEvent)) {
+            return;
+        }
+
+        const colId = column.getColId();
+        const colDef = column.getColDef?.() || event.colDef;
+        const focusedBefore = this._editPointerActive ? this._focusedBeforePointer : null;
+        this._editPointerActive = false;
+
+        if (!shouldStartEditOnActiveClick({
+            focusedBeforePointer: focusedBefore,
+            rowIndex: node.rowIndex,
+            colId,
+            domEvent,
+            isEditing: !!this.api.getEditingCells?.()?.length,
+            isEditable: !!this.isColumnEditableForRow?.(column, node),
+            isCheckboxColumn: isCheckboxColumnDef(colDef),
+            selectionBlocks: this.isSelectionEnabled?.()
+                ? selectionBlocksClickWhenActive(this.cellRanges)
+                : false,
+            targetIsFillHandle: !!domEvent.target?.closest?.(".dinext-table-fill-handle")
+        })) {
+            return;
+        }
+
+        this.api.startEditingCell({ rowIndex: node.rowIndex, colKey: colId });
+    }
+
     handleCellEditRequest(event) {
         const field = event.colDef?.field;
         if (!field || !event.node) {
@@ -234,7 +313,9 @@ export const EditMixin = (Base) => class extends Base {
                 }
             },
             onCellValueChanged: (event) => this.handleCellValueChanged(event),
-            onCellEditingStopped: (event) => this.handleCellEditingStopped(event)
+            onCellEditingStopped: (event) => this.handleCellEditingStopped(event),
+            // Always chained; gated by clickWhenActive / edit availability at click time.
+            onCellClicked: (event) => this.handleEditCellClicked(event)
         };
 
         if (this.options.readOnlyEdit) {
