@@ -31,6 +31,8 @@
     --ag-border-color: color-mix(in srgb, var(--text-color) 10%, transparent);
     --ag-row-border-color: color-mix(in srgb, var(--text-color) 10%, transparent);
     --ag-modal-overlay-background-color: color-mix(in srgb, var(--bg-color, var(--card-bg)) 66%, transparent);
+    /* Quartz default IBM Plex Sans is not shipped; follow Desk Inter stack. */
+    --ag-font-family: var(--font-stack, inherit);
 }
 
 .dinext-table .ag-root-wrapper {
