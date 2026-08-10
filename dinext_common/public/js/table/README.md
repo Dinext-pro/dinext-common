@@ -170,11 +170,12 @@ Domain: что видно в FS — через `shell` + CSS hide siblings, не
 | `onValidateCells` | Sync validate до commit; reject → revert batch |
 | `onSaveCells` | Async persist; `false`/throw → revert |
 | `readOnlyEdit` | AG Grid `readOnlyEdit` pipeline |
+| `clickWhenActive` | Повторный одиночный клик по уже focused → edit (default: как navigation / edit availability) |
 
 `changes[]`: `{ rowId, field, oldValue, newValue, row, section, … }`.  
 `source`: `edit` \| `paste` \| `fillDown` \| `fillHandle` \| `clear` \| `undo` \| `redo`.
 
-→ [cell-changes.md](usage-guides/cell-changes.md).
+→ [cell-changes.md](usage-guides/cell-changes.md), [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md).
 
 ### Interaction
 
