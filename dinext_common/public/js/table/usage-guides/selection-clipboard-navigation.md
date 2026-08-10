@@ -30,6 +30,27 @@ Tree chevron: `stopPropagation` — клавиатура не toggle tree.
 
 ---
 
+## Click → edit (when active)
+
+Sheets-like жест: **первый** клик — focus/select; **повторный одиночный** по уже focused ячейке — `startEditingCell`. Не `singleClickEdit`.
+
+| Key | Default | Описание |
+|-----|---------|----------|
+| `clickWhenActive` | on при `edit` / column `edit` | `false` — выключить; `true` — явно включить |
+
+**Условия старта edit:**
+
+- ячейка была focused **до** этого pointer-жеста (snapshot на capture `mousedown`);
+- `event.detail === 1` (вторая половина dblclick не стартует edit → `onCellDoubleClicked` жив);
+- editable; без Shift/Ctrl/Cmd/Alt;
+- не checkbox/boolean column;
+- не fill-handle;
+- selection: только 1×1 range (multi-cell / multi-range — нет).
+
+Double-click edit (AG Grid default) и Tab→edit остаются.
+
+---
+
 ## Selection (range)
 
 Без Enterprise `rangeSelection`. Scalar-ячейки, видимые flat-строки (свёрнутые tree-потомки не в range).
