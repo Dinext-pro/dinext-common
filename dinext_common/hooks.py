@@ -139,7 +139,7 @@ doctype_js = {"Project" : "public/js/sticky-datatable.js"}
 # ------------
 
 # before_install = "dinext_common.install.before_install"
-# after_install = "dinext_common.install.after_install"
+after_install = "dinext_common.install.after_install"
 
 # Uninstallation
 # ------------
@@ -193,13 +193,11 @@ override_doctype_class = {
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"User": {
+		"after_insert": "dinext_common.setup.workspace.set_default_workspace_for_new_user",
+	},
+}
 
 # Scheduled Tasks
 # ---------------
