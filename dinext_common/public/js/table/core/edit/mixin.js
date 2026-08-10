@@ -7,8 +7,7 @@ import {
     isCheckboxColumnDef,
     resolveClickWhenActiveEnabled,
     selectionBlocksClickWhenActive,
-    shouldStartEditOnActiveClick,
-    snapshotFocusedCell
+    shouldStartEditOnActiveClick
 } from "./click-when-active.js";
 import { getRowSection } from "../section/sections.js";
 import { getRowIdField } from "../shared/utils.js";
@@ -28,29 +27,13 @@ function isReadOnlyCellClass(params) {
 export const EditMixin = (Base) => class extends Base {
     initFeatures() {
         super.initFeatures();
-        this._focusedBeforePointer = null;
-        this._onEditMouseDownCapture = (domEvent) => {
-            if (!this.isClickWhenActiveEnabled()) {
-                this._focusedBeforePointer = null;
-                return;
-            }
-            // Capture before AG Grid moves focus (cellFocused fires before cellMouseDown).
-            this._focusedBeforePointer = snapshotFocusedCell(this.api);
-            if (domEvent?.button === 0) {
-                // Keep snapshot only for this pointer gesture.
-                this._editPointerActive = true;
-            }
-        };
-        this.container?.addEventListener("mousedown", this._onEditMouseDownCapture, true);
+        // Only previous completed click counts as "active". Never seed from
+        // getFocusedCell / cellFocused — AG Grid moves focus before click.
+        this._lastClickedCell = null;
     }
 
     destroyFeatures() {
-        if (this._onEditMouseDownCapture && this.container) {
-            this.container.removeEventListener("mousedown", this._onEditMouseDownCapture, true);
-        }
-        this._onEditMouseDownCapture = null;
-        this._focusedBeforePointer = null;
-        this._editPointerActive = false;
+        this._lastClickedCell = null;
         super.destroyFeatures();
     }
 
@@ -261,13 +244,11 @@ export const EditMixin = (Base) => class extends Base {
 
         const colId = column.getColId();
         const colDef = column.getColDef?.() || event.colDef;
-        const focusedBefore = this._editPointerActive ? this._focusedBeforePointer : null;
-        this._editPointerActive = false;
-
-        if (!shouldStartEditOnActiveClick({
-            focusedBeforePointer: focusedBefore,
-            rowIndex: node.rowIndex,
-            colId,
+        const cellRef = { rowIndex: node.rowIndex, colId };
+        const shouldEdit = shouldStartEditOnActiveClick({
+            committedFocus: this._lastClickedCell,
+            rowIndex: cellRef.rowIndex,
+            colId: cellRef.colId,
             domEvent,
             isEditing: !!this.api.getEditingCells?.()?.length,
             isEditable: !!this.isColumnEditableForRow?.(column, node),
@@ -276,11 +257,15 @@ export const EditMixin = (Base) => class extends Base {
                 ? selectionBlocksClickWhenActive(this.cellRanges)
                 : false,
             targetIsFillHandle: !!domEvent.target?.closest?.(".dinext-table-fill-handle")
-        })) {
+        });
+
+        this._lastClickedCell = cellRef;
+
+        if (!shouldEdit) {
             return;
         }
 
-        this.api.startEditingCell({ rowIndex: node.rowIndex, colKey: colId });
+        this.api.startEditingCell({ rowIndex: cellRef.rowIndex, colKey: cellRef.colId });
     }
 
     handleCellEditRequest(event) {

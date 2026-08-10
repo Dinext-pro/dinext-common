@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+    cellRefFromFocusEvent,
     columnsAllowEdit,
     isCheckboxColumnDef,
     resolveClickWhenActiveEnabled,
+    sameCellRef,
     selectionBlocksClickWhenActive,
     shouldStartEditOnActiveClick,
     snapshotFocusedCell
@@ -32,7 +34,7 @@ test("resolveClickWhenActiveEnabled defaults from edit availability", () => {
     assert.equal(resolveClickWhenActiveEnabled({ edit: true }, []), true);
     assert.equal(resolveClickWhenActiveEnabled({ edit: false }, [{ field: "a", edit: true }]), true);
     assert.equal(resolveClickWhenActiveEnabled({}, [{ field: "a" }]), false);
-    assert.equal(resolveClickWhenActiveEnabled({ clickWhenActive: false, edit: true }, []), false);
+    assert.equal(resolveClickWhenActiveEnabled({ clickWhenActive: false, edit: true }), false);
     assert.equal(resolveClickWhenActiveEnabled({ clickWhenActive: true }, []), true);
 });
 
@@ -58,9 +60,15 @@ test("selectionBlocksClickWhenActive only multi cell / multi range", () => {
     ]), true);
 });
 
-test("shouldStartEditOnActiveClick: second plain click on same focused cell", () => {
+test("sameCellRef", () => {
+    assert.equal(sameCellRef({ rowIndex: 1, colId: "a" }, { rowIndex: 1, colId: "a" }), true);
+    assert.equal(sameCellRef({ rowIndex: 1, colId: "a" }, { rowIndex: 2, colId: "a" }), false);
+    assert.equal(sameCellRef(null, { rowIndex: 1, colId: "a" }), false);
+});
+
+test("shouldStartEditOnActiveClick: second plain click on committed cell", () => {
     assert.equal(shouldStartEditOnActiveClick({
-        focusedBeforePointer: { rowIndex: 2, colId: "hours" },
+        committedFocus: { rowIndex: 2, colId: "hours" },
         rowIndex: 2,
         colId: "hours",
         domEvent: mouse(),
@@ -68,16 +76,16 @@ test("shouldStartEditOnActiveClick: second plain click on same focused cell", ()
     }), true);
 });
 
-test("shouldStartEditOnActiveClick: first click (focus was elsewhere) is select only", () => {
+test("shouldStartEditOnActiveClick: first click (no prior commit) is select only", () => {
     assert.equal(shouldStartEditOnActiveClick({
-        focusedBeforePointer: { rowIndex: 0, colId: "a" },
+        committedFocus: { rowIndex: 0, colId: "a" },
         rowIndex: 2,
         colId: "hours",
         domEvent: mouse(),
         isEditable: true
     }), false);
     assert.equal(shouldStartEditOnActiveClick({
-        focusedBeforePointer: null,
+        committedFocus: null,
         rowIndex: 2,
         colId: "hours",
         domEvent: mouse(),
@@ -87,7 +95,7 @@ test("shouldStartEditOnActiveClick: first click (focus was elsewhere) is select 
 
 test("shouldStartEditOnActiveClick: skips dblclick half, modifiers, checkbox, range", () => {
     const base = {
-        focusedBeforePointer: { rowIndex: 1, colId: "x" },
+        committedFocus: { rowIndex: 1, colId: "x" },
         rowIndex: 1,
         colId: "x",
         isEditable: true
@@ -102,7 +110,7 @@ test("shouldStartEditOnActiveClick: skips dblclick half, modifiers, checkbox, ra
     assert.equal(shouldStartEditOnActiveClick({ ...base, domEvent: mouse(), targetIsFillHandle: true }), false);
 });
 
-test("snapshotFocusedCell reads AG Grid focused cell shape", () => {
+test("snapshotFocusedCell / cellRefFromFocusEvent", () => {
     assert.equal(snapshotFocusedCell(null), null);
     assert.equal(snapshotFocusedCell({ getFocusedCell: () => null }), null);
     assert.deepEqual(snapshotFocusedCell({
@@ -111,4 +119,9 @@ test("snapshotFocusedCell reads AG Grid focused cell shape", () => {
             column: { getColId: () => "role" }
         })
     }), { rowIndex: 3, colId: "role" });
+    assert.deepEqual(cellRefFromFocusEvent({
+        rowIndex: 1,
+        column: { getColId: () => "hours" }
+    }), { rowIndex: 1, colId: "hours" });
+    assert.equal(cellRefFromFocusEvent({ rowIndex: null, column: {} }), null);
 });

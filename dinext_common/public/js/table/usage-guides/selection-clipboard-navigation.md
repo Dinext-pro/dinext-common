@@ -32,7 +32,7 @@ Tree chevron: `stopPropagation` — клавиатура не toggle tree.
 
 ## Click → edit (when active)
 
-Sheets-like жест: **первый** клик — focus/select; **повторный одиночный** по уже focused ячейке — `startEditingCell`. Не `singleClickEdit`.
+Sheets-like жест: **первый** клик — focus/select; **повторный одиночный по той же ячейке** — `startEditingCell`. Не `singleClickEdit`.
 
 | Key | Default | Описание |
 |-----|---------|----------|
@@ -40,7 +40,7 @@ Sheets-like жест: **первый** клик — focus/select; **повтор
 
 **Условия старта edit:**
 
-- ячейка была focused **до** этого pointer-жеста (snapshot на capture `mousedown`);
+- ячейка = `_lastClickedCell` (предыдущий завершённый click). Focus/keyboard не считаются — AG Grid двигает focus до click;
 - `event.detail === 1` (вторая половина dblclick не стартует edit → `onCellDoubleClicked` жив);
 - editable; без Shift/Ctrl/Cmd/Alt;
 - не checkbox/boolean column;
