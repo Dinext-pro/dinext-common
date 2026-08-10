@@ -263,6 +263,10 @@ export interface DinextTableThemeOptions {
         borderRadius?: number | string;
         /** Overrides wrapper radius; falls back to `borderRadius` / default `4` */
         wrapperBorderRadius?: number | string;
+        /**
+         * Text font family. Default: Desk `--font-stack` (Inter), not Quartz IBM Plex Sans.
+         */
+        fontFamily?: string;
     };
 }
 
