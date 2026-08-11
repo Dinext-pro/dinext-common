@@ -139,7 +139,8 @@ doctype_js = {"Project" : "public/js/sticky-datatable.js"}
 # ------------
 
 # before_install = "dinext_common.install.before_install"
-# after_install = "dinext_common.install.after_install"
+after_install = "dinext_common.install.after_install"
+after_migrate = ["dinext_common.changelog_feed.on_after_migrate"]
 
 # Uninstallation
 # ------------
@@ -204,23 +205,14 @@ override_doctype_class = {
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"dinext_common.tasks.all"
-# 	],
-# 	"daily": [
-# 		"dinext_common.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"dinext_common.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"dinext_common.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"dinext_common.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"daily": [
+		"dinext_common.changelog_feed.sync_dinext_news_feed",
+	],
+}
+
+# What's New consumer (publisher lives on docs / configured site)
+get_changelog_feed = "dinext_common.changelog_feed.get_feed"
 
 # Testing
 # -------
