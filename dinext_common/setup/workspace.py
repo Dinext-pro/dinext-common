@@ -20,145 +20,6 @@ WORKSPACE_HUB_BLOCKS = {
 	SETTINGS_WORKSPACE: (SETTINGS_HUB_BLOCK, "dinext-settings-hub"),
 }
 
-DEFAULT_DINEXT_HUB_ITEMS = (
-	(
-		"My Work",
-		"Workspace",
-		"Мои задачи",
-		"My Tasks",
-		"Personal dashboard for your Issues and Tasks: assigned, overdue, and paused items, milestone quick lists, and shortcuts to create new requests.",
-		"assign",
-	),
-	(
-		"My Work",
-		"Workspace",
-		"Моя доска",
-		"My Board",
-		"Personal Kanban workspace with the My Kanban board for tracking your work visually.",
-		"kanban",
-	),
-	(
-		"My Work",
-		"Workspace",
-		"Мои Таймшиты",
-		"My Timesheets",
-		"Personal time-tracking hub: your timesheets, leave and expense requests, pending approvals, utilization reports, and related settings.",
-		"hr",
-	),
-	(
-		"Project Management",
-		"Workspace",
-		"Мои проекты",
-		"My Projects",
-		"Portfolio overview, project directories, status breakdowns, workload and budget reports, and cost-center allocation links.",
-		"project",
-	),
-	(
-		"Project Management",
-		"Workspace",
-		"Аналитика",
-		"Analytics",
-		"Project and company analytics: revenue, expenses, P&L, revenue by client, and shortcuts to Sales Analytics and Profitability Analysis.",
-		"chart",
-	),
-	(
-		"Project Management",
-		"Workspace",
-		"Скоринг проектов",
-		"Project Scoring",
-		"Project evaluation hub: scorecards in progress, review or approval, gate failures, scoring profiles, and portfolio reporting.",
-		"quality",
-	),
-	(
-		"Project Management",
-		"Workspace",
-		"Фин. Контроль",
-		"Financial Control",
-		"Project financial control: cost levels, cost-center allocation approvals, and time-and-material rate reporting.",
-		"money-coins-1",
-	),
-	(
-		"Project Management",
-		"Workspace",
-		"Разработки",
-		"Development",
-		"GitLab-linked development operations: task and issue status, discrepancies, pipeline failures, traceability exceptions, releases, and artifacts.",
-		"stock",
-	),
-	(
-		"Project Management",
-		"DocType",
-		"Project Portfolio",
-		"Project Portfolio",
-		"Groups related projects into portfolios for portfolio-level tracking and scoring.",
-		"organization",
-	),
-	(
-		"Scope & Governance",
-		"DocType",
-		"Project Scope",
-		"Project Scope",
-		"Defines project boundaries through scope items, types, descriptions, and linked records.",
-		"list",
-	),
-	(
-		"Scope & Governance",
-		"DocType",
-		"Project Deliverable",
-		"Project Deliverable",
-		"Tracks deliverables by type, category, status, progress, related scope, requirements, and responsible parties.",
-		"file",
-	),
-	(
-		"Scope & Governance",
-		"DocType",
-		"Project Change Request",
-		"Project Change Request",
-		"Manages submittable change requests with initiator, justification, alternatives, and linked project objects.",
-		"change",
-	),
-	(
-		"Scope & Governance",
-		"DocType",
-		"Project Risk",
-		"Project Risk",
-		"Tracks risk category, impact, probability, response strategy, ownership, and financial reserves.",
-		"solid-warning",
-	),
-	(
-		"Scope & Governance",
-		"DocType",
-		"Project Governance Model",
-		"Project Governance Model",
-		"Defines lifecycle stages, entry and exit criteria, expected duration, and checkpoint templates.",
-		"review",
-	),
-	(
-		"Scope & Governance",
-		"DocType",
-		"Stage Gate Template",
-		"Stage Gate Template",
-		"Reusable stage-gate checkpoint templates with mandatory checklist items and evidence requirements.",
-		"milestone",
-	),
-	(
-		"Scope & Governance",
-		"DocType",
-		"Project Stage",
-		"Project Stage",
-		"Master list of lifecycle stages with code, sequence, description, and gate requirement.",
-		"gantt",
-	),
-	(
-		"Scope & Governance",
-		"DocType",
-		"User Delegate",
-		"User Delegate",
-		"Temporarily delegates a user's duties to another user for a defined date range.",
-		"users",
-	),
-)
-
 
 def configure_workspace_menu() -> None:
 	"""Hide public non-Dinext workspaces and build the Dinext menu."""
@@ -322,43 +183,12 @@ def ensure_settings_workspace_roles() -> None:
 
 
 def ensure_default_dinext_hub_settings() -> None:
-	"""Seed the singleton once and backfill missing default icons only."""
+	"""Ensure the Settings Single exists; domain cards are registered by owning apps."""
 	if not frappe.db.exists("DocType", "Dinext Workspace Settings"):
 		return
 
-	settings = frappe.get_single("Dinext Workspace Settings")
-	if not settings.items:
-		for section, element_type, target, label, description, icon in DEFAULT_DINEXT_HUB_ITEMS:
-			settings.append(
-				"items",
-				{
-					"section": section,
-					"element_type": element_type,
-					"target": target,
-					"label": label,
-					"description": description,
-					"icon": icon,
-					"enabled": 1,
-				},
-			)
-		settings.save(ignore_permissions=True)
-		return
-
-	default_icons = {
-		(section, element_type, target): icon
-		for section, element_type, target, _label, _description, icon in DEFAULT_DINEXT_HUB_ITEMS
-	}
-	changed = False
-	for item in settings.items:
-		if item.icon:
-			continue
-		icon = default_icons.get((item.section, item.element_type, item.target))
-		if icon:
-			item.icon = icon
-			changed = True
-
-	if changed:
-		settings.save(ignore_permissions=True)
+	# Touch the singleton so it exists after install without seeding domain cards.
+	frappe.get_single("Dinext Workspace Settings")
 
 
 def hide_non_dinext_workspaces() -> None:
@@ -427,9 +257,6 @@ def nest_settings_children() -> None:
 
 def set_default_workspace_for_new_user(doc, method=None) -> None:
 	"""Assign Dinext as default workspace for newly created users."""
-	if doc.name in ("Administrator", "Guest"):
-		return
-
 	if doc.default_workspace:
 		return
 

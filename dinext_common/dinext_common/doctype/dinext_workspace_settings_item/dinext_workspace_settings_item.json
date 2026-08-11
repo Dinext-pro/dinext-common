@@ -13,7 +13,8 @@
   "icon",
   "description",
   "required_role",
-  "enabled"
+  "enabled",
+  "source_app"
  ],
  "fields": [
   {
@@ -69,6 +70,12 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Enabled"
+  },
+  {
+   "fieldname": "source_app",
+   "fieldtype": "Data",
+   "label": "Source App",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,

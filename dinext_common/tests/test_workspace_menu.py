@@ -8,8 +8,8 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import random_string
 
+from dinext_common.setup.hub_catalog import register_hub_items
 from dinext_common.setup.workspace import (
-	DEFAULT_DINEXT_HUB_ITEMS,
 	DINEXT_HUB_BLOCK,
 	DINEXT_WORKSPACE,
 	SETTINGS_CHILDREN,
@@ -26,13 +26,24 @@ from dinext_common.workspace_hub import (
 	get_settings_hub,
 )
 
+SAMPLE_HUB_ITEM = {
+	"section": "My Work",
+	"element_type": "Workspace",
+	"target": "Мои задачи",
+	"label": "My Tasks",
+	"description": (
+		"Personal dashboard for your Issues and Tasks: assigned, overdue, and paused items, "
+		"milestone quick lists, and shortcuts to create new requests."
+	),
+	"icon": "assign",
+	"enabled": 1,
+}
 
-def _reseed_default_hub_settings():
-	"""Clear singleton hub rows and seed the canonical English catalog."""
+
+def _clear_hub_settings():
 	settings = frappe.get_single("Dinext Workspace Settings")
 	settings.items = []
 	settings.save(ignore_permissions=True)
-	ensure_default_dinext_hub_settings()
 	settings.reload()
 	return settings
 
@@ -230,68 +241,53 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		cards = [card for section in get_dinext_hub()["sections"] for card in section["items"]]
 		self.assertNotIn("Unavailable target", {card["label"] for card in cards})
 
-	def test_fresh_seed_uses_english_canonical_defaults(self):
+	def test_common_does_not_seed_domain_hub_cards(self):
 		configure_workspace_menu()
-		settings = _reseed_default_hub_settings()
+		settings = _clear_hub_settings()
+		ensure_default_dinext_hub_settings()
+		settings.reload()
+		self.assertEqual(len(settings.items), 0)
 
-		self.assertEqual(len(settings.items), len(DEFAULT_DINEXT_HUB_ITEMS))
-		seeded = {
-			(row.section, row.element_type, row.target, row.label, row.description or "", row.icon or "")
-			for row in settings.items
-		}
-		expected = {
-			(section, element_type, target, label, description, icon)
-			for section, element_type, target, label, description, icon in DEFAULT_DINEXT_HUB_ITEMS
-		}
-		self.assertEqual(seeded, expected)
-
-		my_work_labels = [row.label for row in settings.items if row.section == "My Work"]
-		self.assertEqual(my_work_labels, ["My Tasks", "My Board", "My Timesheets"])
-		self.assertNotIn(
-			"My Projects",
-			[row.label for row in settings.items if row.section == "My Work"],
-		)
-		self.assertEqual(
-			sum(1 for row in settings.items if row.label == "My Projects"),
-			1,
-		)
-		self.assertTrue(
-			any(
-				row.section == "Project Management" and row.label == "My Projects"
-				for row in settings.items
-			)
-		)
-
-	def test_default_hub_icons_are_backfilled(self):
+	def test_register_hub_items_appends_and_is_idempotent(self):
 		configure_workspace_menu()
-		settings = _reseed_default_hub_settings()
-		item = next(
-			row
-			for row in settings.items
-			if row.section == "My Work" and row.target == "Мои задачи" and row.element_type == "Workspace"
-		)
-		item.icon = ""
+		_clear_hub_settings()
+
+		register_hub_items([SAMPLE_HUB_ITEM], source_app="dinext_projects")
+		settings = frappe.get_single("Dinext Workspace Settings")
+		self.assertEqual(len(settings.items), 1)
+		row = settings.items[0]
+		self.assertEqual(row.label, "My Tasks")
+		self.assertEqual(row.icon, "assign")
+		self.assertEqual(row.source_app, "dinext_projects")
+
+		row.label = "Admin override"
+		row.icon = ""
 		settings.save(ignore_permissions=True)
 
-		configure_workspace_menu()
-		settings.reload()
-		item = next(
-			row
-			for row in settings.items
-			if row.section == "My Work" and row.target == "Мои задачи" and row.element_type == "Workspace"
+		register_hub_items(
+			[{**SAMPLE_HUB_ITEM, "label": "Should not overwrite", "icon": "assign"}],
+			source_app="dinext_projects",
 		)
-		self.assertEqual(item.icon, "assign")
+		settings.reload()
+		self.assertEqual(len(settings.items), 1)
+		self.assertEqual(settings.items[0].label, "Admin override")
+		self.assertEqual(settings.items[0].icon, "assign")
 
 	def test_get_dinext_hub_localizes_english_and_russian(self):
+		from unittest.mock import patch
+
 		from frappe.translate import get_full_dict
 
 		configure_workspace_menu()
-		settings = _reseed_default_hub_settings()
-		ru_messages = get_full_dict("ru")
-		self.assertEqual(ru_messages.get("My Tasks"), "Мои задачи")
-		self.assertEqual(ru_messages.get("My Work"), "Моя работа")
+		_clear_hub_settings()
 
-		# Use an always-available Workspace target so localization is not skipped by access filters.
+		ru_messages = get_full_dict("ru")
+		self.assertEqual(
+			ru_messages.get("Manage users, roles, and permissions."),
+			"Управление пользователями, ролями и правами доступа.",
+		)
+
+		settings = frappe.get_single("Dinext Workspace Settings")
 		item = settings.append(
 			"items",
 			{
@@ -323,8 +319,24 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 			en_cards["My Tasks"]["description"].startswith("Personal dashboard for your Issues and Tasks")
 		)
 
+		translations = {
+			"My Work": "Моя работа",
+			"My Tasks": "Мои задачи",
+			(
+				"Personal dashboard for your Issues and Tasks: assigned, overdue, and paused items, "
+				"milestone quick lists, and shortcuts to create new requests."
+			): (
+				"Персональная панель запросов и задач: назначенные, просроченные и приостановленные, "
+				"быстрые списки по вехам и ярлыки создания новых запросов."
+			),
+		}
+
+		def fake_translate(msg, *args, **kwargs):
+			return translations.get(msg, msg)
+
 		frappe.local.lang = "ru"
-		ru_sections = get_dinext_hub()["sections"]
+		with patch("dinext_common.workspace_hub._", side_effect=fake_translate):
+			ru_sections = get_dinext_hub()["sections"]
 		ru_section_labels = {section["label"] for section in ru_sections}
 		ru_cards = {card["label"]: card for section in ru_sections for card in section["items"]}
 		self.assertIn("Моя работа", ru_section_labels)
