@@ -36,11 +36,18 @@
 		padding-left: 0 !important;
 	}
 
-	body.dinext-ws-sidebar-collapsed
+	body.dinext-ws-sidebar-collapsed:not([data-route^="Workspaces"])
 		.layout-main:has(.desk-sidebar)
 		.layout-main-section {
 		margin-left: 0;
 		padding-left: 0;
+	}
+
+	body.dinext-ws-sidebar-collapsed[data-route^="Workspaces"]
+		.layout-main:has(.desk-sidebar)
+		.layout-main-section {
+		margin-left: 0;
+		padding-left: var(--dinext-ws-rail-pad-left, 15px);
 	}
 
 	body.dinext-ws-sidebar-collapsed .layout-side-section.dinext-ws-rail-section {
