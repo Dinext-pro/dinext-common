@@ -46,6 +46,12 @@ fixtures = [
         "filters": [
             ["module", "in", ["Dinext Common"]]
         ]
+    },
+    {
+        "doctype": "Custom HTML Block",
+        "filters": [
+            ["name", "in", ["Dinext Hub", "Dinext Settings Hub"]]
+        ]
     }
 ]
 ''' '''
