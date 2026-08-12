@@ -306,3 +306,31 @@ export function findSourceRowInData(sourceRows, rowId, options = {}) {
 
     return row;
 }
+
+/**
+ * DFS by business id (`rowIdField`), not tree path.
+ * Use when server side-effects return domain ids without `_rowId` path.
+ */
+export function findSourceRowByBusinessId(sourceRows, businessId, options = {}) {
+    if (businessId == null || businessId === "") {
+        return null;
+    }
+    const id = String(businessId);
+    const rowIdField = getRowIdField(options);
+    const childrenField = getChildrenField(options);
+
+    const walk = (rows) => {
+        for (const row of rows || []) {
+            if (String(row?.[rowIdField]) === id) {
+                return row;
+            }
+            const nested = walk(row?.[childrenField]);
+            if (nested) {
+                return nested;
+            }
+        }
+        return null;
+    };
+
+    return walk(sourceRows);
+}
