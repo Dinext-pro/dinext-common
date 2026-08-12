@@ -46,13 +46,19 @@ fixtures = [
         "filters": [
             ["module", "in", ["Dinext Common"]]
         ]
+    },
+    {
+        "doctype": "Custom HTML Block",
+        "filters": [
+            ["name", "in", ["Dinext Hub", "Dinext Settings Hub"]]
+        ]
     }
 ]
 ''' '''
 # Apps
 # ------------------
 
-# required_apps = []
+required_apps = ["erpnext"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -194,13 +200,11 @@ override_doctype_class = {
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"User": {
+		"after_insert": "dinext_common.setup.workspace.set_default_workspace_for_new_user",
+	},
+}
 
 # Scheduled Tasks
 # ---------------
