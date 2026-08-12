@@ -558,6 +558,13 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertIn(".dinext-workspace-hub__type-badge", dinext_style)
 		self.assertIn(".dinext-workspace-hub__create-buttons", dinext_style)
 		self.assertIn(".dinext-workspace-hub__list-title-icon", dinext_style)
+		self.assertIn("is_font_icon", dinext_script)
+		self.assertIn("fa ", dinext_script)
+		self.assertIn("aria-label", dinext_script)
+		self.assertNotIn("label.className = 'dinext-workspace-hub__type-label'", dinext_script)
+		self.assertIn(".dinext-workspace-hub__type-icon .fa", dinext_style)
+		self.assertIn(".dinext-workspace-hub__type-icon .octicon", dinext_style)
+		self.assertNotIn("max-width: 5.5rem", dinext_style)
 
 	def test_register_sections_and_doctype_items_merge(self):
 		configure_workspace_menu()
@@ -699,6 +706,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertEqual(row["doctype"], "Note")
 		self.assertIn("type_label", row)
 		self.assertIn("icon", row)
+		self.assertEqual(row["icon"], frappe.get_meta("Note").icon)
 		self.assertIn("route", row)
 		self.assertIn("modified", row)
 
