@@ -10,6 +10,44 @@ SETTINGS_CHILDREN = (
 	("Tools", "Import, export, automation, notifications, and data maintenance.", "tool"),
 	("Integrations", "External services, authentication, and integration settings.", "integration"),
 	("Build", "Configure DocTypes, reports, scripts, print formats, and system logs.", "setting-gear"),
+	("Website", "Website pages, portal, themes, and public site settings.", "website"),
+)
+SETTINGS_CONFIGURATION = (
+	(
+		"System Settings",
+		"Site-wide language, date formats, session, and system flags.",
+		"setting",
+	),
+	(
+		"Security Settings",
+		"Login, password policy, and two-factor authentication.",
+		"lock",
+	),
+	(
+		"Session Default Settings",
+		"Default values applied to new Desk sessions.",
+		"users",
+	),
+	(
+		"Document Naming Settings",
+		"Naming series and document name generation.",
+		"rename",
+	),
+	(
+		"Log Settings",
+		"Retention and cleanup for system logs.",
+		"file",
+	),
+	(
+		"Global Search Settings",
+		"Which DocTypes appear in global search.",
+		"search",
+	),
+	(
+		"Domain Settings",
+		"Active domains that enable domain-specific features.",
+		"organization",
+	),
 )
 SETTINGS_ROLES = {"System Manager", "Workspace Manager"}
 
@@ -55,16 +93,49 @@ def get_settings_hub() -> dict:
 	if not SETTINGS_ROLES.intersection(frappe.get_roles()):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
-	items = [
-		{
-			"label": _(label),
-			"description": _(description),
-			"icon": icon,
-			"route": _get_workspace_route(label),
-		}
-		for label, description, icon in SETTINGS_CHILDREN
-	]
-	return {"items": [item for item in items if item["route"]]}
+	workspace_items = []
+	for label, description, icon in SETTINGS_CHILDREN:
+		route = _get_workspace_route(label)
+		if not route:
+			continue
+		workspace_items.append(
+			{
+				"label": _(label),
+				"description": _(description),
+				"icon": icon,
+				"route": route,
+			}
+		)
+
+	configuration_items = []
+	for doctype, description, icon in SETTINGS_CONFIGURATION:
+		route = _get_configuration_doctype_route(doctype)
+		if not route:
+			continue
+		configuration_items.append(
+			{
+				"label": _(doctype),
+				"description": _(description),
+				"icon": icon,
+				"route": route,
+			}
+		)
+
+	sections = []
+	if workspace_items:
+		sections.append({"label": _("Workspaces"), "items": workspace_items})
+	if configuration_items:
+		sections.append({"label": _("Configuration"), "items": configuration_items})
+	return {"sections": sections}
+
+
+def _get_configuration_doctype_route(doctype: str) -> str | None:
+	"""Desk route for a settings Single when installed and readable."""
+	if not frappe.db.exists("DocType", doctype):
+		return None
+	if not frappe.has_permission(doctype, "read"):
+		return None
+	return _desk_route(doctype)
 
 
 def _has_required_role(required_role: str | None) -> bool:
