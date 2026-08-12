@@ -20,6 +20,8 @@ from dinext_common.setup.workspace import (
 	set_default_workspace_for_new_user,
 )
 from dinext_common.workspace_hub import (
+	SETTINGS_CHILDREN as HUB_SETTINGS_CHILDREN,
+	SETTINGS_CONFIGURATION,
 	_get_route,
 	_get_safe_url,
 	get_dinext_hub,
@@ -347,25 +349,56 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 
 	def test_settings_hub_returns_children_and_rejects_non_admin(self):
 		configure_workspace_menu()
-		items = get_settings_hub()["items"]
-		self.assertEqual({item["label"] for item in items}, set(SETTINGS_CHILDREN))
+		payload = get_settings_hub()
+		sections = {section["label"]: section["items"] for section in payload["sections"]}
+		self.assertIn("Workspaces", sections)
+		self.assertIn("Configuration", sections)
+
+		workspace_items = sections["Workspaces"]
+		expected_workspace_labels = {label for label, _description, _icon in HUB_SETTINGS_CHILDREN}
+		self.assertEqual({item["label"] for item in workspace_items}, expected_workspace_labels)
 		self.assertEqual(
-			{item["label"]: item["icon"] for item in items},
-			{
-				"Users": "users",
-				"Tools": "tool",
-				"Integrations": "integration",
-				"Build": "setting-gear",
-			},
+			{item["label"]: item["icon"] for item in workspace_items},
+			{label: icon for label, _description, icon in HUB_SETTINGS_CHILDREN},
 		)
-		for item in items:
+		for item in workspace_items:
 			self.assertTrue(item["description"])
+
+		configuration_items = sections["Configuration"]
+		expected_config = {doctype for doctype, _description, _icon in SETTINGS_CONFIGURATION}
+		actual_config = {item["label"] for item in configuration_items}
+		self.assertTrue(actual_config)
+		self.assertTrue(actual_config.issubset(expected_config))
+		for item in configuration_items:
+			self.assertTrue(item["description"])
+			self.assertTrue(item["route"])
+			self.assertIn(item["label"], expected_config)
 
 		current_user = frappe.session.user
 		frappe.set_user("Guest")
 		self.addCleanup(lambda: frappe.set_user(current_user))
 		with self.assertRaises(frappe.PermissionError):
 			get_settings_hub()
+
+	def test_settings_hub_omits_missing_configuration_doctype(self):
+		from unittest.mock import patch
+
+		configure_workspace_menu()
+		with patch(
+			"dinext_common.workspace_hub._get_configuration_doctype_route",
+			side_effect=lambda doctype: None
+			if doctype == "Domain Settings"
+			else f"/app/{frappe.scrub(doctype).replace('_', '-')}",
+		):
+			payload = get_settings_hub()
+		labels = {
+			item["label"]
+			for section in payload["sections"]
+			if section["label"] == "Configuration"
+			for item in section["items"]
+		}
+		self.assertNotIn("Domain Settings", labels)
+		self.assertIn("System Settings", labels)
 
 	def test_hub_attachment_preserves_existing_workspace_content(self):
 		configure_workspace_menu()
