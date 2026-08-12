@@ -5,6 +5,13 @@ from urllib.parse import urlparse
 import frappe
 from frappe import _
 
+from dinext_common.setup.hub_catalog import DEFAULT_SECTION_LIST_LIMIT
+from dinext_common.workspace_hub_lists import (
+	build_section_personal_lists,
+	get_section_limits,
+	merge_doctype_contributions,
+)
+
 SETTINGS_CHILDREN = (
 	("Users", "Manage users, roles, and permissions.", "users"),
 	("Tools", "Import, export, automation, notifications, and data maintenance.", "tool"),
@@ -54,13 +61,13 @@ SETTINGS_ROLES = {"System Manager", "Workspace Manager"}
 
 @frappe.whitelist()
 def get_dinext_hub() -> dict:
-	"""Return the current user's configured and accessible Dinext hub cards."""
+	"""Return the current user's configured and accessible Dinext hub cards and lists."""
 	if not frappe.db.exists("DocType", "Dinext Workspace Settings"):
 		return {"sections": []}
 
 	# Singleton write is admin-only; hub projection is readable for all Desk users.
 	settings = frappe.get_cached_doc("Dinext Workspace Settings")
-	sections = {}
+	section_cards: dict[str, list] = {}
 	for item in settings.items:
 		if not item.enabled or not _has_required_role(item.required_role):
 			continue
@@ -69,7 +76,7 @@ def get_dinext_hub() -> dict:
 		if not route:
 			continue
 
-		sections.setdefault(item.section, []).append(
+		section_cards.setdefault(item.section, []).append(
 			{
 				"label": _(item.label),
 				"description": _(item.description or ""),
@@ -78,13 +85,59 @@ def get_dinext_hub() -> dict:
 			}
 		)
 
-	return {
-		"sections": [
-			{"label": _(section), "items": items}
-			for section, items in sections.items()
-			if items
-		]
-	}
+	section_limits = get_section_limits(settings)
+	configs_by_section: dict[str, list] = {}
+	for (_section, _doctype), config in merge_doctype_contributions(settings).items():
+		configs_by_section.setdefault(config["section"], []).append(config)
+
+	section_lists: dict[str, dict] = {}
+	for section_name, configs in configs_by_section.items():
+		limit = section_limits.get(section_name, DEFAULT_SECTION_LIST_LIMIT)
+		lists = build_section_personal_lists(section_name, configs, limit=limit)
+		if lists:
+			section_lists[section_name] = lists
+
+	section_names = list(dict.fromkeys([*section_cards.keys(), *section_lists.keys()]))
+	sections = []
+	for section in section_names:
+		cards = section_cards.get(section) or []
+		lists = section_lists.get(section)
+		if not cards and not lists:
+			continue
+		sections.append(
+			{
+				"label": _(section),
+				"items": cards,
+				"lists": lists,
+				"list_limit": section_limits.get(section, DEFAULT_SECTION_LIST_LIMIT),
+			}
+		)
+
+	return {"sections": sections}
+
+
+@frappe.whitelist()
+def get_document_titles(doctype: str, names: list | str | None = None) -> list[dict]:
+	"""Permission-aware title enrichment for client-side recent lists."""
+	if isinstance(names, str):
+		names = frappe.parse_json(names)
+	names = names or []
+	if not doctype or not frappe.db.exists("DocType", doctype):
+		return []
+	if not frappe.has_permission(doctype, "read"):
+		return []
+
+	from dinext_common.workspace_hub_lists import format_records
+
+	# Preserve caller order
+	unique_names = []
+	seen = set()
+	for name in names:
+		if name and name not in seen:
+			seen.add(name)
+			unique_names.append(name)
+
+	return format_records(doctype, unique_names, limit=len(unique_names) or 1)
 
 
 @frappe.whitelist()
