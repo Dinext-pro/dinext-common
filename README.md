@@ -2,12 +2,14 @@
 
 ## Обзор
 
-Dinext Common — общее Frappe-приложение платформы Dinext. Оно централизует сквозной брендинг, настройки сайта, переиспользуемое поведение Desk, подключаемые frontend-библиотеки и настраиваемую подсистему очистки данных, которую можно установить на несколько сайтов вместе с другими приложениями Dinext или ERPNext.
+Dinext Common — общее Frappe-приложение платформы Dinext. Оно централизует сквозной брендинг, настройки сайта, переиспользуемое поведение Desk, настраиваемые workspace-хабы, ленту новостей What's New, подключаемые frontend-библиотеки и подсистему очистки данных, которую можно установить на несколько сайтов вместе с другими приложениями Dinext или ERPNext.
 
-На практике приложение делает пять вещей:
+На практике приложение делает следующее:
 
-- применяет общую конфигурацию сайта через fixtures: `Website Settings`, `Navbar Settings`, `Web Page`, `Data Cleanup Rules`, `Server Script`
+- применяет общую конфигурацию сайта через fixtures: `Website Settings`, `Navbar Settings`, `Web Page`, `Data Cleanup Rules`, `Server Script`, `Custom HTML Block`
 - подключает общие Desk-ресурсы из `hooks.py`
+- курирует меню workspace: корневые `Dinext` и `Settings`, хабы с карточками и персональными списками
+- публикует и синхронизирует ленту `Dinext News Feed` для Desk What's New
 - предоставляет стандартную тему сайта и брендинговые ресурсы Dinext
 - поставляет переиспользуемые JS/CSS-библиотеки, которые другие приложения могут подгружать по требованию
 - даёт инструмент Desk для предварительного анализа fixtures по всем установленным приложениям
@@ -15,7 +17,16 @@ Dinext Common — общее Frappe-приложение платформы Dine
 ## Возможности
 
 - Общий брендинг Dinext для Desk и сайта через `app_logo_url`, `app_icon` и `website_context` в `dinext_common/hooks.py`
-- Настройка сайта через fixtures: `Website Settings`, `Navbar Settings`, `Data Cleanup Rules`, контент главной страницы Dinext, включённые записи `Server Script` и записи `Custom Field` модуля `Dinext Common`
+- Настройка сайта через fixtures: `Website Settings`, `Navbar Settings`, `Data Cleanup Rules`, контент главной страницы Dinext, включённые записи `Server Script`, `Client Script`, `Custom Field` модуля `Dinext Common`, а также `Custom HTML Block` (`Dinext Hub`, `Dinext Settings Hub`)
+- Курирование Desk workspace:
+  - публичные корневые workspace `Dinext` и `Settings`
+  - скрытие public-workspace, не принадлежащих модулям `dinext_*`
+  - вложение `Users`, `Tools`, `Integrations`, `Build`, `Website` под `Settings`
+  - назначение `Dinext` как `default_workspace` новым пользователям
+- **Dinext Hub** на workspace `Dinext`: настраиваемые навигационные карточки и компактные персональные списки DocType по секциям (quick create, recently opened, assigned, liked, attention)
+- **Settings Hub** на workspace `Settings` (роли `System Manager` / `Workspace Manager`): дочерние workspace и карточки Configuration
+- Регистрация карточек, лимитов секций и DocType-вкладов из domain-приложений через `dinext_common.setup.hub_catalog`
+- **Dinext News Feed**: DocType-публикатор, guest API и ежедневная синхронизация local `Changelog Feed` на consumer-сайтах; стандартная еженедельная загрузка changelog Frappe отключается
 - Глобальные улучшения Desk через `app_include_js` / `app_include_css`:
   - `breadcrumbs_update.js`
   - `listview_resize.js`
@@ -55,6 +66,13 @@ bench --site your-site.local install-app dinext_common
 bench --site your-site.local migrate
 bench build --app dinext_common
 ```
+
+После установки (`after_install`) приложение дополнительно:
+
+- вызывает `configure_workspace_menu()` — создаёт/обновляет корни `Dinext` и `Settings`, вкладывает дочерние Settings-workspace, подключает Custom HTML Blocks хабов, мигрирует legacy `Настройки` → `Settings`
+- запускает `setup_dinext_news_feed()` — отключает встроенный Frappe changelog fetch и синхронизирует What's New
+
+После каждой миграции (`after_migrate`) повторно вызывается только `setup_dinext_news_feed()`. При создании нового пользователя без `default_workspace` hook `User.after_insert` назначает workspace `Dinext`.
 
 Если в вашем развёртывании ещё нет брендинговых файлов Dinext, убедитесь, что перед `bench build` они лежат в `dinext_common/public/images/`:
 
@@ -99,9 +117,125 @@ bench build --app dinext_common
 
 Временное открытие по hover — fixed-overlay поверх рабочей области; ширина основного экрана не меняется. Полное разворачивание по кнопке toggle (только на Workspaces) по-прежнему занимает колонку в layout.
 
-На List/Form/Report и других экранах Desk свёрнутый workspace rail монтируется в `.layout-side-section` текущей страницы (при необходимости колонка создаётся). List/form sidebar остаётся рядом и не превращается в icon-rail; кнопка toggle страницы управляет ими, не workspace-меню.
+На Workspaces при свёрнутом sidebar к основной колонке добавляется небольшой left padding (`--dinext-ws-rail-pad-left`), чтобы контент не прилипал к icon-rail. На List/Form/Report и других экранах Desk свёрнутый workspace rail монтируется в `.layout-side-section` текущей страницы (при необходимости колонка создаётся). List/form sidebar остаётся рядом и не превращается в icon-rail; кнопка toggle страницы управляет ими, не workspace-меню.
 
 На мобильной ширине остаётся стандартный overlay Frappe.
+
+### Dinext Hub и Settings Hub
+
+На workspace `Dinext` отображается блок **Dinext Hub**, на workspace `Settings` — **Dinext Settings Hub** (Custom HTML Block fixtures; блоки подключаются при `configure_workspace_menu()` на install и подтягиваются fixtures при migrate).
+
+Администраторы настраивают содержимое хаба через Single DocType **Dinext Workspace Settings** (запись: роли `System Manager` / `Workspace Manager`; чтение хаба — для Desk User):
+
+| Таблица | Назначение |
+|--------|------------|
+| `items` (`Dinext Workspace Settings Item`) | Навигационные карточки: секция, тип (`Workspace` / `DocType` / `Report` / `Page` / `URL`), target, label, description, icon, enabled, optional `required_role` |
+| `sections` (`Dinext Workspace Settings Section`) | Лимит элементов персональных списков на секцию (`list_limit`, по умолчанию **5**) |
+| `doctype_items` (`Dinext Workspace Settings DocType`) | Вклады DocType в секцию: quick create, recently opened, assigned, liked, attention + JSON `attention_filter` |
+
+**Dinext Hub** (`dinext_common.workspace_hub.get_dinext_hub`):
+
+- возвращает только включённые карточки, доступные текущему пользователю по роли и правам на target
+- под каждой секцией может показывать компактные персональные списки:
+  - **Quick Create** — если есть право `create`
+  - **Recently Opened** — из `Route History` текущего пользователя
+  - **Assigned** — открытые `ToDo`, назначенные пользователю
+  - **Liked** — документы с `_liked_by`
+  - **Attention** — `frappe.get_list` по JSON-фильтрам (пустой фильтр = все доступные документы в лимите)
+
+**Settings Hub** (`dinext_common.workspace_hub.get_settings_hub`) доступен только ролям `System Manager` и `Workspace Manager`:
+
+- секция Workspaces: `Users`, `Tools`, `Integrations`, `Build`, `Website`
+- секция Configuration: `System Settings`, `Security Settings`, `Session Default Settings`, `Document Naming Settings`, `Log Settings`, `Global Search Settings`, `Domain Settings` (только если DocType установлен и читаем)
+
+Whitelisted методы хаба:
+
+- `dinext_common.workspace_hub.get_dinext_hub`
+- `dinext_common.workspace_hub.get_settings_hub`
+- `dinext_common.workspace_hub.get_document_titles`
+
+### Регистрация Hub-карт из domain-приложений
+
+Domain-приложения (`dinext_*`) регистрируют свои карточки и списки из `after_install` / `after_migrate`. `dinext_common` **не** сидирует доменные карточки — их добавляют владеющие apps.
+
+```python
+from dinext_common.setup.hub_catalog import (
+	register_hub_doctype_items,
+	register_hub_items,
+	register_hub_sections,
+	relocate_hub_item_section,
+)
+
+register_hub_items(
+	[
+		{
+			"section": "My Work",
+			"element_type": "Workspace",
+			"target": "Мои задачи",
+			"label": "My Tasks",
+			"description": "Personal dashboard for assigned work.",
+			"icon": "assign",
+			"enabled": 1,
+		}
+	],
+	source_app="dinext_projects",
+)
+
+register_hub_sections(
+	[{"section": "My Work", "list_limit": 5}],
+	source_app="dinext_projects",
+)
+
+register_hub_doctype_items(
+	[
+		{
+			"section": "My Work",
+			"document_type": "Task",
+			"show_quick_create": 1,
+			"show_recently_opened": 1,
+			"show_assigned": 1,
+			"show_liked": 1,
+			"show_attention": 1,
+			"attention_filter": '[["status","=","Open"]]',
+		}
+	],
+	source_app="dinext_projects",
+)
+```
+
+Контракт идемпотентности:
+
+- карточки: ключ `(element_type, target)` — существующие строки сохраняют правки администратора (label, description, icon, section, enabled, role); пустой icon может быть backfill'нут
+- секции: ключ `section` — лимит администратора не перезаписывается
+- DocType-вклады: ключ `(section, document_type, source_app)` — флаги и `attention_filter` администратора не перезаписываются
+- `relocate_hub_item_section(...)` меняет только `section` у существующей карточки
+
+### Dinext News Feed / What's New
+
+Подсистема заменяет стандартную еженедельную агрегацию Frappe changelog собственной лентой Dinext.
+
+**Publisher** (обычно сайт документации, где ведётся контент):
+
+- DocType `Dinext News Feed`: `title`, `app_name`, `link`, `posting_timestamp`, `is_published`
+- guest API `dinext_common.changelog_feed.get_published_feed` возвращает до 20 опубликованных записей новее `since`
+
+**Consumer** (ERP/Desk сайты):
+
+- hook `get_changelog_feed = dinext_common.changelog_feed.get_feed`
+- ежедневный scheduler `dinext_common.changelog_feed.sync_dinext_news_feed`
+- тот же setup вызывается из `after_install` и `after_migrate`
+- при успехе local `Changelog Feed` полностью заменяется данными publisher
+- при ошибке сети/HTTP local feed **не** очищается; ошибка пишется в Error Log
+
+URL publisher задаётся в `site_config.json` (по умолчанию `https://docs.dinext.ru`):
+
+```json
+{
+  "dinext_news_feed_url": "https://docs.dinext.ru"
+}
+```
+
+Для работы ежедневной синхронизации нужны scheduler, workers и сетевой доступ consumer-сайта к publisher URL.
 
 ### Fixture Analysis
 
@@ -211,7 +345,24 @@ frappe.require(["/assets/dinext_common/js/echarts.min.js"], function () {
 - `app_include_css` подключает `common.css` и `workspace_sidebar_hover.css`
 - `app_include_js` подключает общие скрипты Desk глобально (включая `workspace_sidebar_hover.js`)
 - `extend_bootinfo = ["dinext_common.boot.extend_bootinfo"]` — передаёт флаг `dinext_workspace_sidebar_hover_expand` из `site_config` в Desk
+- `after_install = "dinext_common.install.after_install"`
+- `after_migrate = ["dinext_common.changelog_feed.on_after_migrate"]`
+- `doc_events.User.after_insert` → `dinext_common.setup.workspace.set_default_workspace_for_new_user`
+- `scheduler_events.daily` → `dinext_common.changelog_feed.sync_dinext_news_feed`
+- `get_changelog_feed = "dinext_common.changelog_feed.get_feed"`
 - `doctype_js = {"Project": "public/js/sticky-datatable.js"}`
+
+Опции `site_config.json`:
+
+```json
+{
+  "dinext_workspace_sidebar_hover_expand": 1,
+  "dinext_news_feed_url": "https://docs.dinext.ru"
+}
+```
+
+- `dinext_workspace_sidebar_hover_expand` — включить/выключить hover-expand sidebar (по умолчанию включено)
+- `dinext_news_feed_url` — base URL publisher News Feed; trailing slash снимается; пустое значение = `https://docs.dinext.ru`
 
 Fixtures, экспортируемые приложением:
 
@@ -219,8 +370,10 @@ Fixtures, экспортируемые приложением:
 - `Navbar Settings`
 - `Data Cleanup Rules`
 - записи `Web Page` с фильтром по модулю `Dinext Common`
+- записи `Client Script` с фильтром по модулю `Dinext Common`
 - записи `Server Script` с фильтром по модулю `Dinext Common` и `disabled = 0`
 - записи `Custom Field` с фильтром по модулю `Dinext Common`
+- `Custom HTML Block` с именами `Dinext Hub`, `Dinext Settings Hub`
 - `Holiday List` с именем `Праздники и выходные РФ`
 
 Поведение fixtures:
@@ -228,21 +381,27 @@ Fixtures, экспортируемые приложением:
 - `Website Settings` задаёт публичное имя приложения `Dinext`, `home_page` = `homepage`, отключает регистрацию, баннер и ссылку на `Dinext Theme`
 - `Navbar Settings` задаёт логотип и пункты меню: `Documentation`, `About`, `Мои замещения`
 - `Web Page` публикует динамическую главную по маршруту `homepage`
+- `Custom HTML Block` содержит UI-скрипты хабов Dinext / Settings
 - `Data Cleanup Rules` поставляется с правилами хранения по умолчанию: 90 дней для version, communication, event, file и workflow, 45 дней для специализированных правил comment
 
 Замечания по совместимости:
 
 - приложение меняет глобальные объекты сайта (`Navbar Settings`, `Website Settings`)
 - подключает JS в каждую сессию Desk
+- курирует public workspace menu и может скрывать workspace сторонних модулей
 - если другое приложение управляет теми же Single DocType или переопределяет то же поведение Desk, согласуйте владение fixtures и порядок загрузки assets
+
+После изменения workspace/feed-логики выполните `bench --site your-site.local migrate`. После правок frontend assets — `bench build --app dinext_common` и `bench --site your-site.local clear-cache`.
 
 ## Требования
 
 - окружение Bench с установленным Frappe
+- зависимость `required_apps = ["erpnext"]`
 - Python `>=3.10`
 - Node.js для `bench build`
 - сайт, на котором можно установить `dinext_common`
-- включённые scheduler и workers, если нужна автоматическая ежедневная очистка
+- включённые scheduler и workers, если нужна автоматическая ежедневная очистка и синхронизация News Feed
+- сетевой доступ consumer-сайта к URL publisher (`dinext_news_feed_url`) для What's New
 
 Для подсистемы очистки убедитесь, что очередь `long` обслуживается worker: `Data Cleanup Daily` ставит все задачи очистки в `queue="long"`.
 
@@ -267,10 +426,20 @@ pre-commit install
 
 - Документация продукта и платформы: [docs.dinext.ru](https://docs.dinext.ru)
 - Точка входа конфигурации приложения: `dinext_common/hooks.py`
+- Установка и post-install: `dinext_common/install.py`
+- Bootinfo Desk: `dinext_common/boot.py`
+- Курирование workspace: `dinext_common/setup/workspace.py`
+- Регистрация Hub из domain apps: `dinext_common/setup/hub_catalog.py`
+- API хабов: `dinext_common/workspace_hub.py`, `dinext_common/workspace_hub_lists.py`
+- News Feed publisher/consumer: `dinext_common/changelog_feed.py`
+- DocType настроек хаба: `dinext_common/dinext_common/doctype/dinext_workspace_settings/`
+- DocType новостей: `dinext_common/dinext_common/doctype/dinext_news_feed/`
+- Custom HTML Blocks хабов: `dinext_common/fixtures/custom_html_block.json`
 - Страница Desk Fixture Analysis: `dinext_common/dinext_common/page/fixture_analysis/`
 - Backend Fixture Analysis: `dinext_common/dinext_common/fixture_analysis/`
 - Схема DocType очистки: `dinext_common/dinext_common/doctype/data_cleanup_rules/`
 - Определение темы сайта: `dinext_common/dinext_common/website_theme/dinext_theme/`
+- Тесты: `dinext_common/tests/test_workspace_menu.py`, `test_changelog_feed.py`, `test_boot.py`
 - Руководство для агентов разработки: `AGENTS.md`
 
 ## Благодарности
@@ -281,7 +450,15 @@ pre-commit install
 
 ## Changelog
 
-В README пока нет отдельного changelog. При необходимости release notes можно собрать из `git log` и кратко описать по релизам.
+### 2026-08-11 — 2026-08-12
+
+- Workspace menu: корневые `Dinext` / `Settings`, скрытие non-Dinext public workspace, вложение Settings-детей, `default_workspace` для новых пользователей
+- Dinext Hub и Settings Hub: bilingual Custom HTML Blocks и configurable карточки через `Dinext Workspace Settings`
+- UI sidebar: left padding основной колонки Workspaces при свёрнутом rail
+- Dinext News Feed: publisher DocType + guest API, consumer sync What's New, отключение встроенного Frappe changelog fetch
+- Domain apps: идемпотентная регистрация карточек через `register_hub_items` / `register_hub_sections` / `register_hub_doctype_items`
+- Settings Hub: `Website` под Settings и секция Configuration
+- Compact Hub lists: персональные quick-create / recent / assigned / liked / attention по секциям с лимитом
 
 ## Структура репозитория
 
@@ -295,11 +472,20 @@ pre-commit install
 ├── dinext_common/
 │   ├── __init__.py
 │   ├── hooks.py
+│   ├── install.py
+│   ├── boot.py
+│   ├── changelog_feed.py
+│   ├── workspace_hub.py
+│   ├── workspace_hub_lists.py
 │   ├── fixture_analysis_api.py
 │   ├── modules.txt
 │   ├── patches.txt
 │   ├── fixtures/
+│   │   ├── client_script.json
+│   │   ├── custom_field.json
+│   │   ├── custom_html_block.json
 │   │   ├── data_cleanup_rules.json
+│   │   ├── holiday_list.json
 │   │   ├── navbar_settings.json
 │   │   ├── server_script.json
 │   │   ├── web_page.json
@@ -307,7 +493,8 @@ pre-commit install
 │   ├── public/
 │   │   ├── css/
 │   │   │   ├── common.css
-│   │   │   └── frappe-gantt.css
+│   │   │   ├── frappe-gantt.css
+│   │   │   └── workspace_sidebar_hover.css
 │   │   └── js/
 │   │       ├── breadcrumbs_update.js
 │   │       ├── dashboard_filters_fix.js
@@ -317,50 +504,62 @@ pre-commit install
 │   │       ├── frappe-gantt.umd.js
 │   │       ├── hyperlist.js
 │   │       ├── listview_resize.js
-│   │       └── sticky-datatable.js
+│   │       ├── sticky-datatable.js
+│   │       └── workspace_sidebar_hover.js
+│   ├── setup/
+│   │   ├── workspace.py
+│   │   ├── hub_catalog.py
+│   │   ├── company.py
+│   │   └── chart_of_accounts.py
 │   ├── tests/
-│   │   ├── test_fixture_analysis_api.py
-│   │   ├── test_fixture_analysis_diff_engine.py
-│   │   ├── test_fixture_analysis_discovery.py
-│   │   ├── test_fixture_analysis_formatters.py
-│   │   ├── test_fixture_analysis_golden.py
-│   │   └── test_fixture_analysis_page_assets.py
+│   │   ├── test_boot.py
+│   │   ├── test_changelog_feed.py
+│   │   ├── test_workspace_menu.py
+│   │   ├── test_fixture_analysis_*.py
+│   │   └── ...
 │   └── dinext_common/
 │       ├── doctype/
-│       │   ├── communication_cleanup_rule/
-│       │   ├── comment_cleanup_rule/
+│       │   ├── dinext_news_feed/
+│       │   ├── dinext_workspace_settings/
+│       │   ├── dinext_workspace_settings_item/
+│       │   ├── dinext_workspace_settings_section/
+│       │   ├── dinext_workspace_settings_doctype/
 │       │   ├── data_cleanup_rules/
-│       │   ├── event_cleanup_rule/
-│       │   ├── file_cleanup_rule/
 │       │   ├── version_cleanup_rule/
+│       │   ├── comment_cleanup_rule/
+│       │   ├── file_cleanup_rule/
+│       │   ├── communication_cleanup_rule/
+│       │   ├── event_cleanup_rule/
 │       │   └── workflow_cleanup_rule/
 │       ├── fixture_analysis/
-│       │   ├── discovery.py
-│       │   ├── diff_engine.py
-│       │   ├── formatters.py
-│       │   ├── loader.py
-│       │   ├── service.py
-│       │   └── snapshot.py
 │       ├── page/
 │       │   └── fixture_analysis/
-│       │       ├── fixture_analysis.js
-│       │       └── fixture_analysis.json
+│       ├── workspace/
+│       │   ├── dinext/
+│       │   └── settings/
 │       └── website_theme/
 │           └── dinext_theme/
 ```
 
 Основные части репозитория:
 
-- `dinext_common/hooks.py`: метаданные приложения, экспорт fixtures, hooks Desk, JS для Project, пути брендинга
+- `dinext_common/hooks.py`: метаданные приложения, экспорт fixtures, hooks Desk, install/migrate, news feed, JS для Project, пути брендинга
+- `dinext_common/install.py`: post-install — news feed setup + configure workspace menu
+- `dinext_common/boot.py`: флаг hover-expand sidebar в Desk bootinfo
+- `dinext_common/setup/workspace.py`: курирование workspace menu и подключение hub blocks
+- `dinext_common/setup/hub_catalog.py`: API регистрации карточек/секций/DocType-вкладов для domain apps
+- `dinext_common/workspace_hub.py` / `workspace_hub_lists.py`: whitelisted API хабов и персональные списки
+- `dinext_common/changelog_feed.py`: publisher API и consumer sync What's New
 - `dinext_common/fixture_analysis_api.py`: whitelisted API для Fixture Analysis
 - `dinext_common/fixtures/`: метаданные уровня сайта, применяемые при миграции
 - `dinext_common/public/js/`: глобальные улучшения Desk и сторонние библиотеки
-- `dinext_common/public/css/`: общие стили и CSS библиотек
+- `dinext_common/public/css/`: общие стили, sidebar hover и CSS библиотек
+- `dinext_common/dinext_common/doctype/`: схемы cleanup, workspace settings и news feed
+- `dinext_common/dinext_common/workspace/`: документы workspace `Dinext` и `Settings`
 - `dinext_common/dinext_common/fixture_analysis/`: discovery, снимок БД, diff-движок и форматтеры ответов
 - `dinext_common/dinext_common/page/fixture_analysis/`: стандартная Desk Page и клиентский UI
-- `dinext_common/dinext_common/doctype/`: схема `Data Cleanup Rules` и дочерние DocType правил
 - `dinext_common/dinext_common/website_theme/`: документы темы сайта Dinext
-- `dinext_common/tests/test_fixture_analysis_*.py`: unit-тесты diff, discovery, API и formatters
+- `dinext_common/tests/`: unit/integration тесты hub, news feed, boot и Fixture Analysis
 - `pyproject.toml`: метаданные Python-пакета и настройки Ruff
 - `.pre-commit-config.yaml`: проверки качества для контрибьюторов
 
@@ -376,10 +575,42 @@ flowchart LR
   fixtures --> website["Website Settings"]
   fixtures --> navbar["Navbar Settings"]
   fixtures --> homepage["Web Page"]
+  fixtures --> hubBlocks["Custom HTML Blocks"]
   fixtures --> cleanupRules["Data Cleanup Rules"]
   fixtures --> serverScripts["Server Scripts"]
+  installApp --> afterInstall["after_install"]
+  afterInstall --> workspaceMenu["configure_workspace_menu"]
+  afterInstall --> newsSetup["setup_dinext_news_feed"]
+  migrate --> afterMigrate["after_migrate"]
+  afterMigrate --> newsSetup
   migrate --> build["bench build"]
   build --> assets["Desk и website assets готовы"]
+```
+
+### Dinext Hub
+
+```mermaid
+flowchart LR
+  install["after_install"] --> configure["configure_workspace_menu"]
+  configure --> settings["Dinext Workspace Settings"]
+  domainApps["domain apps hub_catalog"] --> settings
+  settings --> hubApi["get_dinext_hub"]
+  hubApi --> cards["permission-filtered cards"]
+  hubApi --> lists["personal DocType lists"]
+  cards --> deskHub["Dinext Hub UI"]
+  lists --> deskHub
+```
+
+### Dinext News Feed
+
+```mermaid
+flowchart LR
+  publisher["Dinext News Feed DocType"] --> guestApi["get_published_feed"]
+  guestApi --> fetch["consumer get_feed / sync"]
+  fetch --> changelog["local Changelog Feed"]
+  changelog --> desk["Desk Whats New"]
+  installMigrate["install / migrate / daily"] --> sync["sync_dinext_news_feed"]
+  sync --> fetch
 ```
 
 ### Fixture Analysis
