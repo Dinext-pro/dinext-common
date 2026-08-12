@@ -8,7 +8,11 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import random_string
 
-from dinext_common.setup.hub_catalog import register_hub_items
+from dinext_common.setup.hub_catalog import (
+	register_hub_doctype_items,
+	register_hub_items,
+	register_hub_sections,
+)
 from dinext_common.setup.workspace import (
 	DINEXT_HUB_BLOCK,
 	DINEXT_WORKSPACE,
@@ -27,6 +31,7 @@ from dinext_common.workspace_hub import (
 	get_dinext_hub,
 	get_settings_hub,
 )
+from dinext_common.workspace_hub_lists import parse_attention_filter
 
 SAMPLE_HUB_ITEM = {
 	"section": "My Work",
@@ -45,6 +50,10 @@ SAMPLE_HUB_ITEM = {
 def _clear_hub_settings():
 	settings = frappe.get_single("Dinext Workspace Settings")
 	settings.items = []
+	if settings.meta.has_field("sections"):
+		settings.sections = []
+	if settings.meta.has_field("doctype_items"):
+		settings.doctype_items = []
 	settings.save(ignore_permissions=True)
 	settings.reload()
 	return settings
@@ -399,7 +408,6 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		}
 		self.assertNotIn("Domain Settings", labels)
 		self.assertIn("System Settings", labels)
-
 	def test_hub_attachment_preserves_existing_workspace_content(self):
 		configure_workspace_menu()
 		workspace = frappe.get_doc("Workspace", DINEXT_WORKSPACE)
@@ -522,3 +530,339 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 				".dinext-workspace-hub__card-description { margin-top: .35rem; color: var(--text-muted); font-size: var(--text-xs, 11px); text-decoration: none; }",
 				style,
 			)
+
+		dinext_script = blocks["Dinext Hub"]["script"]
+		dinext_style = blocks["Dinext Hub"]["style"]
+		self.assertIn("frappe.new_doc", dinext_script)
+		self.assertIn("make_section_lists", dinext_script)
+		self.assertIn("make_create_column", dinext_script)
+		self.assertIn("make_column_heading", dinext_script)
+		self.assertIn("make_type_badge", dinext_script)
+		self.assertIn("section.lists", dinext_script)
+		self.assertIn("lists.recent", dinext_script)
+		self.assertIn("dinext-workspace-hub__create-buttons", dinext_script)
+		self.assertIn("es-line-time", dinext_script)
+		self.assertIn("es-line-alert-triangle", dinext_script)
+		self.assertNotIn("make_doctype_block", dinext_script)
+		self.assertNotIn("frappe.route_history", dinext_script)
+		self.assertNotIn("get_document_titles", dinext_script)
+		self.assertNotIn("recent_from_route_history", dinext_script)
+		self.assertNotIn("dropdown-toggle", dinext_script)
+		self.assertNotIn("__('My Items')", dinext_script)
+		self.assertNotIn("dinext-workspace-hub__personal-header", dinext_script)
+		self.assertNotIn(".dinext-workspace-hub__doctypes", dinext_style)
+		self.assertNotIn(".dinext-workspace-hub__create-menu", dinext_style)
+		self.assertIn(".dinext-workspace-hub__lists", dinext_style)
+		self.assertIn("repeat(5, minmax(0, 1fr))", dinext_style)
+		self.assertIn("text-transform: none", dinext_style)
+		self.assertIn(".dinext-workspace-hub__type-badge", dinext_style)
+		self.assertIn(".dinext-workspace-hub__create-buttons", dinext_style)
+		self.assertIn(".dinext-workspace-hub__list-title-icon", dinext_style)
+
+	def test_register_sections_and_doctype_items_merge(self):
+		configure_workspace_menu()
+		_clear_hub_settings()
+		settings = frappe.get_single("Dinext Workspace Settings")
+		settings.sections = []
+		settings.doctype_items = []
+		settings.save(ignore_permissions=True)
+
+		register_hub_sections([{"section": "My Work", "list_limit": 5}], source_app="dinext_projects")
+		register_hub_sections([{"section": "My Work", "list_limit": 9}], source_app="dinext_kanban")
+		register_hub_doctype_items(
+			[
+				{
+					"section": "My Work",
+					"document_type": "Task",
+					"show_assigned": 1,
+					"show_liked": 1,
+					"show_attention": 1,
+					"attention_filter": [["Task", "status", "=", "Overdue"]],
+				}
+			],
+			source_app="dinext_projects",
+		)
+		register_hub_doctype_items(
+			[
+				{
+					"section": "My Work",
+					"document_type": "Task",
+					"show_quick_create": 1,
+					"show_recently_opened": 1,
+					"show_assigned": 1,
+					"show_attention": 1,
+					"attention_filter": [["Task", "type", "!=", "Issue"]],
+				}
+			],
+			source_app="dinext_kanban",
+		)
+
+		issue_registered = False
+		if frappe.db.exists("DocType", "Issue"):
+			register_hub_doctype_items(
+				[
+					{
+						"section": "My Work",
+						"document_type": "Issue",
+						"show_quick_create": 1,
+						"show_assigned": 1,
+						"show_liked": 1,
+					}
+				],
+				source_app="dinext_projects",
+			)
+			issue_registered = True
+
+		settings.reload()
+		self.assertEqual(len(settings.sections), 1)
+		self.assertEqual(settings.sections[0].list_limit, 5)
+		self.assertEqual(len(settings.doctype_items), 3 if issue_registered else 2)
+
+		payload = get_dinext_hub()
+		section = next(s for s in payload["sections"] if s["label"] == "My Work")
+		self.assertNotIn("doctypes", section)
+		lists = section["lists"]
+		self.assertIsNotNone(lists)
+		self.assertTrue(lists["show_recently_opened"])
+		self.assertTrue(lists["show_assigned"])
+		self.assertTrue(lists["show_liked"])
+		self.assertTrue(lists["show_attention"])
+		self.assertEqual(section["list_limit"], 5)
+		self.assertEqual(lists["list_limit"], 5)
+
+		create_doctypes = {row["doctype"] for row in lists["create_actions"]}
+		if frappe.has_permission("Task", "create"):
+			self.assertIn("Task", create_doctypes)
+		if issue_registered and frappe.has_permission("Issue", "create"):
+			self.assertIn("Issue", create_doctypes)
+		self.assertEqual(len(lists["create_actions"]), len(create_doctypes))
+
+		self.assertTrue(isinstance(lists["recent"], list))
+		# Without seeded Route History Form entries, recent stays empty but flag remains on.
+		self.assertLessEqual(len(lists["recent"]), lists["list_limit"])
+		for row in lists["create_actions"]:
+			self.assertIn("label", row)
+			self.assertIn("icon", row)
+
+	def test_parse_attention_filter_and_invalid(self):
+		parsed = parse_attention_filter(
+			'[["Task","status","=","Overdue",false],["Task","type","!=","Issue",false]]',
+			"Task",
+		)
+		self.assertEqual(parsed, [["status", "=", "Overdue"], ["type", "!=", "Issue"]])
+		self.assertIsNone(parse_attention_filter("{not-json", "Task"))
+
+	def test_assigned_list_includes_readable_todo(self):
+		configure_workspace_menu()
+		_clear_hub_settings()
+		settings = frappe.get_single("Dinext Workspace Settings")
+		settings.sections = []
+		settings.doctype_items = []
+		settings.save(ignore_permissions=True)
+
+		note = frappe.get_doc({"doctype": "Note", "title": f"hub-assign-{random_string(6)}", "public": 1})
+		note.insert(ignore_permissions=True)
+		self.addCleanup(lambda: frappe.delete_doc("Note", note.name, force=True, ignore_permissions=True))
+
+		todo = frappe.get_doc(
+			{
+				"doctype": "ToDo",
+				"description": "hub assign",
+				"allocated_to": "Administrator",
+				"reference_type": "Note",
+				"reference_name": note.name,
+				"status": "Open",
+			}
+		)
+		todo.insert(ignore_permissions=True)
+		self.addCleanup(lambda: frappe.delete_doc("ToDo", todo.name, force=True, ignore_permissions=True))
+
+		register_hub_sections([{"section": "Test Lists", "list_limit": 5}], source_app="dinext_common")
+		register_hub_doctype_items(
+			[
+				{
+					"section": "Test Lists",
+					"document_type": "Note",
+					"show_assigned": 1,
+				}
+			],
+			source_app="dinext_common",
+		)
+
+		payload = get_dinext_hub()
+		section = next(s for s in payload["sections"] if s["label"] == "Test Lists")
+		lists = section["lists"]
+		self.assertTrue(lists["show_assigned"])
+		assigned = lists["assigned"]
+		self.assertIn(note.name, {row["name"] for row in assigned})
+		row = next(item for item in assigned if item["name"] == note.name)
+		self.assertEqual(row["doctype"], "Note")
+		self.assertIn("type_label", row)
+		self.assertIn("icon", row)
+		self.assertIn("route", row)
+		self.assertIn("modified", row)
+
+	def test_section_assigned_merges_doctypes_and_applies_limit(self):
+		configure_workspace_menu()
+		_clear_hub_settings()
+		settings = frappe.get_single("Dinext Workspace Settings")
+		settings.sections = []
+		settings.doctype_items = []
+		settings.save(ignore_permissions=True)
+
+		notes = []
+		for idx in range(3):
+			note = frappe.get_doc(
+				{"doctype": "Note", "title": f"hub-merge-{idx}-{random_string(4)}", "public": 1}
+			)
+			note.insert(ignore_permissions=True)
+			notes.append(note)
+			self.addCleanup(
+				lambda name=note.name: frappe.delete_doc("Note", name, force=True, ignore_permissions=True)
+			)
+			todo = frappe.get_doc(
+				{
+					"doctype": "ToDo",
+					"description": f"hub merge {idx}",
+					"allocated_to": "Administrator",
+					"reference_type": "Note",
+					"reference_name": note.name,
+					"status": "Open",
+				}
+			)
+			todo.insert(ignore_permissions=True)
+			self.addCleanup(
+				lambda name=todo.name: frappe.delete_doc("ToDo", name, force=True, ignore_permissions=True)
+			)
+
+		# Second DocType contribution: ToDo itself (self-assigned open ToDos)
+		extra_todos = []
+		for idx in range(2):
+			todo = frappe.get_doc(
+				{
+					"doctype": "ToDo",
+					"description": f"hub-merge-todo-{idx}-{random_string(4)}",
+					"allocated_to": "Administrator",
+					"status": "Open",
+				}
+			)
+			todo.insert(ignore_permissions=True)
+			extra_todos.append(todo)
+			self.addCleanup(
+				lambda name=todo.name: frappe.delete_doc("ToDo", name, force=True, ignore_permissions=True)
+			)
+			link = frappe.get_doc(
+				{
+					"doctype": "ToDo",
+					"description": f"link for {todo.name}",
+					"allocated_to": "Administrator",
+					"reference_type": "ToDo",
+					"reference_name": todo.name,
+					"status": "Open",
+				}
+			)
+			link.insert(ignore_permissions=True)
+			self.addCleanup(
+				lambda name=link.name: frappe.delete_doc("ToDo", name, force=True, ignore_permissions=True)
+			)
+
+		register_hub_sections([{"section": "Merged Lists", "list_limit": 2}], source_app="dinext_common")
+		register_hub_doctype_items(
+			[
+				{"section": "Merged Lists", "document_type": "Note", "show_assigned": 1},
+				{"section": "Merged Lists", "document_type": "ToDo", "show_assigned": 1, "show_quick_create": 1},
+			],
+			source_app="dinext_common",
+		)
+
+		payload = get_dinext_hub()
+		section = next(s for s in payload["sections"] if s["label"] == "Merged Lists")
+		lists = section["lists"]
+		self.assertEqual(lists["list_limit"], 2)
+		self.assertLessEqual(len(lists["assigned"]), 2)
+		doctypes = {row["doctype"] for row in lists["assigned"]}
+		self.assertTrue(doctypes.issubset({"Note", "ToDo"}))
+		self.assertTrue(all("type_label" in row and "modified" in row for row in lists["assigned"]))
+		create_doctypes = {row["doctype"] for row in lists["create_actions"]}
+		if frappe.has_permission("ToDo", "create"):
+			self.assertIn("ToDo", create_doctypes)
+		self.assertNotIn("Note", create_doctypes)
+
+	def test_recent_list_uses_route_history_with_dedupe_and_limit(self):
+		configure_workspace_menu()
+		_clear_hub_settings()
+		settings = frappe.get_single("Dinext Workspace Settings")
+		settings.sections = []
+		settings.doctype_items = []
+		settings.save(ignore_permissions=True)
+
+		notes = []
+		for idx in range(3):
+			note = frappe.get_doc(
+				{"doctype": "Note", "title": f"hub-recent-{idx}-{random_string(4)}", "public": 1}
+			)
+			note.insert(ignore_permissions=True)
+			notes.append(note)
+			self.addCleanup(
+				lambda name=note.name: frappe.delete_doc("Note", name, force=True, ignore_permissions=True)
+			)
+
+		# Older duplicate visit for notes[0], then fresher unique visits.
+		from frappe.utils import add_to_date, now_datetime
+
+		history_routes = [
+			f"Form/Note/{notes[0].name}",
+			f"Form/Note/{notes[1].name}",
+			f"Form/Note/{notes[0].name}",
+			f"app/note/{notes[2].name}",
+			"Workspaces/Dinext",
+		]
+		base = now_datetime()
+		for idx, route in enumerate(history_routes):
+			row = frappe.get_doc(
+				{
+					"doctype": "Route History",
+					"route": route,
+					"user": "Administrator",
+				}
+			)
+			row.insert(ignore_permissions=True)
+			frappe.db.set_value(
+				"Route History",
+				row.name,
+				"creation",
+				add_to_date(base, seconds=idx),
+				update_modified=False,
+			)
+			self.addCleanup(
+				lambda name=row.name: frappe.delete_doc(
+					"Route History", name, force=True, ignore_permissions=True
+				)
+			)
+		frappe.db.commit()
+
+		register_hub_sections([{"section": "Recent Lists", "list_limit": 2}], source_app="dinext_common")
+		register_hub_doctype_items(
+			[
+				{
+					"section": "Recent Lists",
+					"document_type": "Note",
+					"show_recently_opened": 1,
+				}
+			],
+			source_app="dinext_common",
+		)
+
+		payload = get_dinext_hub()
+		section = next(s for s in payload["sections"] if s["label"] == "Recent Lists")
+		lists = section["lists"]
+		self.assertTrue(lists["show_recently_opened"])
+		self.assertNotIn("recent_doctypes", lists)
+		recent = lists["recent"]
+		self.assertEqual(len(recent), 2)
+		# Newest unique Form/app routes first: notes[2], then notes[0] (duplicate skipped).
+		self.assertEqual([row["name"] for row in recent], [notes[2].name, notes[0].name])
+		self.assertTrue(all(row["doctype"] == "Note" for row in recent))
+		self.assertTrue(all("type_label" in row and "route" in row for row in recent))
+		self.assertNotIn(notes[1].name, {row["name"] for row in recent})
+

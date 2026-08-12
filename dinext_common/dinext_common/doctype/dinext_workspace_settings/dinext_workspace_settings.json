@@ -6,21 +6,53 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "items"
+  "section_break_cards",
+  "items",
+  "section_break_sections",
+  "sections",
+  "section_break_doctype_items",
+  "doctype_items"
  ],
  "fields": [
+  {
+   "fieldname": "section_break_cards",
+   "fieldtype": "Section Break",
+   "label": "Navigation Cards"
+  },
   {
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Workspace Items",
    "options": "Dinext Workspace Settings Item"
+  },
+  {
+   "fieldname": "section_break_sections",
+   "fieldtype": "Section Break",
+   "label": "Sections"
+  },
+  {
+   "fieldname": "sections",
+   "fieldtype": "Table",
+   "label": "Sections",
+   "options": "Dinext Workspace Settings Section"
+  },
+  {
+   "fieldname": "section_break_doctype_items",
+   "fieldtype": "Section Break",
+   "label": "DocType Lists"
+  },
+  {
+   "fieldname": "doctype_items",
+   "fieldtype": "Table",
+   "label": "DocType Items",
+   "options": "Dinext Workspace Settings DocType"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-08-11 01:44:24.455791",
+ "modified": "2026-08-12 02:44:16.629023",
  "modified_by": "Administrator",
  "module": "Dinext Common",
  "name": "Dinext Workspace Settings",
