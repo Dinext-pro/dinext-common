@@ -11,6 +11,7 @@ import {
 } from "./click-when-active.js";
 import { getRowSection } from "../section/sections.js";
 import { getRowIdField } from "../shared/utils.js";
+import { findSourceRowByBusinessId } from "../tree/model.js";
 
 /** cellClassRules: marks non-editable cells (per colDef.editable / column.edit). */
 function isReadOnlyCellClass(params) {
@@ -64,6 +65,86 @@ export const EditMixin = (Base) => class extends Base {
     applyCellValue(node, field, value) {
         node.data[field] = value;
         this.api?.refreshCells({ rowNodes: [node], columns: [field], force: true });
+    }
+
+    /** Visible grid node by business id (`rowIdField`), not `_rowId` path. */
+    findGridNodeByBusinessId(businessId) {
+        if (businessId == null || businessId === "" || !this.api?.forEachNode) {
+            return null;
+        }
+        const id = String(businessId);
+        const rowIdField = getRowIdField(this.options);
+        let found = null;
+        this.api.forEachNode((node) => {
+            if (!found && node?.data && String(node.data[rowIdField]) === id) {
+                found = node;
+            }
+        });
+        return found;
+    }
+
+    /**
+     * Apply values already persisted externally (server side-effects).
+     * Updates grid copy + sourceData. Does NOT validate or call onSaveCells.
+     *
+     * Each item: `{ field, value, rowId? }` (tree path / flat id) and/or `{ id }`
+     * (business `rowIdField` when path unknown).
+     *
+     * @returns {number} field writes applied
+     */
+    applyExternalCellValues(changes) {
+        if (!Array.isArray(changes) || !changes.length) {
+            return 0;
+        }
+
+        let applied = 0;
+
+        for (const change of changes) {
+            const field = change?.field;
+            if (!field) {
+                continue;
+            }
+            const value = change.value;
+
+            let node = null;
+            let rowId = change.rowId != null && change.rowId !== ""
+                ? String(change.rowId)
+                : null;
+
+            if (rowId) {
+                node = this.api?.getRowNode(rowId) || null;
+            }
+            if (!node && change.id != null && change.id !== "") {
+                node = this.findGridNodeByBusinessId(change.id);
+                if (node) {
+                    rowId = this.getEditRowId(node.data);
+                }
+            }
+
+            if (node?.data && !Object.is(node.data[field], value)) {
+                this.applyCellValue(node, field, value);
+                applied += 1;
+            }
+
+            if (rowId != null) {
+                const sourceRow = this.writeSourceField(rowId, field, value);
+                if (sourceRow && !node) {
+                    applied += 1;
+                }
+            } else if (change.id != null && change.id !== "") {
+                const sourceRow = findSourceRowByBusinessId(
+                    this.sourceData,
+                    change.id,
+                    this.options
+                );
+                if (sourceRow && !Object.is(sourceRow[field], value)) {
+                    sourceRow[field] = value;
+                    applied += 1;
+                }
+            }
+        }
+
+        return applied;
     }
 
     resolveChangeColMeta(field, colId, columns) {

@@ -990,6 +990,33 @@ export interface DinextTableInstance {
     // --- edit (advanced / used by clipboard) ---
     /** @layer edit — write nested sourceData by path id */
     writeSourceField?(rowId: string, field: string, value: unknown): DinextTableRowData | null;
+    /**
+     * @layer edit — apply values already persisted externally (server side-effects).
+     * Updates grid + sourceData; does not call onValidateCells / onSaveCells.
+     * Item: `{ field, value, rowId? }` and/or `{ id }` (business rowIdField).
+     */
+    applyExternalCellValues?(
+        changes: Array<{
+            field: string;
+            value: unknown;
+            rowId?: string;
+            id?: string;
+        }>
+    ): number;
+    /** @layer edit — unified batch commit (validate → grid+source → onSaveCells) */
+    commitCellChanges?(params: {
+        source?: DinextTableCellChangeSource;
+        changes?: Array<{
+            node?: unknown;
+            field: string;
+            oldValue?: unknown;
+            newValue?: unknown;
+            rowIndex?: number;
+            colId?: string;
+        }>;
+        range?: DinextTableCellChangeRange | null;
+        alreadyApplied?: boolean;
+    }): { applied: number; entries: object[] };
 }
 
 // ---------------------------------------------------------------------------
