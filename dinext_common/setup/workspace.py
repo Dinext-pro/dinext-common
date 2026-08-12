@@ -9,7 +9,7 @@ import frappe
 DINEXT_WORKSPACE = "Dinext"
 SETTINGS_WORKSPACE = "Settings"
 LEGACY_SETTINGS_WORKSPACE = "Настройки"
-SETTINGS_CHILDREN = ("Integrations", "Tools", "Users", "Build")
+SETTINGS_CHILDREN = ("Integrations", "Tools", "Users", "Build", "Website")
 DINEXT_APP_PREFIX = "dinext_"
 DINEXT_MODULE = "Dinext Common"
 SETTINGS_ROLES = ("System Manager", "Workspace Manager")
