@@ -8,7 +8,16 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import random_string
 
-from dinext_common.setup.hub_catalog import register_hub_items
+from dinext_common.setup.hub_catalog import (
+	DEFAULT_SECTION_CARD_COLUMNS,
+	DINEXT_HUB_SETTINGS,
+	SETTINGS_HUB_SETTINGS,
+	SETTINGS_SECTION_CARD_COLUMNS,
+	ensure_workspace_settings,
+	register_hub_doctype_items,
+	register_hub_items,
+	register_hub_sections,
+)
 from dinext_common.setup.workspace import (
 	DINEXT_HUB_BLOCK,
 	DINEXT_WORKSPACE,
@@ -26,7 +35,9 @@ from dinext_common.workspace_hub import (
 	_get_safe_url,
 	get_dinext_hub,
 	get_settings_hub,
+	get_workspace_hub,
 )
+from dinext_common.workspace_hub_lists import parse_attention_filter
 
 SAMPLE_HUB_ITEM = {
 	"section": "My Work",
@@ -41,10 +52,60 @@ SAMPLE_HUB_ITEM = {
 	"enabled": 1,
 }
 
+_HUB_SNAPSHOT_SKIP = {
+	"name",
+	"owner",
+	"creation",
+	"modified",
+	"modified_by",
+	"parent",
+	"parentfield",
+	"parenttype",
+	"docstatus",
+	"doctype",
+}
 
-def _clear_hub_settings():
-	settings = frappe.get_single("Dinext Workspace Settings")
+
+def _snapshot_hub_settings(name=DINEXT_HUB_SETTINGS):
+	settings = frappe.get_doc("Dinext Workspace Settings", name)
+
+	def rows(fieldname):
+		if not settings.meta.has_field(fieldname):
+			return []
+		return [
+			{key: value for key, value in row.as_dict().items() if key not in _HUB_SNAPSHOT_SKIP}
+			for row in settings.get(fieldname) or []
+		]
+
+	return {
+		"items": rows("items"),
+		"sections": rows("sections"),
+		"doctype_items": rows("doctype_items"),
+	}
+
+
+def _restore_hub_settings(snapshot, name=DINEXT_HUB_SETTINGS):
+	settings = frappe.get_doc("Dinext Workspace Settings", name)
+	for fieldname in ("items", "sections", "doctype_items"):
+		if not settings.meta.has_field(fieldname):
+			continue
+		settings.set(fieldname, [])
+		for row in snapshot.get(fieldname) or []:
+			settings.append(fieldname, row)
+	settings.save(ignore_permissions=True)
+	frappe.clear_cache(doctype="Dinext Workspace Settings")
+
+
+def _clear_hub_settings(test_case=None, name=DINEXT_HUB_SETTINGS):
+	snapshot = _snapshot_hub_settings(name)
+	if test_case is not None:
+		test_case.addCleanup(_restore_hub_settings, snapshot, name)
+	settings = frappe.get_doc("Dinext Workspace Settings", name)
 	settings.items = []
+	if settings.meta.has_field("sections"):
+		settings.sections = []
+	if settings.meta.has_field("doctype_items"):
+		settings.doctype_items = []
 	settings.save(ignore_permissions=True)
 	settings.reload()
 	return settings
@@ -202,7 +263,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 
 	def test_dinext_hub_reflects_enabled_configuration(self):
 		configure_workspace_menu()
-		settings = frappe.get_single("Dinext Workspace Settings")
+		settings = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
 		item = settings.append(
 			"items",
 			{
@@ -226,7 +287,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 
 	def test_dinext_hub_omits_unavailable_target(self):
 		configure_workspace_menu()
-		settings = frappe.get_single("Dinext Workspace Settings")
+		settings = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
 		item = settings.append(
 			"items",
 			{
@@ -245,17 +306,17 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 
 	def test_common_does_not_seed_domain_hub_cards(self):
 		configure_workspace_menu()
-		settings = _clear_hub_settings()
+		settings = _clear_hub_settings(self)
 		ensure_default_dinext_hub_settings()
 		settings.reload()
 		self.assertEqual(len(settings.items), 0)
 
 	def test_register_hub_items_appends_and_is_idempotent(self):
 		configure_workspace_menu()
-		_clear_hub_settings()
+		_clear_hub_settings(self)
 
 		register_hub_items([SAMPLE_HUB_ITEM], source_app="dinext_projects")
-		settings = frappe.get_single("Dinext Workspace Settings")
+		settings = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
 		self.assertEqual(len(settings.items), 1)
 		row = settings.items[0]
 		self.assertEqual(row.label, "My Tasks")
@@ -281,7 +342,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		from frappe.translate import get_full_dict
 
 		configure_workspace_menu()
-		_clear_hub_settings()
+		_clear_hub_settings(self)
 
 		ru_messages = get_full_dict("ru")
 		self.assertEqual(
@@ -289,7 +350,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 			"Управление пользователями, ролями и правами доступа.",
 		)
 
-		settings = frappe.get_single("Dinext Workspace Settings")
+		settings = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
 		item = settings.append(
 			"items",
 			{
@@ -384,12 +445,14 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		from unittest.mock import patch
 
 		configure_workspace_menu()
-		with patch(
-			"dinext_common.workspace_hub._get_configuration_doctype_route",
-			side_effect=lambda doctype: None
-			if doctype == "Domain Settings"
-			else f"/app/{frappe.scrub(doctype).replace('_', '-')}",
-		):
+		original = _get_route
+
+		def fake_route(element_type, target):
+			if element_type == "DocType" and target == "Domain Settings":
+				return None
+			return original(element_type, target)
+
+		with patch("dinext_common.workspace_hub._get_route", side_effect=fake_route):
 			payload = get_settings_hub()
 		labels = {
 			item["label"]
@@ -434,7 +497,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 
 	def test_dinext_hub_omits_disabled_and_role_restricted_items(self):
 		configure_workspace_menu()
-		settings = frappe.get_single("Dinext Workspace Settings")
+		settings = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
 		disabled = settings.append(
 			"items",
 			{
@@ -506,19 +569,600 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 	def test_hub_fixture_scripts_use_set_route_and_sprite_urls(self):
 		path = Path(frappe.get_app_path("dinext_common")) / "fixtures" / "custom_html_block.json"
 		blocks = {row["name"]: row for row in json.loads(path.read_text())}
+		self.assertEqual(
+			blocks["Dinext Hub"]["html"],
+			'<div class="dinext-workspace-hub" data-settings-name="Dinext"></div>',
+		)
+		self.assertEqual(
+			blocks["Dinext Settings Hub"]["html"],
+			'<div class="dinext-workspace-hub" data-settings-name="Settings"></div>',
+		)
 		for name in ("Dinext Hub", "Dinext Settings Hub"):
 			script = blocks[name]["script"]
-			style = blocks[name]["style"]
-			self.assertIn("frappe.set_route", script)
-			self.assertIn("navigate_route", script)
-			self.assertIn("/assets/frappe/icons/timeless/icons.svg", script)
+			self.assertIn("frappe.require", script)
+			self.assertIn("/assets/dinext_common/js/workspace_hub.js", script)
+			self.assertIn("dinext_common.workspace_hub.mount(root_element)", script)
 			self.assertNotIn("svg.style.width", script)
-			self.assertIn(".dinext-workspace-hub__card-icon .icon", style)
-			self.assertIn(
-				".dinext-workspace-hub__card:hover .dinext-workspace-hub__card-title { text-decoration: underline; }",
-				style,
+
+		js_path = Path(frappe.get_app_path("dinext_common")) / "public" / "js" / "workspace_hub.js"
+		css_path = Path(frappe.get_app_path("dinext_common")) / "public" / "css" / "workspace_hub.css"
+		script = js_path.read_text()
+		style = css_path.read_text()
+		self.assertIn("frappe.set_route", script)
+		self.assertIn("navigate_route", script)
+		self.assertIn("/assets/frappe/icons/timeless/icons.svg", script)
+		self.assertIn("get_workspace_hub", script)
+		self.assertIn("frappe.new_doc", script)
+		self.assertIn("make_section_lists", script)
+		self.assertIn("make_create_bar", script)
+		self.assertIn("make_column_heading", script)
+		self.assertIn("make_type_badge", script)
+		self.assertIn("section.lists", script)
+		self.assertIn("lists.recent", script)
+		self.assertIn("dinext-workspace-hub__create-buttons", script)
+		self.assertIn("dinext-workspace-hub__chip", script)
+		self.assertIn('make_icon("add"', script)
+		self.assertIn("is_font_icon", script)
+		self.assertIn("fa ", script)
+		self.assertIn("aria-label", script)
+		self.assertNotIn("make_create_column", script)
+		self.assertNotIn("es-line-time", script)
+		self.assertNotIn("es-line-alert-triangle", script)
+		self.assertNotIn("__('Quick Create')", script)
+		self.assertNotIn("__('No records')", script)
+		self.assertNotIn("list-empty", script)
+		self.assertNotIn("action.icon", script)
+		self.assertNotIn("make_doctype_block", script)
+		self.assertNotIn("frappe.route_history", script)
+		self.assertNotIn("get_document_titles", script)
+		self.assertNotIn("recent_from_route_history", script)
+		self.assertNotIn("dropdown-toggle", script)
+		self.assertNotIn("__('My Items')", script)
+		self.assertNotIn("dinext-workspace-hub__personal-header", script)
+		self.assertNotIn("label.className = 'dinext-workspace-hub__type-label'", script)
+		self.assertIn("--dinext-hub-card-columns", script)
+		self.assertIn("Math.min(columns, Math.max(1, items.length))", script)
+		self.assertIn("card_columns", script)
+		self.assertIn("?v=", script)
+		self.assertIn(".dinext-workspace-hub__card-icon .icon", style)
+		self.assertIn(
+			".dinext-workspace-hub__card:hover .dinext-workspace-hub__card-title",
+			style,
+		)
+		self.assertIn("font-size: var(--text-tiny, 11px)", style)
+		self.assertIn(".dinext-workspace-hub__lists", style)
+		self.assertIn("flex: 0 1 16rem", style)
+		self.assertIn(".dinext-workspace-hub__list-items > li", style)
+		self.assertIn(".dinext-workspace-hub__chip:hover", style)
+		self.assertIn("text-transform: none", style)
+		self.assertIn(".dinext-workspace-hub__type-badge", style)
+		self.assertIn(".dinext-workspace-hub__create-buttons", style)
+		self.assertIn(".dinext-workspace-hub__type-icon .fa", style)
+		self.assertIn(".dinext-workspace-hub__type-icon .octicon", style)
+		self.assertIn("--dinext-hub-card-columns", style)
+		self.assertIn("min(2, var(--dinext-hub-card-columns, 4))", style)
+		self.assertNotIn("repeat(2, minmax(0, 1fr))", style)
+		self.assertNotIn("repeat(auto-fit, minmax(220px, 1fr))", style)
+		self.assertNotIn(".dinext-workspace-hub__doctypes", style)
+		self.assertNotIn(".dinext-workspace-hub__create-menu", style)
+		self.assertNotIn("repeat(5, minmax(0, 1fr))", style)
+		self.assertNotIn(".dinext-workspace-hub__list-title-icon", style)
+		self.assertNotIn("max-width: 5.5rem", style)
+		self.assertNotIn(
+			".dinext-workspace-hub__personal { margin-top: .75rem; border: 1px solid var(--border-color)",
+			style,
+		)
+
+	def test_named_settings_records_are_isolated(self):
+		configure_workspace_menu()
+		_clear_hub_settings(self)
+		register_hub_items(
+			[
+				{
+					"section": "Isolation",
+					"element_type": "Workspace",
+					"target": DINEXT_WORKSPACE,
+					"label": "Only on Dinext",
+					"enabled": 1,
+				}
+			],
+			source_app="dinext_common",
+			settings_name=DINEXT_HUB_SETTINGS,
+		)
+		dinext_labels = {
+			card["label"] for section in get_workspace_hub(DINEXT_HUB_SETTINGS)["sections"] for card in section["items"]
+		}
+		settings_labels = {
+			card["label"]
+			for section in get_workspace_hub(SETTINGS_HUB_SETTINGS)["sections"]
+			for card in section["items"]
+		}
+		self.assertIn("Only on Dinext", dinext_labels)
+		self.assertNotIn("Only on Dinext", settings_labels)
+
+	def test_register_hub_items_can_target_settings_record(self):
+		configure_workspace_menu()
+		_clear_hub_settings(self, name=SETTINGS_HUB_SETTINGS)
+		register_hub_items(
+			[
+				{
+					"section": "Workspaces",
+					"element_type": "Workspace",
+					"target": DINEXT_WORKSPACE,
+					"label": "Extra Settings Card",
+					"description": "Added by another app.",
+					"icon": "setting",
+					"enabled": 1,
+				}
+			],
+			source_app="dinext_common",
+			settings_name=SETTINGS_HUB_SETTINGS,
+		)
+		labels = {
+			card["label"] for section in get_settings_hub()["sections"] for card in section["items"]
+		}
+		self.assertIn("Extra Settings Card", labels)
+		dinext_labels = {
+			card["label"] for section in get_dinext_hub()["sections"] for card in section["items"]
+		}
+		self.assertNotIn("Extra Settings Card", dinext_labels)
+
+	def test_unknown_settings_name_returns_empty_hub(self):
+		configure_workspace_menu()
+		payload = get_workspace_hub("Does Not Exist")
+		self.assertEqual(payload, {"sections": []})
+
+	def test_standard_settings_records_exist_after_configure(self):
+		configure_workspace_menu()
+		self.assertTrue(frappe.db.exists("Dinext Workspace Settings", DINEXT_HUB_SETTINGS))
+		self.assertTrue(frappe.db.exists("Dinext Workspace Settings", SETTINGS_HUB_SETTINGS))
+		settings = frappe.get_doc("Dinext Workspace Settings", SETTINGS_HUB_SETTINGS)
+		self.assertEqual({row.role for row in settings.roles}, set(SETTINGS_ROLES))
+		self.assertEqual(settings.settings_name, SETTINGS_HUB_SETTINGS)
+
+	def test_settings_sections_use_five_card_columns(self):
+		configure_workspace_menu()
+		settings = frappe.get_doc("Dinext Workspace Settings", SETTINGS_HUB_SETTINGS)
+		by_section = {row.section: int(row.card_columns) for row in settings.sections}
+		self.assertEqual(by_section.get("Workspaces"), SETTINGS_SECTION_CARD_COLUMNS)
+		self.assertEqual(by_section.get("Configuration"), SETTINGS_SECTION_CARD_COLUMNS)
+		for section in get_settings_hub()["sections"]:
+			self.assertEqual(section["card_columns"], SETTINGS_SECTION_CARD_COLUMNS)
+
+	def test_hub_card_columns_default_without_section_row(self):
+		configure_workspace_menu()
+		_clear_hub_settings(self)
+		register_hub_items(
+			[
+				{
+					"section": "No Section Row",
+					"element_type": "Workspace",
+					"target": DINEXT_WORKSPACE,
+					"label": "Default columns card",
+					"enabled": 1,
+				}
+			],
+			source_app="dinext_common",
+		)
+		section = next(
+			row for row in get_dinext_hub()["sections"] if row["label"] == "No Section Row"
+		)
+		self.assertEqual(section["card_columns"], DEFAULT_SECTION_CARD_COLUMNS)
+
+	def test_register_hub_sections_preserves_card_columns(self):
+		configure_workspace_menu()
+		_clear_hub_settings(self)
+		register_hub_sections(
+			[{"section": "My Work", "list_limit": 5, "card_columns": 3}],
+			source_app="dinext_projects",
+		)
+		register_hub_sections(
+			[{"section": "My Work", "list_limit": 9, "card_columns": 6}],
+			source_app="dinext_kanban",
+		)
+		settings = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
+		self.assertEqual(int(settings.sections[0].card_columns), 3)
+
+	def test_ensure_workspace_settings_creates_named_record(self):
+		name = f"Test Hub {random_string(8)}"
+		self.addCleanup(
+			lambda: frappe.db.exists("Dinext Workspace Settings", name)
+			and frappe.delete_doc("Dinext Workspace Settings", name, force=True, ignore_permissions=True)
+		)
+		self.assertFalse(frappe.db.exists("Dinext Workspace Settings", name))
+		doc = ensure_workspace_settings(name)
+		self.assertIsNotNone(doc)
+		self.assertEqual(doc.name, name)
+		self.assertEqual(doc.settings_name, name)
+		self.assertTrue(frappe.db.exists("Dinext Workspace Settings", name))
+		self.assertNotEqual(name, DINEXT_HUB_SETTINGS)
+		self.assertNotEqual(name, SETTINGS_HUB_SETTINGS)
+
+	def test_settings_bootstrap_preserves_admin_edits(self):
+		configure_workspace_menu()
+		_clear_hub_settings(self, name=SETTINGS_HUB_SETTINGS)
+		ensure_default_dinext_hub_settings()
+		settings = frappe.get_doc("Dinext Workspace Settings", SETTINGS_HUB_SETTINGS)
+		users = next(row for row in settings.items if row.target == "Users")
+		users.label = "Admin Users Label"
+		users.description = "Admin description"
+		settings.save(ignore_permissions=True)
+
+		ensure_default_dinext_hub_settings()
+		settings.reload()
+		users = next(row for row in settings.items if row.target == "Users")
+		self.assertEqual(users.label, "Admin Users Label")
+		self.assertEqual(users.description, "Admin description")
+
+	def test_legacy_single_children_reparent_and_restore_from_dump(self):
+		from dinext_common.patches.v1_0.migrate_workspace_settings_single import (
+			_reparent_legacy_children,
+			_restore_dump_if_empty,
+		)
+		from dinext_common.patches.v1_0.workspace_settings_migrate import LEGACY_PARENT, dump_path
+
+		configure_workspace_menu()
+		_clear_hub_settings(self)
+		settings = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
+		settings.append(
+			"items",
+			{
+				"section": "Legacy",
+				"element_type": "Workspace",
+				"target": DINEXT_WORKSPACE,
+				"label": "Migrated card",
+				"description": "Kept from Single",
+				"icon": "organization",
+				"enabled": 1,
+			},
+		)
+		settings.save(ignore_permissions=True)
+		row_name = settings.items[0].name
+		frappe.db.set_value("Dinext Workspace Settings Item", row_name, "parent", LEGACY_PARENT, update_modified=False)
+
+		dinext = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
+		_reparent_legacy_children(dinext)
+		self.assertEqual(
+			frappe.db.get_value("Dinext Workspace Settings Item", row_name, "parent"),
+			DINEXT_HUB_SETTINGS,
+		)
+
+		_clear_hub_settings(self)
+		path = dump_path()
+		path.parent.mkdir(parents=True, exist_ok=True)
+		path.write_text(
+			json.dumps(
+				{
+					"items": [
+						{
+							"idx": 1,
+							"section": "Legacy",
+							"element_type": "Workspace",
+							"target": DINEXT_WORKSPACE,
+							"label": "Dump restored card",
+							"description": "From dump file",
+							"icon": "organization",
+							"enabled": 1,
+						}
+					],
+					"sections": [],
+					"doctype_items": [],
+				}
+			),
+			encoding="utf-8",
+		)
+		self.addCleanup(lambda: path.exists() and path.unlink())
+		dinext = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
+		_restore_dump_if_empty(dinext)
+		dinext.reload()
+		self.assertEqual(dinext.items[0].label, "Dump restored card")
+		self.assertEqual(dinext.items[0].description, "From dump file")
+
+	def test_register_sections_and_doctype_items_merge(self):
+		configure_workspace_menu()
+		_clear_hub_settings(self)
+		settings = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
+		settings.sections = []
+		settings.doctype_items = []
+		settings.save(ignore_permissions=True)
+
+		register_hub_sections([{"section": "My Work", "list_limit": 5}], source_app="dinext_projects")
+		register_hub_sections([{"section": "My Work", "list_limit": 9}], source_app="dinext_kanban")
+		register_hub_doctype_items(
+			[
+				{
+					"section": "My Work",
+					"document_type": "Task",
+					"show_assigned": 1,
+					"show_liked": 1,
+					"show_attention": 1,
+					"attention_filter": [["Task", "status", "=", "Overdue"]],
+				}
+			],
+			source_app="dinext_projects",
+		)
+		register_hub_doctype_items(
+			[
+				{
+					"section": "My Work",
+					"document_type": "Task",
+					"show_quick_create": 1,
+					"show_recently_opened": 1,
+					"show_assigned": 1,
+					"show_attention": 1,
+					"attention_filter": [["Task", "type", "!=", "Issue"]],
+				}
+			],
+			source_app="dinext_kanban",
+		)
+
+		issue_registered = False
+		if frappe.db.exists("DocType", "Issue"):
+			register_hub_doctype_items(
+				[
+					{
+						"section": "My Work",
+						"document_type": "Issue",
+						"show_quick_create": 1,
+						"show_assigned": 1,
+						"show_liked": 1,
+					}
+				],
+				source_app="dinext_projects",
 			)
-			self.assertIn(
-				".dinext-workspace-hub__card-description { margin-top: .35rem; color: var(--text-muted); font-size: var(--text-xs, 11px); text-decoration: none; }",
-				style,
+			issue_registered = True
+
+		settings.reload()
+		self.assertEqual(len(settings.sections), 1)
+		self.assertEqual(settings.sections[0].list_limit, 5)
+		self.assertEqual(len(settings.doctype_items), 3 if issue_registered else 2)
+
+		payload = get_dinext_hub()
+		section = next(s for s in payload["sections"] if s["label"] == "My Work")
+		self.assertNotIn("doctypes", section)
+		lists = section["lists"]
+		self.assertIsNotNone(lists)
+		self.assertTrue(lists["show_recently_opened"])
+		self.assertTrue(lists["show_assigned"])
+		self.assertTrue(lists["show_liked"])
+		self.assertTrue(lists["show_attention"])
+		self.assertEqual(section["list_limit"], 5)
+		self.assertEqual(lists["list_limit"], 5)
+
+		create_doctypes = {row["doctype"] for row in lists["create_actions"]}
+		if frappe.has_permission("Task", "create"):
+			self.assertIn("Task", create_doctypes)
+		if issue_registered and frappe.has_permission("Issue", "create"):
+			self.assertIn("Issue", create_doctypes)
+		self.assertEqual(len(lists["create_actions"]), len(create_doctypes))
+
+		self.assertTrue(isinstance(lists["recent"], list))
+		# Without seeded Route History Form entries, recent stays empty but flag remains on.
+		self.assertLessEqual(len(lists["recent"]), lists["list_limit"])
+		for row in lists["create_actions"]:
+			self.assertIn("label", row)
+			self.assertIn("icon", row)
+
+	def test_parse_attention_filter_and_invalid(self):
+		parsed = parse_attention_filter(
+			'[["Task","status","=","Overdue",false],["Task","type","!=","Issue",false]]',
+			"Task",
+		)
+		self.assertEqual(parsed, [["status", "=", "Overdue"], ["type", "!=", "Issue"]])
+		self.assertIsNone(parse_attention_filter("{not-json", "Task"))
+
+	def test_assigned_list_includes_readable_todo(self):
+		configure_workspace_menu()
+		_clear_hub_settings(self)
+		settings = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
+		settings.sections = []
+		settings.doctype_items = []
+		settings.save(ignore_permissions=True)
+
+		note = frappe.get_doc({"doctype": "Note", "title": f"hub-assign-{random_string(6)}", "public": 1})
+		note.insert(ignore_permissions=True)
+		self.addCleanup(lambda: frappe.delete_doc("Note", note.name, force=True, ignore_permissions=True))
+
+		todo = frappe.get_doc(
+			{
+				"doctype": "ToDo",
+				"description": "hub assign",
+				"allocated_to": "Administrator",
+				"reference_type": "Note",
+				"reference_name": note.name,
+				"status": "Open",
+			}
+		)
+		todo.insert(ignore_permissions=True)
+		self.addCleanup(lambda: frappe.delete_doc("ToDo", todo.name, force=True, ignore_permissions=True))
+
+		register_hub_sections([{"section": "Test Lists", "list_limit": 5}], source_app="dinext_common")
+		register_hub_doctype_items(
+			[
+				{
+					"section": "Test Lists",
+					"document_type": "Note",
+					"show_assigned": 1,
+				}
+			],
+			source_app="dinext_common",
+		)
+
+		payload = get_dinext_hub()
+		section = next(s for s in payload["sections"] if s["label"] == "Test Lists")
+		lists = section["lists"]
+		self.assertTrue(lists["show_assigned"])
+		assigned = lists["assigned"]
+		self.assertIn(note.name, {row["name"] for row in assigned})
+		row = next(item for item in assigned if item["name"] == note.name)
+		self.assertEqual(row["doctype"], "Note")
+		self.assertIn("type_label", row)
+		self.assertIn("icon", row)
+		self.assertEqual(row["icon"], frappe.get_meta("Note").icon)
+		self.assertIn("route", row)
+		self.assertIn("modified", row)
+
+	def test_section_assigned_merges_doctypes_and_applies_limit(self):
+		configure_workspace_menu()
+		_clear_hub_settings(self)
+		settings = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
+		settings.sections = []
+		settings.doctype_items = []
+		settings.save(ignore_permissions=True)
+
+		notes = []
+		for idx in range(3):
+			note = frappe.get_doc(
+				{"doctype": "Note", "title": f"hub-merge-{idx}-{random_string(4)}", "public": 1}
 			)
+			note.insert(ignore_permissions=True)
+			notes.append(note)
+			self.addCleanup(
+				lambda name=note.name: frappe.delete_doc("Note", name, force=True, ignore_permissions=True)
+			)
+			todo = frappe.get_doc(
+				{
+					"doctype": "ToDo",
+					"description": f"hub merge {idx}",
+					"allocated_to": "Administrator",
+					"reference_type": "Note",
+					"reference_name": note.name,
+					"status": "Open",
+				}
+			)
+			todo.insert(ignore_permissions=True)
+			self.addCleanup(
+				lambda name=todo.name: frappe.delete_doc("ToDo", name, force=True, ignore_permissions=True)
+			)
+
+		# Second DocType contribution: ToDo itself (self-assigned open ToDos)
+		extra_todos = []
+		for idx in range(2):
+			todo = frappe.get_doc(
+				{
+					"doctype": "ToDo",
+					"description": f"hub-merge-todo-{idx}-{random_string(4)}",
+					"allocated_to": "Administrator",
+					"status": "Open",
+				}
+			)
+			todo.insert(ignore_permissions=True)
+			extra_todos.append(todo)
+			self.addCleanup(
+				lambda name=todo.name: frappe.delete_doc("ToDo", name, force=True, ignore_permissions=True)
+			)
+			link = frappe.get_doc(
+				{
+					"doctype": "ToDo",
+					"description": f"link for {todo.name}",
+					"allocated_to": "Administrator",
+					"reference_type": "ToDo",
+					"reference_name": todo.name,
+					"status": "Open",
+				}
+			)
+			link.insert(ignore_permissions=True)
+			self.addCleanup(
+				lambda name=link.name: frappe.delete_doc("ToDo", name, force=True, ignore_permissions=True)
+			)
+
+		register_hub_sections([{"section": "Merged Lists", "list_limit": 2}], source_app="dinext_common")
+		register_hub_doctype_items(
+			[
+				{"section": "Merged Lists", "document_type": "Note", "show_assigned": 1},
+				{"section": "Merged Lists", "document_type": "ToDo", "show_assigned": 1, "show_quick_create": 1},
+			],
+			source_app="dinext_common",
+		)
+
+		payload = get_dinext_hub()
+		section = next(s for s in payload["sections"] if s["label"] == "Merged Lists")
+		lists = section["lists"]
+		self.assertEqual(lists["list_limit"], 2)
+		self.assertLessEqual(len(lists["assigned"]), 2)
+		doctypes = {row["doctype"] for row in lists["assigned"]}
+		self.assertTrue(doctypes.issubset({"Note", "ToDo"}))
+		self.assertTrue(all("type_label" in row and "modified" in row for row in lists["assigned"]))
+		create_doctypes = {row["doctype"] for row in lists["create_actions"]}
+		if frappe.has_permission("ToDo", "create"):
+			self.assertIn("ToDo", create_doctypes)
+		self.assertNotIn("Note", create_doctypes)
+
+	def test_recent_list_uses_route_history_with_dedupe_and_limit(self):
+		configure_workspace_menu()
+		_clear_hub_settings(self)
+		settings = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
+		settings.sections = []
+		settings.doctype_items = []
+		settings.save(ignore_permissions=True)
+
+		notes = []
+		for idx in range(3):
+			note = frappe.get_doc(
+				{"doctype": "Note", "title": f"hub-recent-{idx}-{random_string(4)}", "public": 1}
+			)
+			note.insert(ignore_permissions=True)
+			notes.append(note)
+			self.addCleanup(
+				lambda name=note.name: frappe.delete_doc("Note", name, force=True, ignore_permissions=True)
+			)
+
+		# Older duplicate visit for notes[0], then fresher unique visits.
+		from frappe.utils import add_to_date, now_datetime
+
+		history_routes = [
+			f"Form/Note/{notes[0].name}",
+			f"Form/Note/{notes[1].name}",
+			f"Form/Note/{notes[0].name}",
+			f"app/note/{notes[2].name}",
+			"Workspaces/Dinext",
+		]
+		base = now_datetime()
+		for idx, route in enumerate(history_routes):
+			row = frappe.get_doc(
+				{
+					"doctype": "Route History",
+					"route": route,
+					"user": "Administrator",
+				}
+			)
+			row.insert(ignore_permissions=True)
+			frappe.db.set_value(
+				"Route History",
+				row.name,
+				"creation",
+				add_to_date(base, seconds=idx),
+				update_modified=False,
+			)
+			self.addCleanup(
+				lambda name=row.name: frappe.delete_doc(
+					"Route History", name, force=True, ignore_permissions=True
+				)
+			)
+		frappe.db.commit()
+
+		register_hub_sections([{"section": "Recent Lists", "list_limit": 2}], source_app="dinext_common")
+		register_hub_doctype_items(
+			[
+				{
+					"section": "Recent Lists",
+					"document_type": "Note",
+					"show_recently_opened": 1,
+				}
+			],
+			source_app="dinext_common",
+		)
+
+		payload = get_dinext_hub()
+		section = next(s for s in payload["sections"] if s["label"] == "Recent Lists")
+		lists = section["lists"]
+		self.assertTrue(lists["show_recently_opened"])
+		self.assertNotIn("recent_doctypes", lists)
+		recent = lists["recent"]
+		self.assertEqual(len(recent), 2)
+		# Newest unique Form/app routes first: notes[2], then notes[0] (duplicate skipped).
+		self.assertEqual([row["name"] for row in recent], [notes[2].name, notes[0].name])
+		self.assertTrue(all(row["doctype"] == "Note" for row in recent))
+		self.assertTrue(all("type_label" in row and "route" in row for row in recent))
+		self.assertNotIn(notes[1].name, {row["name"] for row in recent})
+
