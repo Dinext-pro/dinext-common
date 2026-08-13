@@ -67,12 +67,12 @@ bench --site your-site.local migrate
 bench build --app dinext_common
 ```
 
-После установки (`after_install`) приложение дополнительно:
+После установки (`after_install`) и каждой миграции (`after_migrate`) приложение дополнительно:
 
-- вызывает `configure_workspace_menu()` — создаёт/обновляет корни `Dinext` и `Settings`, вкладывает дочерние Settings-workspace, подключает Custom HTML Blocks хабов, мигрирует legacy `Настройки` → `Settings`
+- вызывает `configure_workspace_menu()` — создаёт/обновляет корни `Dinext` и `Settings`, вкладывает дочерние Settings-workspace, подключает Custom HTML Blocks хабов, создаёт стандартные записи `Dinext Workspace Settings` (`Dinext`, `Settings`), мигрирует legacy `Настройки` → `Settings`
 - запускает `setup_dinext_news_feed()` — отключает встроенный Frappe changelog fetch и синхронизирует What's New
 
-После каждой миграции (`after_migrate`) повторно вызывается только `setup_dinext_news_feed()`. При создании нового пользователя без `default_workspace` hook `User.after_insert` назначает workspace `Dinext`.
+При создании нового пользователя без `default_workspace` hook `User.after_insert` назначает workspace `Dinext`.
 
 Если в вашем развёртывании ещё нет брендинговых файлов Dinext, убедитесь, что перед `bench build` они лежат в `dinext_common/public/images/`:
 
@@ -123,19 +123,31 @@ bench build --app dinext_common
 
 ### Dinext Hub и Settings Hub
 
-На workspace `Dinext` отображается блок **Dinext Hub**, на workspace `Settings` — **Dinext Settings Hub** (Custom HTML Block fixtures; блоки подключаются при `configure_workspace_menu()` на install и подтягиваются fixtures при migrate).
+На workspace `Dinext` отображается блок **Dinext Hub**, на workspace `Settings` — **Dinext Settings Hub**. Оба блока — тонкие адаптеры: HTML задаёт `data-settings-name`, script загружает `/assets/dinext_common/js/workspace_hub.js` и вызывает `dinext_common.workspace_hub.mount(root_element)`. Стили инжектятся в shadow root из `/assets/dinext_common/css/workspace_hub.css`. Блоки подключаются при `configure_workspace_menu()` на install и migrate.
 
-Администраторы настраивают содержимое хаба через Single DocType **Dinext Workspace Settings** (запись: роли `System Manager` / `Workspace Manager`; чтение хаба — для Desk User):
+Администраторы настраивают содержимое хаба через именованные записи DocType **Dinext Workspace Settings** (запись: роли `System Manager` / `Workspace Manager`; чтение хаба — для Desk User, если у записи не заданы ограничивающие `roles`):
 
-| Таблица | Назначение |
+| Поле / таблица | Назначение |
 |--------|------------|
+| `settings_name` | Уникальный ключ записи (`Dinext`, `Settings`, или ключ другого приложения). Имя документа совпадает с ключом |
+| `roles` | Если заданы, API хаба отдаёт каталог только пользователям с одной из этих ролей. Для `Settings` по умолчанию: `System Manager`, `Workspace Manager` |
 | `items` (`Dinext Workspace Settings Item`) | Навигационные карточки: секция, тип (`Workspace` / `DocType` / `Report` / `Page` / `URL`), target, label, description, icon, enabled, optional `required_role` |
-| `sections` (`Dinext Workspace Settings Section`) | Лимит элементов персональных списков на секцию (`list_limit`, по умолчанию **5**) |
+| `sections` (`Dinext Workspace Settings Section`) | Лимит персональных списков (`list_limit`, по умолчанию **5**) и максимум колонок карточек-ссылок (`card_columns`, по умолчанию **4**; для секций записи `Settings` — **5**). Если карточек меньше лимита, ряд занимает всю ширину |
 | `doctype_items` (`Dinext Workspace Settings DocType`) | Вклады DocType в секцию: quick create, recently opened, assigned, liked, attention + JSON `attention_filter` |
 
-**Dinext Hub** (`dinext_common.workspace_hub.get_dinext_hub`):
+Стандартные записи, создаваемые `dinext_common`:
 
-- возвращает только включённые карточки, доступные текущему пользователю по роли и правам на target
+- **`Dinext`** — каталог Dinext Hub. Domain-приложения регистрируют сюда карточки через `register_hub_*` (имя по умолчанию).
+- **`Settings`** — каталог Settings Hub: секции Workspaces (`Users`, `Tools`, `Integrations`, `Build`, `Website`) и Configuration (семь Frappe core Singles).
+
+Другое приложение может:
+
+- добавить строки в `Dinext` или `Settings` без нового Custom HTML Block — соответствующий хаб подхватит их;
+- создать собственную именованную запись; чтобы показать её на Workspace, нужен тонкий Custom HTML Block с `data-settings-name="<имя>"` и widget в `Workspace.content`.
+
+**Общий API** (`dinext_common.workspace_hub.get_workspace_hub(settings_name)`):
+
+- возвращает только включённые карточки выбранной записи, доступные текущему пользователю по роли записи, `required_role` и правам на target
 - под каждой секцией может показывать компактные персональные списки:
   - **Quick Create** — если есть право `create`
   - **Recently Opened** — из `Route History` текущего пользователя
@@ -143,13 +155,11 @@ bench build --app dinext_common
   - **Liked** — документы с `_liked_by`
   - **Attention** — `frappe.get_list` по JSON-фильтрам (пустой фильтр = все доступные документы в лимите)
 
-**Settings Hub** (`dinext_common.workspace_hub.get_settings_hub`) доступен только ролям `System Manager` и `Workspace Manager`:
-
-- секция Workspaces: `Users`, `Tools`, `Integrations`, `Build`, `Website`
-- секция Configuration: `System Settings`, `Security Settings`, `Session Default Settings`, `Document Naming Settings`, `Log Settings`, `Global Search Settings`, `Domain Settings` (только если DocType установлен и читаем)
+`get_dinext_hub` и `get_settings_hub` — совместимые обёртки для записей `Dinext` и `Settings`.
 
 Whitelisted методы хаба:
 
+- `dinext_common.workspace_hub.get_workspace_hub`
 - `dinext_common.workspace_hub.get_dinext_hub`
 - `dinext_common.workspace_hub.get_settings_hub`
 - `dinext_common.workspace_hub.get_document_titles`
@@ -206,9 +216,10 @@ register_hub_doctype_items(
 Контракт идемпотентности:
 
 - карточки: ключ `(element_type, target)` — существующие строки сохраняют правки администратора (label, description, icon, section, enabled, role); пустой icon может быть backfill'нут
-- секции: ключ `section` — лимит администратора не перезаписывается
+- секции: ключ `section` — `list_limit` и `card_columns` администратора не перезаписываются
 - DocType-вклады: ключ `(section, document_type, source_app)` — флаги и `attention_filter` администратора не перезаписываются
 - `relocate_hub_item_section(...)` меняет только `section` у существующей карточки
+- все `register_hub_*` принимают `settings_name` (по умолчанию `"Dinext"`); ключи дедупликации действуют внутри выбранной записи
 
 ### Dinext News Feed / What's New
 
@@ -381,7 +392,7 @@ Fixtures, экспортируемые приложением:
 - `Website Settings` задаёт публичное имя приложения `Dinext`, `home_page` = `homepage`, отключает регистрацию, баннер и ссылку на `Dinext Theme`
 - `Navbar Settings` задаёт логотип и пункты меню: `Documentation`, `About`, `Мои замещения`
 - `Web Page` публикует динамическую главную по маршруту `homepage`
-- `Custom HTML Block` содержит UI-скрипты хабов Dinext / Settings
+- `Custom HTML Block` — тонкие адаптеры хабов Dinext / Settings (`data-settings-name` + `frappe.require` общего renderer)
 - `Data Cleanup Rules` поставляется с правилами хранения по умолчанию: 90 дней для version, communication, event, file и workflow, 45 дней для специализированных правил comment
 
 Замечания по совместимости:
@@ -450,6 +461,13 @@ pre-commit install
 
 ## Changelog
 
+### 2026-08-13
+
+- Секции хаба: `card_columns` — максимум колонок сетки карточек (по умолчанию 4, для `Settings` — 5); меньше карточек — ряд на всю ширину
+- `Dinext Workspace Settings` — именованные записи `Dinext` и `Settings` вместо Single; общий `get_workspace_hub` и renderer в `public/js/workspace_hub.js`
+- Settings Hub читает запись `Settings`; domain apps могут расширять стандартные записи без нового блока
+- `configure_workspace_menu` выполняется и на `after_migrate`
+
 ### 2026-08-11 — 2026-08-12
 
 - Workspace menu: корневые `Dinext` / `Settings`, скрытие non-Dinext public workspace, вложение Settings-детей, `default_workspace` для новых пользователей
@@ -494,6 +512,7 @@ pre-commit install
 │   │   ├── css/
 │   │   │   ├── common.css
 │   │   │   ├── frappe-gantt.css
+│   │   │   ├── workspace_hub.css
 │   │   │   └── workspace_sidebar_hover.css
 │   │   └── js/
 │   │       ├── breadcrumbs_update.js
@@ -505,6 +524,7 @@ pre-commit install
 │   │       ├── hyperlist.js
 │   │       ├── listview_resize.js
 │   │       ├── sticky-datatable.js
+│   │       ├── workspace_hub.js
 │   │       └── workspace_sidebar_hover.js
 │   ├── setup/
 │   │   ├── workspace.py
@@ -583,6 +603,7 @@ flowchart LR
   afterInstall --> newsSetup["setup_dinext_news_feed"]
   migrate --> afterMigrate["after_migrate"]
   afterMigrate --> newsSetup
+  afterMigrate --> workspaceMenu
   migrate --> build["bench build"]
   build --> assets["Desk и website assets готовы"]
 ```
@@ -592,9 +613,9 @@ flowchart LR
 ```mermaid
 flowchart LR
   install["after_install"] --> configure["configure_workspace_menu"]
-  configure --> settings["Dinext Workspace Settings"]
+  configure --> settings["Dinext Workspace Settings records"]
   domainApps["domain apps hub_catalog"] --> settings
-  settings --> hubApi["get_dinext_hub"]
+  settings --> hubApi["get_workspace_hub"]
   hubApi --> cards["permission-filtered cards"]
   hubApi --> lists["personal DocType lists"]
   cards --> deskHub["Dinext Hub UI"]

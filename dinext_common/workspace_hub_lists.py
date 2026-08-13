@@ -12,7 +12,7 @@ import frappe
 from frappe import _
 from frappe.utils import cstr
 
-from dinext_common.setup.hub_catalog import DEFAULT_SECTION_LIST_LIMIT
+from dinext_common.setup.hub_catalog import DEFAULT_SECTION_CARD_COLUMNS, DEFAULT_SECTION_LIST_LIMIT
 
 FLAG_FIELDS = (
 	"show_quick_create",
@@ -35,6 +35,20 @@ def get_section_limits(settings) -> dict[str, int]:
 			limit = DEFAULT_SECTION_LIST_LIMIT
 		limits[section] = max(limit, 1)
 	return limits
+
+
+def get_section_card_columns(settings) -> dict[str, int]:
+	columns: dict[str, int] = {}
+	for row in settings.get("sections") or []:
+		section = (row.section or "").strip()
+		if not section:
+			continue
+		try:
+			value = int(getattr(row, "card_columns", None) or DEFAULT_SECTION_CARD_COLUMNS)
+		except (TypeError, ValueError):
+			value = DEFAULT_SECTION_CARD_COLUMNS
+		columns[section] = value if value >= 1 else DEFAULT_SECTION_CARD_COLUMNS
+	return columns
 
 
 def merge_doctype_contributions(settings) -> dict[tuple[str, str], dict[str, Any]]:

@@ -1,13 +1,21 @@
 """Runtime data providers for the Dinext Desk Workspace hubs."""
 
+from __future__ import annotations
+
 from urllib.parse import urlparse
 
 import frappe
 from frappe import _
 
-from dinext_common.setup.hub_catalog import DEFAULT_SECTION_LIST_LIMIT
+from dinext_common.setup.hub_catalog import (
+	DEFAULT_SECTION_CARD_COLUMNS,
+	DEFAULT_SECTION_LIST_LIMIT,
+	DINEXT_HUB_SETTINGS,
+	SETTINGS_HUB_SETTINGS,
+)
 from dinext_common.workspace_hub_lists import (
 	build_section_personal_lists,
+	get_section_card_columns,
 	get_section_limits,
 	merge_doctype_contributions,
 )
@@ -56,17 +64,62 @@ SETTINGS_CONFIGURATION = (
 		"organization",
 	),
 )
-SETTINGS_ROLES = {"System Manager", "Workspace Manager"}
+
+
+def default_settings_hub_items() -> list[dict]:
+	"""Default catalog rows for the Settings hub record."""
+	items = []
+	for label, description, icon in SETTINGS_CHILDREN:
+		items.append(
+			{
+				"section": "Workspaces",
+				"element_type": "Workspace",
+				"target": label,
+				"label": label,
+				"description": description,
+				"icon": icon,
+				"enabled": 1,
+			}
+		)
+	for doctype, description, icon in SETTINGS_CONFIGURATION:
+		items.append(
+			{
+				"section": "Configuration",
+				"element_type": "DocType",
+				"target": doctype,
+				"label": doctype,
+				"description": description,
+				"icon": icon,
+				"enabled": 1,
+			}
+		)
+	return items
 
 
 @frappe.whitelist()
 def get_dinext_hub() -> dict:
 	"""Return the current user's configured and accessible Dinext hub cards and lists."""
+	return get_workspace_hub(DINEXT_HUB_SETTINGS)
+
+
+@frappe.whitelist()
+def get_settings_hub() -> dict:
+	"""Return Settings Workspace navigation for authorised administrators only."""
+	return get_workspace_hub(SETTINGS_HUB_SETTINGS)
+
+
+@frappe.whitelist()
+def get_workspace_hub(settings_name: str | None = None) -> dict:
+	"""Return hub cards and lists for one named Dinext Workspace Settings record."""
+	settings_name = (settings_name or "").strip() or DINEXT_HUB_SETTINGS
 	if not frappe.db.exists("DocType", "Dinext Workspace Settings"):
 		return {"sections": []}
+	if not frappe.db.exists("Dinext Workspace Settings", settings_name):
+		return {"sections": []}
 
-	# Singleton write is admin-only; hub projection is readable for all Desk users.
-	settings = frappe.get_cached_doc("Dinext Workspace Settings")
+	settings = frappe.get_cached_doc("Dinext Workspace Settings", settings_name)
+	_assert_record_access(settings)
+
 	section_cards: dict[str, list] = {}
 	for item in settings.items:
 		if not item.enabled or not _has_required_role(item.required_role):
@@ -86,6 +139,7 @@ def get_dinext_hub() -> dict:
 		)
 
 	section_limits = get_section_limits(settings)
+	section_columns = get_section_card_columns(settings)
 	configs_by_section: dict[str, list] = {}
 	for (_section, _doctype), config in merge_doctype_contributions(settings).items():
 		configs_by_section.setdefault(config["section"], []).append(config)
@@ -110,6 +164,7 @@ def get_dinext_hub() -> dict:
 				"items": cards,
 				"lists": lists,
 				"list_limit": section_limits.get(section, DEFAULT_SECTION_LIST_LIMIT),
+				"card_columns": section_columns.get(section, DEFAULT_SECTION_CARD_COLUMNS),
 			}
 		)
 
@@ -140,55 +195,10 @@ def get_document_titles(doctype: str, names: list | str | None = None) -> list[d
 	return format_records(doctype, unique_names, limit=len(unique_names) or 1)
 
 
-@frappe.whitelist()
-def get_settings_hub() -> dict:
-	"""Return Settings Workspace navigation for authorised administrators only."""
-	if not SETTINGS_ROLES.intersection(frappe.get_roles()):
+def _assert_record_access(settings) -> None:
+	roles = {row.role for row in (settings.get("roles") or []) if getattr(row, "role", None)}
+	if roles and not roles.intersection(frappe.get_roles()):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
-
-	workspace_items = []
-	for label, description, icon in SETTINGS_CHILDREN:
-		route = _get_workspace_route(label)
-		if not route:
-			continue
-		workspace_items.append(
-			{
-				"label": _(label),
-				"description": _(description),
-				"icon": icon,
-				"route": route,
-			}
-		)
-
-	configuration_items = []
-	for doctype, description, icon in SETTINGS_CONFIGURATION:
-		route = _get_configuration_doctype_route(doctype)
-		if not route:
-			continue
-		configuration_items.append(
-			{
-				"label": _(doctype),
-				"description": _(description),
-				"icon": icon,
-				"route": route,
-			}
-		)
-
-	sections = []
-	if workspace_items:
-		sections.append({"label": _("Workspaces"), "items": workspace_items})
-	if configuration_items:
-		sections.append({"label": _("Configuration"), "items": configuration_items})
-	return {"sections": sections}
-
-
-def _get_configuration_doctype_route(doctype: str) -> str | None:
-	"""Desk route for a settings Single when installed and readable."""
-	if not frappe.db.exists("DocType", doctype):
-		return None
-	if not frappe.has_permission(doctype, "read"):
-		return None
-	return _desk_route(doctype)
 
 
 def _has_required_role(required_role: str | None) -> bool:

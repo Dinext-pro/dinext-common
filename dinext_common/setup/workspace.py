@@ -6,6 +6,15 @@ from pathlib import Path
 
 import frappe
 
+from dinext_common.setup.hub_catalog import (
+	DINEXT_HUB_SETTINGS,
+	SETTINGS_HUB_SETTINGS,
+	SETTINGS_SECTION_CARD_COLUMNS,
+	ensure_workspace_settings,
+	register_hub_items,
+	register_hub_sections,
+)
+
 DINEXT_WORKSPACE = "Dinext"
 SETTINGS_WORKSPACE = "Settings"
 LEGACY_SETTINGS_WORKSPACE = "Настройки"
@@ -183,12 +192,28 @@ def ensure_settings_workspace_roles() -> None:
 
 
 def ensure_default_dinext_hub_settings() -> None:
-	"""Ensure the Settings Single exists; domain cards are registered by owning apps."""
+	"""Ensure standard named records exist; domain cards are registered by owning apps."""
 	if not frappe.db.exists("DocType", "Dinext Workspace Settings"):
 		return
 
-	# Touch the singleton so it exists after install without seeding domain cards.
-	frappe.get_single("Dinext Workspace Settings")
+	ensure_workspace_settings(DINEXT_HUB_SETTINGS)
+	ensure_workspace_settings(SETTINGS_HUB_SETTINGS, roles=SETTINGS_ROLES)
+
+	from dinext_common.workspace_hub import default_settings_hub_items
+
+	register_hub_items(
+		default_settings_hub_items(),
+		source_app="dinext_common",
+		settings_name=SETTINGS_HUB_SETTINGS,
+	)
+	register_hub_sections(
+		[
+			{"section": "Workspaces", "card_columns": SETTINGS_SECTION_CARD_COLUMNS},
+			{"section": "Configuration", "card_columns": SETTINGS_SECTION_CARD_COLUMNS},
+		],
+		source_app="dinext_common",
+		settings_name=SETTINGS_HUB_SETTINGS,
+	)
 
 
 def hide_non_dinext_workspaces() -> None:
