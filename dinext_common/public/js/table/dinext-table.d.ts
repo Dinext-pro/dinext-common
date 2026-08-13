@@ -263,6 +263,10 @@ export interface DinextTableThemeOptions {
         borderRadius?: number | string;
         /** Overrides wrapper radius; falls back to `borderRadius` / default `4` */
         wrapperBorderRadius?: number | string;
+        /**
+         * Text font family. Default: Desk `--font-stack` (Inter), not Quartz IBM Plex Sans.
+         */
+        fontFamily?: string;
     };
 }
 
@@ -339,6 +343,21 @@ export interface DinextTableFilterOptions {
         active?: boolean;
         /** @layer filter — initial / controlled `{ field: query }` */
         state?: DinextTableFilterState;
+        /**
+         * @layer filter — matching rows inside a merge group.
+         * `"atom"` (default) keeps the whole group; `"rows"` keeps matching rows only.
+         */
+        mergeMatchMode?: "atom" | "rows";
+        /**
+         * @layer filter — merge atom kept only as an ancestor of a tree match.
+         * `"atom"` (default) keeps all tails; `"head"` renders one context head.
+         */
+        mergeAncestorMode?: "atom" | "head";
+        /**
+         * @layer filter — head-owned merged fields inherited by role/tail rows
+         * for filtering and display projection.
+         */
+        mergeInheritedFields?: string[];
     };
     /** @layer filter — after state / active change */
     onFilterChange?: (ctx: {
@@ -410,6 +429,14 @@ export interface DinextTableEditOptions {
     onSaveCells?: (ctx: DinextTableCellChangeContext) => void | false | Promise<void | false>;
     /** @layer edit + ag-grid — onCellEditRequest pipeline */
     readOnlyEdit?: boolean;
+    /**
+     * @layer edit — Sheets-like: plain click starts edit when the same cell was
+     * the previous completed click (not live AG focus — that moves before click).
+     * First click still only focuses/selects. Skips dblclick (`detail !== 1`), modifiers,
+     * checkbox columns, fill-handle, and multi-cell selection.
+     * Default: on when `edit: true` OR any column has `edit` (not `false`).
+     */
+    clickWhenActive?: boolean;
 }
 
 /** @layer navigation */
@@ -959,10 +986,39 @@ export interface DinextTableInstance {
     exitFullscreen(): Promise<boolean>;
     /** @layer fullscreen */
     toggleFullscreen(): Promise<boolean>;
+    /** @layer fullscreen — fullscreenElement or document.body */
+    getOverlayHost(): HTMLElement | null;
 
     // --- edit (advanced / used by clipboard) ---
     /** @layer edit — write nested sourceData by path id */
     writeSourceField?(rowId: string, field: string, value: unknown): DinextTableRowData | null;
+    /**
+     * @layer edit — apply values already persisted externally (server side-effects).
+     * Updates grid + sourceData; does not call onValidateCells / onSaveCells.
+     * Item: `{ field, value, rowId? }` and/or `{ id }` (business rowIdField).
+     */
+    applyExternalCellValues?(
+        changes: Array<{
+            field: string;
+            value: unknown;
+            rowId?: string;
+            id?: string;
+        }>
+    ): number;
+    /** @layer edit — unified batch commit (validate → grid+source → onSaveCells) */
+    commitCellChanges?(params: {
+        source?: DinextTableCellChangeSource;
+        changes?: Array<{
+            node?: unknown;
+            field: string;
+            oldValue?: unknown;
+            newValue?: unknown;
+            rowIndex?: number;
+            colId?: string;
+        }>;
+        range?: DinextTableCellChangeRange | null;
+        alreadyApplied?: boolean;
+    }): { applied: number; entries: object[] };
 }
 
 // ---------------------------------------------------------------------------
@@ -986,6 +1042,18 @@ export interface DinextTableStatic {
     >;
     /** @layer core */
     create(options: DinextTableCreateOptions): Promise<DinextTableInstance>;
+    /**
+     * @layer fullscreen — native FS host or `document.body`.
+     * Body-portaled overlays (datepicker) must mount here.
+     */
+    getOverlayHost(doc?: Document): HTMLElement | null;
+    /**
+     * @layer fullscreen — move overlay into getOverlayHost(); no-op outside FS.
+     */
+    adoptOverlay(
+        node: HTMLElement,
+        opts?: { anchor?: HTMLElement | null; host?: HTMLElement | null }
+    ): boolean;
 }
 
 declare global {

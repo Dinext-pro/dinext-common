@@ -106,7 +106,7 @@ export function format_modifier_prefix(modified_by) {
 	if (!modified_by) return "";
 	const current_user = frappe.session && frappe.session.user;
 	if (!current_user || modified_by === current_user) return "";
-	return `${resolve_user_full_name(modified_by)} изменил документ на сервере. `;
+	return __("{0} modified the document on the server. ", [resolve_user_full_name(modified_by)]);
 }
 
 export function show_fcm_alert(cfg, message, indicator) {
@@ -424,15 +424,15 @@ export function show_docinfo_alert(changed_keys, cfg) {
 	if (!changed_keys.length || !cfg.show_docinfo_alert) return;
 
 	const labels = cfg.docinfo_key_labels || {};
-	const changed_labels = changed_keys.map((key) => labels[key] || key);
+	const changed_labels = changed_keys.map((key) => __(labels[key] || key));
 
-	show_fcm_alert(cfg, `Обновлены данные документа: ${changed_labels.join(", ")}`, "orange");
+	show_fcm_alert(cfg, __("Document data updated: {0}", [changed_labels.join(", ")]), "orange");
 }
 
 export function show_realtime_alert(data, frm, cfg) {
 	cfg = cfg || {};
 	const prefix = format_modifier_prefix(data && data.modified_by);
-	show_fcm_alert(cfg, `${prefix}Выполняется сверка изменений.`, "orange");
+	show_fcm_alert(cfg, `${prefix}${__("Reconciling changes.")}`, "orange");
 }
 
 export function show_applied_alert(frm, analysis, cfg) {
@@ -446,16 +446,18 @@ export function show_applied_alert(frm, analysis, cfg) {
 	const prefix = format_modifier_prefix(analysis.server_modified_by);
 	const messages = [];
 	if (applied_server.length) {
-		messages.push(`обновлены поля: ${format_field_labels(frm, applied_server).join(", ")}`);
+		messages.push(__("updated fields: {0}", [format_field_labels(frm, applied_server).join(", ")]));
 	}
 	if (applied_conflicts.length) {
 		messages.push(
-			`сервер перезаписал локальные правки: ${format_field_labels(frm, applied_conflicts).join(", ")}`
+			__("server overwrote local edits: {0}", [
+				format_field_labels(frm, applied_conflicts).join(", "),
+			])
 		);
 	}
 
 	const indicator = applied_conflicts.length ? "red" : "orange";
-	show_fcm_alert(cfg, `${prefix}Объект был изменён на сервере, ${messages.join("; ")}`, indicator);
+	show_fcm_alert(cfg, `${prefix}${__("The document was modified on the server, {0}", [messages.join("; ")])}`, indicator);
 }
 
 export const FormMergeUi = {

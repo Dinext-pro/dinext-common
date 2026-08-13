@@ -363,22 +363,22 @@ export function confirm_conflicts(frm, conflicts, cfg) {
 	return new Promise((resolve) => {
 		const conflict_labels = format_field_labels(frm, conflicts).join(", ");
 		const message = [
-			"Документ был изменён на сервере, и часть полей конфликтует с вашими правками.",
+			__("The document was modified on the server and some fields conflict with your edits."),
 			"",
-			`Конфликтующие поля: ${conflict_labels}`,
+			__("Conflicting fields: {0}", [conflict_labels]),
 			"",
-			"Выберите, как продолжить сохранение.",
+			__("Choose how to continue saving."),
 		].join("<br>");
 
 		const dialog = new frappe.ui.Dialog({
-			title: "Конфликт изменений",
+			title: __("Change Conflict"),
 			fields: [{ fieldtype: "HTML", fieldname: "message", options: message }],
-			primary_action_label: "Сохранить мои значения",
+			primary_action_label: __("Keep my values"),
 			primary_action() {
 				dialog.hide();
 				resolve("local_wins");
 			},
-			secondary_action_label: __("Take server values"),
+			secondary_action_label: __("Use server values"),
 			secondary_action() {
 				dialog.hide();
 				resolve("server_wins");
@@ -464,7 +464,7 @@ export function before_save(frm) {
 		return confirm_conflicts(frm, analysis.conflicts, state.cfg).then((decision) => {
 			if (decision === "block") {
 				frappe.validated = false;
-				frappe.throw(__("Save cancelled: the document was changed on the server."));
+				frappe.throw(__("Save cancelled: the document was modified on the server."));
 			}
 
 			if (decision === "server_wins") {

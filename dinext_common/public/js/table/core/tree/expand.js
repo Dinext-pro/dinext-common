@@ -45,7 +45,7 @@ export async function expandTreeRow(table, rowId, ctx) {
         try {
             await table.options.onExpandRow({
                 rowId,
-                row: table.findSourceRow(rowId),
+                row: table.findTreeSourceRow?.(rowId) || table.findSourceRow(rowId),
                 table,
                 ...(ctx.expandCallbackExtra || {})
             });
