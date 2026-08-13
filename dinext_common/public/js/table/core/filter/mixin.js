@@ -12,6 +12,9 @@ import { DinextNoopFilter, DinextTextFloatingFilter } from "./floating-filter.js
 const FILTER_DEFAULTS = {
     enabled: true,
     active: false,
+    mergeMatchMode: "atom",
+    mergeAncestorMode: "atom",
+    mergeInheritedFields: [],
     state: {}
 };
 
@@ -193,6 +196,38 @@ export const FilterMixin = (Base) => class extends Base {
     syncVisibleRows() {
         super.syncVisibleRows();
         this.applyFilterToRowData();
+    }
+
+    refreshFilteredProjection() {
+        this.syncVisibleRows();
+        this.setGridOption("rowData", [...(this.rowData || [])]);
+        this._filterProjectionRefreshVersion =
+            (this._filterProjectionRefreshVersion || 0) + 1;
+    }
+
+    /** Active tree filter rebuilds its projection instead of inserting source rows. */
+    insertVisibleChildren(rowId) {
+        if (this.isFilterActive()) {
+            this.refreshFilteredProjection();
+            return;
+        }
+        super.insertVisibleChildren(rowId);
+    }
+
+    /**
+     * Lazy children change sourceData, so rebuild the filtered projection once
+     * after Tree/Sort update it. Do not clear selection for a tree-only refresh.
+     */
+    setRowChildren(rowId, children) {
+        const refreshVersion = this._filterProjectionRefreshVersion || 0;
+        const result = super.setRowChildren(rowId, children);
+        if (
+            this.isFilterActive()
+            && (this._filterProjectionRefreshVersion || 0) === refreshVersion
+        ) {
+            this.refreshFilteredProjection();
+        }
+        return result;
     }
 
     applyFilterToRowData() {

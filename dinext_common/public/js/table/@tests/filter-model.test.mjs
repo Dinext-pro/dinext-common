@@ -13,6 +13,8 @@ import {
     rowMatchesFilter,
     valueMatchesQuery
 } from "../core/filter/model.js";
+import { getMergeGroupMeta, getTreeSourceRowId } from "../core/shared/utils.js";
+import { toVisibleRows } from "../core/tree/model.js";
 import { makeMergeHead, makeMergeTail, makeRow } from "./helpers/fixtures.mjs";
 
 test("normalizeFilterState drops empty/blank and trims", () => {
@@ -168,6 +170,60 @@ test("filterFlatRows keeps merge atom when any row matches", () => {
     assert.deepEqual(none, []);
 });
 
+test("strict merge filter removes non-matching role tails", () => {
+    const head = makeMergeHead("1", 2, {
+        task: "ЗНИ",
+        role: "Консультант"
+    });
+    const tail = makeMergeTail("2", "1", 2, {
+        task: "",
+        role: "Разработчик"
+    });
+    const options = {
+        filter: {
+            mergeMatchMode: "rows",
+            mergeInheritedFields: ["task"]
+        }
+    };
+
+    const filtered = filterFlatRows([head, tail], { role: "консультант" }, options);
+
+    assert.deepEqual(filtered.map((row) => row.id), ["1"]);
+    assert.equal(filtered[0].role, "Консультант");
+    assert.equal(getMergeGroupMeta(filtered[0]), null);
+    assert.deepEqual(getMergeGroupMeta(head), { id: "g-1", index: 0, size: 2 });
+});
+
+test("strict merge filter promotes a matching tail without changing its source identity", () => {
+    const head = makeMergeHead("1", 2, {
+        task: "ЗНИ",
+        role: "Консультант"
+    });
+    const tail = makeMergeTail("2", "1", 2, {
+        task: "",
+        role: "Разработчик"
+    });
+    const options = {
+        filter: {
+            mergeMatchMode: "rows",
+            mergeInheritedFields: ["task"]
+        }
+    };
+
+    const filtered = filterFlatRows(
+        [head, tail],
+        { task: "зни", role: "разработчик" },
+        options
+    );
+
+    assert.deepEqual(filtered.map((row) => row.id), ["2"]);
+    assert.equal(filtered[0].task, "ЗНИ");
+    assert.equal(filtered[0].role, "Разработчик");
+    assert.equal(getTreeSourceRowId(filtered[0]), "1");
+    assert.equal(getMergeGroupMeta(filtered[0]), null);
+    assert.equal(tail.task, "");
+});
+
 test("filterFlatRows number op with column type", () => {
     const rows = [
         makeRow("1", { hours: 2 }),
@@ -221,4 +277,76 @@ test("filterTreeRows keeps merge atom when child under head matches", () => {
     assert.deepEqual(pruned.map((r) => r.id), ["1", "2"]);
     assert.deepEqual(pruned[0].children.map((r) => r.id), ["1.1"]);
     assert.ok(expandIds.has("1"));
+});
+
+test("filterTreeRows can compact a descendant-only merge ancestor to its head", () => {
+    const head = makeMergeHead("1", 2, {
+        name: "Head",
+        children: [makeRow("1.1", { name: "NestedHit" })]
+    });
+    const tail = makeMergeTail("2", "1", 2, { name: "Tail" });
+    const options = { filter: { mergeAncestorMode: "head" } };
+
+    const { rows: pruned, expandIds } = filterTreeRows(
+        [head, tail],
+        { name: "nestedhit" },
+        options
+    );
+
+    assert.deepEqual(pruned.map((row) => row.id), ["1"]);
+    assert.deepEqual(pruned[0].children.map((row) => row.id), ["1.1"]);
+    assert.equal(getMergeGroupMeta(pruned[0]), null);
+    assert.deepEqual(getMergeGroupMeta(head), { id: "g-1", index: 0, size: 2 });
+    assert.ok(expandIds.has("1"));
+
+    const visible = toVisibleRows(pruned, expandIds, options);
+    assert.deepEqual(visible.map((row) => row._rowId), ["1", "1:1.1"]);
+    assert.equal(getMergeGroupMeta(visible[0]), null);
+});
+
+test("compact merge ancestor mode keeps a self-matching atom whole", () => {
+    const head = makeMergeHead("1", 2, {
+        name: "Alpha",
+        children: [makeRow("1.1", { name: "Other" })]
+    });
+    const tail = makeMergeTail("2", "1", 2, { name: "Tail" });
+    const options = { filter: { mergeAncestorMode: "head" } };
+
+    const { rows: pruned } = filterTreeRows([head, tail], { name: "alpha" }, options);
+
+    assert.deepEqual(pruned.map((row) => row.id), ["1", "2"]);
+    assert.deepEqual(getMergeGroupMeta(pruned[0]), { id: "g-1", index: 0, size: 2 });
+});
+
+test("strict tree merge filter promotes matching tail and keeps filtered children", () => {
+    const head = makeMergeHead("1", 2, {
+        task: "ЗНИ",
+        role: "Консультант",
+        children: [makeRow("1.1", { task: "Child", role: "Разработчик" })]
+    });
+    const tail = makeMergeTail("2", "1", 2, {
+        task: "",
+        role: "Разработчик"
+    });
+    const options = {
+        filter: {
+            mergeMatchMode: "rows",
+            mergeInheritedFields: ["task"]
+        }
+    };
+
+    const { rows: pruned, expandIds } = filterTreeRows(
+        [head, tail],
+        { role: "разработчик" },
+        options
+    );
+
+    assert.deepEqual(pruned.map((row) => row.id), ["2"]);
+    assert.equal(pruned[0].task, "ЗНИ");
+    assert.equal(getTreeSourceRowId(pruned[0]), "1");
+    assert.deepEqual(pruned[0].children.map((row) => row.id), ["1.1"]);
+    assert.ok(expandIds.has("2"));
+
+    const visible = toVisibleRows(pruned, expandIds, options);
+    assert.deepEqual(visible.map((row) => row._rowId), ["2", "2:1.1"]);
 });
