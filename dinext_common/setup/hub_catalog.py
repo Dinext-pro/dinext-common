@@ -176,6 +176,7 @@ def register_hub_doctype_items(
 	administrator edits to flags, attention_filter, and a non-empty list_filter.
 	Empty ``list_filter`` is backfilled from the payload. ``show_assigned`` and
 	``show_quick_create`` are enabled one-way when the payload enables them.
+	Unknown keys such as legacy ``show_recently_opened`` / ``recent`` are ignored.
 	"""
 	if not frappe.db.exists("DocType", "Dinext Workspace Settings DocType"):
 		return
@@ -222,7 +223,6 @@ def register_hub_doctype_items(
 			"document_type": document_type,
 			"enabled": 1 if raw.get("enabled", 1) else 0,
 			"show_quick_create": show_quick_create,
-			"show_recently_opened": 1 if raw.get("show_recently_opened") or raw.get("recent") else 0,
 			"show_assigned": show_assigned,
 			"show_liked": 1 if raw.get("show_liked") or raw.get("liked") else 0,
 			"show_attention": 1 if raw.get("show_attention") or raw.get("attention") else 0,

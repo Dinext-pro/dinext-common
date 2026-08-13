@@ -8,6 +8,10 @@
  "engine": "InnoDB",
  "field_order": [
   "settings_name",
+  "section_break_page_lists",
+  "show_frequent_pages",
+  "column_break_page_lists",
+  "show_recent_pages",
   "section_break_access",
   "roles",
   "section_break_cards",
@@ -28,6 +32,27 @@
    "label": "Settings Name",
    "reqd": 1,
    "unique": 1
+  },
+  {
+   "fieldname": "section_break_page_lists",
+   "fieldtype": "Section Break",
+   "label": "Page Lists"
+  },
+  {
+   "default": "1",
+   "fieldname": "show_frequent_pages",
+   "fieldtype": "Check",
+   "label": "Frequent Pages"
+  },
+  {
+   "fieldname": "column_break_page_lists",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "show_recent_pages",
+   "fieldtype": "Check",
+   "label": "Recent Pages"
   },
   {
    "fieldname": "section_break_access",
@@ -79,7 +104,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 0,
  "links": [],
- "modified": "2026-08-13 02:40:00",
+ "modified": "2026-08-14 02:00:00",
  "modified_by": "Administrator",
  "module": "Dinext Common",
  "name": "Dinext Workspace Settings",
