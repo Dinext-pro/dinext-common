@@ -19,6 +19,7 @@ from dinext_common.workspace_hub_lists import (
 	get_section_limits,
 	merge_doctype_contributions,
 )
+from dinext_common.workspace_hub_models import WorkspaceHubFormInput, WorkspaceHubResponse
 
 SETTINGS_CHILDREN = (
 	("Users", "Manage users, roles, and permissions.", "users"),
@@ -97,21 +98,24 @@ def default_settings_hub_items() -> list[dict]:
 
 
 @frappe.whitelist()
-def get_dinext_hub() -> dict:
+def get_dinext_hub() -> WorkspaceHubResponse:
 	"""Return the current user's configured and accessible Dinext hub cards and lists."""
 	return get_workspace_hub(DINEXT_HUB_SETTINGS)
 
 
 @frappe.whitelist()
-def get_settings_hub() -> dict:
+def get_settings_hub() -> WorkspaceHubResponse:
 	"""Return Settings Workspace navigation for authorised administrators only."""
 	return get_workspace_hub(SETTINGS_HUB_SETTINGS)
 
 
 @frappe.whitelist()
-def get_workspace_hub(settings_name: str | None = None) -> dict:
+def get_workspace_hub(settings_name: str | None = None) -> WorkspaceHubResponse:
 	"""Return hub cards and lists for one named Dinext Workspace Settings record."""
-	settings_name = (settings_name or "").strip() or DINEXT_HUB_SETTINGS
+	form_input: WorkspaceHubFormInput = frappe.form_dict
+	settings_name = (
+		settings_name or form_input.get("settings_name") or ""
+	).strip() or DINEXT_HUB_SETTINGS
 	if not frappe.db.exists("DocType", "Dinext Workspace Settings"):
 		return {"sections": []}
 	if not frappe.db.exists("Dinext Workspace Settings", settings_name):
