@@ -146,7 +146,10 @@ doctype_js = {"Project" : "public/js/sticky-datatable.js"}
 
 # before_install = "dinext_common.install.before_install"
 after_install = "dinext_common.install.after_install"
-after_migrate = ["dinext_common.changelog_feed.on_after_migrate"]
+after_migrate = [
+	"dinext_common.changelog_feed.on_after_migrate",
+	"dinext_common.setup.workspace.configure_workspace_menu",
+]
 
 # Uninstallation
 # ------------
@@ -184,9 +187,12 @@ after_migrate = ["dinext_common.changelog_feed.on_after_migrate"]
 # 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
 # }
 #
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+has_permission = {
+	"Dinext Workspace Settings": (
+		"dinext_common.dinext_common.doctype.dinext_workspace_settings"
+		".dinext_workspace_settings.has_permission"
+	),
+}
 
 # DocType Class
 # ---------------
