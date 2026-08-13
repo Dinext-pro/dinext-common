@@ -79,7 +79,7 @@ class RowCheckCellRenderer {
             this.input = null;
             return;
         }
-        const rowId = getStableRowId(row, table.options);
+        const rowId = table.getRowCheckId(row);
         const checked = table.isRowChecked(rowId);
         if (!this.input) {
             this.eGui.replaceChildren();
@@ -184,6 +184,17 @@ export const RowCheckMixin = (Base) => class extends Base {
         };
     }
 
+    getRowCheckId(row) {
+        const rowId = getStableRowId(row, this.options);
+        if (
+            this.getRowCheckUnit() === ROW_CHECK_UNITS.MERGE_HEAD
+            && typeof this.resolveProjectedSourceRowId === "function"
+        ) {
+            return this.resolveProjectedSourceRowId(rowId, { includeLeaf: true });
+        }
+        return rowId;
+    }
+
     isRowCheckable(row) {
         if (!this.isRowCheckEnabled() || !row) {
             return false;
@@ -195,7 +206,7 @@ export const RowCheckMixin = (Base) => class extends Base {
         if (typeof canCheckRow !== "function") {
             return true;
         }
-        const rowId = getStableRowId(row, this.options);
+        const rowId = this.getRowCheckId(row);
         const section = row._section === TABLE_SECTIONS.SUMMARY
             ? TABLE_SECTIONS.SUMMARY
             : TABLE_SECTIONS.BODY;
@@ -228,7 +239,7 @@ export const RowCheckMixin = (Base) => class extends Base {
     isRowChecked(rowOrId) {
         const id = typeof rowOrId === "string" || typeof rowOrId === "number"
             ? String(rowOrId)
-            : getStableRowId(rowOrId, this.options);
+            : this.getRowCheckId(rowOrId);
         return this._checkedRowIds.has(id);
     }
 

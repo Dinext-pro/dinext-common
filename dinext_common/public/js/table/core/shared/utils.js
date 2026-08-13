@@ -119,6 +119,47 @@ const DEFAULT_MERGE_GROUP_FIELD_NAMES = {
     sizeField: "mergeGroupSize"
 };
 
+// Display-only projection metadata. Symbols keep filter projection details out
+// of domain data, callbacks that serialize rows, and sourceData.
+const DISPLAY_MERGE_GROUP_META = Symbol("dinextTableDisplayMergeGroupMeta");
+const TREE_SOURCE_ROW_ID = Symbol("dinextTableTreeSourceRowId");
+
+/** Return a display clone treated as a plain row by merge-aware layers. */
+export function asStandaloneMergeGroupRow(row) {
+    if (!row) {
+        return row;
+    }
+    return {
+        ...row,
+        [DISPLAY_MERGE_GROUP_META]: null
+    };
+}
+
+/**
+ * Return a display clone with projected merge metadata.
+ * `treeSourceRowId` points a promoted display head back to the source head.
+ */
+export function asProjectedMergeGroupRow(row, mergeMeta, treeSourceRowId) {
+    if (!row) {
+        return row;
+    }
+    const projected = {
+        ...row,
+        [DISPLAY_MERGE_GROUP_META]: mergeMeta || null
+    };
+    if (treeSourceRowId != null && treeSourceRowId !== "") {
+        projected[TREE_SOURCE_ROW_ID] = String(treeSourceRowId);
+    }
+    return projected;
+}
+
+/** Source head local id for a row promoted to display merge head. */
+export function getTreeSourceRowId(row) {
+    return row?.[TREE_SOURCE_ROW_ID] == null
+        ? null
+        : String(row[TREE_SOURCE_ROW_ID]);
+}
+
 /** @layer tree — field names for merge-group row metadata */
 export function getMergeGroupFieldNames(options = {}) {
     const mergeGroup = options.mergeGroup || {};
@@ -133,6 +174,9 @@ export function getMergeGroupFieldNames(options = {}) {
 export function getMergeGroupMeta(row, options = {}) {
     if (!row) {
         return null;
+    }
+    if (Object.prototype.hasOwnProperty.call(row, DISPLAY_MERGE_GROUP_META)) {
+        return row[DISPLAY_MERGE_GROUP_META];
     }
     const { idField, indexField, sizeField } = getMergeGroupFieldNames(options);
     const id = row[idField];
@@ -176,7 +220,8 @@ export function createMergeGroupSpanRows(options = {}) {
 }
 
 export function normalizeColumn(col, globalEdit) {
-    const { edit, render, tree, children, ...rest } = col;
+    // treeContentKey — domain-only; wired by TreeMixin, not AG colDef.
+    const { edit, render, tree, treeContentKey, children, ...rest } = col;
 
     if (Array.isArray(children) && children.length) {
         return {
