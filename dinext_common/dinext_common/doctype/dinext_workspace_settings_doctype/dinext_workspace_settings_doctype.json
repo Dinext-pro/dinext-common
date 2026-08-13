@@ -10,7 +10,6 @@
   "document_type",
   "enabled",
   "show_quick_create",
-  "show_recently_opened",
   "show_assigned",
   "show_liked",
   "show_attention",
@@ -47,12 +46,6 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Show Quick Create"
-  },
-  {
-   "default": "0",
-   "fieldname": "show_recently_opened",
-   "fieldtype": "Check",
-   "label": "Show Recently Opened"
   },
   {
    "default": "0",

@@ -16,7 +16,6 @@ from dinext_common.setup.hub_catalog import DEFAULT_SECTION_CARD_COLUMNS, DEFAUL
 
 FLAG_FIELDS = (
 	"show_quick_create",
-	"show_recently_opened",
 	"show_assigned",
 	"show_liked",
 	"show_attention",
@@ -72,7 +71,6 @@ def merge_doctype_contributions(settings) -> dict[tuple[str, str], dict[str, Any
 				"section": section,
 				"document_type": document_type,
 				"show_quick_create": 0,
-				"show_recently_opened": 0,
 				"show_assigned": 0,
 				"show_liked": 0,
 				"show_attention": 0,
@@ -155,12 +153,10 @@ def build_section_personal_lists(
 	limit: int,
 ) -> dict[str, Any] | None:
 	"""Aggregate personal lists and create actions for one Hub section."""
-	show_recently_opened = False
 	show_assigned = False
 	show_liked = False
 	show_attention = False
 	create_actions: list[dict] = []
-	recent_doctypes: list[str] = []
 	assigned: list[dict] = []
 	liked: list[dict] = []
 	attention: list[dict] = []
@@ -180,10 +176,6 @@ def build_section_personal_lists(
 					"icon": type_meta["icon"],
 				}
 			)
-
-		if config.get("show_recently_opened"):
-			show_recently_opened = True
-			recent_doctypes.append(document_type)
 
 		if config.get("show_assigned"):
 			show_assigned = True
@@ -215,21 +207,15 @@ def build_section_personal_lists(
 				)
 			)
 
-	if not any([create_actions, show_recently_opened, show_assigned, show_liked, show_attention]):
+	if not any([create_actions, show_assigned, show_liked, show_attention]):
 		return None
-
-	recent = (
-		get_recent_records(recent_doctypes, limit=limit) if show_recently_opened else []
-	)
 
 	return {
 		"list_limit": limit,
-		"show_recently_opened": show_recently_opened,
 		"show_assigned": show_assigned,
 		"show_liked": show_liked,
 		"show_attention": show_attention,
 		"create_actions": create_actions,
-		"recent": recent,
 		"assigned": _merge_records(assigned, limit=limit),
 		"liked": _merge_records(liked, limit=limit),
 		"attention": _merge_records(attention, limit=limit),
@@ -251,7 +237,6 @@ def build_doctype_block(document_type: str, config: dict[str, Any], *, limit: in
 		"label": type_meta["type_label"],
 		"show_quick_create": bool(config.get("show_quick_create"))
 		and frappe.has_permission(document_type, "create"),
-		"show_recently_opened": bool(config.get("show_recently_opened")),
 		"show_assigned": bool(config.get("show_assigned")),
 		"show_liked": bool(config.get("show_liked")),
 		"show_attention": bool(config.get("show_attention")),
