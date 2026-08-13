@@ -986,6 +986,8 @@ export interface DinextTableInstance {
     exitFullscreen(): Promise<boolean>;
     /** @layer fullscreen */
     toggleFullscreen(): Promise<boolean>;
+    /** @layer fullscreen — fullscreenElement or document.body */
+    getOverlayHost(): HTMLElement | null;
 
     // --- edit (advanced / used by clipboard) ---
     /** @layer edit — write nested sourceData by path id */
@@ -1040,6 +1042,18 @@ export interface DinextTableStatic {
     >;
     /** @layer core */
     create(options: DinextTableCreateOptions): Promise<DinextTableInstance>;
+    /**
+     * @layer fullscreen — native FS host or `document.body`.
+     * Body-portaled overlays (datepicker) must mount here.
+     */
+    getOverlayHost(doc?: Document): HTMLElement | null;
+    /**
+     * @layer fullscreen — move overlay into getOverlayHost(); no-op outside FS.
+     */
+    adoptOverlay(
+        node: HTMLElement,
+        opts?: { anchor?: HTMLElement | null; host?: HTMLElement | null }
+    ): boolean;
 }
 
 declare global {
