@@ -172,7 +172,8 @@ def register_hub_doctype_items(
 	"""Append missing DocType list contributions.
 
 	Match key is ``(section, document_type, source_app)``. Existing rows keep
-	administrator edits to flags and attention_filter.
+	administrator edits to flags and attention_filter. Unknown keys such as
+	legacy ``show_recently_opened`` / ``recent`` are ignored.
 	"""
 	if not frappe.db.exists("DocType", "Dinext Workspace Settings DocType"):
 		return
@@ -207,7 +208,6 @@ def register_hub_doctype_items(
 			"document_type": document_type,
 			"enabled": 1 if raw.get("enabled", 1) else 0,
 			"show_quick_create": 1 if raw.get("show_quick_create") or raw.get("quick_create") else 0,
-			"show_recently_opened": 1 if raw.get("show_recently_opened") or raw.get("recent") else 0,
 			"show_assigned": 1 if raw.get("show_assigned") or raw.get("assigned") else 0,
 			"show_liked": 1 if raw.get("show_liked") or raw.get("liked") else 0,
 			"show_attention": 1 if raw.get("show_attention") or raw.get("attention") else 0,

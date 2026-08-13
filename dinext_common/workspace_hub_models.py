@@ -47,12 +47,10 @@ class WorkspaceHubSectionLists(TypedDict, total=False):
 	"""Personal lists attached to a hub section."""
 
 	list_limit: int
-	show_recently_opened: bool
 	show_assigned: bool
 	show_liked: bool
 	show_attention: bool
 	create_actions: list[WorkspaceHubCreateAction]
-	recent: list[WorkspaceHubRecord]
 	assigned: list[WorkspaceHubRecord]
 	liked: list[WorkspaceHubRecord]
 	attention: list[WorkspaceHubRecord]
@@ -71,4 +69,7 @@ class WorkspaceHubSection(TypedDict):
 class WorkspaceHubResponse(TypedDict):
 	"""Successful hub payload."""
 
+	show_frequent_pages: bool
+	show_recent_pages: bool
+	page_list_limit: int
 	sections: list[WorkspaceHubSection]
