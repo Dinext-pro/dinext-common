@@ -3,8 +3,15 @@ import {
     computeRangeFromChanges,
     toPublicCellChanges
 } from "./changes.js";
+import {
+    isCheckboxColumnDef,
+    resolveClickWhenActiveEnabled,
+    selectionBlocksClickWhenActive,
+    shouldStartEditOnActiveClick
+} from "./click-when-active.js";
 import { getRowSection } from "../section/sections.js";
 import { getRowIdField } from "../shared/utils.js";
+import { findSourceRowByBusinessId } from "../tree/model.js";
 
 /** cellClassRules: marks non-editable cells (per colDef.editable / column.edit). */
 function isReadOnlyCellClass(params) {
@@ -19,6 +26,22 @@ function isReadOnlyCellClass(params) {
 }
 
 export const EditMixin = (Base) => class extends Base {
+    initFeatures() {
+        super.initFeatures();
+        // Only previous completed click counts as "active". Never seed from
+        // getFocusedCell / cellFocused — AG Grid moves focus before click.
+        this._lastClickedCell = null;
+    }
+
+    destroyFeatures() {
+        this._lastClickedCell = null;
+        super.destroyFeatures();
+    }
+
+    isClickWhenActiveEnabled() {
+        return resolveClickWhenActiveEnabled(this.options, this.columns);
+    }
+
     /** `_rowId` (tree path) when present, else the plain `rowIdField` value (flat). */
     getEditRowId(row) {
         if (!row) {
@@ -42,6 +65,86 @@ export const EditMixin = (Base) => class extends Base {
     applyCellValue(node, field, value) {
         node.data[field] = value;
         this.api?.refreshCells({ rowNodes: [node], columns: [field], force: true });
+    }
+
+    /** Visible grid node by business id (`rowIdField`), not `_rowId` path. */
+    findGridNodeByBusinessId(businessId) {
+        if (businessId == null || businessId === "" || !this.api?.forEachNode) {
+            return null;
+        }
+        const id = String(businessId);
+        const rowIdField = getRowIdField(this.options);
+        let found = null;
+        this.api.forEachNode((node) => {
+            if (!found && node?.data && String(node.data[rowIdField]) === id) {
+                found = node;
+            }
+        });
+        return found;
+    }
+
+    /**
+     * Apply values already persisted externally (server side-effects).
+     * Updates grid copy + sourceData. Does NOT validate or call onSaveCells.
+     *
+     * Each item: `{ field, value, rowId? }` (tree path / flat id) and/or `{ id }`
+     * (business `rowIdField` when path unknown).
+     *
+     * @returns {number} field writes applied
+     */
+    applyExternalCellValues(changes) {
+        if (!Array.isArray(changes) || !changes.length) {
+            return 0;
+        }
+
+        let applied = 0;
+
+        for (const change of changes) {
+            const field = change?.field;
+            if (!field) {
+                continue;
+            }
+            const value = change.value;
+
+            let node = null;
+            let rowId = change.rowId != null && change.rowId !== ""
+                ? String(change.rowId)
+                : null;
+
+            if (rowId) {
+                node = this.api?.getRowNode(rowId) || null;
+            }
+            if (!node && change.id != null && change.id !== "") {
+                node = this.findGridNodeByBusinessId(change.id);
+                if (node) {
+                    rowId = this.getEditRowId(node.data);
+                }
+            }
+
+            if (node?.data && !Object.is(node.data[field], value)) {
+                this.applyCellValue(node, field, value);
+                applied += 1;
+            }
+
+            if (rowId != null) {
+                const sourceRow = this.writeSourceField(rowId, field, value);
+                if (sourceRow && !node) {
+                    applied += 1;
+                }
+            } else if (change.id != null && change.id !== "") {
+                const sourceRow = findSourceRowByBusinessId(
+                    this.sourceData,
+                    change.id,
+                    this.options
+                );
+                if (sourceRow && !Object.is(sourceRow[field], value)) {
+                    sourceRow[field] = value;
+                    applied += 1;
+                }
+            }
+        }
+
+        return applied;
     }
 
     resolveChangeColMeta(field, colId, columns) {
@@ -204,6 +307,48 @@ export const EditMixin = (Base) => class extends Base {
     /** Extension seam for later mixins (navigation/selection); no-op for now. */
     handleCellEditingStopped(event) {}
 
+    handleEditCellClicked(event) {
+        if (!this.isClickWhenActiveEnabled() || !this.api) {
+            return;
+        }
+
+        const domEvent = event.event;
+        const column = event.column;
+        const node = event.node;
+        if (!domEvent || !column || !node || node.rowIndex == null) {
+            return;
+        }
+
+        if (this.isSelectionBlockedByRowReorder?.(domEvent)) {
+            return;
+        }
+
+        const colId = column.getColId();
+        const colDef = column.getColDef?.() || event.colDef;
+        const cellRef = { rowIndex: node.rowIndex, colId };
+        const shouldEdit = shouldStartEditOnActiveClick({
+            committedFocus: this._lastClickedCell,
+            rowIndex: cellRef.rowIndex,
+            colId: cellRef.colId,
+            domEvent,
+            isEditing: !!this.api.getEditingCells?.()?.length,
+            isEditable: !!this.isColumnEditableForRow?.(column, node),
+            isCheckboxColumn: isCheckboxColumnDef(colDef),
+            selectionBlocks: this.isSelectionEnabled?.()
+                ? selectionBlocksClickWhenActive(this.cellRanges)
+                : false,
+            targetIsFillHandle: !!domEvent.target?.closest?.(".dinext-table-fill-handle")
+        });
+
+        this._lastClickedCell = cellRef;
+
+        if (!shouldEdit) {
+            return;
+        }
+
+        this.api.startEditingCell({ rowIndex: cellRef.rowIndex, colKey: cellRef.colId });
+    }
+
     handleCellEditRequest(event) {
         const field = event.colDef?.field;
         if (!field || !event.node) {
@@ -234,7 +379,9 @@ export const EditMixin = (Base) => class extends Base {
                 }
             },
             onCellValueChanged: (event) => this.handleCellValueChanged(event),
-            onCellEditingStopped: (event) => this.handleCellEditingStopped(event)
+            onCellEditingStopped: (event) => this.handleCellEditingStopped(event),
+            // Always chained; gated by clickWhenActive / edit availability at click time.
+            onCellClicked: (event) => this.handleEditCellClicked(event)
         };
 
         if (this.options.readOnlyEdit) {

@@ -14,8 +14,11 @@ import {
     resolveSelectAllState
 } from "../core/row-check/model.js";
 import { ROW_CHECK_COL_ID, ROW_CHECK_UNITS } from "../core/row-check/constants.js";
+import { RowCheckMixin } from "../core/row-check/mixin.js";
 import { computeNudgeToIndex, reorderSiblingBlock, collectLocalRowIds } from "../core/row-reorder/ops.js";
+import { asProjectedMergeGroupRow } from "../core/shared/utils.js";
 import { resolveToolbarPresetItems } from "../core/toolbar/presets.js";
+import { TreeMixin } from "../core/tree/mixin.js";
 
 test("isRowCheckable blocks merge tails when unit=mergeHead", () => {
     const head = { id: "h", mergeGroupId: "g", mergeGroupIndex: 0, mergeGroupSize: 2 };
@@ -29,6 +32,26 @@ test("isRowCheckable blocks summary unless allowSummary", () => {
     const row = { id: "s", _section: "summary" };
     assert.equal(isRowCheckable(row, {}, { unit: "row" }), false);
     assert.equal(isRowCheckable(row, {}, { unit: "row", allowSummary: true }), true);
+});
+
+test("mergeHead check on promoted filter row targets source head", () => {
+    class FakeBase {}
+    const TestTable = RowCheckMixin(TreeMixin(FakeBase));
+    const head = { id: "h", mergeGroupId: "g", mergeGroupIndex: 0, mergeGroupSize: 2 };
+    const tail = { id: "t", mergeGroupId: "g", mergeGroupIndex: 1, mergeGroupSize: 2 };
+    const projected = {
+        ...asProjectedMergeGroupRow(tail, null, "h"),
+        _rowId: "t"
+    };
+    const table = new TestTable();
+    table.options = {
+        rowCheck: { enabled: true, unit: ROW_CHECK_UNITS.MERGE_HEAD }
+    };
+    table.sourceData = [head, tail];
+    table.rowData = [projected];
+
+    assert.equal(table.isRowCheckable(projected), true);
+    assert.equal(table.getRowCheckId(projected), "h");
 });
 
 test("collectCheckableRowIds walks tree and respects mergeHead", () => {

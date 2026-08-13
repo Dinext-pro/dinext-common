@@ -30,6 +30,8 @@ DinextTable.create({
 
 Хуки зовутся при **реальном** переходе (toolbar, Esc, browser UI) — один раз на enter/exit.
 
+Native Fullscreen рисует только дерево `fullscreenElement`. Оверлеи на `body` (Frappe datepicker, AG popup) ядро переносит в host: `popupParent` + `DinextTable.adoptOverlay` / `getOverlayHost()`.
+
 ---
 
 ## Shell + CSS (предпочтительно)

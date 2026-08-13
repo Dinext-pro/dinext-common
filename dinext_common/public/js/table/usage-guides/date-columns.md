@@ -68,7 +68,7 @@ Fill/paste при этом всё равно работают (копируют 
 2. `edit: (row) => …` — права  
 3. `cellEditor: FrappeDateCellEditor` — `make_control({ fieldtype: "Date" })`  
 4. **in-cell** editor (без `cellEditorPopup` / `isPopup`) — GUI заполняет ячейку  
-5. datepicker остаётся на `body`; `mousedown` → `preventDefault` (фокус в input, иначе `stopEditingWhenCellsLoseFocus` коммитит старое значение до `onSelect`)  
+5. datepicker на `body`, **кроме native fullscreen** — тогда `DinextTable.adoptOverlay` переносит календарь в `fullscreenElement` (`mousedown` → `preventDefault`, иначе `stopEditingWhenCellsLoseFocus` коммитит до `onSelect`)  
 6. `getValue()` → ISO / system date string (`null` если пусто)  
 7. на `change` / select → `params.stopEditing()`  
 8. `destroy()` — снять datepicker / control  
