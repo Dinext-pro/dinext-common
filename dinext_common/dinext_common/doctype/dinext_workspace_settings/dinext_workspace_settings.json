@@ -1,29 +1,89 @@
 {
  "actions": [],
  "allow_rename": 1,
+ "autoname": "field:settings_name",
  "creation": "2026-08-11 01:44:24.455791",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "items"
+  "settings_name",
+  "section_break_access",
+  "roles",
+  "section_break_cards",
+  "items",
+  "section_break_sections",
+  "sections",
+  "section_break_doctype_items",
+  "doctype_items"
  ],
  "fields": [
+  {
+   "bold": 1,
+   "description": "Unique key passed to the hub Custom HTML Block.",
+   "fieldname": "settings_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Settings Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "section_break_access",
+   "fieldtype": "Section Break",
+   "label": "Access"
+  },
+  {
+   "description": "If set, only these roles can load this hub via the API.",
+   "fieldname": "roles",
+   "fieldtype": "Table",
+   "label": "Roles",
+   "options": "Has Role"
+  },
+  {
+   "fieldname": "section_break_cards",
+   "fieldtype": "Section Break",
+   "label": "Navigation Cards"
+  },
   {
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Workspace Items",
    "options": "Dinext Workspace Settings Item"
+  },
+  {
+   "fieldname": "section_break_sections",
+   "fieldtype": "Section Break",
+   "label": "Sections"
+  },
+  {
+   "fieldname": "sections",
+   "fieldtype": "Table",
+   "label": "Sections",
+   "options": "Dinext Workspace Settings Section"
+  },
+  {
+   "fieldname": "section_break_doctype_items",
+   "fieldtype": "Section Break",
+   "label": "DocType Lists"
+  },
+  {
+   "fieldname": "doctype_items",
+   "fieldtype": "Table",
+   "label": "DocType Items",
+   "options": "Dinext Workspace Settings DocType"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
- "issingle": 1,
+ "issingle": 0,
  "links": [],
- "modified": "2026-08-11 01:44:24.455791",
+ "modified": "2026-08-13 02:40:00",
  "modified_by": "Administrator",
  "module": "Dinext Common",
  "name": "Dinext Workspace Settings",
+ "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
   {
@@ -55,5 +115,6 @@
  "rows_threshold_for_grid_search": 20,
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "title_field": "settings_name"
 }
