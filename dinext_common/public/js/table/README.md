@@ -105,6 +105,7 @@ DinextTable.create({
 | `theme.pinnedRowBorder` | Quartz default | Border between pinned rows and body |
 | `theme.cellHorizontalPadding` | Quartz default | Cell/header horizontal padding; `0` for abutting heatmap cells |
 | `theme.borderRadius` | `4` | Quartz + `--dinext-table-radius` (toolbar/status) |
+| `theme.fontFamily` | Desk `--font-stack` | Override; default Inter stack (not IBM Plex Sans) |
 
 Borderless heatmap (opt-in): set border flags to `false` + `cellHorizontalPadding: 0`. Quartz `false` alone leaves transparent 1px seams — core maps to `{ width: 0 }`, forces `--ag-*-border*` off, and toggles `.dinext-table--no-row-borders` / `--no-column-borders`. Paint fills on `.ag-cell` (`cellClassRules` / `cellStyle`), not on child renderer wrappers. Unset flags keep default borders.
 
@@ -170,11 +171,12 @@ Domain: что видно в FS — через `shell` + CSS hide siblings, не
 | `onValidateCells` | Sync validate до commit; reject → revert batch |
 | `onSaveCells` | Async persist; `false`/throw → revert |
 | `readOnlyEdit` | AG Grid `readOnlyEdit` pipeline |
+| `clickWhenActive` | Повторный одиночный клик по уже focused → edit (default: как navigation / edit availability) |
 
 `changes[]`: `{ rowId, field, oldValue, newValue, row, section, … }`.  
 `source`: `edit` \| `paste` \| `fillDown` \| `fillHandle` \| `clear` \| `undo` \| `redo`.
 
-→ [cell-changes.md](usage-guides/cell-changes.md).
+→ [cell-changes.md](usage-guides/cell-changes.md), [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md).
 
 ### Interaction
 

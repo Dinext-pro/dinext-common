@@ -1,4 +1,10 @@
-import { getChildrenField, getRowIdField } from "../shared/utils.js";
+import {
+    asProjectedMergeGroupRow,
+    asStandaloneMergeGroupRow,
+    getChildrenField,
+    getMergeGroupMeta,
+    getRowIdField
+} from "../shared/utils.js";
 import { buildSortAtoms } from "../sort/model.js";
 import {
     FILTER_KINDS,
@@ -49,6 +55,24 @@ function resolveKindMap(options = {}) {
     return buildFilterKindByField(options.columns || []);
 }
 
+function resolveMergeInheritedFields(options = {}) {
+    const fields = options.filter?.mergeInheritedFields;
+    return new Set(Array.isArray(fields) ? fields.map(String) : []);
+}
+
+function rowMatchesFilterValues(row, fallbackRow, state, options) {
+    const kinds = resolveKindMap(options);
+    const inheritedFields = resolveMergeInheritedFields(options);
+    for (const [field, query] of Object.entries(state)) {
+        const kind = kinds[field] || FILTER_KINDS.TEXT;
+        const value = inheritedFields.has(field) ? fallbackRow?.[field] : row?.[field];
+        if (!valueMatchesQuery(value, query, kind)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /**
  * Row passes when every non-empty field query matches (AND).
  * Operators depend on column `type` / `cellDataType` (see query.js).
@@ -60,20 +84,55 @@ export function rowMatchesFilter(row, state, options = {}) {
     if (isFilterStateEmpty(state)) {
         return true;
     }
-    const kinds = resolveKindMap(options);
-    for (const [field, query] of Object.entries(state)) {
-        const kind = kinds[field] || FILTER_KINDS.TEXT;
-        if (!valueMatchesQuery(row?.[field], query, kind)) {
-            return false;
-        }
-    }
-    return true;
+    return rowMatchesFilterValues(row, row, state, options);
+}
+
+function rowMatchesMergeFilter(row, head, state, options) {
+    return rowMatchesFilterValues(row, head, state, options);
 }
 
 /**
- * Flat filter: keep merge atoms wholly if any row in atom matches.
+ * Build a display-only valid merge block from matching source rows.
+ * First survivor becomes the display head; source rows and raw metadata stay intact.
+ */
+function projectMatchingMergeRows(atom, matchingRows, options, {
+    childrenField,
+    filteredChildren
+} = {}) {
+    const sourceHead = atom.head;
+    const sourceMeta = getMergeGroupMeta(sourceHead, options);
+    const rowIdField = getRowIdField(options);
+    const inheritedFields = resolveMergeInheritedFields(options);
+    const projectedSize = matchingRows.length;
+
+    return matchingRows.map((sourceRow, index) => {
+        let projected = { ...sourceRow };
+        for (const field of inheritedFields) {
+            projected[field] = sourceHead?.[field];
+        }
+        if (index === 0 && childrenField && Array.isArray(sourceHead?.[childrenField])) {
+            projected[childrenField] = filteredChildren || [];
+            if (!projected[childrenField].length) {
+                projected.hasChildren = false;
+            }
+        }
+
+        const mergeMeta = projectedSize > 1
+            ? { id: sourceMeta.id, index, size: projectedSize }
+            : null;
+        const treeSourceRowId = index === 0 && sourceRow !== sourceHead
+            ? sourceHead[rowIdField]
+            : null;
+        return asProjectedMergeGroupRow(projected, mergeMeta, treeSourceRowId);
+    });
+}
+
+/**
+ * Flat filter: merge atoms stay whole by default. With
+ * `filter.mergeMatchMode: "rows"`, keep only matching source rows and rebuild
+ * valid display merge metadata without mutating source data.
  * Does not recurse into `children` — use `filterTreeRows` for nested.
- * @returns {object[]} new array (same row refs)
+ * @returns {object[]} new array
  */
 export function filterFlatRows(rows, state, options = {}) {
     const normalized = normalizeFilterState(state);
@@ -84,8 +143,19 @@ export function filterFlatRows(rows, state, options = {}) {
     const atoms = buildSortAtoms(rows, options);
     const out = [];
     for (const atom of atoms) {
-        const pass = atom.rows.some((row) => rowMatchesFilter(row, normalized, options));
-        if (pass) {
+        const matchingRows = atom.rows.filter(
+            (row) => rowMatchesMergeFilter(row, atom.head, normalized, options)
+        );
+        if (!matchingRows.length) {
+            continue;
+        }
+        const projectRows =
+            options.filter?.mergeMatchMode === "rows"
+            && atom.rows.length > 1
+            && matchingRows.length < atom.rows.length;
+        if (projectRows) {
+            out.push(...projectMatchingMergeRows(atom, matchingRows, options));
+        } else {
             out.push(...atom.rows);
         }
     }
@@ -94,7 +164,10 @@ export function filterFlatRows(rows, state, options = {}) {
 
 /**
  * Tree filter (match + ancestors): prune source tree without mutating rows.
- * Keeps merge atoms wholly; returns expandIds so matches under collapsed parents are visible.
+ * Self-matching merge atoms stay whole by default. `mergeMatchMode: "rows"`
+ * keeps only matching roles/rows. `mergeAncestorMode: "head"` renders a
+ * descendant-only merge ancestor as one context head.
+ * Returns expandIds so matches under collapsed parents are visible.
  * @returns {{ rows: object[], expandIds: Set<string> }}
  */
 export function filterTreeRows(rows, state, options = {}) {
@@ -117,7 +190,17 @@ function filterTreeSiblingList(list, parentRowId, state, options) {
 
     for (const atom of atoms) {
         const head = atom.head;
-        const localId = String(head[rowIdField]);
+        const matchingRows = atom.rows.filter(
+            (row) => rowMatchesMergeFilter(row, head, state, options)
+        );
+        const selfMatch = matchingRows.length > 0;
+        const projectRows =
+            selfMatch
+            && options.filter?.mergeMatchMode === "rows"
+            && atom.rows.length > 1
+            && matchingRows.length < atom.rows.length;
+        const displayHead = projectRows ? matchingRows[0] : head;
+        const localId = String(displayHead[rowIdField]);
         const rowId = parentRowId ? `${parentRowId}:${localId}` : localId;
         const tails = atom.rows.slice(1);
         const rawChildren = head[childrenField];
@@ -131,25 +214,39 @@ function filterTreeSiblingList(list, parentRowId, state, options) {
             }
         }
 
-        const selfMatch = atom.rows.some((row) => rowMatchesFilter(row, state, options));
         if (!selfMatch && !filteredChildren.length) {
             continue;
         }
 
-        if (Array.isArray(rawChildren)) {
-            const nextHead = {
+        if (projectRows) {
+            out.push(...projectMatchingMergeRows(atom, matchingRows, options, {
+                childrenField,
+                filteredChildren
+            }));
+        } else if (Array.isArray(rawChildren)) {
+            let nextHead = {
                 ...head,
                 [childrenField]: filteredChildren
             };
             if (!filteredChildren.length) {
                 nextHead.hasChildren = false;
             }
-            out.push(nextHead, ...tails);
-            if (filteredChildren.length) {
-                expandIds.add(rowId);
+            const compactMergeAncestor =
+                !selfMatch
+                && filteredChildren.length > 0
+                && tails.length > 0
+                && options.filter?.mergeAncestorMode === "head";
+            if (compactMergeAncestor) {
+                nextHead = asStandaloneMergeGroupRow(nextHead);
+                out.push(nextHead);
+            } else {
+                out.push(nextHead, ...tails);
             }
         } else {
             out.push(...atom.rows);
+        }
+        if (filteredChildren.length) {
+            expandIds.add(rowId);
         }
     }
 
