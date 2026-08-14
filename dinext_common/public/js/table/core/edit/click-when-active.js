@@ -85,7 +85,8 @@ export function shouldStartEditOnActiveClick({
     isEditable = false,
     isCheckboxColumn = false,
     selectionBlocks = false,
-    targetIsFillHandle = false
+    targetIsFillHandle = false,
+    suppressClickEdit = false
 } = {}) {
     if (!domEvent || rowIndex == null || colId == null) {
         return false;
@@ -99,7 +100,14 @@ export function shouldStartEditOnActiveClick({
     if (domEvent.shiftKey || domEvent.ctrlKey || domEvent.metaKey || domEvent.altKey) {
         return false;
     }
-    if (isEditing || !isEditable || isCheckboxColumn || selectionBlocks || targetIsFillHandle) {
+    if (
+        isEditing
+        || !isEditable
+        || isCheckboxColumn
+        || selectionBlocks
+        || targetIsFillHandle
+        || suppressClickEdit
+    ) {
         return false;
     }
     return sameCellRef(committedFocus, { rowIndex, colId });

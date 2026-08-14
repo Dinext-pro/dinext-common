@@ -6,6 +6,7 @@ import {
     getPersistStorageKey,
     resolveToolbarValue
 } from "../core/toolbar/utils.js";
+import { resolveToolbarItems } from "../core/toolbar/presets.js";
 import { findAgGridRootElement, findGridMountElement } from "../core/shared/utils.js";
 
 function makeElement({ className = "", children = [], querySelectorResult = null } = {}) {
@@ -171,6 +172,23 @@ test("getPersistStorageKey returns namespaced key or null", () => {
     assert.equal(getPersistStorageKey(null), null);
     assert.equal(getPersistStorageKey(""), null);
     assert.equal(getPersistStorageKey("we-v2"), "dinext-table:toolbar:we-v2");
+});
+
+test("toolbar presets default to history/tree/fullscreen when options omitted", () => {
+    const table = {
+        options: { edit: true },
+        isUndoRedoEnabled: () => true,
+        hasNestedRows: () => true,
+        expandAll: () => {},
+        collapseAll: () => {},
+        isFullscreenEnabled: () => true,
+        isFullscreen: () => false
+    };
+    const items = resolveToolbarItems(table);
+    assert.ok(items.some(item => item.id === "undo"));
+    assert.ok(items.some(item => item.id === "expand-all"));
+    assert.ok(items.some(item => item.id === "collapse-all"));
+    assert.ok(items.some(item => item.id === "fullscreen"));
 });
 
 test("resolveToolbarValue resolves functions and statics", () => {
