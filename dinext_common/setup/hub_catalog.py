@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Iterable, Mapping
 
 import frappe
+from frappe.utils import cstr
 
 DEFAULT_SECTION_LIST_LIMIT = 5
 DEFAULT_SECTION_CARD_COLUMNS = 4
@@ -172,7 +173,9 @@ def register_hub_doctype_items(
 	"""Append missing DocType list contributions.
 
 	Match key is ``(section, document_type, source_app)``. Existing rows keep
-	administrator edits to flags and attention_filter.
+	administrator edits to flags, attention_filter, and a non-empty list_filter.
+	Empty ``list_filter`` is backfilled from the payload. ``show_assigned`` and
+	``show_quick_create`` are enabled one-way when the payload enables them.
 	"""
 	if not frappe.db.exists("DocType", "Dinext Workspace Settings DocType"):
 		return
@@ -181,6 +184,7 @@ def register_hub_doctype_items(
 	if settings is None:
 		return
 
+	has_list_filter = frappe.get_meta("Dinext Workspace Settings DocType").has_field("list_filter")
 	existing = {
 		(row.section, row.document_type, getattr(row, "source_app", None) or ""): row
 		for row in settings.get("doctype_items") or []
@@ -195,24 +199,37 @@ def register_hub_doctype_items(
 
 		app_key = source_app or raw.get("source_app") or ""
 		key = (section, document_type, app_key)
-		if key in existing:
-			continue
+		attention_filter = _serialize_hub_filter(raw.get("attention_filter"))
+		list_filter = _serialize_hub_filter(raw.get("list_filter"))
+		show_quick_create = 1 if raw.get("show_quick_create") or raw.get("quick_create") else 0
+		show_assigned = 1 if raw.get("show_assigned") or raw.get("assigned") else 0
 
-		attention_filter = raw.get("attention_filter") or ""
-		if isinstance(attention_filter, (list, dict)):
-			attention_filter = frappe.as_json(attention_filter)
+		if key in existing:
+			row = existing[key]
+			if has_list_filter and list_filter and not cstr(row.get("list_filter") or "").strip():
+				row.list_filter = list_filter
+				changed = True
+			if show_assigned and not row.get("show_assigned"):
+				row.show_assigned = 1
+				changed = True
+			if show_quick_create and not row.get("show_quick_create"):
+				row.show_quick_create = 1
+				changed = True
+			continue
 
 		row_data = {
 			"section": section,
 			"document_type": document_type,
 			"enabled": 1 if raw.get("enabled", 1) else 0,
-			"show_quick_create": 1 if raw.get("show_quick_create") or raw.get("quick_create") else 0,
+			"show_quick_create": show_quick_create,
 			"show_recently_opened": 1 if raw.get("show_recently_opened") or raw.get("recent") else 0,
-			"show_assigned": 1 if raw.get("show_assigned") or raw.get("assigned") else 0,
+			"show_assigned": show_assigned,
 			"show_liked": 1 if raw.get("show_liked") or raw.get("liked") else 0,
 			"show_attention": 1 if raw.get("show_attention") or raw.get("attention") else 0,
 			"attention_filter": attention_filter,
 		}
+		if has_list_filter:
+			row_data["list_filter"] = list_filter
 		if app_key:
 			row_data["source_app"] = app_key
 
@@ -245,6 +262,14 @@ def relocate_hub_item_section(
 	if changed:
 		settings.save(ignore_permissions=True)
 		frappe.clear_cache(doctype="Dinext Workspace Settings")
+
+
+def _serialize_hub_filter(raw) -> str:
+	if raw in (None, ""):
+		return ""
+	if isinstance(raw, (list, dict)):
+		return frappe.as_json(raw)
+	return cstr(raw)
 
 
 def _parse_card_columns(value) -> int:
