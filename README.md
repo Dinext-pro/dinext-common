@@ -133,7 +133,7 @@ bench build --app dinext_common
 | `roles` | Если заданы, API хаба отдаёт каталог только пользователям с одной из этих ролей. Для `Settings` по умолчанию: `System Manager`, `Workspace Manager` |
 | `items` (`Dinext Workspace Settings Item`) | Навигационные карточки: секция, тип (`Workspace` / `DocType` / `Report` / `Page` / `URL`), target, label, description, icon, enabled, optional `required_role` |
 | `sections` (`Dinext Workspace Settings Section`) | Лимит персональных списков (`list_limit`, по умолчанию **5**) и максимум колонок карточек-ссылок (`card_columns`, по умолчанию **4**; для секций записи `Settings` — **5**). Если карточек меньше лимита, ряд занимает всю ширину |
-| `doctype_items` (`Dinext Workspace Settings DocType`) | Вклады DocType в секцию: quick create, recently opened, assigned, liked, attention + JSON `attention_filter` |
+| `doctype_items` (`Dinext Workspace Settings DocType`) | Вклады DocType в секцию: quick create, recently opened, assigned, liked, attention, JSON `attention_filter` и общий JSON `list_filter` для assigned/liked |
 
 Стандартные записи, создаваемые `dinext_common`:
 
@@ -151,9 +151,9 @@ bench build --app dinext_common
 - под каждой секцией может показывать компактные персональные списки:
   - **Quick Create** — если есть право `create`
   - **Recently Opened** — из `Route History` текущего пользователя
-  - **Assigned** — открытые `ToDo`, назначенные пользователю
-  - **Liked** — документы с `_liked_by`
-  - **Attention** — `frappe.get_list` по JSON-фильтрам (пустой фильтр = все доступные документы в лимите)
+  - **Assigned** — открытые `ToDo`, назначенные пользователю, затем опциональный `list_filter`
+  - **Liked** — документы с `_liked_by` и тем же опциональным `list_filter`
+  - **Attention** — `frappe.get_list` по JSON `attention_filter` (пустой фильтр = все доступные документы в лимите). `list_filter` на Attention не действует
 
 `get_dinext_hub` и `get_settings_hub` — совместимые обёртки для записей `Dinext` и `Settings`.
 
@@ -207,6 +207,7 @@ register_hub_doctype_items(
 			"show_liked": 1,
 			"show_attention": 1,
 			"attention_filter": '[["status","=","Open"]]',
+			"list_filter": '[["type","!=","Issue"]]',
 		}
 	],
 	source_app="dinext_projects",
@@ -217,7 +218,7 @@ register_hub_doctype_items(
 
 - карточки: ключ `(element_type, target)` — существующие строки сохраняют правки администратора (label, description, icon, section, enabled, role); пустой icon может быть backfill'нут
 - секции: ключ `section` — `list_limit` и `card_columns` администратора не перезаписываются
-- DocType-вклады: ключ `(section, document_type, source_app)` — флаги и `attention_filter` администратора не перезаписываются
+- DocType-вклады: ключ `(section, document_type, source_app)` — непустой `list_filter` и прочие флаги администратора не перезаписываются; пустой `list_filter` дозаполняется из регистрации; `show_assigned` и `show_quick_create` включаются односторонне (`0` → `1`), но не выключаются
 - `relocate_hub_item_section(...)` меняет только `section` у существующей карточки
 - все `register_hub_*` принимают `settings_name` (по умолчанию `"Dinext"`); ключи дедупликации действуют внутри выбранной записи
 
