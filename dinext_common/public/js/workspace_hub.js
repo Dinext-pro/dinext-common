@@ -1,7 +1,7 @@
 frappe.provide("dinext_common.workspace_hub");
 
 const DINEXT_WORKSPACE_HUB_CSS = "/assets/dinext_common/css/workspace_hub.css";
-const DINEXT_WORKSPACE_HUB_ASSETS = "page-chips-2";
+const DINEXT_WORKSPACE_HUB_ASSETS = "page-chips-3";
 const PAGE_SKIP = new Set(["setup-wizard", "social", "recorder"]);
 const mounted_hubs = new Set();
 const hub_mounted_at = new WeakMap();
@@ -233,7 +233,7 @@ const page_label = (parts) => {
 	if (parts[0] === "Workspaces") {
 		const page = workspace_page(parts);
 		const title = (page && (page.title || page.name)) || parts[parts.length - 1];
-		return __("{0} Workspace", [__(title)]);
+		return __(title);
 	}
 	if (parts[0] === "query-report" && parts[1]) {
 		return __("{0} Report", [__(parts[1])]);
