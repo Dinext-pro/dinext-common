@@ -260,13 +260,17 @@ root из `/assets/dinext_common/css/workspace_hub.css`. Блоки подклю
 | Frequent Pages | `frappe.boot.frequently_visited_links` | До `page_list_limit` полезных маршрутов. |
 | Recent Pages | сессионный `frappe.route_history` | Новые сверху, без дублей, без текущей workspace-страницы. |
 
-Клиент рисует Frequent Pages и Recent Pages **двумя рядами плашек** (иконка +
-текст; hover — обводка через CSS-переменные Desk). В списки попадают маршруты
-`Form` / `List` / `Tree` / `Workspaces` / `query-report`. Пропускаются
-`setup-wizard`, `social`, `recorder` и формы `new-*`. Пустые группы не
-показываются. При возврате на Workspaces без полной перезагрузки хаб
-обновляется через `frappe.router.on("change")`. Списки не переживают полный
-reload Desk дальше того, что есть в boot и сессии.
+Клиент рисует Frequent Pages и Recent Pages **двумя рядами pill-плашек**
+(иконка + текст; hover — обводка через CSS-переменные Desk). **Recent Pages**
+сверху, **Frequent Pages** ниже. Иконка Workspace берётся из
+`frappe.boot.allowed_workspaces` (не из `frappe.workspaces`, где после открытия
+Workspace поле `icon` пропадает). Подпись Form-плашки — `title_field` документа
+или `name` по Naming Rule, без префикса DocType; полный контекст остаётся в
+tooltip. В списки попадают маршруты `Form` / `List` / `Tree` / `Workspaces` /
+`query-report`. Пропускаются `setup-wizard`, `social`, `recorder` и формы
+`new-*`. Пустые группы не показываются. При возврате на Workspaces без полной
+перезагрузки хаб обновляется через `frappe.router.on("change")`. Списки не
+переживают полный reload Desk дальше того, что есть в boot и сессии.
 
 Карточка типа **Report** открывается как
 `/app/query-report/{urlencoded имя отчёта}` (не slug): иначе Desk ищет
@@ -719,8 +723,9 @@ Python-тесты workspace, news feed, boot, CoA и Fixture Analysis лежат
 
 ### 2026-08-14
 
-- Frequent / Recent Pages — два ряда плашек; на записи `Settings` оба
-  чекбокса выключены, на `Dinext` остаются включёнными.
+- Frequent / Recent Pages — два ряда pill-плашек, Recent сверху; иконки
+  Workspace из boot, Form-подписи по `title_field` или `name`. На записи
+  `Settings` оба чекбокса выключены, на `Dinext` остаются включёнными.
 - Report-карточки хаба ведут на `/app/query-report/{имя отчёта}`.
 - Каталог: Project Management без Task/Issue-списков от Gantt; Scope &
   Governance больше не регистрируется.

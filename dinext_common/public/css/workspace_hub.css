@@ -139,7 +139,7 @@
 	box-sizing: border-box;
 	padding: 0.25rem 0.55rem;
 	border: 1px solid var(--dark-border-color, var(--border-color));
-	border-radius: var(--border-radius, var(--border-radius-md));
+	border-radius: var(--border-radius-full, 999px);
 	background: var(--btn-default-bg, var(--control-bg, var(--card-bg)));
 	color: var(--text-color);
 	text-decoration: none;
@@ -156,6 +156,9 @@
 .dinext-workspace-hub__page-chip-icon {
 	display: inline-flex;
 	flex: 0 0 auto;
+	width: 1rem;
+	height: 1rem;
+	overflow: visible;
 	color: var(--text-muted);
 }
 .dinext-workspace-hub__lists {
