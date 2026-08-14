@@ -59,3 +59,21 @@ class TestBootWorkspaceSidebarFlag(unittest.TestCase):
 			self.assertEqual(len(bootinfo.changelog_feed), 1)
 			self.assertEqual(bootinfo.changelog_feed[0]["app_name"], "dinext_projects")
 
+	def test_extend_bootinfo_omits_home_keeps_dinext(self):
+		from dinext_common.boot import extend_bootinfo
+
+		bootinfo = MagicMock()
+		bootinfo.allowed_workspaces = [
+			{"name": "Home", "title": "Home"},
+			{"name": "Dinext", "title": "Dinext"},
+			{"name": "Settings", "title": "Settings"},
+		]
+		with patch("dinext_common.boot.frappe") as mock_frappe:
+			mock_frappe.conf.get.return_value = 1
+			extend_bootinfo(bootinfo)
+
+		names = {page["name"] for page in bootinfo.allowed_workspaces}
+		self.assertNotIn("Home", names)
+		self.assertIn("Dinext", names)
+		self.assertIn("Settings", names)
+

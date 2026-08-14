@@ -66,6 +66,8 @@ Dinext не копируются сюда: см. [AGENTS.md](AGENTS.md).
 - Курирование Desk workspace:
   - публичные корневые workspace `Dinext` и `Settings`;
   - скрытие public-workspace, не принадлежащих модулям `dinext_*`;
+  - ERPNext `Home` остаётся скрытой записью, но не показывается в меню Desk
+    (включая Workspace Manager) и не является landing: `/app/home` → `/app/dinext`;
   - вложение `Users`, `Tools`, `Integrations`, `Build`, `Website` под `Settings`;
   - назначение `Dinext` как `default_workspace` новым пользователям.
 - **Dinext Hub** на workspace `Dinext`: навигационные карточки, списки **Frequent
@@ -79,7 +81,7 @@ Dinext не копируются сюда: см. [AGENTS.md](AGENTS.md).
   local `Changelog Feed`; стандартная еженедельная загрузка changelog Frappe
   отключается.
 - Глобальные улучшения Desk через `app_include_js` / `app_include_css`:
-  - `workspace_slug_redirects.js` — редирект старых RU-slug workspace;
+  - `workspace_slug_redirects.js` — редирект старых RU-slug workspace и `/app/home` → `/app/dinext`;
   - `breadcrumbs_update.js`;
   - `listview_resize.js`;
   - `dinext-desk.js`;
@@ -126,7 +128,9 @@ bench --site your-site.local clear-cache
   fetch и синхронизирует What's New.
 
 При создании нового пользователя без `default_workspace` hook
-`User.after_insert` назначает workspace `Dinext`.
+`User.after_insert` назначает workspace `Dinext`. Маршруты `/app/home` и
+`/app/workspaces/home` перенаправляются на `Dinext`; существующие
+`default_workspace` не меняются.
 
 Если в развёртывании ещё нет брендинговых файлов Dinext, перед `bench build`
 они должны лежать в `dinext_common/public/images/`:
@@ -154,8 +158,8 @@ bench --site your-site.local clear-cache
 Приложение подключает общее поведение во все сессии Desk:
 
 - `workspace_slug_redirects.js` перенаправляет устаревшие RU-slug workspace
-  (например `/app/мои-задачи` → `/app/my-tasks`) и правит
-  `localStorage.current_page`;
+  (например `/app/мои-задачи` → `/app/my-tasks`), `/app/home` → `/app/dinext`
+  и правит `localStorage.current_page`;
 - `breadcrumbs_update.js` сохраняет контекст workspace в breadcrumbs и
   поддерживает копирование последнего элемента;
 - `listview_resize.js` сохраняет ширины колонок списка в `localStorage`;
@@ -563,7 +567,8 @@ frappe.require(["/assets/dinext_common/js/echarts.min.js"], function () {
 - `app_include_js` подключает общие скрипты Desk глобально (включая
   `workspace_slug_redirects.js` и `workspace_sidebar_hover.js`)
 - `extend_bootinfo = ["dinext_common.boot.extend_bootinfo"]` — передаёт флаг
-  `dinext_workspace_sidebar_hover_expand` из `site_config` в Desk
+  `dinext_workspace_sidebar_hover_expand` из `site_config` в Desk и убирает
+  `Home` из `allowed_workspaces`
 - `after_install = "dinext_common.install.after_install"`
 - `after_migrate` — news feed setup и `configure_workspace_menu`
 - `doc_events.User.after_insert` →
@@ -573,7 +578,8 @@ frappe.require(["/assets/dinext_common/js/echarts.min.js"], function () {
 - `get_changelog_feed = "dinext_common.changelog_feed.get_feed"`
 - `doctype_js = {"Project": "public/js/sticky-datatable.js"}`
 - `has_permission` для `Dinext Workspace Settings`
-- `override_doctype_class` / `override_whitelisted_methods` для CoA Dinext
+- `override_doctype_class` / `override_whitelisted_methods` для CoA Dinext и
+  фильтра `Home` в `get_workspace_sidebar_items`
 
 Опции `site_config.json`:
 
@@ -730,6 +736,8 @@ Python-тесты workspace, news feed, boot, CoA и Fixture Analysis лежат
 
 ### 2026-08-14
 
+- Desk landing: ERPNext `Home` скрыт и исключён из меню (включая Workspace
+  Manager); `/app/home` и `/app/workspaces/home` открывают `Dinext`.
 - Frequent / Recent Pages — два ряда pill-плашек, Recent сверху; иконки
   Workspace из boot, подпись Workspace — только название; Form-подписи по
   `title_field` или `name`. На записи `Settings` оба чекбокса выключены, на

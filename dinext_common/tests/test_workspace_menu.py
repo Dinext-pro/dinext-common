@@ -26,6 +26,8 @@ from dinext_common.setup.workspace import (
 	SETTINGS_WORKSPACE,
 	configure_workspace_menu,
 	ensure_default_dinext_hub_settings,
+	get_workspace_sidebar_items,
+	omit_replaced_workspaces,
 	set_default_workspace_for_new_user,
 )
 from dinext_common.workspace_hub import (
@@ -184,6 +186,52 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 				1,
 				msg=f"public non-Dinext workspace {ws.name!r} must be hidden",
 			)
+
+	def test_omit_replaced_workspaces_drops_home(self):
+		pages = omit_replaced_workspaces(
+			[
+				{"name": "Home", "title": "Home"},
+				{"name": "Dinext", "title": "Dinext"},
+				{"name": "Settings", "title": "Settings"},
+			]
+		)
+		self.assertEqual([page["name"] for page in pages], ["Dinext", "Settings"])
+
+	def test_sidebar_wrapper_omits_home(self):
+		from unittest.mock import patch
+
+		payload = {
+			"pages": [
+				{"name": "Home", "title": "Home"},
+				{"name": DINEXT_WORKSPACE, "title": DINEXT_WORKSPACE},
+			],
+			"has_access": True,
+		}
+		with patch("frappe.desk.desktop.get_workspace_sidebar_items", return_value=payload):
+			result = get_workspace_sidebar_items()
+		names = {page["name"] for page in result["pages"]}
+		self.assertNotIn("Home", names)
+		self.assertIn(DINEXT_WORKSPACE, names)
+
+	def test_configure_keeps_home_hidden_in_database(self):
+		configure_workspace_menu()
+		if not frappe.db.exists("Workspace", "Home"):
+			self.skipTest("ERPNext Home workspace is not installed")
+		ws = frappe.db.get_value(
+			"Workspace",
+			"Home",
+			["name", "title", "is_hidden"],
+			as_dict=True,
+		)
+		self.assertEqual(ws.name, "Home")
+		self.assertEqual(ws.title, "Home")
+		self.assertEqual(ws.is_hidden, 1)
+
+	def test_home_slug_redirects_to_dinext(self):
+		path = Path(frappe.get_app_path("dinext_common")) / "public" / "js" / "workspace_slug_redirects.js"
+		script = path.read_text()
+		self.assertIn('home: "dinext"', script)
+		self.assertIn('Home: "Dinext"', script)
 
 	def test_configure_is_idempotent(self):
 		configure_workspace_menu()
