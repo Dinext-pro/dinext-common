@@ -248,7 +248,8 @@ root из `/assets/dinext_common/css/workspace_hub.css`. Блоки подклю
   (сейчас **5**);
 - под каждой секцией может показывать компактные персональные списки:
   - **Quick Create** — если есть право `create` (кнопки, не строки списка);
-  - **Assigned** — открытые `ToDo`, назначенные пользователю, затем опциональный `list_filter`;
+  - **Assigned** — открытые `ToDo`, назначенные пользователю, затем опциональный
+    `list_filter`;
   - **Liked** — документы с `_liked_by` и тем же опциональным `list_filter`;
   - **Attention** — `frappe.get_list` по JSON `attention_filter` (пустой фильтр = все
     доступные документы в лимите). `list_filter` на Attention не действует.
@@ -361,8 +362,13 @@ register_hub_doctype_items(
 Правила каталога Dinext Hub:
 
 - **Project Management** — списки DocType только `Project` и
-  `Project Portfolio` (Task и Issue остаются в My Work). Gantt регистрирует
-  карточку отчёта Task Epic Burndown и не регистрирует Task в этой секции.
+  `Project Portfolio` (Task и Issue остаются в My Work). У обоих вкладов
+  включены Assigned и Quick Create. Gantt регистрирует карточку отчёта
+  Task Epic Burndown и не регистрирует Task в этой секции.
+- Стандартный `list_filter` (открытая работа, не Attention): Task —
+  `type != Issue` и `status not in Completed/Cancelled`; Issue —
+  `status in Open/Replied/On Hold`; Project — `status not in
+  Completed/Cancelled`; Project Portfolio — `status = Активный`.
 - **Scope & Governance** не наполняется: `dinext_project_scope`,
   `dinext_risk_management` и `dinext_project_stage_gate` больше не
   регистрируют карточки. Уже записанные ряды регистрация не удаляет.
