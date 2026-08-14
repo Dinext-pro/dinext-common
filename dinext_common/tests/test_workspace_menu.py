@@ -111,6 +111,20 @@ def _clear_hub_settings(test_case=None, name=DINEXT_HUB_SETTINGS):
 	return settings
 
 
+def _delete_scratch_hub_settings(name):
+	if name in (DINEXT_HUB_SETTINGS, SETTINGS_HUB_SETTINGS):
+		return
+	if frappe.db.exists("Dinext Workspace Settings", name):
+		frappe.delete_doc("Dinext Workspace Settings", name, force=True, ignore_permissions=True)
+
+
+def _scratch_hub_settings(test_case):
+	name = f"Test Hub {random_string(8)}"
+	doc = ensure_workspace_settings(name)
+	test_case.addCleanup(_delete_scratch_hub_settings, name)
+	return doc
+
+
 class TestDinextWorkspaceMenu(FrappeTestCase):
 	def test_configure_ensures_roots_hides_standard_and_nests_children(self):
 		configure_workspace_menu()
