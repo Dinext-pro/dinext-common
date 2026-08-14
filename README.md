@@ -264,7 +264,8 @@ root из `/assets/dinext_common/css/workspace_hub.css`. Блоки подклю
 (иконка + текст; hover — обводка через CSS-переменные Desk). **Recent Pages**
 сверху, **Frequent Pages** ниже. Иконка Workspace берётся из
 `frappe.boot.allowed_workspaces` (не из `frappe.workspaces`, где после открытия
-Workspace поле `icon` пропадает). Подпись Form-плашки — `title_field` документа
+Workspace поле `icon` пропадает). Подпись Workspace-плашки — только название
+рабочего пространства, без слова «Workspace». Подпись Form-плашки — `title_field` документа
 или `name` по Naming Rule, без префикса DocType; полный контекст остаётся в
 tooltip. В списки попадают маршруты `Form` / `List` / `Tree` / `Workspaces` /
 `query-report`. Пропускаются `setup-wizard`, `social`, `recorder` и формы
@@ -724,8 +725,9 @@ Python-тесты workspace, news feed, boot, CoA и Fixture Analysis лежат
 ### 2026-08-14
 
 - Frequent / Recent Pages — два ряда pill-плашек, Recent сверху; иконки
-  Workspace из boot, Form-подписи по `title_field` или `name`. На записи
-  `Settings` оба чекбокса выключены, на `Dinext` остаются включёнными.
+  Workspace из boot, подпись Workspace — только название; Form-подписи по
+  `title_field` или `name`. На записи `Settings` оба чекбокса выключены, на
+  `Dinext` остаются включёнными.
 - Report-карточки хаба ведут на `/app/query-report/{имя отчёта}`.
 - Каталог: Project Management без Task/Issue-списков от Gantt; Scope &
   Governance больше не регистрируется.
