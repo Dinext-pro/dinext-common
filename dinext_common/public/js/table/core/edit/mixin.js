@@ -38,6 +38,12 @@ export const EditMixin = (Base) => class extends Base {
         super.destroyFeatures();
     }
 
+    refresh(data) {
+        this._lastClickedCell = null;
+        this.api?.stopEditing?.();
+        super.refresh(data);
+    }
+
     isClickWhenActiveEnabled() {
         return resolveClickWhenActiveEnabled(this.options, this.columns);
     }
@@ -337,7 +343,8 @@ export const EditMixin = (Base) => class extends Base {
             selectionBlocks: this.isSelectionEnabled?.()
                 ? selectionBlocksClickWhenActive(this.cellRanges)
                 : false,
-            targetIsFillHandle: !!domEvent.target?.closest?.(".dinext-table-fill-handle")
+            targetIsFillHandle: !!domEvent.target?.closest?.(".dinext-table-fill-handle"),
+            suppressClickEdit: !!colDef?.suppressClickEdit
         });
 
         this._lastClickedCell = cellRef;
