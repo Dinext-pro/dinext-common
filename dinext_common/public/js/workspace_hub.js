@@ -1,7 +1,7 @@
 frappe.provide("dinext_common.workspace_hub");
 
 const DINEXT_WORKSPACE_HUB_CSS = "/assets/dinext_common/css/workspace_hub.css";
-const DINEXT_WORKSPACE_HUB_ASSETS = "page-lists-1";
+const DINEXT_WORKSPACE_HUB_ASSETS = "page-chips-1";
 const PAGE_SKIP = new Set(["setup-wizard", "social", "recorder"]);
 const mounted_hubs = new Set();
 const hub_mounted_at = new WeakMap();
@@ -293,6 +293,40 @@ const recent_pages = (limit) => {
 	return out;
 };
 
+const make_page_chip = (item) => {
+	const link = document.createElement("a");
+	link.className = "dinext-workspace-hub__page-chip";
+	link.href = item.route;
+	const title_text = item.title || item.name || "";
+	link.title = title_text;
+	const icon = make_icon(item.icon || "file", "xs");
+	if (icon) {
+		icon.className = "dinext-workspace-hub__page-chip-icon";
+		link.append(icon);
+	}
+	const title = document.createElement("span");
+	title.className = "dinext-workspace-hub__page-chip-title";
+	title.textContent = title_text;
+	link.append(title);
+	link.addEventListener("click", (event) => navigate_route(item.route, event));
+	return link;
+};
+
+const make_page_row = (heading, items) => {
+	if (!items || !items.length) {
+		return null;
+	}
+
+	const wrap = document.createElement("div");
+	wrap.className = "dinext-workspace-hub__page-row";
+	wrap.append(make_column_heading(heading));
+	const chips = document.createElement("div");
+	chips.className = "dinext-workspace-hub__page-chips";
+	items.forEach((item) => chips.append(make_page_chip(item)));
+	wrap.append(chips);
+	return wrap;
+};
+
 const make_page_lists = (payload) => {
 	if (!payload) {
 		return null;
@@ -300,24 +334,24 @@ const make_page_lists = (payload) => {
 	const limit = Math.max(1, parseInt(payload.page_list_limit, 10) || 5);
 	const wrap = document.createElement("div");
 	wrap.className = "dinext-workspace-hub__personal dinext-workspace-hub__pages";
-	const groups = document.createElement("div");
-	groups.className = "dinext-workspace-hub__lists";
+	const rows = document.createElement("div");
+	rows.className = "dinext-workspace-hub__page-rows";
 	if (payload.show_frequent_pages) {
-		const node = make_list("Frequent Pages", frequent_pages(limit));
+		const node = make_page_row("Frequent Pages", frequent_pages(limit));
 		if (node) {
-			groups.append(node);
+			rows.append(node);
 		}
 	}
 	if (payload.show_recent_pages) {
-		const node = make_list("Recent Pages", recent_pages(limit));
+		const node = make_page_row("Recent Pages", recent_pages(limit));
 		if (node) {
-			groups.append(node);
+			rows.append(node);
 		}
 	}
-	if (!groups.childElementCount) {
+	if (!rows.childElementCount) {
 		return null;
 	}
-	wrap.append(groups);
+	wrap.append(rows);
 	return wrap;
 };
 

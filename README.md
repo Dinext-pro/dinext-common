@@ -218,7 +218,7 @@ root из `/assets/dinext_common/css/workspace_hub.css`. Блоки подклю
 | Поле / таблица | Назначение |
 | --- | --- |
 | `settings_name` | Уникальный ключ записи (`Dinext`, `Settings` или ключ другого приложения). Имя документа совпадает с ключом. |
-| `show_frequent_pages` / `show_recent_pages` | Чекбоксы секции **Page Lists** (по умолчанию включены): списки **Frequent Pages** и **Recent Pages** над секциями хаба. |
+| `show_frequent_pages` / `show_recent_pages` | Чекбоксы секции **Page Lists** (по умолчанию включены). На записи **`Settings`** оба флага принудительно выключены при configure. |
 | `roles` | Если заданы, API хаба отдаёт каталог только пользователям с одной из этих ролей. Для `Settings` по умолчанию: `System Manager`, `Workspace Manager`. |
 | `items` (`Dinext Workspace Settings Item`) | Навигационные карточки: секция, тип (`Workspace` / `DocType` / `Report` / `Page` / `URL`), target, label, description, icon, enabled, optional `required_role`. |
 | `sections` (`Dinext Workspace Settings Section`) | Лимит персональных списков (`list_limit`, по умолчанию **5**) и максимум колонок карточек (`card_columns`, по умолчанию **4**; для секций записи `Settings` — **5**). Если карточек меньше лимита, ряд занимает всю ширину. |
@@ -230,7 +230,7 @@ root из `/assets/dinext_common/css/workspace_hub.css`. Блоки подклю
   карточки через `register_hub_*` (имя по умолчанию).
 - **`Settings`** — каталог Settings Hub: секции Workspaces (`Users`, `Tools`,
   `Integrations`, `Build`, `Website`) и Configuration (семь Frappe core
-  Singles).
+  Singles). Frequent Pages и Recent Pages на этой записи выключены.
 
 Другое приложение может:
 
@@ -260,11 +260,17 @@ root из `/assets/dinext_common/css/workspace_hub.css`. Блоки подклю
 | Frequent Pages | `frappe.boot.frequently_visited_links` | До `page_list_limit` полезных маршрутов. |
 | Recent Pages | сессионный `frappe.route_history` | Новые сверху, без дублей, без текущей workspace-страницы. |
 
-В списки попадают маршруты `Form` / `List` / `Tree` / `Workspaces` /
-`query-report`. Пропускаются `setup-wizard`, `social`, `recorder` и формы
-`new-*`. Пустые группы не показываются. При возврате на Workspaces без полной
-перезагрузки хаб обновляется через `frappe.router.on("change")`. Списки не
-переживают полный reload Desk дальше того, что есть в boot и сессии.
+Клиент рисует Frequent Pages и Recent Pages **двумя рядами плашек** (иконка +
+текст; hover — обводка через CSS-переменные Desk). В списки попадают маршруты
+`Form` / `List` / `Tree` / `Workspaces` / `query-report`. Пропускаются
+`setup-wizard`, `social`, `recorder` и формы `new-*`. Пустые группы не
+показываются. При возврате на Workspaces без полной перезагрузки хаб
+обновляется через `frappe.router.on("change")`. Списки не переживают полный
+reload Desk дальше того, что есть в boot и сессии.
+
+Карточка типа **Report** открывается как
+`/app/query-report/{urlencoded имя отчёта}` (не slug): иначе Desk ищет
+документ Report по slug и не находит `Task Epic Burndown`.
 
 `get_dinext_hub` и `get_settings_hub` — совместимые обёртки для записей
 `Dinext` и `Settings`.
@@ -346,6 +352,15 @@ register_hub_doctype_items(
   карточки;
 - все `register_hub_*` принимают `settings_name` (по умолчанию `"Dinext"`);
   ключи дедупликации действуют внутри выбранной записи.
+
+Правила каталога Dinext Hub:
+
+- **Project Management** — списки DocType только `Project` и
+  `Project Portfolio` (Task и Issue остаются в My Work). Gantt регистрирует
+  карточку отчёта Task Epic Burndown и не регистрирует Task в этой секции.
+- **Scope & Governance** не наполняется: `dinext_project_scope`,
+  `dinext_risk_management` и `dinext_project_stage_gate` больше не
+  регистрируют карточки. Уже записанные ряды регистрация не удаляет.
 
 ### Dinext News Feed / What's New
 
@@ -704,12 +719,15 @@ Python-тесты workspace, news feed, boot, CoA и Fixture Analysis лежат
 
 ### 2026-08-14
 
-- Списки страниц хаба: **Frequent Pages** из
-  `frappe.boot.frequently_visited_links` и **Recent Pages** из сессионного
-  `frappe.route_history`, флаги на родительском `Dinext Workspace Settings`.
+- Frequent / Recent Pages — два ряда плашек; на записи `Settings` оба
+  чекбокса выключены, на `Dinext` остаются включёнными.
+- Report-карточки хаба ведут на `/app/query-report/{имя отчёта}`.
+- Каталог: Project Management без Task/Issue-списков от Gantt; Scope &
+  Governance больше не регистрируется.
 - Удалены DocType-колонка Recently Opened, поле `show_recently_opened` и
   whitelist `get_document_titles`.
-- Quick Create остаётся кнопками; записи списков — компактными строками.
+- Quick Create остаётся кнопками; записи секционных списков — компактными
+  строками.
 
 ### 2026-08-13
 

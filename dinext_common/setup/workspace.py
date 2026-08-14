@@ -214,6 +214,26 @@ def ensure_default_dinext_hub_settings() -> None:
 		source_app="dinext_common",
 		settings_name=SETTINGS_HUB_SETTINGS,
 	)
+	_disable_settings_hub_page_lists()
+
+
+def _disable_settings_hub_page_lists() -> None:
+	"""Keep Frequent/Recent Pages off on the product-owned Settings record."""
+	if not frappe.db.exists("Dinext Workspace Settings", SETTINGS_HUB_SETTINGS):
+		return
+
+	settings = frappe.get_doc("Dinext Workspace Settings", SETTINGS_HUB_SETTINGS)
+	if not settings.meta.has_field("show_frequent_pages") or not settings.meta.has_field(
+		"show_recent_pages"
+	):
+		return
+	if not settings.show_frequent_pages and not settings.show_recent_pages:
+		return
+
+	settings.show_frequent_pages = 0
+	settings.show_recent_pages = 0
+	settings.save(ignore_permissions=True)
+	frappe.clear_cache(doctype="Dinext Workspace Settings")
 
 
 def hide_non_dinext_workspaces() -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import frappe
 from frappe import _
@@ -243,6 +243,8 @@ def _get_desk_route(doctype: str, target: str, route_prefix: str | None = None) 
 
 
 def _desk_route(target: str, route_prefix: str | None = None) -> str:
+	if route_prefix == "query-report":
+		return f"/app/query-report/{quote(target, safe='')}"
 	slug = frappe.scrub(target).replace("_", "-")
 	return f"/app/{route_prefix}/{slug}" if route_prefix else f"/app/{slug}"
 

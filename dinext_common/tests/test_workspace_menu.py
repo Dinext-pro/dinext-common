@@ -571,7 +571,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		if frappe.db.exists("Report", "Database Storage Usage By Tables"):
 			self.assertEqual(
 				_get_route("Report", "Database Storage Usage By Tables"),
-				"/app/query-report/database-storage-usage-by-tables",
+				"/app/query-report/Database%20Storage%20Usage%20By%20Tables",
 			)
 		if frappe.db.exists("Page", "permission-manager"):
 			self.assertEqual(_get_route("Page", "permission-manager"), "/app/permission-manager")
@@ -614,6 +614,10 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertIn("section.lists", script)
 		self.assertIn("lists.attention", script)
 		self.assertIn("make_page_lists", script)
+		self.assertIn("make_page_row", script)
+		self.assertIn("make_page_chip", script)
+		self.assertIn("dinext-workspace-hub__page-chip", script)
+		self.assertIn("dinext-workspace-hub__page-rows", script)
 		self.assertIn("dinext-workspace-hub__create-buttons", script)
 		self.assertIn("dinext-workspace-hub__create-btn", script)
 		self.assertIn("dinext-workspace-hub__record", script)
@@ -637,7 +641,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertIn("Recent Pages", script)
 		self.assertIn("frappe.router.on", script)
 		self.assertIn("refresh_connected_hubs", script)
-		self.assertIn("page-lists-1", script)
+		self.assertIn("page-chips-1", script)
 		self.assertNotIn("Recently Opened", script)
 		self.assertNotIn("recent_doctypes", script)
 		self.assertNotIn("get_document_titles", script)
@@ -660,6 +664,8 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertIn("font-size: var(--text-tiny, 11px)", style)
 		self.assertIn(".dinext-workspace-hub__lists", style)
 		self.assertIn(".dinext-workspace-hub__pages", style)
+		self.assertIn(".dinext-workspace-hub__page-rows", style)
+		self.assertIn(".dinext-workspace-hub__page-chip:hover", style)
 		self.assertIn("repeat(auto-fit, minmax(min(100%, 16rem), 1fr))", style)
 		self.assertIn(".dinext-workspace-hub__list-items > li", style)
 		self.assertIn(".dinext-workspace-hub__chip:hover", style)
@@ -763,6 +769,29 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		settings = frappe.get_doc("Dinext Workspace Settings", SETTINGS_HUB_SETTINGS)
 		self.assertEqual({row.role for row in settings.roles}, set(SETTINGS_ROLES))
 		self.assertEqual(settings.settings_name, SETTINGS_HUB_SETTINGS)
+		self.assertFalse(settings.show_frequent_pages)
+		self.assertFalse(settings.show_recent_pages)
+		settings_payload = get_settings_hub()
+		self.assertFalse(settings_payload["show_frequent_pages"])
+		self.assertFalse(settings_payload["show_recent_pages"])
+
+	def test_settings_hub_page_lists_stay_disabled_after_reconfigure(self):
+		configure_workspace_menu()
+		settings = frappe.get_doc("Dinext Workspace Settings", SETTINGS_HUB_SETTINGS)
+		settings.show_frequent_pages = 1
+		settings.show_recent_pages = 1
+		settings.save(ignore_permissions=True)
+		dinext = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
+		dinext.show_frequent_pages = 1
+		dinext.show_recent_pages = 1
+		dinext.save(ignore_permissions=True)
+		configure_workspace_menu()
+		settings.reload()
+		dinext.reload()
+		self.assertFalse(settings.show_frequent_pages)
+		self.assertFalse(settings.show_recent_pages)
+		self.assertTrue(dinext.show_frequent_pages)
+		self.assertTrue(dinext.show_recent_pages)
 
 	def test_settings_sections_use_five_card_columns(self):
 		configure_workspace_menu()
