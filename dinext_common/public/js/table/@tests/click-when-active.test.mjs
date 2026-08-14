@@ -108,6 +108,7 @@ test("shouldStartEditOnActiveClick: skips dblclick half, modifiers, checkbox, ra
     assert.equal(shouldStartEditOnActiveClick({ ...base, domEvent: mouse(), isCheckboxColumn: true }), false);
     assert.equal(shouldStartEditOnActiveClick({ ...base, domEvent: mouse(), selectionBlocks: true }), false);
     assert.equal(shouldStartEditOnActiveClick({ ...base, domEvent: mouse(), targetIsFillHandle: true }), false);
+    assert.equal(shouldStartEditOnActiveClick({ ...base, domEvent: mouse(), suppressClickEdit: true }), false);
 });
 
 test("snapshotFocusedCell / cellRefFromFocusEvent", () => {
