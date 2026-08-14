@@ -24,10 +24,43 @@ DINEXT_MODULE = "Dinext Common"
 SETTINGS_ROLES = ("System Manager", "Workspace Manager")
 DINEXT_HUB_BLOCK = "Dinext Hub"
 SETTINGS_HUB_BLOCK = "Dinext Settings Hub"
+REPLACED_WORKSPACES = ("Home",)
 WORKSPACE_HUB_BLOCKS = {
 	DINEXT_WORKSPACE: (DINEXT_HUB_BLOCK, "dinext-hub"),
 	SETTINGS_WORKSPACE: (SETTINGS_HUB_BLOCK, "dinext-settings-hub"),
 }
+
+
+def omit_replaced_workspaces(pages):
+	"""Drop ERPNext Home (and later replacements) from Desk sidebar payloads."""
+	if not isinstance(pages, (list, tuple)):
+		return pages
+
+	omitted = set(REPLACED_WORKSPACES)
+	kept = []
+	for page in pages:
+		name = _workspace_page_field(page, "name")
+		title = _workspace_page_field(page, "title")
+		if name in omitted or title in omitted:
+			continue
+		kept.append(page)
+	return kept
+
+
+def _workspace_page_field(page, key: str) -> str:
+	if isinstance(page, dict):
+		return page.get(key) or ""
+	return getattr(page, key, None) or ""
+
+
+@frappe.whitelist()
+def get_workspace_sidebar_items():
+	"""Return sidebar pages without replaced workspaces such as Home."""
+	from frappe.desk.desktop import get_workspace_sidebar_items as original
+
+	payload = original() or {}
+	payload["pages"] = omit_replaced_workspaces(payload.get("pages") or [])
+	return payload
 
 
 def configure_workspace_menu() -> None:

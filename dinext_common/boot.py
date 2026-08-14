@@ -6,6 +6,8 @@ from typing import Any
 
 import frappe
 
+from dinext_common.setup.workspace import omit_replaced_workspaces
+
 CONF_KEY = "dinext_workspace_sidebar_hover_expand"
 
 
@@ -38,3 +40,6 @@ def extend_bootinfo(bootinfo) -> None:
 	"""
 	raw = frappe.conf.get(CONF_KEY, 1)
 	bootinfo.dinext_workspace_sidebar_hover_expand = as_bool(raw, default=True)
+	pages = getattr(bootinfo, "allowed_workspaces", None)
+	if isinstance(pages, (list, tuple)):
+		bootinfo.allowed_workspaces = omit_replaced_workspaces(pages)
