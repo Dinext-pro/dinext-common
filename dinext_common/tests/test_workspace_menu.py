@@ -37,7 +37,7 @@ from dinext_common.workspace_hub import (
 	get_settings_hub,
 	get_workspace_hub,
 )
-from dinext_common.workspace_hub_lists import parse_attention_filter
+from dinext_common.workspace_hub_lists import parse_attention_filter, parse_list_filter
 
 SAMPLE_HUB_ITEM = {
 	"section": "My Work",
@@ -109,6 +109,20 @@ def _clear_hub_settings(test_case=None, name=DINEXT_HUB_SETTINGS):
 	settings.save(ignore_permissions=True)
 	settings.reload()
 	return settings
+
+
+def _delete_scratch_hub_settings(name):
+	if name in (DINEXT_HUB_SETTINGS, SETTINGS_HUB_SETTINGS):
+		return
+	if frappe.db.exists("Dinext Workspace Settings", name):
+		frappe.delete_doc("Dinext Workspace Settings", name, force=True, ignore_permissions=True)
+
+
+def _scratch_hub_settings(test_case):
+	name = f"Test Hub {random_string(8)}"
+	doc = ensure_workspace_settings(name)
+	test_case.addCleanup(_delete_scratch_hub_settings, name)
+	return doc
 
 
 class TestDinextWorkspaceMenu(FrappeTestCase):
@@ -1165,4 +1179,230 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertTrue(all(row["doctype"] == "Note" for row in recent))
 		self.assertTrue(all("type_label" in row and "route" in row for row in recent))
 		self.assertNotIn(notes[1].name, {row["name"] for row in recent})
+
+	def _insert_public_note(self, title):
+		note = frappe.get_doc({"doctype": "Note", "title": title, "public": 1})
+		note.insert(ignore_permissions=True)
+		self.addCleanup(lambda: frappe.delete_doc("Note", note.name, force=True, ignore_permissions=True))
+		return note
+
+	def _assign_note(self, note):
+		todo = frappe.get_doc(
+			{
+				"doctype": "ToDo",
+				"description": f"hub assign {note.name}",
+				"allocated_to": frappe.session.user,
+				"reference_type": "Note",
+				"reference_name": note.name,
+				"status": "Open",
+			}
+		)
+		todo.insert(ignore_permissions=True)
+		self.addCleanup(lambda: frappe.delete_doc("ToDo", todo.name, force=True, ignore_permissions=True))
+		return todo
+
+	def test_parse_list_filter_and_invalid(self):
+		parsed = parse_list_filter(
+			'[["Note","public","=",1,false]]',
+			"Note",
+		)
+		self.assertEqual(parsed, [["public", "=", 1]])
+		self.assertEqual(parse_list_filter("", "Note"), [])
+		self.assertIsNone(parse_list_filter("{not-json", "Note"))
+
+	def test_assigned_and_liked_apply_list_filter(self):
+		configure_workspace_menu()
+		settings = _scratch_hub_settings(self)
+		keep = self._insert_public_note(f"hub-keep-{random_string(6)}")
+		drop = self._insert_public_note(f"hub-drop-{random_string(6)}")
+		self._assign_note(keep)
+		self._assign_note(drop)
+		for note in (keep, drop):
+			frappe.db.set_value("Note", note.name, "_liked_by", json.dumps([frappe.session.user]))
+
+		register_hub_sections(
+			[{"section": "Filter Lists", "list_limit": 5}],
+			source_app="dinext_common",
+			settings_name=settings.name,
+		)
+		register_hub_doctype_items(
+			[
+				{
+					"section": "Filter Lists",
+					"document_type": "Note",
+					"show_assigned": 1,
+					"show_liked": 1,
+					"show_attention": 1,
+					"attention_filter": [["Note", "public", "=", 1]],
+					"list_filter": [["Note", "title", "like", f"%{keep.title}%"]],
+				}
+			],
+			source_app="dinext_common",
+			settings_name=settings.name,
+		)
+
+		payload = get_workspace_hub(settings.name)
+		section = next(s for s in payload["sections"] if s["label"] == "Filter Lists")
+		lists = section["lists"]
+		assigned_names = {row["name"] for row in lists["assigned"]}
+		liked_names = {row["name"] for row in lists["liked"]}
+		attention_names = {row["name"] for row in lists["attention"]}
+		self.assertIn(keep.name, assigned_names)
+		self.assertNotIn(drop.name, assigned_names)
+		self.assertIn(keep.name, liked_names)
+		self.assertNotIn(drop.name, liked_names)
+		self.assertIn(keep.name, attention_names)
+		self.assertIn(drop.name, attention_names)
+
+	def test_empty_list_filter_does_not_narrow_assigned(self):
+		configure_workspace_menu()
+		settings = _scratch_hub_settings(self)
+		note = self._insert_public_note(f"hub-empty-filter-{random_string(6)}")
+		self._assign_note(note)
+		register_hub_sections(
+			[{"section": "Empty Filter", "list_limit": 5}],
+			source_app="dinext_common",
+			settings_name=settings.name,
+		)
+		register_hub_doctype_items(
+			[
+				{
+					"section": "Empty Filter",
+					"document_type": "Note",
+					"show_assigned": 1,
+					"list_filter": "",
+				}
+			],
+			source_app="dinext_common",
+			settings_name=settings.name,
+		)
+		payload = get_workspace_hub(settings.name)
+		section = next(s for s in payload["sections"] if s["label"] == "Empty Filter")
+		self.assertIn(note.name, {row["name"] for row in section["lists"]["assigned"]})
+
+	def test_invalid_list_filter_does_not_break_hub(self):
+		configure_workspace_menu()
+		settings = _scratch_hub_settings(self)
+		note = self._insert_public_note(f"hub-bad-filter-{random_string(6)}")
+		self._assign_note(note)
+		register_hub_sections(
+			[{"section": "Bad Filter", "list_limit": 5}],
+			source_app="dinext_common",
+			settings_name=settings.name,
+		)
+		register_hub_doctype_items(
+			[
+				{
+					"section": "Bad Filter",
+					"document_type": "Note",
+					"show_assigned": 1,
+					"list_filter": "{not-json",
+				}
+			],
+			source_app="dinext_common",
+			settings_name=settings.name,
+		)
+		payload = get_workspace_hub(settings.name)
+		section = next(s for s in payload["sections"] if s["label"] == "Bad Filter")
+		self.assertTrue(section["lists"]["show_assigned"])
+		self.assertIn(note.name, {row["name"] for row in section["lists"]["assigned"]})
+
+	def test_register_doctype_items_preserves_admin_list_filter(self):
+		configure_workspace_menu()
+		settings = _scratch_hub_settings(self)
+		register_hub_doctype_items(
+			[
+				{
+					"section": "Preserve Filter",
+					"document_type": "Note",
+					"show_assigned": 1,
+					"list_filter": [["public", "=", 1]],
+				}
+			],
+			source_app="dinext_common",
+			settings_name=settings.name,
+		)
+		settings.reload()
+		settings.doctype_items[0].list_filter = '[["public","=",0]]'
+		settings.save(ignore_permissions=True)
+		register_hub_doctype_items(
+			[
+				{
+					"section": "Preserve Filter",
+					"document_type": "Note",
+					"show_assigned": 1,
+					"list_filter": [["public", "=", 1]],
+				}
+			],
+			source_app="dinext_common",
+			settings_name=settings.name,
+		)
+		settings.reload()
+		self.assertEqual(len(settings.doctype_items), 1)
+		self.assertEqual(settings.doctype_items[0].list_filter, '[["public","=",0]]')
+
+	def test_register_doctype_items_backfills_empty_list_filter_and_enables_flags(self):
+		configure_workspace_menu()
+		settings = _scratch_hub_settings(self)
+		register_hub_doctype_items(
+			[
+				{
+					"section": "Backfill Filter",
+					"document_type": "Note",
+					"show_assigned": 0,
+					"show_quick_create": 0,
+				}
+			],
+			source_app="dinext_common",
+			settings_name=settings.name,
+		)
+		register_hub_doctype_items(
+			[
+				{
+					"section": "Backfill Filter",
+					"document_type": "Note",
+					"show_assigned": 1,
+					"show_quick_create": 1,
+					"list_filter": [["public", "=", 1]],
+				}
+			],
+			source_app="dinext_common",
+			settings_name=settings.name,
+		)
+		settings.reload()
+		self.assertEqual(len(settings.doctype_items), 1)
+		self.assertTrue(settings.doctype_items[0].show_assigned)
+		self.assertTrue(settings.doctype_items[0].show_quick_create)
+		self.assertIn("public", settings.doctype_items[0].list_filter)
+
+	def test_register_doctype_items_does_not_disable_flags_from_payload(self):
+		configure_workspace_menu()
+		settings = _scratch_hub_settings(self)
+		register_hub_doctype_items(
+			[
+				{
+					"section": "Keep Flags",
+					"document_type": "Note",
+					"show_assigned": 1,
+					"show_quick_create": 1,
+				}
+			],
+			source_app="dinext_common",
+			settings_name=settings.name,
+		)
+		register_hub_doctype_items(
+			[
+				{
+					"section": "Keep Flags",
+					"document_type": "Note",
+					"show_assigned": 0,
+					"show_quick_create": 0,
+				}
+			],
+			source_app="dinext_common",
+			settings_name=settings.name,
+		)
+		settings.reload()
+		self.assertTrue(settings.doctype_items[0].show_assigned)
+		self.assertTrue(settings.doctype_items[0].show_quick_create)
 

@@ -77,6 +77,8 @@ def merge_doctype_contributions(settings) -> dict[tuple[str, str], dict[str, Any
 				"show_liked": 0,
 				"show_attention": 0,
 				"attention_filters": [],
+				"assigned_filters": [],
+				"liked_filters": [],
 			},
 		)
 		for flag in FLAG_FIELDS:
@@ -86,12 +88,27 @@ def merge_doctype_contributions(settings) -> dict[tuple[str, str], dict[str, Any
 			parsed = parse_attention_filter(row.get("attention_filter"), document_type)
 			if parsed is not None:
 				bucket["attention_filters"].append(parsed)
+		list_filter = parse_list_filter(row.get("list_filter"), document_type)
+		if row.get("show_assigned") and list_filter is not None:
+			bucket["assigned_filters"].append(list_filter)
+		if row.get("show_liked") and list_filter is not None:
+			bucket["liked_filters"].append(list_filter)
 
 	return merged
 
 
 def parse_attention_filter(raw: Any, document_type: str) -> list | None:
-	"""Parse and normalize Frappe filter JSON. Returns None when invalid/empty."""
+	"""Parse Attention filter JSON. Returns None when invalid."""
+	return parse_filter_json(raw, document_type, title="Dinext Hub invalid attention filter")
+
+
+def parse_list_filter(raw: Any, document_type: str) -> list | None:
+	"""Parse Assigned/Liked list filter JSON. Returns None when invalid."""
+	return parse_filter_json(raw, document_type, title="Dinext Hub invalid list filter")
+
+
+def parse_filter_json(raw: Any, document_type: str, *, title: str) -> list | None:
+	"""Parse and normalize Frappe filter JSON. Returns None when invalid."""
 	if raw in (None, "", [], {}):
 		return []
 
@@ -99,14 +116,14 @@ def parse_attention_filter(raw: Any, document_type: str) -> list | None:
 		value = json.loads(raw) if isinstance(raw, str) else raw
 	except (TypeError, ValueError, json.JSONDecodeError):
 		frappe.log_error(
-			title="Dinext Hub invalid attention filter",
+			title=title,
 			message=f"DocType={document_type} filter={cstr(raw)[:500]}",
 		)
 		return None
 
 	if not isinstance(value, list):
 		frappe.log_error(
-			title="Dinext Hub invalid attention filter",
+			title=title,
 			message=f"DocType={document_type} expected list, got {type(value)}",
 		)
 		return None
@@ -115,7 +132,7 @@ def parse_attention_filter(raw: Any, document_type: str) -> list | None:
 	for item in value:
 		if not isinstance(item, (list, tuple)) or len(item) < 3:
 			frappe.log_error(
-				title="Dinext Hub invalid attention filter",
+				title=title,
 				message=f"DocType={document_type} bad clause={item!r}",
 			)
 			return None
@@ -170,11 +187,23 @@ def build_section_personal_lists(
 
 		if config.get("show_assigned"):
 			show_assigned = True
-			assigned.extend(get_assigned_records(document_type, limit=limit))
+			assigned.extend(
+				get_assigned_records(
+					document_type,
+					filters_list=config.get("assigned_filters") or [],
+					limit=limit,
+				)
+			)
 
 		if config.get("show_liked"):
 			show_liked = True
-			liked.extend(get_liked_records(document_type, limit=limit))
+			liked.extend(
+				get_liked_records(
+					document_type,
+					filters_list=config.get("liked_filters") or [],
+					limit=limit,
+				)
+			)
 
 		if config.get("show_attention"):
 			show_attention = True
@@ -326,7 +355,7 @@ def _parse_route_history_route(
 	return None
 
 
-def get_assigned_records(document_type: str, *, limit: int) -> list[dict]:
+def get_assigned_records(document_type: str, *, limit: int, filters_list: list | None = None) -> list[dict]:
 	todos = frappe.get_all(
 		"ToDo",
 		filters={
@@ -351,27 +380,81 @@ def get_assigned_records(document_type: str, *, limit: int) -> list[dict]:
 		if len(ordered) >= limit * 3:
 			break
 
-	return format_records(document_type, [name for name, _ in ordered], limit=limit, modified_by_name=dict(ordered))
+	names = [name for name, _ in ordered]
+	allowed = _names_matching_filters(document_type, names, filters_list)
+	if allowed is not None:
+		ordered = [(name, modified) for name, modified in ordered if name in allowed]
+		names = [name for name, _ in ordered]
+
+	return format_records(document_type, names, limit=limit, modified_by_name=dict(ordered))
 
 
-def get_liked_records(document_type: str, *, limit: int) -> list[dict]:
+def get_liked_records(document_type: str, *, limit: int, filters_list: list | None = None) -> list[dict]:
 	user = frappe.session.user
-	try:
-		rows = frappe.get_list(
-			document_type,
-			filters={"_liked_by": ("like", f"%{user}%")},
-			fields=["name", "modified"],
-			order_by="modified desc",
-			limit_page_length=limit,
-			ignore_permissions=False,
-		)
-	except Exception:
-		frappe.log_error(title="Dinext Hub liked list failed", message=document_type)
-		return []
+	if not filters_list:
+		filters_list = [[]]
 
-	modified_by_name = {row.name: row.modified for row in rows if row.name}
-	names = [row.name for row in rows if row.name]
-	return format_records(document_type, names, limit=limit, modified_by_name=modified_by_name)
+	by_name: dict[str, Any] = {}
+	for filters in filters_list:
+		liked_filters: list = [["_liked_by", "like", f"%{user}%"]]
+		if filters:
+			liked_filters.extend(filters)
+		try:
+			rows = frappe.get_list(
+				document_type,
+				filters=liked_filters,
+				fields=["name", "modified"],
+				order_by="modified desc",
+				limit_page_length=limit,
+				ignore_permissions=False,
+			)
+		except Exception:
+			frappe.log_error(
+				title="Dinext Hub liked list failed",
+				message=f"DocType={document_type} filters={filters!r}",
+			)
+			continue
+		for row in rows:
+			if row.name and row.name not in by_name:
+				by_name[row.name] = row.modified
+
+	ordered = sorted(by_name.items(), key=lambda item: item[1] or "", reverse=True)
+	names = [name for name, _ in ordered]
+	return format_records(document_type, names, limit=limit, modified_by_name=by_name)
+
+
+def _names_matching_filters(document_type: str, names: list[str], filters_list: list | None) -> set[str] | None:
+	"""Intersect names with each list filter and union the matches.
+
+	Returns None when there is no extra restriction (empty/missing filters).
+	"""
+	if not names:
+		return set()
+	if not filters_list:
+		return None
+
+	allowed: set[str] | None = None
+	for filters in filters_list:
+		if not filters:
+			return None
+		try:
+			rows = frappe.get_list(
+				document_type,
+				filters=list(filters) + [["name", "in", names]],
+				fields=["name"],
+				limit_page_length=len(names),
+				ignore_permissions=False,
+			)
+		except Exception:
+			frappe.log_error(
+				title="Dinext Hub assigned list filter failed",
+				message=f"DocType={document_type} filters={filters!r}",
+			)
+			continue
+		matched = {row.name for row in rows if row.name}
+		allowed = matched if allowed is None else allowed | matched
+
+	return allowed if allowed is not None else set()
 
 
 def get_attention_records(document_type: str, *, filters_list: list, limit: int) -> list[dict]:

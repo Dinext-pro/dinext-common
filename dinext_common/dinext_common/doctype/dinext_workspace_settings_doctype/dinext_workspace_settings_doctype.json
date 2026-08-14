@@ -15,6 +15,7 @@
   "show_liked",
   "show_attention",
   "attention_filter",
+  "list_filter",
   "source_app"
  ],
  "fields": [
@@ -79,6 +80,14 @@
    "options": "JSON"
   },
   {
+   "depends_on": "eval:doc.show_assigned || doc.show_liked",
+   "description": "Standard Frappe filter JSON array, for example [[\"status\",\"=\",\"Open\"]]",
+   "fieldname": "list_filter",
+   "fieldtype": "Code",
+   "label": "List Filter",
+   "options": "JSON"
+  },
+  {
    "fieldname": "source_app",
    "fieldtype": "Data",
    "label": "Source App",
@@ -89,7 +98,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-08-12 02:41:20.446353",
+ "modified": "2026-08-14 13:24:04.041584",
  "modified_by": "Administrator",
  "module": "Dinext Common",
  "name": "Dinext Workspace Settings DocType",
