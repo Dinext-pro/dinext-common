@@ -123,7 +123,9 @@ def get_settings_hub() -> dict:
 @frappe.whitelist()
 def get_workspace_hub(settings_name: str | None = None) -> dict:
 	"""Return hub cards and lists for one named Dinext Workspace Settings record."""
-	settings_name = (settings_name or "").strip() or DINEXT_HUB_SETTINGS
+	settings_name = (
+		settings_name or frappe.form_dict.get("settings_name") or ""
+	).strip() or DINEXT_HUB_SETTINGS
 	if not frappe.db.exists("DocType", "Dinext Workspace Settings"):
 		return _empty_hub_payload()
 	if not frappe.db.exists("Dinext Workspace Settings", settings_name):
