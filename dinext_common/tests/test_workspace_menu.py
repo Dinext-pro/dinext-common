@@ -925,6 +925,9 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 			{"sections", "show_frequent_pages", "show_recent_pages", "page_list_limit"},
 		)
 		self.assertTrue(payload["sections"])
+		self.assertTrue(
+			any(card["label"] == "Typed card" for section in payload["sections"] for card in section["items"])
+		)
 		for section in payload["sections"]:
 			self.assertEqual(
 				set(section.keys()),
@@ -932,6 +935,8 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 			)
 			for card in section["items"]:
 				self.assertEqual(set(card.keys()), {"label", "description", "icon", "route"})
+		ignored_form_input = get_workspace_hub("Does Not Exist")
+		self.assertEqual(ignored_form_input["sections"], [])
 
 	def test_ensure_workspace_settings_creates_named_record(self):
 		name = f"Test Hub {random_string(8)}"
