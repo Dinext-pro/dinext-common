@@ -6,6 +6,7 @@
  */
 (() => {
 	const SLUG_REDIRECTS = {
+		home: "dinext",
 		"мои-проекты": "my-projects",
 		"мои-задачи": "my-tasks",
 		"мои-таймшиты": "my-timesheets",
@@ -18,6 +19,7 @@
 	};
 
 	const TITLE_REDIRECTS = {
+		Home: "Dinext",
 		"Мои проекты": "My Projects",
 		"Мои задачи": "My Tasks",
 		"Мои Таймшиты": "My Timesheets",

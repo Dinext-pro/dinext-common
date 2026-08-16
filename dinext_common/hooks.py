@@ -238,6 +238,9 @@ override_whitelisted_methods = {
 		"dinext_common.setup.chart_of_accounts.get_charts_for_country"
 	),
 	"erpnext.accounts.utils.get_coa": "dinext_common.setup.chart_of_accounts.get_coa",
+	"frappe.desk.desktop.get_workspace_sidebar_items": (
+		"dinext_common.setup.workspace.get_workspace_sidebar_items"
+	),
 }
 #
 # each overriding function accepts a `data` argument;

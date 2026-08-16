@@ -24,10 +24,43 @@ DINEXT_MODULE = "Dinext Common"
 SETTINGS_ROLES = ("System Manager", "Workspace Manager")
 DINEXT_HUB_BLOCK = "Dinext Hub"
 SETTINGS_HUB_BLOCK = "Dinext Settings Hub"
+REPLACED_WORKSPACES = ("Home",)
 WORKSPACE_HUB_BLOCKS = {
 	DINEXT_WORKSPACE: (DINEXT_HUB_BLOCK, "dinext-hub"),
 	SETTINGS_WORKSPACE: (SETTINGS_HUB_BLOCK, "dinext-settings-hub"),
 }
+
+
+def omit_replaced_workspaces(pages):
+	"""Drop ERPNext Home (and later replacements) from Desk sidebar payloads."""
+	if not isinstance(pages, (list, tuple)):
+		return pages
+
+	omitted = set(REPLACED_WORKSPACES)
+	kept = []
+	for page in pages:
+		name = _workspace_page_field(page, "name")
+		title = _workspace_page_field(page, "title")
+		if name in omitted or title in omitted:
+			continue
+		kept.append(page)
+	return kept
+
+
+def _workspace_page_field(page, key: str) -> str:
+	if isinstance(page, dict):
+		return page.get(key) or ""
+	return getattr(page, key, None) or ""
+
+
+@frappe.whitelist()
+def get_workspace_sidebar_items():
+	"""Return sidebar pages without replaced workspaces such as Home."""
+	from frappe.desk.desktop import get_workspace_sidebar_items as original
+
+	payload = original() or {}
+	payload["pages"] = omit_replaced_workspaces(payload.get("pages") or [])
+	return payload
 
 
 def configure_workspace_menu() -> None:
@@ -214,6 +247,26 @@ def ensure_default_dinext_hub_settings() -> None:
 		source_app="dinext_common",
 		settings_name=SETTINGS_HUB_SETTINGS,
 	)
+	_disable_settings_hub_page_lists()
+
+
+def _disable_settings_hub_page_lists() -> None:
+	"""Keep Frequent/Recent Pages off on the product-owned Settings record."""
+	if not frappe.db.exists("Dinext Workspace Settings", SETTINGS_HUB_SETTINGS):
+		return
+
+	settings = frappe.get_doc("Dinext Workspace Settings", SETTINGS_HUB_SETTINGS)
+	if not settings.meta.has_field("show_frequent_pages") or not settings.meta.has_field(
+		"show_recent_pages"
+	):
+		return
+	if not settings.show_frequent_pages and not settings.show_recent_pages:
+		return
+
+	settings.show_frequent_pages = 0
+	settings.show_recent_pages = 0
+	settings.save(ignore_permissions=True)
+	frappe.clear_cache(doctype="Dinext Workspace Settings")
 
 
 def hide_non_dinext_workspaces() -> None:
