@@ -26,6 +26,8 @@ from dinext_common.setup.workspace import (
 	SETTINGS_WORKSPACE,
 	configure_workspace_menu,
 	ensure_default_dinext_hub_settings,
+	get_workspace_sidebar_items,
+	omit_replaced_workspaces,
 	set_default_workspace_for_new_user,
 )
 from dinext_common.workspace_hub import (
@@ -184,6 +186,52 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 				1,
 				msg=f"public non-Dinext workspace {ws.name!r} must be hidden",
 			)
+
+	def test_omit_replaced_workspaces_drops_home(self):
+		pages = omit_replaced_workspaces(
+			[
+				{"name": "Home", "title": "Home"},
+				{"name": "Dinext", "title": "Dinext"},
+				{"name": "Settings", "title": "Settings"},
+			]
+		)
+		self.assertEqual([page["name"] for page in pages], ["Dinext", "Settings"])
+
+	def test_sidebar_wrapper_omits_home(self):
+		from unittest.mock import patch
+
+		payload = {
+			"pages": [
+				{"name": "Home", "title": "Home"},
+				{"name": DINEXT_WORKSPACE, "title": DINEXT_WORKSPACE},
+			],
+			"has_access": True,
+		}
+		with patch("frappe.desk.desktop.get_workspace_sidebar_items", return_value=payload):
+			result = get_workspace_sidebar_items()
+		names = {page["name"] for page in result["pages"]}
+		self.assertNotIn("Home", names)
+		self.assertIn(DINEXT_WORKSPACE, names)
+
+	def test_configure_keeps_home_hidden_in_database(self):
+		configure_workspace_menu()
+		if not frappe.db.exists("Workspace", "Home"):
+			self.skipTest("ERPNext Home workspace is not installed")
+		ws = frappe.db.get_value(
+			"Workspace",
+			"Home",
+			["name", "title", "is_hidden"],
+			as_dict=True,
+		)
+		self.assertEqual(ws.name, "Home")
+		self.assertEqual(ws.title, "Home")
+		self.assertEqual(ws.is_hidden, 1)
+
+	def test_home_slug_redirects_to_dinext(self):
+		path = Path(frappe.get_app_path("dinext_common")) / "public" / "js" / "workspace_slug_redirects.js"
+		script = path.read_text()
+		self.assertIn('home: "dinext"', script)
+		self.assertIn('Home: "Dinext"', script)
 
 	def test_configure_is_idempotent(self):
 		configure_workspace_menu()
@@ -571,7 +619,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		if frappe.db.exists("Report", "Database Storage Usage By Tables"):
 			self.assertEqual(
 				_get_route("Report", "Database Storage Usage By Tables"),
-				"/app/query-report/database-storage-usage-by-tables",
+				"/app/query-report/Database%20Storage%20Usage%20By%20Tables",
 			)
 		if frappe.db.exists("Page", "permission-manager"):
 			self.assertEqual(_get_route("Page", "permission-manager"), "/app/permission-manager")
@@ -612,9 +660,15 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertIn("make_column_heading", script)
 		self.assertIn("make_type_badge", script)
 		self.assertIn("section.lists", script)
-		self.assertIn("lists.recent", script)
+		self.assertIn("lists.attention", script)
+		self.assertIn("make_page_lists", script)
+		self.assertIn("make_page_row", script)
+		self.assertIn("make_page_chip", script)
+		self.assertIn("dinext-workspace-hub__page-chip", script)
+		self.assertIn("dinext-workspace-hub__page-rows", script)
 		self.assertIn("dinext-workspace-hub__create-buttons", script)
-		self.assertIn("dinext-workspace-hub__chip", script)
+		self.assertIn("dinext-workspace-hub__create-btn", script)
+		self.assertIn("dinext-workspace-hub__record", script)
 		self.assertIn('make_icon("add"', script)
 		self.assertIn("is_font_icon", script)
 		self.assertIn("fa ", script)
@@ -627,13 +681,31 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertNotIn("list-empty", script)
 		self.assertNotIn("action.icon", script)
 		self.assertNotIn("make_doctype_block", script)
-		self.assertNotIn("frappe.route_history", script)
+		self.assertIn("frappe.route_history", script)
+		self.assertIn("frequently_visited_links", script)
+		self.assertIn("show_frequent_pages", script)
+		self.assertIn("show_recent_pages", script)
+		self.assertIn("Frequent Pages", script)
+		self.assertIn("Recent Pages", script)
+		self.assertLess(script.index("Recent Pages"), script.index("Frequent Pages"))
+		self.assertIn("allowed_workspaces", script)
+		self.assertIn("title_field", script)
+		self.assertIn("get_value", script)
+		self.assertIn('classList.add("dinext-workspace-hub__page-chip-icon")', script)
+		self.assertIn("frappe.router.on", script)
+		self.assertIn("refresh_connected_hubs", script)
+		self.assertIn("page-chips-3", script)
+		self.assertNotIn('__("{0} Workspace"', script)
+		self.assertNotIn("Recently Opened", script)
+		self.assertNotIn("recent_doctypes", script)
 		self.assertNotIn("get_document_titles", script)
 		self.assertNotIn("recent_from_route_history", script)
 		self.assertNotIn("dropdown-toggle", script)
 		self.assertNotIn("__('My Items')", script)
 		self.assertNotIn("dinext-workspace-hub__personal-header", script)
 		self.assertNotIn("label.className = 'dinext-workspace-hub__type-label'", script)
+		self.assertNotIn("dinext-workspace-hub__chip", script)
+		self.assertNotIn("dinext-workspace-hub__chip-label", script)
 		self.assertIn("--dinext-hub-card-columns", script)
 		self.assertIn("Math.min(columns, Math.max(1, items.length))", script)
 		self.assertIn("card_columns", script)
@@ -645,9 +717,21 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		)
 		self.assertIn("font-size: var(--text-tiny, 11px)", style)
 		self.assertIn(".dinext-workspace-hub__lists", style)
-		self.assertIn("flex: 0 1 16rem", style)
+		self.assertIn(".dinext-workspace-hub__pages", style)
+		self.assertIn(".dinext-workspace-hub__page-rows", style)
+		self.assertIn(".dinext-workspace-hub__page-chip:hover", style)
+		self.assertIn("var(--border-radius-full, 999px)", style)
+		self.assertIn("overflow: visible", style)
+		self.assertIn("repeat(auto-fit, minmax(min(100%, 16rem), 1fr))", style)
 		self.assertIn(".dinext-workspace-hub__list-items > li", style)
 		self.assertIn(".dinext-workspace-hub__chip:hover", style)
+		self.assertIn(".dinext-workspace-hub__create-btn:hover", style)
+		self.assertIn(".dinext-workspace-hub__record", style)
+		self.assertIn("gap: 0.12rem", style)
+		self.assertIn("padding: 0.05rem 0", style)
+		self.assertIn("var(--border-primary, var(--btn-primary))", style)
+		self.assertIn("0 0 0 1px var(--border-primary, var(--btn-primary))", style)
+		self.assertIn("var(--dark-border-color, var(--border-color))", style)
 		self.assertIn("text-transform: none", style)
 		self.assertIn(".dinext-workspace-hub__type-badge", style)
 		self.assertIn(".dinext-workspace-hub__create-buttons", style)
@@ -724,7 +808,15 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 	def test_unknown_settings_name_returns_empty_hub(self):
 		configure_workspace_menu()
 		payload = get_workspace_hub("Does Not Exist")
-		self.assertEqual(payload, {"sections": []})
+		self.assertEqual(
+			payload,
+			{
+				"show_frequent_pages": False,
+				"show_recent_pages": False,
+				"page_list_limit": 5,
+				"sections": [],
+			},
+		)
 
 	def test_standard_settings_records_exist_after_configure(self):
 		configure_workspace_menu()
@@ -733,6 +825,29 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		settings = frappe.get_doc("Dinext Workspace Settings", SETTINGS_HUB_SETTINGS)
 		self.assertEqual({row.role for row in settings.roles}, set(SETTINGS_ROLES))
 		self.assertEqual(settings.settings_name, SETTINGS_HUB_SETTINGS)
+		self.assertFalse(settings.show_frequent_pages)
+		self.assertFalse(settings.show_recent_pages)
+		settings_payload = get_settings_hub()
+		self.assertFalse(settings_payload["show_frequent_pages"])
+		self.assertFalse(settings_payload["show_recent_pages"])
+
+	def test_settings_hub_page_lists_stay_disabled_after_reconfigure(self):
+		configure_workspace_menu()
+		settings = frappe.get_doc("Dinext Workspace Settings", SETTINGS_HUB_SETTINGS)
+		settings.show_frequent_pages = 1
+		settings.show_recent_pages = 1
+		settings.save(ignore_permissions=True)
+		dinext = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
+		dinext.show_frequent_pages = 1
+		dinext.show_recent_pages = 1
+		dinext.save(ignore_permissions=True)
+		configure_workspace_menu()
+		settings.reload()
+		dinext.reload()
+		self.assertFalse(settings.show_frequent_pages)
+		self.assertFalse(settings.show_recent_pages)
+		self.assertTrue(dinext.show_frequent_pages)
+		self.assertTrue(dinext.show_recent_pages)
 
 	def test_settings_sections_use_five_card_columns(self):
 		configure_workspace_menu()
@@ -776,6 +891,52 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		)
 		settings = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
 		self.assertEqual(int(settings.sections[0].card_columns), 3)
+
+	def test_hub_payload_has_typed_section_keys(self):
+		configure_workspace_menu()
+		settings = _scratch_hub_settings(self)
+		register_hub_items(
+			[
+				{
+					"section": "Typed Contract",
+					"element_type": "Workspace",
+					"target": DINEXT_WORKSPACE,
+					"label": "Typed card",
+					"description": "Contract keys",
+					"icon": "organization",
+					"enabled": 1,
+				}
+			],
+			source_app="dinext_common",
+			settings_name=settings.name,
+		)
+		previous = dict(frappe.form_dict)
+
+		def restore_form_dict():
+			frappe.form_dict.clear()
+			frappe.form_dict.update(previous)
+
+		self.addCleanup(restore_form_dict)
+		frappe.form_dict.clear()
+		frappe.form_dict["settings_name"] = settings.name
+		payload = get_workspace_hub()
+		self.assertEqual(
+			set(payload.keys()),
+			{"sections", "show_frequent_pages", "show_recent_pages", "page_list_limit"},
+		)
+		self.assertTrue(payload["sections"])
+		self.assertTrue(
+			any(card["label"] == "Typed card" for section in payload["sections"] for card in section["items"])
+		)
+		for section in payload["sections"]:
+			self.assertEqual(
+				set(section.keys()),
+				{"label", "items", "lists", "list_limit", "card_columns"},
+			)
+			for card in section["items"]:
+				self.assertEqual(set(card.keys()), {"label", "description", "icon", "route"})
+		ignored_form_input = get_workspace_hub("Does Not Exist")
+		self.assertEqual(ignored_form_input["sections"], [])
 
 	def test_ensure_workspace_settings_creates_named_record(self):
 		name = f"Test Hub {random_string(8)}"
@@ -936,12 +1097,17 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertNotIn("doctypes", section)
 		lists = section["lists"]
 		self.assertIsNotNone(lists)
-		self.assertTrue(lists["show_recently_opened"])
+		self.assertNotIn("show_recently_opened", lists)
+		self.assertNotIn("recent_doctypes", lists)
+		self.assertNotIn("recent", lists)
 		self.assertTrue(lists["show_assigned"])
 		self.assertTrue(lists["show_liked"])
 		self.assertTrue(lists["show_attention"])
 		self.assertEqual(section["list_limit"], 5)
 		self.assertEqual(lists["list_limit"], 5)
+		self.assertIn("show_frequent_pages", payload)
+		self.assertIn("show_recent_pages", payload)
+		self.assertEqual(payload["page_list_limit"], 5)
 
 		create_doctypes = {row["doctype"] for row in lists["create_actions"]}
 		if frappe.has_permission("Task", "create"):
@@ -950,9 +1116,6 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 			self.assertIn("Issue", create_doctypes)
 		self.assertEqual(len(lists["create_actions"]), len(create_doctypes))
 
-		self.assertTrue(isinstance(lists["recent"], list))
-		# Without seeded Route History Form entries, recent stays empty but flag remains on.
-		self.assertLessEqual(len(lists["recent"]), lists["list_limit"])
 		for row in lists["create_actions"]:
 			self.assertIn("label", row)
 			self.assertIn("icon", row)
@@ -1102,83 +1265,45 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 			self.assertIn("ToDo", create_doctypes)
 		self.assertNotIn("Note", create_doctypes)
 
-	def test_recent_list_uses_route_history_with_dedupe_and_limit(self):
+	def test_page_list_flags_ignore_doctype_recently_opened(self):
 		configure_workspace_menu()
-		_clear_hub_settings(self)
-		settings = frappe.get_doc("Dinext Workspace Settings", DINEXT_HUB_SETTINGS)
-		settings.sections = []
-		settings.doctype_items = []
-		settings.save(ignore_permissions=True)
+		settings = _scratch_hub_settings(self)
+		self.assertTrue(settings.meta.has_field("show_frequent_pages"))
+		self.assertTrue(settings.meta.has_field("show_recent_pages"))
+		self.assertFalse(
+			frappe.get_meta("Dinext Workspace Settings DocType").has_field("show_recently_opened")
+		)
 
-		notes = []
-		for idx in range(3):
-			note = frappe.get_doc(
-				{"doctype": "Note", "title": f"hub-recent-{idx}-{random_string(4)}", "public": 1}
-			)
-			note.insert(ignore_permissions=True)
-			notes.append(note)
-			self.addCleanup(
-				lambda name=note.name: frappe.delete_doc("Note", name, force=True, ignore_permissions=True)
-			)
-
-		# Older duplicate visit for notes[0], then fresher unique visits.
-		from frappe.utils import add_to_date, now_datetime
-
-		history_routes = [
-			f"Form/Note/{notes[0].name}",
-			f"Form/Note/{notes[1].name}",
-			f"Form/Note/{notes[0].name}",
-			f"app/note/{notes[2].name}",
-			"Workspaces/Dinext",
-		]
-		base = now_datetime()
-		for idx, route in enumerate(history_routes):
-			row = frappe.get_doc(
-				{
-					"doctype": "Route History",
-					"route": route,
-					"user": "Administrator",
-				}
-			)
-			row.insert(ignore_permissions=True)
-			frappe.db.set_value(
-				"Route History",
-				row.name,
-				"creation",
-				add_to_date(base, seconds=idx),
-				update_modified=False,
-			)
-			self.addCleanup(
-				lambda name=row.name: frappe.delete_doc(
-					"Route History", name, force=True, ignore_permissions=True
-				)
-			)
-		frappe.db.commit()
-
-		register_hub_sections([{"section": "Recent Lists", "list_limit": 2}], source_app="dinext_common")
+		register_hub_sections(
+			[{"section": "Page Lists", "list_limit": 2}],
+			source_app="dinext_common",
+			settings_name=settings.name,
+		)
 		register_hub_doctype_items(
 			[
 				{
-					"section": "Recent Lists",
+					"section": "Page Lists",
 					"document_type": "Note",
 					"show_recently_opened": 1,
+					"show_assigned": 1,
 				}
 			],
 			source_app="dinext_common",
+			settings_name=settings.name,
 		)
 
-		payload = get_dinext_hub()
-		section = next(s for s in payload["sections"] if s["label"] == "Recent Lists")
+		settings.reload()
+		self.assertEqual(len(settings.doctype_items), 1)
+		payload = get_workspace_hub(settings.name)
+		self.assertTrue(payload["show_frequent_pages"])
+		self.assertTrue(payload["show_recent_pages"])
+		self.assertEqual(payload["page_list_limit"], 5)
+		section = next(s for s in payload["sections"] if s["label"] == "Page Lists")
 		lists = section["lists"]
-		self.assertTrue(lists["show_recently_opened"])
+		self.assertNotIn("show_recently_opened", lists)
 		self.assertNotIn("recent_doctypes", lists)
-		recent = lists["recent"]
-		self.assertEqual(len(recent), 2)
-		# Newest unique Form/app routes first: notes[2], then notes[0] (duplicate skipped).
-		self.assertEqual([row["name"] for row in recent], [notes[2].name, notes[0].name])
-		self.assertTrue(all(row["doctype"] == "Note" for row in recent))
-		self.assertTrue(all("type_label" in row and "route" in row for row in recent))
-		self.assertNotIn(notes[1].name, {row["name"] for row in recent})
+		self.assertNotIn("recent", lists)
+		self.assertTrue(lists["show_assigned"])
 
 	def _insert_public_note(self, title):
 		note = frappe.get_doc({"doctype": "Note", "title": title, "public": 1})

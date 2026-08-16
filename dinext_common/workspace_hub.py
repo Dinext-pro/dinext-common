@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import frappe
 from frappe import _
@@ -19,6 +19,18 @@ from dinext_common.workspace_hub_lists import (
 	get_section_limits,
 	merge_doctype_contributions,
 )
+from dinext_common.workspace_hub_models import WorkspaceHubResponse
+
+DEFAULT_PAGE_LIST_LIMIT = 5
+
+
+def _empty_hub_payload() -> WorkspaceHubResponse:
+	return {
+		"show_frequent_pages": False,
+		"show_recent_pages": False,
+		"page_list_limit": DEFAULT_PAGE_LIST_LIMIT,
+		"sections": [],
+	}
 
 SETTINGS_CHILDREN = (
 	("Users", "Manage users, roles, and permissions.", "users"),
@@ -111,11 +123,13 @@ def get_settings_hub() -> dict:
 @frappe.whitelist()
 def get_workspace_hub(settings_name: str | None = None) -> dict:
 	"""Return hub cards and lists for one named Dinext Workspace Settings record."""
-	settings_name = (settings_name or "").strip() or DINEXT_HUB_SETTINGS
+	settings_name = (
+		settings_name or frappe.form_dict.get("settings_name") or ""
+	).strip() or DINEXT_HUB_SETTINGS
 	if not frappe.db.exists("DocType", "Dinext Workspace Settings"):
-		return {"sections": []}
+		return _empty_hub_payload()
 	if not frappe.db.exists("Dinext Workspace Settings", settings_name):
-		return {"sections": []}
+		return _empty_hub_payload()
 
 	settings = frappe.get_cached_doc("Dinext Workspace Settings", settings_name)
 	_assert_record_access(settings)
@@ -168,31 +182,16 @@ def get_workspace_hub(settings_name: str | None = None) -> dict:
 			}
 		)
 
-	return {"sections": sections}
-
-
-@frappe.whitelist()
-def get_document_titles(doctype: str, names: list | str | None = None) -> list[dict]:
-	"""Permission-aware title enrichment for client-side recent lists."""
-	if isinstance(names, str):
-		names = frappe.parse_json(names)
-	names = names or []
-	if not doctype or not frappe.db.exists("DocType", doctype):
-		return []
-	if not frappe.has_permission(doctype, "read"):
-		return []
-
-	from dinext_common.workspace_hub_lists import format_records
-
-	# Preserve caller order
-	unique_names = []
-	seen = set()
-	for name in names:
-		if name and name not in seen:
-			seen.add(name)
-			unique_names.append(name)
-
-	return format_records(doctype, unique_names, limit=len(unique_names) or 1)
+	return {
+		"show_frequent_pages": bool(
+			settings.get("show_frequent_pages") if settings.meta.has_field("show_frequent_pages") else 1
+		),
+		"show_recent_pages": bool(
+			settings.get("show_recent_pages") if settings.meta.has_field("show_recent_pages") else 1
+		),
+		"page_list_limit": DEFAULT_PAGE_LIST_LIMIT,
+		"sections": sections,
+	}
 
 
 def _assert_record_access(settings) -> None:
@@ -246,6 +245,8 @@ def _get_desk_route(doctype: str, target: str, route_prefix: str | None = None) 
 
 
 def _desk_route(target: str, route_prefix: str | None = None) -> str:
+	if route_prefix == "query-report":
+		return f"/app/query-report/{quote(target, safe='')}"
 	slug = frappe.scrub(target).replace("_", "-")
 	return f"/app/{route_prefix}/{slug}" if route_prefix else f"/app/{slug}"
 

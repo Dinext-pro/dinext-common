@@ -16,7 +16,6 @@ from dinext_common.setup.hub_catalog import DEFAULT_SECTION_CARD_COLUMNS, DEFAUL
 
 FLAG_FIELDS = (
 	"show_quick_create",
-	"show_recently_opened",
 	"show_assigned",
 	"show_liked",
 	"show_attention",
@@ -72,7 +71,6 @@ def merge_doctype_contributions(settings) -> dict[tuple[str, str], dict[str, Any
 				"section": section,
 				"document_type": document_type,
 				"show_quick_create": 0,
-				"show_recently_opened": 0,
 				"show_assigned": 0,
 				"show_liked": 0,
 				"show_attention": 0,
@@ -155,12 +153,10 @@ def build_section_personal_lists(
 	limit: int,
 ) -> dict[str, Any] | None:
 	"""Aggregate personal lists and create actions for one Hub section."""
-	show_recently_opened = False
 	show_assigned = False
 	show_liked = False
 	show_attention = False
 	create_actions: list[dict] = []
-	recent_doctypes: list[str] = []
 	assigned: list[dict] = []
 	liked: list[dict] = []
 	attention: list[dict] = []
@@ -180,10 +176,6 @@ def build_section_personal_lists(
 					"icon": type_meta["icon"],
 				}
 			)
-
-		if config.get("show_recently_opened"):
-			show_recently_opened = True
-			recent_doctypes.append(document_type)
 
 		if config.get("show_assigned"):
 			show_assigned = True
@@ -215,21 +207,15 @@ def build_section_personal_lists(
 				)
 			)
 
-	if not any([create_actions, show_recently_opened, show_assigned, show_liked, show_attention]):
+	if not any([create_actions, show_assigned, show_liked, show_attention]):
 		return None
-
-	recent = (
-		get_recent_records(recent_doctypes, limit=limit) if show_recently_opened else []
-	)
 
 	return {
 		"list_limit": limit,
-		"show_recently_opened": show_recently_opened,
 		"show_assigned": show_assigned,
 		"show_liked": show_liked,
 		"show_attention": show_attention,
 		"create_actions": create_actions,
-		"recent": recent,
 		"assigned": _merge_records(assigned, limit=limit),
 		"liked": _merge_records(liked, limit=limit),
 		"attention": _merge_records(attention, limit=limit),
@@ -251,7 +237,6 @@ def build_doctype_block(document_type: str, config: dict[str, Any], *, limit: in
 		"label": type_meta["type_label"],
 		"show_quick_create": bool(config.get("show_quick_create"))
 		and frappe.has_permission(document_type, "create"),
-		"show_recently_opened": bool(config.get("show_recently_opened")),
 		"show_assigned": bool(config.get("show_assigned")),
 		"show_liked": bool(config.get("show_liked")),
 		"show_attention": bool(config.get("show_attention")),
@@ -260,99 +245,6 @@ def build_doctype_block(document_type: str, config: dict[str, Any], *, limit: in
 		"liked": section_payload["liked"],
 		"attention": section_payload["attention"],
 	}
-
-
-def get_recent_records(allowed_doctypes: list[str], *, limit: int) -> list[dict]:
-	"""Build recently opened docs from persistent Route History for the current user."""
-	allowed = [dt for dt in allowed_doctypes if dt and frappe.db.exists("DocType", dt)]
-	if not allowed or limit < 1:
-		return []
-
-	slug_to_doctype = {
-		frappe.scrub(dt).replace("_", "-"): dt for dt in allowed
-	}
-	allowed_set = set(allowed)
-
-	# Route History is System Manager-readable only; filter by current user explicitly.
-	rows = frappe.get_all(
-		"Route History",
-		filters={"user": frappe.session.user},
-		fields=["route", "creation"],
-		order_by="creation desc",
-		limit_page_length=max(limit * 40, 40),
-		ignore_permissions=True,
-	)
-
-	ordered: list[tuple[str, str, Any]] = []
-	seen: set[tuple[str, str]] = set()
-	for row in rows:
-		parsed = _parse_route_history_route(row.route or "", allowed_set, slug_to_doctype)
-		if not parsed:
-			continue
-		document_type, name = parsed
-		key = (document_type, name)
-		if key in seen:
-			continue
-		seen.add(key)
-		ordered.append((document_type, name, row.creation))
-		if len(ordered) >= limit:
-			break
-
-	# Preserve Route History order while enriching titles/permissions per DocType.
-	by_doctype: dict[str, list[str]] = {}
-	modified_by_key: dict[tuple[str, str], Any] = {}
-	for document_type, name, creation in ordered:
-		by_doctype.setdefault(document_type, []).append(name)
-		modified_by_key[(document_type, name)] = creation
-
-	formatted_by_key: dict[tuple[str, str], dict] = {}
-	for document_type, names in by_doctype.items():
-		for record in format_records(
-			document_type,
-			names,
-			limit=len(names),
-			modified_by_name={name: modified_by_key[(document_type, name)] for name in names},
-		):
-			formatted_by_key[(document_type, record["name"])] = record
-
-	return [
-		formatted_by_key[key]
-		for key in ((document_type, name) for document_type, name, _ in ordered)
-		if key in formatted_by_key
-	][:limit]
-
-
-def _parse_route_history_route(
-	route: str,
-	allowed_set: set[str],
-	slug_to_doctype: dict[str, str],
-) -> tuple[str, str] | None:
-	raw = cstr(route).strip().strip("/")
-	if not raw:
-		return None
-
-	if raw.startswith("app/"):
-		raw = raw[4:]
-	parts = [part for part in raw.split("/") if part]
-	if len(parts) < 2:
-		return None
-
-	if parts[0] == "Form" and len(parts) >= 3:
-		document_type = parts[1]
-		name = "/".join(parts[2:])
-		if document_type in allowed_set and name:
-			return document_type, name
-		return None
-
-	# Desk path style: <doctype-slug>/<name>
-	slug = parts[0]
-	document_type = slug_to_doctype.get(slug)
-	if not document_type and parts[0] in allowed_set:
-		document_type = parts[0]
-	name = "/".join(parts[1:])
-	if document_type and name and document_type in allowed_set:
-		return document_type, name
-	return None
 
 
 def get_assigned_records(document_type: str, *, limit: int, filters_list: list | None = None) -> list[dict]:
