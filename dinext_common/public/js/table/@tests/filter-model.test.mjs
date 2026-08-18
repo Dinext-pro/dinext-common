@@ -8,6 +8,7 @@ import {
     filterTreeRows,
     isFilterStateEmpty,
     normalizeFilterState,
+    sameFilterState,
     parseFilterQuery,
     resolveFilterKind,
     rowMatchesFilter,
@@ -36,6 +37,13 @@ test("normalizeFilterState drops empty/blank and trims", () => {
 test("isFilterStateEmpty", () => {
     assert.equal(isFilterStateEmpty({}), true);
     assert.equal(isFilterStateEmpty({ a: "x" }), false);
+});
+
+test("sameFilterState ignores empty keys and key order", () => {
+    assert.equal(sameFilterState({ a: "x", b: "" }, { a: "x" }), true);
+    assert.equal(sameFilterState({ a: "x", b: "y" }, { b: "y", a: "x" }), true);
+    assert.equal(sameFilterState({ a: "x" }, { a: "y" }), false);
+    assert.equal(sameFilterState({ a: "x" }, { a: "x", b: "z" }), false);
 });
 
 test("resolveFilterKind from column type", () => {

@@ -1,6 +1,7 @@
 import { matchKeyboardShortcut } from "../shared/utils.js";
 import { parseBooleanValue } from "../edit/editors.js";
 import { CELL_CHANGE_SOURCES } from "../edit/changes.js";
+import { isEditorArrowNavTarget } from "../edit/keyboard.js";
 
 const CLIPBOARD_DEFAULTS = {
     enabled: undefined
@@ -668,7 +669,8 @@ export const ClipboardMixin = (Base) => class extends Base {
             return;
         }
 
-        const editing = !!this.api?.getEditingCells()?.length;
+        const editing = !!this.api?.getEditingCells()?.length
+            || isEditorArrowNavTarget(domEvent.target);
 
         if (editing) {
             return;

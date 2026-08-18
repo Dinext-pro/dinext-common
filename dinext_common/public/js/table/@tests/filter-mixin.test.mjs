@@ -73,6 +73,24 @@ test("lazy children notify AG filter once without replacing rowData", () => {
     ]);
 });
 
+test("setFilter skips apply/emit when state is unchanged", () => {
+    const table = new FilterTree();
+    table._filterState = { name: "hit" };
+    table.emitFilterChange = () => {
+        table.calls.push(["emit"]);
+    };
+    table.persistUiState = () => {
+        table.calls.push(["persist"]);
+    };
+    table.applyFilterToGrid = () => {
+        table.calls.push(["apply"]);
+    };
+
+    table.setFilter({ name: "hit" });
+
+    assert.deepEqual(table.calls, []);
+});
+
 test("applyFilterToGrid uses onFilterChanged instead of replacing rowData", () => {
     const table = new FilterTree();
     table.rowData = [
