@@ -1,7 +1,7 @@
 frappe.provide("dinext_common.workspace_hub");
 
 const DINEXT_WORKSPACE_HUB_CSS = "/assets/dinext_common/css/workspace_hub.css";
-const DINEXT_WORKSPACE_HUB_ASSETS = "page-chips-3";
+const DINEXT_WORKSPACE_HUB_ASSETS = "card-border-1";
 const PAGE_SKIP = new Set(["setup-wizard", "social", "recorder"]);
 const mounted_hubs = new Set();
 const hub_mounted_at = new WeakMap();

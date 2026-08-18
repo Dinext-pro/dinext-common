@@ -694,7 +694,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertIn('classList.add("dinext-workspace-hub__page-chip-icon")', script)
 		self.assertIn("frappe.router.on", script)
 		self.assertIn("refresh_connected_hubs", script)
-		self.assertIn("page-chips-3", script)
+		self.assertIn("card-border-1", script)
 		self.assertNotIn('__("{0} Workspace"', script)
 		self.assertNotIn("Recently Opened", script)
 		self.assertNotIn("recent_doctypes", script)
@@ -711,6 +711,19 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertIn("card_columns", script)
 		self.assertIn("?v=", script)
 		self.assertIn(".dinext-workspace-hub__card-icon .icon", style)
+		self.assertIn(
+			".dinext-workspace-hub__card {\n\tdisplay: flex;\n\tgap: 0.75rem;\n\talign-items: flex-start;\n\tpadding: 1rem;\n\tborder: 1px solid var(--dark-border-color, var(--border-color));",
+			style,
+		)
+		self.assertIn(".dinext-workspace-hub__card:focus-visible", style)
+		self.assertIn(
+			".dinext-workspace-hub__card:hover,\n.dinext-workspace-hub__card:focus-visible {\n\tborder-color: var(--border-primary, var(--btn-primary));\n\tbox-shadow: 0 0 0 1px var(--border-primary, var(--btn-primary));",
+			style,
+		)
+		self.assertNotIn(
+			".dinext-workspace-hub__card:hover {\n\tborder-color: var(--primary);",
+			style,
+		)
 		self.assertIn(
 			".dinext-workspace-hub__card:hover .dinext-workspace-hub__card-title",
 			style,
