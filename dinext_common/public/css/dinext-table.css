@@ -139,6 +139,10 @@
     text-align: center;
     white-space: normal;
     cursor: pointer;
+    /* Same type as default `.ag-header-cell-text` (hosts may override both). */
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
 }
 
 .dinext-table .dinext-table-header-sort-icon {
@@ -304,6 +308,11 @@
     flex-shrink: 0;
 }
 
+/* No chevron → no reserved slot (cell gap would otherwise indent content). */
+.dinext-table-tree-lead:empty {
+    display: none;
+}
+
 .dinext-table-tree-content {
     flex: 1;
     min-width: 0;
@@ -317,7 +326,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
+    width: 8px;
     height: 16px;
     flex-shrink: 0;
     user-select: none;
