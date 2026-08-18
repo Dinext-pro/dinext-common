@@ -100,13 +100,9 @@ function createTreeCellRenderer(renderFn, contentKeyFn) {
                 toggle.appendChild(chevron);
                 toggle.onclick = this.onChevronClick;
                 this.leadEl.appendChild(toggle);
-                return;
             }
-
-            const spacer = document.createElement("span");
-            spacer.className = "dinext-table-tree-spacer";
-            spacer.setAttribute("aria-hidden", "true");
-            this.leadEl.appendChild(spacer);
+            // Leaf / no children: leave lead empty. CSS :empty drops the slot so
+            // content starts at the chevron X (no reserved gutter).
         }
 
         render(params, { remountContent } = { remountContent: true }) {

@@ -4,6 +4,8 @@ const GRID_CALLBACK_KEYS = new Set([
     "onCellClicked",
     "onCellKeyDown",
     "onColumnHeaderClicked",
+    "onColumnHeaderMouseOver",
+    "onColumnHeaderMouseLeave",
     "tabToNextCell",
     "navigateToNextCell",
     "onCellValueChanged",
