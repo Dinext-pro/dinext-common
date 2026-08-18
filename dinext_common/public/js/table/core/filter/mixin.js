@@ -6,7 +6,8 @@ import {
     filterFlatRows,
     filterTreeRows,
     isFilterStateEmpty,
-    normalizeFilterState
+    normalizeFilterState,
+    sameFilterState
 } from "./model.js";
 import { DinextNoopFilter, DinextTextFloatingFilter } from "./floating-filter.js";
 
@@ -149,7 +150,14 @@ export const FilterMixin = (Base) => class extends Base {
         if (!this.isFilterEnabled()) {
             return this.getFilter();
         }
-        this._filterState = normalizeFilterState(state);
+        const next = normalizeFilterState(state);
+        if (sameFilterState(this._filterState, next)) {
+            if (syncInputs) {
+                this.syncFloatingFilterInputs();
+            }
+            return this.getFilter();
+        }
+        this._filterState = next;
         this.applyFilterToGrid();
         if (syncInputs) {
             this.syncFloatingFilterInputs();
