@@ -8,7 +8,13 @@ class FakeTreeBase {
         this.options = { filter: { enabled: true } };
         this._filterState = { name: "hit" };
         this.rowData = [];
+        this.sourceData = [];
         this.calls = [];
+        this.api = {
+            onFilterChanged: () => {
+                this.calls.push(["filterChanged"]);
+            }
+        };
     }
 
     insertVisibleChildren(rowId) {
@@ -33,14 +39,14 @@ class FakeTreeBase {
 
 const FilterTree = FilterMixin(FakeTreeBase);
 
-test("active filter rebuilds projection instead of inserting source rows", () => {
+test("active filter inserts children then notifies AG external filter", () => {
     const table = new FilterTree();
 
     table.insertVisibleChildren("parent");
 
     assert.deepEqual(table.calls, [
-        ["sync"],
-        ["grid", "rowData", [{ id: "filtered", name: "hit" }]]
+        ["insert", "parent"],
+        ["filterChanged"]
     ]);
 });
 
@@ -53,7 +59,7 @@ test("inactive filter delegates eager insertion to tree layer", () => {
     assert.deepEqual(table.calls, [["insert", "parent"]]);
 });
 
-test("lazy children rebuild filtered rows once without eager insertion", () => {
+test("lazy children notify AG filter once without replacing rowData", () => {
     const table = new FilterTree();
     const children = [{ id: "child" }];
 
@@ -62,7 +68,40 @@ test("lazy children rebuild filtered rows once without eager insertion", () => {
     assert.equal(result, "updated");
     assert.deepEqual(table.calls, [
         ["setChildren", "parent", children],
-        ["sync"],
-        ["grid", "rowData", [{ id: "filtered", name: "hit" }]]
+        ["insert", "parent"],
+        ["filterChanged"]
     ]);
+});
+
+test("setFilter skips apply/emit when state is unchanged", () => {
+    const table = new FilterTree();
+    table._filterState = { name: "hit" };
+    table.emitFilterChange = () => {
+        table.calls.push(["emit"]);
+    };
+    table.persistUiState = () => {
+        table.calls.push(["persist"]);
+    };
+    table.applyFilterToGrid = () => {
+        table.calls.push(["apply"]);
+    };
+
+    table.setFilter({ name: "hit" });
+
+    assert.deepEqual(table.calls, []);
+});
+
+test("applyFilterToGrid uses onFilterChanged instead of replacing rowData", () => {
+    const table = new FilterTree();
+    table.rowData = [
+        { id: "a", name: "hit" },
+        { id: "b", name: "miss" }
+    ];
+    table.sourceData = table.rowData;
+
+    table.applyFilterToGrid();
+
+    assert.deepEqual(table.calls, [["filterChanged"]]);
+    assert.ok(table._filterPassIds.has("a"));
+    assert.equal(table._filterPassIds.has("b"), false);
 });

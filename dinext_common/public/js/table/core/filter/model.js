@@ -51,6 +51,23 @@ export function isFilterStateEmpty(state) {
     return !state || !Object.keys(state).length;
 }
 
+/** True when both maps have the same fields and query strings. */
+export function sameFilterState(a, b) {
+    const left = normalizeFilterState(a);
+    const right = normalizeFilterState(b);
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    if (leftKeys.length !== rightKeys.length) {
+        return false;
+    }
+    for (const key of leftKeys) {
+        if (left[key] !== right[key]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 function resolveKindMap(options = {}) {
     return buildFilterKindByField(options.columns || []);
 }

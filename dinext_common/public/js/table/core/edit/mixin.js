@@ -9,6 +9,11 @@ import {
     selectionBlocksClickWhenActive,
     shouldStartEditOnActiveClick
 } from "./click-when-active.js";
+import {
+    isEditorArrowNavTarget,
+    shouldSuppressEditorArrowNav,
+    stopEditorArrowNavPropagation
+} from "./keyboard.js";
 import { getRowSection } from "../section/sections.js";
 import { getRowIdField } from "../shared/utils.js";
 import { findSourceRowByBusinessId } from "../tree/model.js";
@@ -31,11 +36,46 @@ export const EditMixin = (Base) => class extends Base {
         // Only previous completed click counts as "active". Never seed from
         // getFocusedCell / cellFocused — AG Grid moves focus before click.
         this._lastClickedCell = null;
+        this.bindEditorArrowNavGuard();
     }
 
     destroyFeatures() {
+        this.unbindEditorArrowNavGuard();
         this._lastClickedCell = null;
         super.destroyFeatures();
+    }
+
+    /**
+     * Custom Frappe inputs are not AG CellEditors. Bind capture on the
+     * focused input (via focusin) so arrows stay in the caret and
+     * Backspace/Delete stay native (one char), not grid cell-clear /
+     * startEditing. Ancestor capture would eat the key.
+     */
+    bindEditorArrowNavGuard() {
+        this.unbindEditorArrowNavGuard();
+        if (!this.container) {
+            return;
+        }
+        this._onEditorInputArrowNav = (event) => {
+            stopEditorArrowNavPropagation(event);
+        };
+        this._onEditorFocusInGuard = (event) => {
+            const el = event.target;
+            if (!isEditorArrowNavTarget(el) || el._dinextEditorArrowGuard) {
+                return;
+            }
+            el._dinextEditorArrowGuard = true;
+            el.addEventListener("keydown", this._onEditorInputArrowNav, true);
+        };
+        this.container.addEventListener("focusin", this._onEditorFocusInGuard);
+    }
+
+    unbindEditorArrowNavGuard() {
+        if (this._onEditorFocusInGuard && this.container) {
+            this.container.removeEventListener("focusin", this._onEditorFocusInGuard);
+        }
+        this._onEditorFocusInGuard = null;
+        this._onEditorInputArrowNav = null;
     }
 
     refresh(data) {
@@ -332,6 +372,7 @@ export const EditMixin = (Base) => class extends Base {
         const colId = column.getColId();
         const colDef = column.getColDef?.() || event.colDef;
         const cellRef = { rowIndex: node.rowIndex, colId };
+        const customActive = typeof colDef?.onActiveClickEdit === "function";
         const shouldEdit = shouldStartEditOnActiveClick({
             committedFocus: this._lastClickedCell,
             rowIndex: cellRef.rowIndex,
@@ -344,12 +385,17 @@ export const EditMixin = (Base) => class extends Base {
                 ? selectionBlocksClickWhenActive(this.cellRanges)
                 : false,
             targetIsFillHandle: !!domEvent.target?.closest?.(".dinext-table-fill-handle"),
-            suppressClickEdit: !!colDef?.suppressClickEdit
+            suppressClickEdit: customActive ? false : !!colDef?.suppressClickEdit
         });
 
         this._lastClickedCell = cellRef;
 
         if (!shouldEdit) {
+            return;
+        }
+
+        if (customActive) {
+            colDef.onActiveClickEdit(event);
             return;
         }
 
@@ -383,7 +429,9 @@ export const EditMixin = (Base) => class extends Base {
                 enableCellChangeFlash: true,
                 cellClassRules: {
                     "dinext-table-cell--readonly": isReadOnlyCellClass
-                }
+                },
+                // AG Grid reads this on ColDef / defaultColDef, not grid root.
+                suppressKeyboardEvent: (params) => shouldSuppressEditorArrowNav(params)
             },
             onCellValueChanged: (event) => this.handleCellValueChanged(event),
             onCellEditingStopped: (event) => this.handleCellEditingStopped(event),
