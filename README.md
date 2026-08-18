@@ -586,7 +586,8 @@ frappe.require(["/assets/dinext_common/js/echarts.min.js"], function () {
 ```json
 {
   "dinext_workspace_sidebar_hover_expand": 1,
-  "dinext_news_feed_url": "https://docs.dinext.ru"
+  "dinext_news_feed_url": "https://docs.dinext.ru",
+  "dinext_hidden_apps": ["erpnext", "hrms"]
 }
 ```
 
@@ -594,6 +595,17 @@ frappe.require(["/assets/dinext_common/js/echarts.min.js"], function () {
   sidebar (по умолчанию включено);
 - `dinext_news_feed_url` — base URL publisher News Feed; trailing slash
   снимается; пустое значение = `https://docs.dinext.ru`.
+- `dinext_hidden_apps` — полный список имён приложений, скрываемых на странице
+  `/apps` и в API списка приложений. Если ключ отсутствует, скрываются
+  `erpnext` и `hrms`; значение `[]` не скрывает ни одного приложения. Имя
+  соответствует `app_name`, например `crm`, а не видимому заголовку плитки.
+
+После изменения `dinext_hidden_apps` выполните
+`bench --site your-site.local migrate` — это назначит `dinext_common`
+системным и пользовательским default app, если прежний default пуст или стал
+скрытым. Затем выполните `bench --site your-site.local clear-cache` и
+перезагрузите Desk. Явный default видимого приложения не перезаписывается.
+При Gunicorn с `--preload` перезапустите web worker.
 
 Этот репозиторий не объявляет собственных переменных окружения: параметры
 сайта задаются стандартным механизмом Bench/Frappe.

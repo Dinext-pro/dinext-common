@@ -61,15 +61,14 @@ fixtures = [
 required_apps = ["erpnext"]
 
 # Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "dinext_common",
-# 		"logo": "/assets/dinext_common/logo.png",
-# 		"title": "Dinext Common",
-# 		"route": "/dinext_common",
-# 		"has_permission": "dinext_common.api.permission.has_app_permission"
-# 	}
-# ]
+add_to_apps_screen = [
+	{
+		"name": "dinext_common",
+		"logo": "/assets/dinext_common/images/DI_SQ_NBG.png",
+		"title": "Dinext",
+		"route": "/app/dinext",
+	}
+]
 
 # Includes in <head>
 # ------------------
@@ -90,6 +89,8 @@ app_include_js = [
 
 # Expose site_config flags to Desk bootinfo
 extend_bootinfo = ["dinext_common.boot.extend_bootinfo"]
+boot_session = ["dinext_common.apps.configure_boot_app_filter"]
+update_website_context = ["dinext_common.apps.update_website_context"]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/dinext_common/css/common.css"
@@ -150,6 +151,7 @@ after_install = "dinext_common.install.after_install"
 after_migrate = [
 	"dinext_common.changelog_feed.on_after_migrate",
 	"dinext_common.setup.workspace.configure_workspace_menu",
+	"dinext_common.apps.ensure_default_apps",
 ]
 
 # Uninstallation
@@ -209,7 +211,10 @@ override_doctype_class = {
 
 doc_events = {
 	"User": {
-		"after_insert": "dinext_common.setup.workspace.set_default_workspace_for_new_user",
+		"after_insert": [
+			"dinext_common.setup.workspace.set_default_workspace_for_new_user",
+			"dinext_common.apps.set_default_app_for_new_user",
+		],
 	},
 }
 
@@ -234,6 +239,7 @@ get_changelog_feed = "dinext_common.changelog_feed.get_feed"
 # ------------------------------
 #
 override_whitelisted_methods = {
+	"frappe.apps.get_apps": "dinext_common.apps.get_apps",
 	"erpnext.accounts.doctype.account.chart_of_accounts.chart_of_accounts.get_charts_for_country": (
 		"dinext_common.setup.chart_of_accounts.get_charts_for_country"
 	),
