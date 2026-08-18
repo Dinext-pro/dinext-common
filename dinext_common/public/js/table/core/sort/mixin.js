@@ -13,6 +13,57 @@ const SORT_DEFAULTS = {
     state: []
 };
 
+const SORT_CLICK_SEL = ".dinext-table-header-sort-text, .dinext-table-header-sort-icon";
+const RESIZE_SKIP_SEL = ".ag-header-cell-resize, .ag-header-cell-menu-button";
+
+/** Two-box header: title + sort icon. Sort binds only on those two boxes. */
+class DinextSortHeader {
+    init(params) {
+        this.params = params;
+        this.eGui = document.createElement("div");
+        this.eGui.className = "dinext-table-header-sort";
+        this.eText = document.createElement("div");
+        this.eText.className = "dinext-table-header-sort-text";
+        this.eIcon = document.createElement("div");
+        this.eIcon.className = "dinext-table-header-sort-icon";
+        this.eIcon.setAttribute("aria-hidden", "true");
+        this.eGui.append(this.eText, this.eIcon);
+        this.eText.textContent = params.displayName || "";
+        this._onSortClick = (event) => this.handleSortClick(event);
+        this.eText.addEventListener("click", this._onSortClick);
+        this.eIcon.addEventListener("click", this._onSortClick);
+    }
+
+    getGui() {
+        return this.eGui;
+    }
+
+    refresh(params) {
+        this.params = params;
+        this.eText.textContent = params.displayName || "";
+        return true;
+    }
+
+    handleSortClick(event) {
+        if (event.target?.closest?.(RESIZE_SKIP_SEL)) {
+            return;
+        }
+        if (!event.target?.closest?.(SORT_CLICK_SEL)) {
+            return;
+        }
+        event.stopPropagation();
+        const field = this.params?.column?.getColDef?.()?.field;
+        if (typeof this.params?.onDinextSortClick === "function") {
+            this.params.onDinextSortClick(field);
+        }
+    }
+
+    destroy() {
+        this.eText?.removeEventListener("click", this._onSortClick);
+        this.eIcon?.removeEventListener("click", this._onSortClick);
+    }
+}
+
 function findRawColumn(columns, field) {
     let match = null;
     walkLeafColumns(columns, (col) => {
@@ -183,11 +234,28 @@ export const SortMixin = (Base) => class extends Base {
             }
             const sortable = this.isColumnSortable(col.field);
             const headerClass = this.buildSortHeaderClass(col.field, col.headerClass);
+            const useDinextHeader = sortable && !col.headerComponent;
+            const existingParams = col.headerComponentParams;
             return {
                 ...col,
                 sortable: false,
                 headerClass,
-                ...(sortable ? { headerTooltip: col.headerTooltip } : {})
+                ...(sortable
+                    ? {
+                        headerTooltip: col.headerTooltip,
+                        headerComponent: col.headerComponent || DinextSortHeader
+                    }
+                    : {}),
+                ...(useDinextHeader
+                    ? {
+                        headerComponentParams: {
+                            ...(existingParams && typeof existingParams === "object"
+                                ? existingParams
+                                : {}),
+                            onDinextSortClick: (field) => this.cycleColumnSort(field)
+                        }
+                    }
+                    : {})
             };
         });
     }
@@ -230,27 +298,8 @@ export const SortMixin = (Base) => class extends Base {
     }
 
     buildSortGridOptions() {
-        if (!this.isSortEnabled()) {
-            return {};
-        }
-        return {
-            onColumnHeaderClicked: (event) => {
-                const col = event?.column;
-                if (!col || typeof col.getColDef !== "function") {
-                    return; // column group header
-                }
-                const field = col.getColDef()?.field;
-                if (!field || !this.isColumnSortable(field)) {
-                    return;
-                }
-                // Ignore clicks on resize handle / filter button when possible
-                const target = event?.event?.target;
-                if (target?.closest?.(".ag-header-cell-resize, .ag-header-cell-menu-button")) {
-                    return;
-                }
-                this.cycleColumnSort(field);
-            }
-        };
+        // Sort is bound on DinextSortHeader text/icon only — never the full cell.
+        return {};
     }
 
     handleSetOption(key, value) {

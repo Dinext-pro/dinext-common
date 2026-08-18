@@ -332,6 +332,7 @@ export const EditMixin = (Base) => class extends Base {
         const colId = column.getColId();
         const colDef = column.getColDef?.() || event.colDef;
         const cellRef = { rowIndex: node.rowIndex, colId };
+        const customActive = typeof colDef?.onActiveClickEdit === "function";
         const shouldEdit = shouldStartEditOnActiveClick({
             committedFocus: this._lastClickedCell,
             rowIndex: cellRef.rowIndex,
@@ -344,12 +345,17 @@ export const EditMixin = (Base) => class extends Base {
                 ? selectionBlocksClickWhenActive(this.cellRanges)
                 : false,
             targetIsFillHandle: !!domEvent.target?.closest?.(".dinext-table-fill-handle"),
-            suppressClickEdit: !!colDef?.suppressClickEdit
+            suppressClickEdit: customActive ? false : !!colDef?.suppressClickEdit
         });
 
         this._lastClickedCell = cellRef;
 
         if (!shouldEdit) {
+            return;
+        }
+
+        if (customActive) {
+            colDef.onActiveClickEdit(event);
             return;
         }
 
