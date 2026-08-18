@@ -11,6 +11,8 @@
     --dinext-table-selection-bg: color-mix(in srgb, var(--dinext-table-accent) 16%, transparent);
     --dinext-table-fill-preview-bg: color-mix(in srgb, var(--dinext-table-accent) 10%, transparent);
     --dinext-table-readonly-focus: color-mix(in srgb, var(--text-color) 38%, transparent);
+    --dinext-table-col-hover-bg: color-mix(in srgb, var(--dinext-table-accent) 10%, transparent);
+    --dinext-table-filter-row-height: 28px;
 }
 
 /*
@@ -68,38 +70,81 @@
 }
 
 /* --- sort layer (custom; AG sortable stays false) --- */
+/* Icon on the header cell, not after the label text. Beats separator ::after kill. */
 
 .dinext-table .ag-header-cell.dinext-table-header--sortable {
     cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.dinext-table .ag-header-cell.dinext-table-header--sortable .ag-header-cell-comp-wrapper {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+    align-self: center;
 }
 
 .dinext-table .ag-header-cell.dinext-table-header--sortable .ag-header-cell-label {
-    padding-right: 14px;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-right: 16px;
 }
 
-.dinext-table .ag-header-cell.dinext-table-header--sortable .ag-header-cell-text::after {
-    content: "";
-    display: inline-block;
-    width: 0;
-    height: 0;
-    margin-left: 5px;
-    vertical-align: middle;
+/*
+ * AG separator ::after is height:100% + top:0 — triangle sat at the top.
+ * Flex item, not abspos: right-aligned, vertically centered. Beat AG + kill rule.
+ */
+.dinext-table .ag-header-cell.dinext-table-header--sortable::after {
+    content: "" !important;
+    display: block !important;
+    position: static !important;
+    flex: 0 0 auto;
+    align-self: center;
+    order: 2;
+    right: auto;
+    left: auto;
+    top: auto !important;
+    bottom: auto;
+    transform: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    margin: 0 8px 0 auto;
     border-left: 3.5px solid transparent;
     border-right: 3.5px solid transparent;
     opacity: 0.35;
     border-top: 4px solid currentColor;
+    border-bottom: none;
 }
 
-.dinext-table .ag-header-cell.dinext-table-header--sort-asc .ag-header-cell-text::after {
+.dinext-table .ag-header-cell.dinext-table-header--sort-asc::after {
     opacity: 0.9;
     border-top: none;
     border-bottom: 4px solid currentColor;
 }
 
-.dinext-table .ag-header-cell.dinext-table-header--sort-desc .ag-header-cell-text::after {
+.dinext-table .ag-header-cell.dinext-table-header--sort-desc::after {
     opacity: 0.9;
     border-top: 4px solid currentColor;
     border-bottom: none;
+}
+
+/* Header hover: header cell always; body column via [data-dinext-hover-col] + injected rule. */
+.dinext-table .ag-header-row:not(.ag-header-row-column-filter) .ag-header-cell:hover {
+    background-color: var(--dinext-table-col-hover-bg);
+}
+
+/* Sheet-like cursors. Fill-handle / reorder keep their own rules (higher specificity). */
+.dinext-table .ag-cell:not(.dinext-table-cell--readonly) {
+    cursor: text;
+}
+
+.dinext-table .ag-cell.dinext-table-cell--readonly {
+    cursor: default;
+}
+
+.dinext-table--row-reorder-enabled.dinext-table--row-reorder-gutter-hover .ag-row:hover .ag-cell {
+    cursor: grab;
 }
 
 /* Opt-in heatmap: ThemeMixin toggles these when theme.*Border === false */
@@ -123,6 +168,34 @@
 .dinext-table-grid-host {
     flex: 1 1 auto;
     min-height: 0;
+}
+
+/* Dual horizontal scroll: top spacer synced with .ag-body-horizontal-scroll.
+ * Lives between header and body. Pinned cols use spacers, not their own bar. */
+.dinext-table-hscroll-top {
+    display: flex;
+    flex: 0 0 auto;
+    width: 100%;
+    overflow: hidden;
+}
+
+.dinext-table-hscroll-top.is-idle {
+    display: none;
+}
+
+.dinext-table-hscroll-top-spacer {
+    flex: 0 0 auto;
+}
+
+.dinext-table-hscroll-top-viewport {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: scroll;
+    overflow-y: hidden;
+}
+
+.dinext-table-hscroll-top-content {
+    height: 1px;
 }
 
 .dinext-table:fullscreen {
@@ -590,6 +663,15 @@
 
 /* --- column filter floating row --- */
 
+.dinext-table .ag-header-row.ag-header-row-column-filter {
+    min-height: 0;
+}
+
+.dinext-table .ag-header-row.ag-header-row-column-filter .ag-header-cell {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
 /* Kill AG floating-filter menu (funnel) — filter is input-only. */
 .dinext-table .ag-floating-filter-button {
     display: none !important;
@@ -804,17 +886,31 @@
 }
 
 /* --- Date cell editor (type: date) --- */
+/* Desk `.form-control` (14px / --input-padding) beats `font: inherit`. */
 
-.dinext-table .dinext-table-date-editor {
+.dinext-table .ag-cell.ag-cell-inline-editing .dinext-table-date-editor,
+.dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor,
+.dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control,
+.dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control.input-with-feedback {
     width: 100%;
-    height: 100%;
-    min-height: 22px;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100%;
     box-sizing: border-box;
     margin: 0;
-    padding: 0 4px;
-    border: none;
+    padding: 0 var(--ag-cell-horizontal-padding, 4px) !important;
+    border: none !important;
     border-radius: 0;
+    box-shadow: none !important;
     background: var(--control-bg, var(--card-bg));
     color: var(--text-color);
-    font: inherit;
+    font-family: var(--ag-font-family, inherit) !important;
+    font-size: var(--ag-font-size, inherit) !important;
+    font-weight: inherit !important;
+    line-height: var(--ag-line-height, 1.2) !important;
+}
+
+.dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-date-editor) {
+    padding-left: 0;
+    padding-right: 0;
 }
