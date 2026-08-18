@@ -84,8 +84,7 @@ export const GridMixin = (Base) => class extends Base {
         this.container.setAttribute("data-dinext-hover-col", next);
         if (this._headerHoverStyleEl) {
             this._headerHoverStyleEl.textContent = [
-                `.dinext-table[data-dinext-hover-col="${escaped}"] .ag-cell[col-id="${escaped}"],`,
-                `.dinext-table[data-dinext-hover-col="${escaped}"] .ag-header-cell[col-id="${escaped}"] {`,
+                `.dinext-table[data-dinext-hover-col="${escaped}"] .ag-header-row:not(.ag-header-row-column-filter) .ag-header-cell[col-id="${escaped}"] {`,
                 "    background-color: var(--dinext-table-col-hover-bg);",
                 "}"
             ].join("\n");
