@@ -233,8 +233,10 @@ root из `/assets/dinext_common/css/workspace_hub.css`. Блоки подклю
 - **`Dinext`** — каталог Dinext Hub. Domain-приложения регистрируют сюда
   карточки через `register_hub_*` (имя по умолчанию).
 - **`Settings`** — каталог Settings Hub: секции Workspaces (`Users`, `Tools`,
-  `Integrations`, `Build`, `Website`) и Configuration (семь Frappe core
-  Singles). Frequent Pages и Recent Pages на этой записи выключены.
+  `Integrations`, `Build`, `Website`) и Configuration (пять Frappe core
+  Singles: System Settings, Session Default Settings, Document Naming
+  Settings, Log Settings, Global Search Settings). Frequent Pages и Recent
+  Pages на этой записи выключены.
 
 Другое приложение может:
 

@@ -46,11 +46,6 @@ SETTINGS_CONFIGURATION = (
 		"setting",
 	),
 	(
-		"Security Settings",
-		"Login, password policy, and two-factor authentication.",
-		"lock",
-	),
-	(
 		"Session Default Settings",
 		"Default values applied to new Desk sessions.",
 		"users",
@@ -69,11 +64,6 @@ SETTINGS_CONFIGURATION = (
 		"Global Search Settings",
 		"Which DocTypes appear in global search.",
 		"search",
-	),
-	(
-		"Domain Settings",
-		"Active domains that enable domain-specific features.",
-		"organization",
 	),
 )
 

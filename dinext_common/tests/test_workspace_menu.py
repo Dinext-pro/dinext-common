@@ -35,6 +35,7 @@ from dinext_common.workspace_hub import (
 	SETTINGS_CONFIGURATION,
 	_get_route,
 	_get_safe_url,
+	default_settings_hub_items,
 	get_dinext_hub,
 	get_settings_hub,
 	get_workspace_hub,
@@ -470,6 +471,26 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 			ru_cards["Мои задачи"]["description"].startswith("Персональная панель запросов и задач")
 		)
 
+	def test_settings_configuration_catalog_omits_security_and_domain(self):
+		omitted = {"Security Settings", "Domain Settings"}
+		catalog_labels = {doctype for doctype, _description, _icon in SETTINGS_CONFIGURATION}
+		self.assertFalse(omitted & catalog_labels)
+		self.assertEqual(
+			catalog_labels,
+			{
+				"System Settings",
+				"Session Default Settings",
+				"Document Naming Settings",
+				"Log Settings",
+				"Global Search Settings",
+			},
+		)
+		seeded_targets = {
+			(item["element_type"], item["target"]) for item in default_settings_hub_items()
+		}
+		self.assertNotIn(("DocType", "Security Settings"), seeded_targets)
+		self.assertNotIn(("DocType", "Domain Settings"), seeded_targets)
+
 	def test_settings_hub_returns_children_and_rejects_non_admin(self):
 		configure_workspace_menu()
 		payload = get_settings_hub()
@@ -490,12 +511,13 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		configuration_items = sections["Configuration"]
 		expected_config = {doctype for doctype, _description, _icon in SETTINGS_CONFIGURATION}
 		actual_config = {item["label"] for item in configuration_items}
-		self.assertTrue(actual_config)
-		self.assertTrue(actual_config.issubset(expected_config))
+		self.assertTrue(expected_config)
+		self.assertTrue(expected_config.issubset(actual_config))
 		for item in configuration_items:
+			if item["label"] not in expected_config:
+				continue
 			self.assertTrue(item["description"])
 			self.assertTrue(item["route"])
-			self.assertIn(item["label"], expected_config)
 
 		current_user = frappe.session.user
 		frappe.set_user("Guest")
@@ -510,7 +532,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		original = _get_route
 
 		def fake_route(element_type, target):
-			if element_type == "DocType" and target == "Domain Settings":
+			if element_type == "DocType" and target == "Log Settings":
 				return None
 			return original(element_type, target)
 
@@ -522,7 +544,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 			if section["label"] == "Configuration"
 			for item in section["items"]
 		}
-		self.assertNotIn("Domain Settings", labels)
+		self.assertNotIn("Log Settings", labels)
 		self.assertIn("System Settings", labels)
 
 	def test_hub_attachment_preserves_existing_workspace_content(self):
