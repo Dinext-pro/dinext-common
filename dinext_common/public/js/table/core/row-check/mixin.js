@@ -1,6 +1,7 @@
 import { createMergeGroupSpanRows } from "../shared/utils.js";
 import { TABLE_SECTIONS } from "../section/sections.js";
 import { TOOLBAR_ICON_SVG } from "../toolbar/icons.js";
+import { ROW_REORDER_COL_ID } from "../row-reorder/constants.js";
 import { ROW_CHECK_COL_ID, ROW_CHECK_SOURCES, ROW_CHECK_UNITS } from "./constants.js";
 import { remapPathIdsForBlockMove } from "../row-reorder/ops.js";
 import {
@@ -74,15 +75,18 @@ class RowCheckCellRenderer {
     sync(params) {
         const table = this.table;
         const row = params?.data;
-        if (!table?.isRowCheckable?.(row)) {
+        const checkable = !!table?.isRowCheckable?.(row);
+
+        if (!checkable) {
             this.eGui.replaceChildren();
             this.input = null;
+            this._boundRowId = null;
             return;
         }
+
         const rowId = table.getRowCheckId(row);
         const checked = table.isRowChecked(rowId);
         if (!this.input) {
-            this.eGui.replaceChildren();
             this.input = createCheckboxInput({
                 checked,
                 onChange: (value) => table.toggleRowCheck(rowId, value)
@@ -92,7 +96,7 @@ class RowCheckCellRenderer {
             return;
         }
         if (this._boundRowId !== rowId) {
-            this.eGui.replaceChildren();
+            this.input.remove();
             this.input = createCheckboxInput({
                 checked,
                 onChange: (value) => table.toggleRowCheck(rowId, value)
@@ -452,7 +456,19 @@ export const RowCheckMixin = (Base) => class extends Base {
             return false;
         });
 
-        return [this.buildRowCheckColumnDef(), ...filtered];
+        const checkCol = this.buildRowCheckColumnDef();
+        // Keep order: [rowReorder?, rowCheck, ...domain] — handle never inside checkbox.
+        const reorderIdx = filtered.findIndex(
+            (col) => (col.colId || col.field) === ROW_REORDER_COL_ID
+        );
+        if (reorderIdx >= 0) {
+            return [
+                ...filtered.slice(0, reorderIdx + 1),
+                checkCol,
+                ...filtered.slice(reorderIdx + 1)
+            ];
+        }
+        return [checkCol, ...filtered];
     }
 
     buildRowCheckColumnDef() {

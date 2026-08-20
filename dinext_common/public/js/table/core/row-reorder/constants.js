@@ -1,3 +1,6 @@
+/** @layer rowReorder — reserved system column id (not a domain field). */
+export const ROW_REORDER_COL_ID = "__dinext_row_reorder";
+
 /** @layer rowReorder — row drag-and-drop mutation sources. */
 export const ROW_REORDER_SOURCES = {
     REORDER: "rowReorder"
@@ -21,9 +24,3 @@ export const ROW_REORDER_TREE_MODES = {
     SIBLINGS: "siblings",
     REPARENT: "reparent"
 };
-
-/** Matches `TREE_INDENT_PX` in tree/mixin.js — drop line indent. */
-export const ROW_REORDER_TREE_INDENT_PX = 20;
-
-/** Base left offset so drop line aligns with tree lead (chevron), not row edge. */
-export const ROW_REORDER_INDICATOR_BASE_LEFT_PX = 10;
