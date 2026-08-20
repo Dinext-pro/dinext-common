@@ -1,5 +1,8 @@
 import { cssEscapeAttr, mergeGridOptions } from "./shared/utils.js";
 
+/** Default body row height when consumer omits gridOptions.rowHeight (~AG quartz +5px). */
+export const DEFAULT_ROW_HEIGHT = 47;
+
 export const GridMixin = (Base) => class extends Base {
     afterGridCreated() {
         super.afterGridCreated();
@@ -101,6 +104,7 @@ export const GridMixin = (Base) => class extends Base {
         const { columnTypes: userColumnTypes, ...restUserGridOptions } = userGridOptions;
 
         return mergeGridOptions(
+            { rowHeight: DEFAULT_ROW_HEIGHT },
             restUserGridOptions,
             ...this.getFeatureGridOptionParts(),
             {

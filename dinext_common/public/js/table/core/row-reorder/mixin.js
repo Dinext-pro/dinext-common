@@ -1,11 +1,11 @@
 import { isSummarySectionRow, TABLE_SECTIONS } from "../section/sections.js";
 import {
-    ROW_REORDER_INDICATOR_BASE_LEFT_PX,
+    ROW_REORDER_COL_ID,
     ROW_REORDER_POSITIONS,
     ROW_REORDER_SOURCES,
-    ROW_REORDER_TREE_INDENT_PX,
     ROW_REORDER_TREE_MODES
 } from "./constants.js";
+import { RowReorderHandleCellRenderer } from "./handle.js";
 import {
     buildRowReorderMovePayload,
     collectDraggedRowIds,
@@ -25,8 +25,11 @@ import {
 
 const ROW_REORDER_DEFAULTS = {
     enabled: false,
-    handle: "gutter",
-    gutterWidth: 12,
+    /** Drag starts on the 6-dot handle in reserved left column (not full-row gutter). */
+    handle: "icon",
+    /** System column width (px). */
+    width: 18,
+    gutterWidth: 14,
     allowSummary: false,
     /**
      * `false` | `"siblings"` | `"reparent"`
@@ -162,9 +165,74 @@ export const RowReorderMixin = (Base) => class extends Base {
         if (!rowEl) {
             return false;
         }
-        const gutterWidth = this.getRowReorderOptions().gutterWidth ?? 12;
+        const gutterWidth = this.getRowReorderOptions().gutterWidth ?? 14;
         const rect = rowEl.getBoundingClientRect();
         return clientX - rect.left <= gutterWidth;
+    }
+
+    /** Prefer visible handle; fall back to left gutter for legacy CSS-only affordance. */
+    isRowReorderHandleHit(event, rowEl) {
+        const handle = event?.target?.closest?.(".dinext-table-row-reorder-handle");
+        if (handle && rowEl?.contains?.(handle)) {
+            return true;
+        }
+        if (this.getRowReorderOptions().handle === "gutter") {
+            return this.isRowReorderGutterHit(rowEl, event?.clientX);
+        }
+        return false;
+    }
+
+    buildColumnDefs() {
+        const defs = super.buildColumnDefs() || [];
+        if (!this.isRowReorderEnabled()) {
+            return defs.filter((col) => (col.colId || col.field) !== ROW_REORDER_COL_ID);
+        }
+
+        const filtered = defs.filter((col) => {
+            const id = col.colId || col.field;
+            if (id !== ROW_REORDER_COL_ID) {
+                return true;
+            }
+            if (!this._rowReorderWarnedConflict) {
+                console.warn(
+                    `DinextTable: columns must not define colId/field "${ROW_REORDER_COL_ID}" — reserved by rowReorder layer`
+                );
+                this._rowReorderWarnedConflict = true;
+            }
+            return false;
+        });
+
+        // Own system column — independent of rowCheck (check may be off).
+        return [this.buildRowReorderColumnDef(), ...filtered];
+    }
+
+    buildRowReorderColumnDef() {
+        const opts = this.getRowReorderOptions();
+        const width = opts.width ?? 18;
+        return {
+            colId: ROW_REORDER_COL_ID,
+            headerName: "",
+            width,
+            minWidth: width,
+            maxWidth: width,
+            pinned: "left",
+            sortable: false,
+            resizable: false,
+            suppressMovable: true,
+            editable: false,
+            tree: false,
+            cellClass: "dinext-table-cell--align-center dinext-table-row-reorder-cell",
+            headerClass: "dinext-table-header--align-center dinext-table-row-reorder-header",
+            valueGetter: () => null,
+            cellRenderer: RowReorderHandleCellRenderer
+        };
+    }
+
+    shouldApplySelectionToColumn(column) {
+        if (column?.getColId?.() === ROW_REORDER_COL_ID) {
+            return false;
+        }
+        return super.shouldApplySelectionToColumn?.(column) ?? true;
     }
 
     getRowElementFromPoint(clientX, clientY) {
@@ -229,22 +297,6 @@ export const RowReorderMixin = (Base) => class extends Base {
         this.container?.classList.toggle("dinext-table--row-reorder-drop-invalid", !!invalid);
     }
 
-    /** Left offset for between-row gap band (align with tree level). */
-    resolveRowReorderGapLeft(rowEl, indentLevel) {
-        const level = Math.max(0, Number(indentLevel) || 0);
-        const treeCell = rowEl?.querySelector?.(".dinext-table-tree-cell");
-        if (treeCell && this.container) {
-            const containerRect = this.container.getBoundingClientRect();
-            const cellRect = treeCell.getBoundingClientRect();
-            const pad = Number.parseFloat(treeCell.style.paddingLeft) || 0;
-            return Math.max(
-                ROW_REORDER_INDICATOR_BASE_LEFT_PX,
-                cellRect.left - containerRect.left + pad
-            );
-        }
-        return ROW_REORDER_INDICATOR_BASE_LEFT_PX + level * ROW_REORDER_TREE_INDENT_PX;
-    }
-
     bindRowReorderListeners() {
         this.destroyRowReorderListeners();
 
@@ -252,11 +304,12 @@ export const RowReorderMixin = (Base) => class extends Base {
             if (event.button !== 0 || !this.isRowReorderEnabled()) {
                 return;
             }
-            const rowEl = event.target.closest?.(".ag-row");
+            const handle = event.target.closest?.(".dinext-table-row-reorder-handle");
+            const rowEl = handle?.closest?.(".ag-row") || event.target.closest?.(".ag-row");
             if (!rowEl || !this.container.contains(rowEl)) {
                 return;
             }
-            if (!this.isRowReorderGutterHit(rowEl, event.clientX)) {
+            if (!this.isRowReorderHandleHit(event, rowEl)) {
                 return;
             }
 
@@ -312,8 +365,18 @@ export const RowReorderMixin = (Base) => class extends Base {
             return;
         }
 
-        const rowEl = this.getRowElementFromPoint(event.clientX, event.clientY);
-        if (!rowEl || !this.isRowReorderGutterHit(rowEl, event.clientX)) {
+        const el = document.elementFromPoint(event.clientX, event.clientY);
+        const handle = el?.closest?.(".dinext-table-row-reorder-handle");
+        const rowEl = handle?.closest?.(".ag-row")
+            || this.getRowElementFromPoint(event.clientX, event.clientY);
+        if (!rowEl || !this.container?.contains(rowEl)) {
+            this.container?.classList.remove("dinext-table--row-reorder-gutter-hover");
+            return;
+        }
+        if (!this.isRowReorderHandleHit(
+            { target: handle || el, clientX: event.clientX },
+            rowEl
+        )) {
             this.container?.classList.remove("dinext-table--row-reorder-gutter-hover");
             return;
         }
@@ -490,12 +553,12 @@ export const RowReorderMixin = (Base) => class extends Base {
             ? rowRect.top
             : rowRect.bottom;
         const top = edge - (gapHeight / 2) - containerRect.top + this.container.scrollTop;
-        const left = this.resolveRowReorderGapLeft(rowEl, dropTarget.indentLevel);
 
         gapEl.hidden = false;
         gapEl.style.height = `${gapHeight}px`;
         gapEl.style.top = `${top}px`;
-        gapEl.style.left = `${left}px`;
+        // Full-bleed: no left indent (tree level / chevron offset).
+        gapEl.style.left = "0";
         gapEl.style.right = "0";
         gapEl.style.width = "";
     }
