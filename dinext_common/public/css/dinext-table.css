@@ -836,24 +836,32 @@
 }
 
 /*
- * Pinned-bottom / summary vertical center.
+ * Pinned-bottom / summary: vertical + horizontal center by default.
  * AG Grid normally centers via line-height ≈ rowHeight. With empty body (or
  * overlay / fractional layout) that line-height can diverge from the cell box
  * until a later reflow — numbers sit top-aligned until body rows appear.
- * Flex stretch (same idea as tree cells) keeps summary centered always.
+ * Flex stretch keeps summary centered; justify-content overrides column
+ * align-right/left (number presets) so summary values sit in the middle.
  */
 .dinext-table .ag-floating-bottom .ag-cell,
 .dinext-table .ag-pinned-left-floating-bottom .ag-cell,
-.dinext-table .ag-pinned-right-floating-bottom .ag-cell {
+.dinext-table .ag-pinned-right-floating-bottom .ag-cell,
+.dinext-table .dinext-table-row--summary .ag-cell {
     display: flex;
     align-items: center;
+    justify-content: center;
+    text-align: center;
 }
 
 .dinext-table .ag-floating-bottom .ag-cell > .ag-cell-wrapper,
 .dinext-table .ag-pinned-left-floating-bottom .ag-cell > .ag-cell-wrapper,
-.dinext-table .ag-pinned-right-floating-bottom .ag-cell > .ag-cell-wrapper {
+.dinext-table .ag-pinned-right-floating-bottom .ag-cell > .ag-cell-wrapper,
+.dinext-table .dinext-table-row--summary .ag-cell > .ag-cell-wrapper,
+.dinext-table .ag-floating-bottom .ag-cell .ag-spanned-cell-wrapper > .ag-spanned-cell > .ag-cell-wrapper,
+.dinext-table .dinext-table-row--summary .ag-cell .ag-spanned-cell-wrapper > .ag-spanned-cell > .ag-cell-wrapper {
     display: flex;
     align-items: center;
+    justify-content: center;
     width: 100%;
     height: 100%;
     min-height: 0;
@@ -881,6 +889,54 @@
 .dinext-table .dinext-table-row--dragging {
     opacity: 0.4;
     filter: saturate(0.85);
+}
+
+/* Reserved system column for 6-dot (3×2) drag handle — independent of rowCheck. */
+.dinext-table .dinext-table-row-reorder-cell,
+.dinext-table .dinext-table-row-reorder-header {
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+}
+
+.dinext-table-row-reorder-handle {
+    flex: 0 0 auto;
+    display: inline-block;
+    width: 10px;
+    height: 16px;
+    cursor: grab;
+    opacity: 0.38;
+    background-color: currentColor;
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 16'%3E%3Ccircle cx='2.5' cy='2.5' r='1.25' fill='%23000'/%3E%3Ccircle cx='7.5' cy='2.5' r='1.25' fill='%23000'/%3E%3Ccircle cx='2.5' cy='8' r='1.25' fill='%23000'/%3E%3Ccircle cx='7.5' cy='8' r='1.25' fill='%23000'/%3E%3Ccircle cx='2.5' cy='13.5' r='1.25' fill='%23000'/%3E%3Ccircle cx='7.5' cy='13.5' r='1.25' fill='%23000'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 16'%3E%3Ccircle cx='2.5' cy='2.5' r='1.25' fill='%23000'/%3E%3Ccircle cx='7.5' cy='2.5' r='1.25' fill='%23000'/%3E%3Ccircle cx='2.5' cy='8' r='1.25' fill='%23000'/%3E%3Ccircle cx='7.5' cy='8' r='1.25' fill='%23000'/%3E%3Ccircle cx='2.5' cy='13.5' r='1.25' fill='%23000'/%3E%3Ccircle cx='7.5' cy='13.5' r='1.25' fill='%23000'/%3E%3C/svg%3E");
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+}
+
+/* Only the hovered handle — never all rows via container gutter-hover class. */
+.dinext-table-row-reorder-handle:hover {
+    opacity: 0.72;
+}
+
+.dinext-table--row-reorder-grabbing .dinext-table-row-reorder-handle {
+    cursor: grabbing;
+}
+
+.dinext-table--row-reorder-grabbing .dinext-table-row-reorder-handle:hover {
+    opacity: 0.85;
+}
+
+.dinext-table-row-reorder-handle-host {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    min-width: 0;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
 }
 
 /* Nest-into: overlay frame (AG .ag-row outline/bg are clipped or overridden). */
