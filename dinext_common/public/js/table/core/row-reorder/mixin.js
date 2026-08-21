@@ -35,7 +35,9 @@ const ROW_REORDER_DEFAULTS = {
      * `false` | `"siblings"` | `"reparent"`
      * Default `"siblings"` — safe for existing consumers; set `"reparent"` for full tree DnD.
      */
-    allowTree: ROW_REORDER_TREE_MODES.SIBLINGS
+    allowTree: ROW_REORDER_TREE_MODES.SIBLINGS,
+    /** Toolbar ↑↓ in preset `rows`. Keep false for tree UIs that only want gutter DnD. */
+    toolbarMove: true
 };
 
 /**
@@ -82,6 +84,12 @@ export const RowReorderMixin = (Base) => class extends Base {
 
     isRowReorderEnabled() {
         return !!this.getRowReorderOptions().enabled;
+    }
+
+    /** Toolbar move arrows (preset `rows`); independent of gutter DnD. */
+    isRowReorderToolbarMoveEnabled() {
+        return this.isRowReorderEnabled()
+            && this.getRowReorderOptions().toolbarMove !== false;
     }
 
     shouldApplyRowReorderToRow(rowNode) {
