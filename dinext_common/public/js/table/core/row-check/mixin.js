@@ -622,6 +622,18 @@ export const RowCheckMixin = (Base) => class extends Base {
             return false;
         }
 
+        if (typeof this.options.onBeforeDeleteRows === "function") {
+            try {
+                const beforeOk = await Promise.resolve(this.options.onBeforeDeleteRows(ctx));
+                if (beforeOk === false) {
+                    return false;
+                }
+            } catch (err) {
+                console.error("DinextTable: onBeforeDeleteRows failed", err);
+                return false;
+            }
+        }
+
         const allowSummary = !!this.getRowCheckOptions().allowSummary;
         if (allowSummary && !Array.isArray(this.summarySourceData)) {
             this.summarySourceData = [];

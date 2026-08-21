@@ -538,6 +538,8 @@ export interface DinextTableRowReorderOptions {
          * - `"reparent"` — cross-parent before/after + nest inside
          */
         allowTree?: DinextTableRowReorderTreeMode;
+        /** Default: true. Toolbar ↑↓ in preset `rows`; set false for tree-only gutter DnD. */
+        toolbarMove?: boolean;
     };
     /** @layer rowReorder — sync, before commit */
     onValidateRowReorder?: (ctx: DinextTableRowReorderContext) => boolean | string;
@@ -940,6 +942,8 @@ export interface DinextTableInstance {
 
     /** @layer rowReorder */
     isRowReorderEnabled(): boolean;
+    /** @layer rowReorder — toolbar ↑↓ when preset `rows` + toolbarMove */
+    isRowReorderToolbarMoveEnabled(): boolean;
     /** @layer rowReorder — true while gutter drag active */
     isRowReorderDragging(): boolean;
     /** @layer rowReorder — one sibling slot; used by toolbar move arrows */
