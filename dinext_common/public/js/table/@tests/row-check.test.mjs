@@ -159,19 +159,29 @@ test("toolbar preset rows: move arrows only when rowReorder enabled", () => {
     };
     const withoutReorder = resolveToolbarPresetItems({
         ...base,
-        isRowReorderEnabled: () => false
+        isRowReorderEnabled: () => false,
+        isRowReorderToolbarMoveEnabled: () => false
     }, ["rows"]);
     assert.ok(withoutReorder.some((i) => i.id === "delete-rows"));
     assert.ok(!withoutReorder.some((i) => i.id === "move-row-up"));
 
     const withReorder = resolveToolbarPresetItems({
         ...base,
-        isRowReorderEnabled: () => true
+        isRowReorderEnabled: () => true,
+        isRowReorderToolbarMoveEnabled: () => true
     }, ["rows"]);
     const ids = withReorder.map((i) => i.id);
     assert.ok(ids.includes("move-row-up"));
     assert.ok(ids.includes("move-row-down"));
     assert.ok(!ids.includes("add-row"));
+
+    const reorderNoToolbarMove = resolveToolbarPresetItems({
+        ...base,
+        isRowReorderEnabled: () => true,
+        isRowReorderToolbarMoveEnabled: () => false
+    }, ["rows"]);
+    assert.ok(reorderNoToolbarMove.some((i) => i.id === "delete-rows"));
+    assert.ok(!reorderNoToolbarMove.some((i) => i.id === "move-row-up"));
 });
 
 test("ROW_CHECK_COL_ID is reserved system id", () => {

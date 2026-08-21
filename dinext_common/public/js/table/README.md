@@ -187,6 +187,7 @@ Domain: что видно в FS — через `shell` + CSS hide siblings, не
 | `clipboard.enabled` | `selection.enabled` | TSV copy/paste |
 | `fillHandle.enabled` | `clipboard.enabled` | Corner drag fill |
 | `rowReorder.enabled` | `false` | Reorder contour: gutter + toolbar ↑↓ + nudge; auto `animateRows` |
+| `rowReorder.toolbarMove` | `true` | Toolbar ↑↓ in preset `rows`; `false` = gutter DnD only |
 | `rowReorder.allowTree` | `"siblings"` | `false` \| `"siblings"` \| `"reparent"` (cross-parent + nest) |
 | `rowCheck.enabled` | `false` | Checkbox col + checked Set; toolbar select/deselect icon |
 | `rowCheck.unit` | `"row"` | `"mergeHead"` — check only merge head + span |
