@@ -147,9 +147,10 @@ const TOOLBAR_PRESET_BUILDERS = {
             });
         }
 
-        const reorderOn = typeof table.isRowReorderEnabled === "function"
-            && table.isRowReorderEnabled();
-        if (reorderOn) {
+        const moveOn = typeof table.isRowReorderToolbarMoveEnabled === "function"
+            ? table.isRowReorderToolbarMoveEnabled()
+            : (typeof table.isRowReorderEnabled === "function" && table.isRowReorderEnabled());
+        if (moveOn) {
             items.push(...createMoveRowToolbarItems());
         }
 
