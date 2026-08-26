@@ -73,13 +73,30 @@ test("shouldSuppressEditorArrowNav: input / select / editing", () => {
         event: { key: "Tab", target: el("INPUT", { type: "text" }) }
     }), false);
     assert.equal(shouldSuppressEditorArrowNav({
-        event: { key: "Enter", target: el("INPUT", { type: "text" }) }
+        event: { key: "ArrowLeft", target: el("DIV") }
     }), false);
+});
+
+test("shouldSuppressEditorArrowNav: overlay Enter/Esc, not AG editor / grid", () => {
+    assert.equal(shouldSuppressEditorArrowNav({
+        event: { key: "Enter", target: el("INPUT", { type: "text" }) }
+    }), true);
     assert.equal(shouldSuppressEditorArrowNav({
         event: { key: "Escape", target: el("INPUT", { type: "text" }) }
+    }), true);
+    assert.equal(shouldSuppressEditorArrowNav({
+        event: { key: "Enter", target: el("INPUT", { type: "text" }) },
+        editing: true
     }), false);
     assert.equal(shouldSuppressEditorArrowNav({
-        event: { key: "ArrowLeft", target: el("DIV") }
+        event: { key: "Escape", target: el("INPUT", { type: "text" }) },
+        editing: true
+    }), false);
+    assert.equal(shouldSuppressEditorArrowNav({
+        event: { key: "Enter", target: el("DIV") }
+    }), false);
+    assert.equal(shouldSuppressEditorArrowNav({
+        event: { key: "Escape", target: el("DIV") }
     }), false);
 });
 
