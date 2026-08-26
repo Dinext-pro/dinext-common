@@ -60,23 +60,38 @@ export function isEditorArrowNavTarget(el) {
     return isCaretEditorTarget(el) || isSelectEditorTarget(el);
 }
 
+/** Overlay Frappe inputs are not AG CellEditors — Enter/Esc must stay on the input. */
+const OVERLAY_COMMIT_KEYS = new Set(["Enter", "Escape"]);
+
 /**
  * AG Grid `suppressKeyboardEvent` (ColDef / defaultColDef, not grid root).
  * Covers official AG editors (`params.editing`) and custom in-cell inputs
  * (Frappe Control) that never set `getEditingCells()`.
  * Arrows stay in caret / native &lt;select&gt;. Backspace/Delete stay native
  * (one char / selection) — do not preventDefault.
- * Tab / Enter / Esc are not suppressed.
+ * Tab is never suppressed (grid navigation).
+ * Enter / Esc: suppressed only for overlay native inputs (`editing` false).
+ * Official AG editors keep Enter / Esc (`editing` true → commit / cancel).
  */
 export function shouldSuppressEditorArrowNav(params = {}) {
     const event = params.event;
-    if (!event || !isEditorGuardKey(event.key)) {
+    if (!event) {
         return false;
     }
-    if (isEditorArrowNavTarget(event.target)) {
+    if (isEditorGuardKey(event.key)) {
+        if (isEditorArrowNavTarget(event.target)) {
+            return true;
+        }
+        return !!params.editing;
+    }
+    if (
+        OVERLAY_COMMIT_KEYS.has(event.key)
+        && !params.editing
+        && isEditorArrowNavTarget(event.target)
+    ) {
         return true;
     }
-    return !!params.editing;
+    return false;
 }
 
 /**
