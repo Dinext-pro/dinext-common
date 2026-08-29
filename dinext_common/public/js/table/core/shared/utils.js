@@ -201,7 +201,7 @@ export function isMergeGroupHead(row, options = {}) {
     return meta != null && meta.index === 0;
 }
 
-/** Displayed-row offset from parent node to insert position after merge tail (or next row). */
+/** Source-row offset from parent node to insert after merge tail (or next row). */
 export function getMergeGroupChildInsertOffset(row, options = {}) {
     const meta = getMergeGroupMeta(row, options);
     if (!meta || meta.index !== 0) {
