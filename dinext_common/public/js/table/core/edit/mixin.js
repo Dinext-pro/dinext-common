@@ -425,6 +425,9 @@ export const EditMixin = (Base) => class extends Base {
         const gridOptions = {
             undoRedoCellEditing: false,
             stopEditingWhenCellsLoseFocus: true,
+            // AG defaults 500 / 1000 — ~30% shorter flash + fade.
+            cellFlashDuration: 350,
+            cellFadeDuration: 700,
             defaultColDef: {
                 enableCellChangeFlash: true,
                 cellClassRules: {
