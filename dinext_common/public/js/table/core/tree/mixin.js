@@ -18,7 +18,8 @@ import {
 import {
     clearExpandedDescendantIds,
     collapseTreeRow,
-    expandTreeRow
+    expandTreeRow,
+    resolveTreeChildAddIndex
 } from "./expand.js";
 
 const TREE_INDENT_PX = 20;
@@ -291,7 +292,7 @@ export const TreeMixin = (Base) => class extends Base {
 
         const parentNode = this.api?.getRowNode(rowId);
         const insertOffset = getMergeGroupChildInsertOffset(parentRow, this.options);
-        const addIndex = parentNode ? parentNode.rowIndex + insertOffset : undefined;
+        const addIndex = resolveTreeChildAddIndex(parentNode, insertOffset);
         this.api.applyTransaction({ add: childRows, addIndex });
         this.syncRowDataFromGrid();
     }

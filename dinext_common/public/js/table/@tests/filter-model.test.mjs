@@ -46,6 +46,19 @@ test("sameFilterState ignores empty keys and key order", () => {
     assert.equal(sameFilterState({ a: "x" }, { a: "x", b: "z" }), false);
 });
 
+test("filterValueGetter is used instead of raw field", () => {
+    const row = { status: "Working" };
+    const options = {
+        columns: [{
+            field: "status",
+            filterValueGetter: (r) => `Working ${r.status === "Working" ? "В работе" : ""}`
+        }]
+    };
+    assert.equal(rowMatchesFilter(row, { status: "работе" }, options), true);
+    assert.equal(rowMatchesFilter(row, { status: "Working" }, options), true);
+    assert.equal(rowMatchesFilter(row, { status: "Open" }, options), false);
+});
+
 test("resolveFilterKind from column type", () => {
     assert.equal(resolveFilterKind({ type: "number" }), FILTER_KINDS.NUMBER);
     assert.equal(resolveFilterKind({ type: "integer" }), FILTER_KINDS.NUMBER);

@@ -5,6 +5,7 @@ import {
     getMergeGroupMeta,
     getRowIdField
 } from "../shared/utils.js";
+import { findRawColumnByField } from "../tree/model.js";
 import { buildSortAtoms } from "../sort/model.js";
 import {
     FILTER_KINDS,
@@ -77,12 +78,21 @@ function resolveMergeInheritedFields(options = {}) {
     return new Set(Array.isArray(fields) ? fields.map(String) : []);
 }
 
+function getFilterCellValue(row, fallbackRow, field, options) {
+    const inheritedFields = resolveMergeInheritedFields(options);
+    const source = inheritedFields.has(field) ? fallbackRow : row;
+    const col = findRawColumnByField(options.columns || [], field);
+    if (typeof col?.filterValueGetter === "function") {
+        return col.filterValueGetter(source, field);
+    }
+    return source?.[field];
+}
+
 function rowMatchesFilterValues(row, fallbackRow, state, options) {
     const kinds = resolveKindMap(options);
-    const inheritedFields = resolveMergeInheritedFields(options);
     for (const [field, query] of Object.entries(state)) {
         const kind = kinds[field] || FILTER_KINDS.TEXT;
-        const value = inheritedFields.has(field) ? fallbackRow?.[field] : row?.[field];
+        const value = getFilterCellValue(row, fallbackRow, field, options);
         if (!valueMatchesQuery(value, query, kind)) {
             return false;
         }
