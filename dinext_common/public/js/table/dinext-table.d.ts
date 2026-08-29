@@ -172,6 +172,11 @@ export interface DinextTableColumnDef {
      * Default from `type` / `cellDataType`.
      */
     filterKind?: "text" | "number" | "date";
+    /**
+     * @layer filter — searchable value for the floating filter (display label, names, etc.).
+     * Default: `row[field]`.
+     */
+    filterValueGetter?: (row: DinextTableRowData, field: string) => unknown;
 
     // --- tree ---
     /** @layer tree — inner content; indent + chevron добавляет ядро */
@@ -716,6 +721,11 @@ export interface DinextTableToolbarOptions {
         enabled?: boolean;
         /** Default: true — panel visible (pinned) on first open */
         defaultPinned?: boolean;
+        /**
+         * Keep toolbar pinned; unpin button disabled. Gantt-style always-on chrome.
+         * Default false — other tables unchanged.
+         */
+        lockPinned?: boolean;
         /**
          * localStorage key suffix for UI snapshot (per table instance).
          * Key: `dinext-table:toolbar:${persistKey}`.

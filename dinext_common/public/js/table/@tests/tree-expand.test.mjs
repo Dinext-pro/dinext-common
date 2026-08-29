@@ -4,8 +4,36 @@ import assert from "node:assert/strict";
 import {
     clearExpandedDescendantIds,
     collapseTreeRow,
-    expandTreeRow
+    expandTreeRow,
+    resolveTreeChildAddIndex
 } from "../core/tree/expand.js";
+
+test("resolveTreeChildAddIndex uses sourceRowIndex not displayed rowIndex", () => {
+    assert.equal(
+        resolveTreeChildAddIndex({ rowIndex: 2, sourceRowIndex: 47 }, 1),
+        48
+    );
+});
+
+test("resolveTreeChildAddIndex without filter matches displayed+offset", () => {
+    assert.equal(
+        resolveTreeChildAddIndex({ rowIndex: 5, sourceRowIndex: 5 }, 1),
+        6
+    );
+});
+
+test("resolveTreeChildAddIndex falls back to rowIndex when source missing", () => {
+    assert.equal(resolveTreeChildAddIndex({ rowIndex: 3 }, 1), 4);
+    assert.equal(resolveTreeChildAddIndex({ rowIndex: 3, sourceRowIndex: -1 }, 1), 4);
+    assert.equal(resolveTreeChildAddIndex(null, 1), undefined);
+});
+
+test("resolveTreeChildAddIndex merge offset stays on source index", () => {
+    assert.equal(
+        resolveTreeChildAddIndex({ rowIndex: 1, sourceRowIndex: 10 }, 2),
+        12
+    );
+});
 
 function makeTable({ onExpandRow } = {}) {
     const toggles = [];

@@ -13,6 +13,8 @@
     --dinext-table-readonly-focus: color-mix(in srgb, var(--text-color) 38%, transparent);
     --dinext-table-col-hover-bg: color-mix(in srgb, var(--dinext-table-accent) 10%, transparent);
     --dinext-table-filter-row-height: 28px;
+    /* Cell change flash (enableCellChangeFlash) — softer than AG default 0.5 */
+    --ag-value-change-value-highlight-background-color: rgba(22, 160, 133, 0.1);
 }
 
 /*
@@ -973,6 +975,11 @@
 .dinext-table .dinext-table-row-check-cell.ag-cell-data-changed-animation {
     background-color: transparent !important;
     transition: none !important;
+}
+
+/* Fade ~30% faster than AG default cellFadeDuration 1000ms (see edit mixin). */
+.dinext-table .ag-cell.ag-cell-data-changed-animation {
+    transition: background-color 0.5s ease !important;
 }
 
 .dinext-table .dinext-table-row-check-cell-inner {
