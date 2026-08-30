@@ -1,7 +1,9 @@
 # Copyright (c) 2026, Dinext and contributors
 # For license information, please see license.txt
 
+import csv
 import json
+import re
 from pathlib import Path
 
 import frappe
@@ -19,6 +21,7 @@ from dinext_common.setup.hub_catalog import (
 	register_hub_sections,
 )
 from dinext_common.setup.workspace import (
+	DINEXT_DOCUMENTATION_CARD,
 	DINEXT_HUB_BLOCK,
 	DINEXT_WORKSPACE,
 	SETTINGS_CHILDREN,
@@ -231,8 +234,33 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 	def test_home_slug_redirects_to_dinext(self):
 		path = Path(frappe.get_app_path("dinext_common")) / "public" / "js" / "workspace_slug_redirects.js"
 		script = path.read_text()
-		self.assertIn('home: "dinext"', script)
+		self.assertIn('const HOME_TARGET = "dinext"', script)
+		self.assertIn("home: HOME_TARGET", script)
 		self.assertIn('Home: "Dinext"', script)
+		self.assertIn("is_replaced_home_path", script)
+		self.assertIn("function can_set_route", script)
+		self.assertIn('location.replace("/app/" + HOME_TARGET)', script)
+		self.assertIn('String(parts[1] || "").toLowerCase() === "home"', script)
+		self.assertIn('String(parts[1] || "").toLowerCase() === "workspaces"', script)
+		self.assertIn('String(parts[2] || "").toLowerCase() === "home"', script)
+		self.assertIn('if (current === "home")', script)
+		self.assertIn("return HOME_TARGET;", script)
+		home_block = script.split("function resolve_slug")[1].split("function fix_local_storage")[0]
+		self.assertIn('current === "home"', home_block)
+		self.assertNotIn("slug_exists(en)", home_block.split("const en = SLUG_REDIRECTS")[0])
+		self.assertIn("alias_home_workspace", script)
+		self.assertIn("frappe.workspaces.home = frappe.workspaces[HOME_TARGET]", script)
+		self.assertIn("bind_router", script)
+		self.assertIn('jQuery(document).on("app_ready", on_ready)', script)
+		sync_block = script.split("function sync()")[1].split("let router_bound")[0]
+		self.assertIn("apply_route(target)", sync_block)
+		self.assertIn("can_set_route()", sync_block)
+		self.assertIn("frappe.route_flags.replace_route = true", script)
+		self.assertIn("frappe.set_route(target_slug)", script)
+		self.assertIn("!is_replaced_home_path(location.pathname)", script)
+		early = script.split("function frappe_slug")[0]
+		self.assertIn("!can_set_route()", early)
+		self.assertIn('location.replace("/app/" + HOME_TARGET)', early)
 
 	def test_configure_is_idempotent(self):
 		configure_workspace_menu()
@@ -372,7 +400,118 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		settings = _clear_hub_settings(self)
 		ensure_default_dinext_hub_settings()
 		settings.reload()
-		self.assertEqual(len(settings.items), 0)
+		self.assertEqual(
+			{(row.element_type, row.target) for row in settings.items},
+			{("URL", DINEXT_DOCUMENTATION_CARD["target"])},
+		)
+		self.assertEqual(settings.items[0].label, "Documentation")
+
+	def test_common_registers_documentation_card_without_overwriting_admin_edits(self):
+		configure_workspace_menu()
+		settings = _clear_hub_settings(self)
+		register_hub_items(
+			[
+				{
+					**DINEXT_DOCUMENTATION_CARD,
+					"label": "Administrator documentation",
+				}
+			],
+			source_app="dinext_common",
+			settings_name=DINEXT_HUB_SETTINGS,
+		)
+		ensure_default_dinext_hub_settings()
+		settings.reload()
+		documentation = next(
+			item
+			for item in settings.items
+			if item.element_type == "URL" and item.target == DINEXT_DOCUMENTATION_CARD["target"]
+		)
+		self.assertEqual(documentation.label, "Administrator documentation")
+
+	def test_workspace_orientation_tours_cover_chrome_and_content(self):
+		dinext = frappe.get_doc("Form Tour", "Dinext Workspace Orientation")
+		self.assertTrue(dinext.is_standard)
+		self.assertTrue(dinext.ui_tour)
+		self.assertEqual(dinext.workspace_name, DINEXT_WORKSPACE)
+		self.assertEqual(
+			[step.element_selector for step in dinext.steps],
+			[
+				".page-title",
+				".search-bar",
+				".dropdown-help",
+				".dropdown-navbar-user",
+				'[data-dinext-tour="directions"]',
+				'[data-dinext-tour="personal-lists"]',
+				'[data-dinext-tour="help"]',
+			],
+		)
+		chrome_positions = ("Bottom", "Bottom", "Bottom Right", "Bottom Right")
+		for step, expected in zip(dinext.steps[:4], chrome_positions, strict=True):
+			self.assertEqual(step.position, expected)
+			self.assertTrue(step.ui_tour)
+		for step in dinext.steps[4:]:
+			self.assertEqual(step.position, "Top")
+			self.assertTrue(step.ui_tour)
+			self.assertNotIn(step.element_selector, (".desk-sidebar", ".layout-main-section"))
+			self.assertNotIn(".desk-sidebar", step.element_selector)
+			self.assertNotIn(".layout-main-section", step.element_selector)
+
+		settings = frappe.get_doc("Form Tour", "Settings Workspace Orientation")
+		self.assertTrue(settings.is_standard)
+		self.assertTrue(settings.ui_tour)
+		self.assertEqual(settings.workspace_name, SETTINGS_WORKSPACE)
+		self.assertEqual(
+			[step.element_selector for step in settings.steps],
+			[".page-head", ".page-title"],
+		)
+
+	def test_workspace_guidance_strings_have_russian_translations(self):
+		with (
+			Path(frappe.get_app_path("dinext_common")) / "translations" / "ru.csv"
+		).open(encoding="utf-8", newline="") as handle:
+			rows = {row[0]: row[1] for row in csv.reader(handle) if row}
+		english_leftovers = re.compile(r"\b(Help|Desk|Settings)\b")
+		for source in (
+			"Documentation",
+			"Guides and reference material for working with Dinext.",
+			"Dinext Workspace Orientation",
+			"Your Dinext workspace",
+			"This workspace is your starting point. Use the left sidebar to move between Dinext workspaces.",
+			"Search and commands",
+			"Search for documents or type a command from the top bar.",
+			"Desk Help menu",
+			"Open Help for About, Keyboard shortcuts, and other Desk guides.",
+			"Your profile menu",
+			"Open your profile to change the account, language, and theme.",
+			"Your workspace lists",
+			"Needs Attention, Assigned to Me, and Liked show items that need your action.",
+			"Dinext directions",
+			"These cards open the Dinext areas available to you.",
+			"Workspace documentation",
+			"Open Documentation for guides and reference material.",
+			"Settings Workspace Orientation",
+			"Settings navigation",
+			"Use these administrative sections to manage system configuration.",
+			"Settings workspace",
+			"Choose the configuration area that matches the administration task.",
+		):
+			self.assertIn(source, rows)
+			self.assertTrue(rows[source].strip())
+			self.assertIsNone(
+				english_leftovers.search(rows[source]),
+				f"Russian copy for {source!r} still contains English UI terms: {rows[source]!r}",
+			)
+
+	def test_onboarding_tours_omitted_when_disabled(self):
+		from frappe.desk.doctype.form_tour.form_tour import get_onboarding_ui_tours
+
+		original = frappe.db.get_single_value("System Settings", "enable_onboarding")
+		frappe.db.set_single_value("System Settings", "enable_onboarding", 0)
+		self.addCleanup(
+			lambda: frappe.db.set_single_value("System Settings", "enable_onboarding", original)
+		)
+		frappe.clear_cache()
+		self.assertEqual(get_onboarding_ui_tours(), [])
 
 	def test_register_hub_items_appends_and_is_idempotent(self):
 		configure_workspace_menu()
@@ -668,10 +807,83 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 			self.assertIn("dinext_common.workspace_hub.mount(root_element)", script)
 			self.assertNotIn("svg.style.width", script)
 
-		js_path = Path(frappe.get_app_path("dinext_common")) / "public" / "js" / "workspace_hub.js"
-		css_path = Path(frappe.get_app_path("dinext_common")) / "public" / "css" / "workspace_hub.css"
+		app_path = Path(frappe.get_app_path("dinext_common"))
+		js_path = app_path / "public" / "js" / "workspace_hub.js"
+		css_path = app_path / "public" / "css" / "workspace_hub.css"
+		tour_js = (app_path / "public" / "js" / "dinext-tour.js").read_text()
+		desk_js = (app_path / "public" / "js" / "dinext-desk.js").read_text()
+		hooks_py = (app_path / "hooks.py").read_text()
 		script = js_path.read_text()
 		style = css_path.read_text()
+		self.assertIn("/assets/dinext_common/css/dinext-tour.css", hooks_py)
+		self.assertIn("/assets/dinext_common/js/dinext-tour.js", hooks_py)
+		self.assertLess(
+			hooks_py.index("/assets/dinext_common/js/dinext-tour.js"),
+			hooks_py.index("/assets/dinext_common/js/dinext-desk.js"),
+		)
+		self.assertIn("patch_ui_tours", desk_js)
+		self.assertIn("dinext_common.ui_tour", desk_js)
+		self.assertIn("api.patch", desk_js)
+		self.assertIn("onboarding_tours.bundle.js", desk_js)
+		self.assertNotIn("personal-lists", desk_js)
+		self.assertNotIn("Workspaces", desk_js)
+		self.assertNotIn("Ваши списки", desk_js)
+		self.assertNotIn("patch_onboarding_tour_translations", desk_js)
+		self.assertIn("frappe.provide(\"dinext_common.ui_tour\")", tour_js)
+		self.assertIn("place_anchor", tour_js)
+		self.assertIn("sync_anchors", tour_js)
+		self.assertIn("clear_anchors", tour_js)
+		self.assertIn("dinext_common.ui_tour.raise", tour_js)
+		self.assertIn("dinext_common.ui_tour.clear_raised", tour_js)
+		self.assertIn("has_tour_contract", tour_js)
+		self.assertIn("FormTour", tour_js)
+		self.assertIn("OnboardingTour", tour_js)
+		self.assertIn("__dinext_ui_tour_patched", tour_js)
+		self.assertIn("__dinext_onboarding_wrapped", tour_js)
+		self.assertIn("onDeselected", tour_js)
+		self.assertIn("onReset", tour_js)
+		self.assertIn("source.scrollIntoView", tour_js)
+		self.assertNotIn("node.scrollIntoView", tour_js)
+		self.assertIn("lock_scroll", tour_js)
+		self.assertIn("unlock_scroll", tour_js)
+		self.assertIn("prevent_scroll", tour_js)
+		self.assertIn("preventDefault", tour_js)
+		self.assertIn('style.overflow = "hidden"', tour_js)
+		self.assertIn("keep_scroll_lock", tour_js)
+		self.assertIn("resync_active_highlight", tour_js)
+		self.assertIn("overlay.refresh", tour_js)
+		self.assertLess(tour_js.index("const unlock_scroll"), tour_js.index("const clear_raised"))
+		self.assertIn("clear_raised({ keep_scroll_lock: true })", tour_js)
+		self.assertIn("onHighlightStarted", tour_js)
+		self.assertIn("prepare_highlight", tour_js)
+		self.assertIn("stageBackground", tour_js)
+		self.assertIn('"#ffffff"', tour_js)
+		prepare_js = tour_js[tour_js.index("const prepare_highlight") : tour_js.index("const raise")]
+		self.assertIn("source.scrollIntoView", prepare_js)
+		self.assertIn('block: "center"', prepare_js)
+		self.assertIn("sync_anchors()", prepare_js)
+		self.assertIn("set_lock_overflow(false)", prepare_js)
+		self.assertIn("set_lock_overflow(true)", prepare_js)
+		self.assertIn("el.isInView = () => true", prepare_js)
+		self.assertIn("el.bringInView = () => {}", prepare_js)
+		self.assertIn("pending_landmark", tour_js)
+		self.assertIn("clear_raised({ keep_scroll_lock: pending_landmark })", tour_js)
+		self.assertIn("pending_landmark = false", tour_js)
+		highlight_js = tour_js[tour_js.index("const highlight_step") : tour_js.index("const patch_driver_hooks")]
+		self.assertNotIn("source.scrollIntoView", highlight_js)
+		self.assertNotIn("requestAnimationFrame", highlight_js)
+		lock_js = tour_js[tour_js.index("const lock_scroll") : tour_js.index("const clear_raised")]
+		self.assertIn("if (scroll_lock)", lock_js)
+		self.assertLess(lock_js.index("if (scroll_lock)"), lock_js.index("overflow = \"hidden\""))
+		self.assertLess(
+			tour_js.index("stage.classList.add(STAGE_CUTOUT_CLASS)"),
+			tour_js.index("overlay.parentElement.removeChild(overlay)"),
+		)
+		clear_raised_js = tour_js[tour_js.index("const clear_raised") : tour_js.index("const has_tour_contract")]
+		self.assertLess(clear_raised_js.index("keep_scroll_lock"), clear_raised_js.index("clear_stage_cutout()"))
+		self.assertNotIn("personal-lists", tour_js)
+		self.assertNotIn("Workspaces", tour_js)
+		self.assertNotIn("Ваши списки", tour_js)
 		self.assertIn("frappe.set_route", script)
 		self.assertIn("navigate_route", script)
 		self.assertIn("/assets/frappe/icons/timeless/icons.svg", script)
@@ -716,7 +928,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertIn('classList.add("dinext-workspace-hub__page-chip-icon")', script)
 		self.assertIn("frappe.router.on", script)
 		self.assertIn("refresh_connected_hubs", script)
-		self.assertIn("card-border-1", script)
+		self.assertIn("tour-kit-1", script)
 		self.assertNotIn('__("{0} Workspace"', script)
 		self.assertNotIn("Recently Opened", script)
 		self.assertNotIn("recent_doctypes", script)
