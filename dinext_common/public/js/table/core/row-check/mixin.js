@@ -162,7 +162,7 @@ export const RowCheckMixin = (Base) => class extends Base {
         return [{
             id: "select-all-rows",
             title: ({ table }) => (
-                getState(table) === "checked" ? "Clear selection" : "Select all rows"
+                getState(table) === "checked" ? __("Clear selection") : __("Select all rows")
             ),
             iconSvg: ({ table }) => (
                 getState(table) === "checked"

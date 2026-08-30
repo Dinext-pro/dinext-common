@@ -114,7 +114,7 @@ export const FilterMixin = (Base) => class extends Base {
         }
         return [{
             id: "filter",
-            title: "Filter columns",
+            title: __("Filter columns"),
             iconSvg: TOOLBAR_ICON_SVG.search,
             active: ({ table: instance }) => (
                 typeof instance.isFilterRowOpen === "function" && instance.isFilterRowOpen()

@@ -28,9 +28,11 @@ DinextTable.create({
 });
 ```
 
-Хуки зовутся при **реальном** переходе (toolbar, Esc, browser UI) — один раз на enter/exit.
+Хуки зовутся при **реальном** переходе (toolbar, Esc, browser UI, уход со страницы Desk) — один раз на enter/exit.
 
-Native Fullscreen рисует только дерево `fullscreenElement`. Оверлеи на `body` (Frappe datepicker, AG popup) ядро переносит в host: `popupParent` + `DinextTable.adoptOverlay` / `getOverlayHost()`.
+Desk SPA прячет `.page-container`, таблицу не destroy. Ядро само снимает native FS на `page-change`, если host больше не на видимой странице.
+
+Native Fullscreen рисует только дерево `fullscreenElement`. Оверлеи на `body` (datepicker, AG popup, Frappe Dialog / `#freeze` / backdrop) ядро переносит в host: `popupParent` + `DinextTable.adoptOverlay` / `getOverlayHost()`.
 
 ---
 
