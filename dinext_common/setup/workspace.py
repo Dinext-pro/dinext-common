@@ -29,6 +29,14 @@ WORKSPACE_HUB_BLOCKS = {
 	DINEXT_WORKSPACE: (DINEXT_HUB_BLOCK, "dinext-hub"),
 	SETTINGS_WORKSPACE: (SETTINGS_HUB_BLOCK, "dinext-settings-hub"),
 }
+DINEXT_DOCUMENTATION_CARD = {
+	"section": "Help",
+	"element_type": "URL",
+	"target": "https://docs.dinext.ru",
+	"label": "Documentation",
+	"description": "Guides and reference material for working with Dinext.",
+	"icon": "help",
+}
 
 
 def omit_replaced_workspaces(pages):
@@ -231,6 +239,11 @@ def ensure_default_dinext_hub_settings() -> None:
 
 	ensure_workspace_settings(DINEXT_HUB_SETTINGS)
 	ensure_workspace_settings(SETTINGS_HUB_SETTINGS, roles=SETTINGS_ROLES)
+	register_hub_items(
+		[DINEXT_DOCUMENTATION_CARD],
+		source_app="dinext_common",
+		settings_name=DINEXT_HUB_SETTINGS,
+	)
 
 	from dinext_common.workspace_hub import default_settings_hub_items
 

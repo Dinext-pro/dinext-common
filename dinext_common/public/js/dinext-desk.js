@@ -106,3 +106,26 @@ frappe.ui.misc.about = function () {
 
 	frappe.ui.misc.about_dialog.show();
 };
+
+(function patch_ui_tours() {
+	const apply = () => {
+		const api = window.dinext_common && dinext_common.ui_tour;
+		if (!api || typeof api.patch !== "function") {
+			return false;
+		}
+		return api.patch();
+	};
+
+	if (apply()) {
+		return;
+	}
+	if (window.frappe && typeof frappe.require === "function") {
+		frappe.require("onboarding_tours.bundle.js", apply);
+	}
+	const started = Date.now();
+	const timer = setInterval(() => {
+		if (apply() || Date.now() - started > 15000) {
+			clearInterval(timer);
+		}
+	}, 50);
+})();

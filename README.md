@@ -81,7 +81,8 @@ Dinext не копируются сюда: см. [AGENTS.md](AGENTS.md).
   local `Changelog Feed`; стандартная еженедельная загрузка changelog Frappe
   отключается.
 - Глобальные улучшения Desk через `app_include_js` / `app_include_css`:
-  - `workspace_slug_redirects.js` — редирект старых RU-slug workspace и `/app/home` → `/app/dinext`;
+  - `workspace_slug_redirects.js` — редирект старых RU-slug workspace и
+    `/app/home` → Dinext без boot-проверки цели (`set_route` в живом Desk);
   - `breadcrumbs_update.js`;
   - `listview_resize.js`;
   - `dinext-desk.js`;
@@ -129,8 +130,9 @@ bench --site your-site.local clear-cache
 
 При создании нового пользователя без `default_workspace` hook
 `User.after_insert` назначает workspace `Dinext`. Маршруты `/app/home` и
-`/app/workspaces/home` перенаправляются на `Dinext`; существующие
-`default_workspace` не меняются.
+`/app/workspaces/home` открывают `Dinext` без boot-проверки `slug_exists`
+(в живом Desk через `frappe.set_route`, без перезагрузки страницы);
+существующие `default_workspace` не меняются.
 
 Если в развёртывании ещё нет брендинговых файлов Dinext, перед `bench build`
 они должны лежать в `dinext_common/public/images/`:
@@ -158,8 +160,12 @@ bench --site your-site.local clear-cache
 Приложение подключает общее поведение во все сессии Desk:
 
 - `workspace_slug_redirects.js` перенаправляет устаревшие RU-slug workspace
-  (например `/app/мои-задачи` → `/app/my-tasks`), `/app/home` → `/app/dinext`
-  и правит `localStorage.current_page`;
+  (например `/app/мои-задачи` → `/app/my-tasks`) после boot-проверки цели;
+  `/app/home` и `/app/workspaces/home` открывают `Dinext` без `slug_exists`
+  через `frappe.set_route` в живом Desk (без `location.replace`, чтобы
+  сохранить session `frappe.route_history` / Recent Pages);
+  `location.replace` только если `set_route` ещё нет;
+  правит `localStorage.current_page`;
 - `breadcrumbs_update.js` сохраняет контекст workspace в breadcrumbs и
   поддерживает копирование последнего элемента;
 - `listview_resize.js` сохраняет ширины колонок списка в `localStorage`;
