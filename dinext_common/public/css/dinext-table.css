@@ -888,9 +888,21 @@
     cursor: not-allowed !important;
 }
 
-.dinext-table .dinext-table-row--dragging {
-    opacity: 0.4;
-    filter: saturate(0.85);
+.dinext-table .dinext-table-row--dragging,
+.dinext-table .dinext-table-row--reorder-preview-drag {
+    opacity: 1;
+    filter: none;
+}
+
+.dinext-table .dinext-table-row--reorder-preview-drag {
+    pointer-events: none;
+    z-index: 4;
+}
+
+/* Tint only — never position:relative on .ag-row/.ag-cell (AG uses absolute + translateY). */
+.dinext-table .dinext-table-row--dragging .ag-cell,
+.dinext-table .dinext-table-row--reorder-preview-drag .ag-cell {
+    box-shadow: inset 0 0 0 100vmax var(--dinext-table-selection-bg) !important;
 }
 
 /* Reserved system column for 6-dot (3×2) drag handle — independent of rowCheck. */
@@ -947,19 +959,33 @@
     z-index: 8;
     pointer-events: none;
     box-sizing: border-box;
-    border: 2px solid color-mix(in srgb, CanvasText 42%, transparent);
+    border: 2px solid color-mix(in srgb, var(--primary, CanvasText) 55%, transparent);
     border-radius: 2px;
-    background: transparent;
+    background: color-mix(in srgb, var(--primary, CanvasText) 10%, transparent);
 }
 
-/* Sibling insert: gap band between rows (neutral gray). */
+.dinext-table-row-reorder-drop-inside-label {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    padding: 0 5px;
+    border-radius: 2px;
+    font-size: 10px;
+    line-height: 16px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-on-primary, Canvas);
+    background: color-mix(in srgb, var(--primary, CanvasText) 72%, transparent);
+}
+
+/* Sibling insert: gap band between rows, indented to tree level. */
 .dinext-table-row-reorder-drop-gap {
     position: absolute;
     z-index: 8;
     pointer-events: none;
-    border-radius: 2px;
-    background: color-mix(in srgb, CanvasText 42%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, CanvasText 22%, transparent);
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--primary, CanvasText) 55%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary, CanvasText) 28%, transparent);
 }
 
 /* --- Row check (system checkbox column) --- */
