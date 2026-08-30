@@ -3,10 +3,17 @@
  * Redirect only after boot, and only into a workspace that exists
  * (slug of name or title). Blind pre-boot location.replace breaks
  * sites that still have RU Workspace docs (demodev).
+ *
+ * Home → Dinext is the exception: Home is intentionally omitted from
+ * frappe.workspaces, so /app/home must open Dinext without
+ * slug_exists("dinext"). Prefer frappe.set_route so session
+ * frappe.route_history (Hub Recent Pages) survives. location.replace
+ * is only the cold-start fallback before set_route exists.
  */
 (() => {
+	const HOME_TARGET = "dinext";
 	const SLUG_REDIRECTS = {
-		home: "dinext",
+		home: HOME_TARGET,
 		"мои-проекты": "my-projects",
 		"мои-задачи": "my-tasks",
 		"мои-таймшиты": "my-timesheets",
@@ -39,6 +46,35 @@
 	Object.keys(TITLE_REDIRECTS).forEach((ru) => {
 		EN_TO_RU_TITLE[TITLE_REDIRECTS[ru]] = ru;
 	});
+
+	function path_parts(pathname) {
+		return String(pathname || "")
+			.split("/")
+			.filter(Boolean);
+	}
+
+	function is_replaced_home_path(pathname) {
+		const parts = path_parts(pathname);
+		if (!parts.length || String(parts[0]).toLowerCase() !== "app") {
+			return false;
+		}
+		if (String(parts[1] || "").toLowerCase() === "home") {
+			return true;
+		}
+		return (
+			String(parts[1] || "").toLowerCase() === "workspaces" &&
+			String(parts[2] || "").toLowerCase() === "home"
+		);
+	}
+
+	function can_set_route() {
+		return !!(window.frappe && typeof frappe.set_route === "function");
+	}
+
+	if (is_replaced_home_path(location.pathname) && !can_set_route()) {
+		location.replace("/app/" + HOME_TARGET);
+		return;
+	}
 
 	function frappe_slug(name) {
 		if (name == null) return "";
@@ -99,6 +135,10 @@
 		const current = normalize_slug(from_slug);
 		if (!current) return null;
 
+		if (current === "home") {
+			return HOME_TARGET;
+		}
+
 		const en = SLUG_REDIRECTS[current];
 		if (en && slug_exists(en) && en !== current) {
 			return en;
@@ -121,7 +161,7 @@
 			if (!cur) return;
 			const titles = workspace_titles();
 			const en = TITLE_REDIRECTS[cur];
-			if (en && titles.has(en)) {
+			if (en && (titles.has(en) || cur === "Home")) {
 				localStorage.setItem("current_page", en);
 				return;
 			}
@@ -134,8 +174,15 @@
 		}
 	}
 
+	function alias_home_workspace() {
+		if (!window.frappe || !frappe.workspaces) return;
+		if (frappe.workspaces[HOME_TARGET] && !frappe.workspaces.home) {
+			frappe.workspaces.home = frappe.workspaces[HOME_TARGET];
+		}
+	}
+
 	function current_path_slug() {
-		const parts = (location.pathname || "").split("/").filter(Boolean);
+		const parts = path_parts(location.pathname);
 		if (parts[0] !== "app" || parts.length < 2) return null;
 		if (String(parts[1]).toLowerCase() === "private") return null;
 		if (String(parts[1]).toLowerCase() === "workspaces" && parts[2]) {
@@ -159,29 +206,56 @@
 	}
 
 	function apply_route(target_slug) {
-		if (!target_slug || !window.frappe || !frappe.set_route) return false;
+		if (!target_slug || !can_set_route()) return false;
 		const now = normalize_slug(current_route_slug());
-		if (now === normalize_slug(target_slug)) return false;
+		if (now === normalize_slug(target_slug) && !is_replaced_home_path(location.pathname)) {
+			return false;
+		}
+		if (normalize_slug(target_slug) === HOME_TARGET && frappe.route_flags) {
+			frappe.route_flags.replace_route = true;
+		}
 		frappe.set_route(target_slug);
 		return true;
 	}
 
 	function sync() {
+		if (is_replaced_home_path(location.pathname) && !can_set_route()) {
+			location.replace("/app/" + HOME_TARGET);
+			return;
+		}
 		if (!boot_ready()) return;
+		alias_home_workspace();
 		fix_local_storage();
 		const from = current_route_slug();
-		const target = resolve_slug(from);
+		let target = resolve_slug(from);
+		if (!target && is_replaced_home_path(location.pathname)) {
+			target = HOME_TARGET;
+		}
 		if (target) apply_route(target);
 	}
 
-	if (document.readyState === "loading") {
-		document.addEventListener("DOMContentLoaded", sync);
-	} else {
+	let router_bound = false;
+	function bind_router() {
+		if (router_bound) return;
+		if (window.frappe && frappe.router && typeof frappe.router.on === "function") {
+			frappe.router.on("change", sync);
+			router_bound = true;
+		}
+	}
+
+	function on_ready() {
+		alias_home_workspace();
+		bind_router();
 		sync();
 	}
 
-	$(document).on("app_ready", sync);
-	if (window.frappe && frappe.router && frappe.router.on) {
-		frappe.router.on("change", sync);
+	if (document.readyState === "loading") {
+		document.addEventListener("DOMContentLoaded", on_ready);
+	} else {
+		on_ready();
+	}
+
+	if (window.jQuery) {
+		jQuery(document).on("app_ready", on_ready);
 	}
 })();
