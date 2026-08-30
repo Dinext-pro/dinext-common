@@ -120,6 +120,7 @@ function applyBorderOffCssVars(container, themeOpts) {
 
 	container.classList.toggle("dinext-table--no-row-borders", rowOff);
 	container.classList.toggle("dinext-table--no-column-borders", columnOff);
+	container.classList.toggle("dinext-table--no-pinned-column-borders", pinnedColumnOff);
 }
 
 export const ThemeMixin = (Base) => class extends Base {
