@@ -44,7 +44,7 @@ export const ScrollMixin = (Base) => class extends Base {
             '<div class="dinext-table-hscroll-top-viewport">',
             '<div class="dinext-table-hscroll-top-content"></div>',
             "</div>",
-            '<div class="dinext-table-hscroll-top-spacer dinext-table-hscroll-top-spacer--right"></div>'
+            '<div class="dinext-table-hscroll-top-spacer dinext-table-hscroll-top-spacer--right ag-scroller-corner"></div>'
         ].join("");
 
         header.after(top);
