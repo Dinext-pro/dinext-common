@@ -1,7 +1,9 @@
 frappe.provide("dinext_common.workspace_hub");
 
 const DINEXT_WORKSPACE_HUB_CSS = "/assets/dinext_common/css/workspace_hub.css";
-const DINEXT_WORKSPACE_HUB_ASSETS = "card-border-1";
+const DINEXT_WORKSPACE_HUB_ASSETS = "tour-kit-1";
+const DINEXT_TOUR_SETTINGS = "Dinext";
+const DINEXT_TOUR_IDS = ["personal-lists", "directions", "help"];
 const PAGE_SKIP = new Set(["setup-wizard", "social", "recorder"]);
 const mounted_hubs = new Set();
 const hub_mounted_at = new WeakMap();
@@ -658,6 +660,121 @@ const make_section_lists = (lists) => {
 	return wrap;
 };
 
+const get_shadow_host = (hub) => {
+	const root = hub.getRootNode();
+	return root && root.host ? root.host : null;
+};
+
+const tour_kit = () => window.dinext_common && dinext_common.ui_tour;
+
+const clear_tour_anchors = (hub) => {
+	const kit = tour_kit();
+	if (kit && typeof kit.clear_anchors === "function") {
+		kit.clear_anchors(hub);
+	}
+};
+
+const tour_source = (scroll, rect_nodes, visible_nodes) => {
+	const rects = rect_nodes && rect_nodes.length ? rect_nodes : scroll ? [scroll] : [];
+	return {
+		scroll,
+		rect_nodes: rects,
+		visible_nodes: visible_nodes && visible_nodes.length ? visible_nodes : rects,
+	};
+};
+
+const is_help_section_label = (label) => {
+	const value = String(label || "").trim();
+	return value === "Help" || value === __("Help");
+};
+
+const resolve_tour_sources = (hub) => {
+	const sources = {};
+	const lists = hub.querySelector(".dinext-workspace-hub__lists");
+	if (lists) {
+		const titles = [...lists.querySelectorAll(".dinext-workspace-hub__list-title")];
+		if (titles.length) {
+			sources["personal-lists"] = tour_source(titles[0], titles, titles);
+		}
+	}
+	hub.querySelectorAll(".dinext-workspace-hub__section").forEach((section) => {
+		const key = section.getAttribute("data-dinext-section") || "";
+		const heading = section.querySelector("h3");
+		if (!heading) {
+			return;
+		}
+		if (is_help_section_label(key) || is_help_section_label(heading.textContent)) {
+			const card = section.querySelector('a[href^="https://docs.dinext.ru"]');
+			const help_node = card || heading;
+			sources.help = tour_source(help_node, [help_node], [help_node]);
+			return;
+		}
+		const cards = section.querySelector(".dinext-workspace-hub__cards");
+		if (cards && cards.childElementCount && !sources.directions) {
+			sources.directions = tour_source(heading, [heading], [heading]);
+		}
+	});
+	return sources;
+};
+
+const sync_tour_anchors = (hub, settled) => {
+	const kit = tour_kit();
+	if (!hub || !hub.isConnected) {
+		if (hub) {
+			clear_tour_anchors(hub);
+		}
+		return;
+	}
+	if (!kit || typeof kit.place_anchor !== "function") {
+		return;
+	}
+	if (hub.getAttribute("data-settings-name") !== DINEXT_TOUR_SETTINGS) {
+		clear_tour_anchors(hub);
+		return;
+	}
+	const host = get_shadow_host(hub);
+	if (!host || !document.body) {
+		clear_tour_anchors(hub);
+		return;
+	}
+	ensure_light_hub_styles(hub);
+	const sources = resolve_tour_sources(hub);
+	let placed = 0;
+	let attempted = 0;
+	DINEXT_TOUR_IDS.forEach((id) => {
+		const source = sources[id];
+		if (source) {
+			attempted += 1;
+		}
+		const el = kit.place_anchor(id, source ? { ...source, host } : null, { owner: hub });
+		if (el) {
+			placed += 1;
+		}
+	});
+	if (settled && (placed || !attempted) && typeof kit.mark_ready === "function") {
+		kit.mark_ready(hub);
+	}
+};
+
+const sync_mounted_tour_anchors = (hub) => {
+	if (hub) {
+		sync_tour_anchors(hub);
+		return;
+	}
+	for (const mounted of [...mounted_hubs]) {
+		if (!mounted.isConnected) {
+			clear_tour_anchors(mounted);
+			mounted_hubs.delete(mounted);
+			continue;
+		}
+		sync_tour_anchors(mounted);
+	}
+};
+
+const schedule_tour_anchors = (hub) => {
+	requestAnimationFrame(() => sync_tour_anchors(hub));
+};
+
 const render = (hub, payload) => {
 	const token = (hub_render_tokens.get(hub) || 0) + 1;
 	hub_render_tokens.set(hub, token);
@@ -665,6 +782,10 @@ const render = (hub, payload) => {
 	for (const section of payload.sections || []) {
 		const group = document.createElement("section");
 		group.className = "dinext-workspace-hub__section";
+		group.setAttribute(
+			"data-dinext-section",
+			is_help_section_label(section.label) ? "Help" : section.label || ""
+		);
 		const heading = document.createElement("h3");
 		heading.textContent = __(section.label);
 		group.append(heading);
@@ -689,33 +810,66 @@ const render = (hub, payload) => {
 
 		hub.append(group);
 	}
-	paint_page_lists(payload).then((pages) => {
-		if (hub_render_tokens.get(hub) !== token || !hub.isConnected) {
-			return;
-		}
-		if (pages) {
-			hub.prepend(pages);
-		}
-		if (!hub.childElementCount) {
-			const empty = document.createElement("p");
-			empty.textContent = __("No available directions.");
-			hub.append(empty);
-		}
-	});
+	paint_page_lists(payload)
+		.then((pages) => {
+			if (hub_render_tokens.get(hub) !== token || !hub.isConnected) {
+				return;
+			}
+			if (pages) {
+				hub.prepend(pages);
+			}
+			if (!hub.childElementCount) {
+				const empty = document.createElement("p");
+				empty.textContent = __("No available directions.");
+				hub.append(empty);
+			}
+			schedule_tour_anchors(hub);
+		})
+		.finally(() => {
+			schedule_tour_anchors(hub);
+		});
 };
 
-const ensure_styles = (root_element) => {
-	if (root_element.querySelector("link[data-dinext-workspace-hub]")) {
-		return;
+const hub_stylesheet_href = () => {
+	const version =
+		(window.frappe && frappe.boot && frappe.boot.versions && frappe.boot.versions.dinext_common) ||
+		"dev";
+	return `${DINEXT_WORKSPACE_HUB_CSS}?v=${encodeURIComponent(`${version}-${DINEXT_WORKSPACE_HUB_ASSETS}`)}`;
+};
+
+const attach_hub_stylesheet = (root, onload) => {
+	if (!root) {
+		return null;
+	}
+	const existing = root.querySelector("link[data-dinext-workspace-hub]");
+	if (existing) {
+		if (onload) {
+			if (existing.sheet) {
+				onload();
+			} else {
+				existing.addEventListener("load", onload, { once: true });
+			}
+		}
+		return existing;
 	}
 	const link = document.createElement("link");
 	link.rel = "stylesheet";
 	link.setAttribute("data-dinext-workspace-hub", "1");
-	const version =
-		(window.frappe && frappe.boot && frappe.boot.versions && frappe.boot.versions.dinext_common) ||
-		"dev";
-	link.href = `${DINEXT_WORKSPACE_HUB_CSS}?v=${encodeURIComponent(`${version}-${DINEXT_WORKSPACE_HUB_ASSETS}`)}`;
-	root_element.append(link);
+	link.href = hub_stylesheet_href();
+	if (onload) {
+		link.addEventListener("load", onload, { once: true });
+	}
+	root.append(link);
+	return link;
+};
+
+const ensure_light_hub_styles = (hub) => {
+	attach_hub_stylesheet(document.head, () => schedule_tour_anchors(hub));
+};
+
+const ensure_styles = (root_element) => {
+	attach_hub_stylesheet(root_element);
+	attach_hub_stylesheet(document.head);
 };
 
 const is_workspace_route = () => {
@@ -753,6 +907,7 @@ const load_hub = (hub, settings_name) => {
 const refresh_connected_hubs = () => {
 	for (const hub of [...mounted_hubs]) {
 		if (!hub.isConnected) {
+			clear_tour_anchors(hub);
 			mounted_hubs.delete(hub);
 			continue;
 		}
@@ -779,6 +934,8 @@ const ensure_router_refresh = () => {
 		refresh_connected_hubs();
 	});
 };
+
+dinext_common.workspace_hub.sync_tour_anchors = sync_mounted_tour_anchors;
 
 dinext_common.workspace_hub.mount = function (root_element, settings_name) {
 	if (!root_element) {
