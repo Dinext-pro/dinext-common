@@ -9,7 +9,7 @@ function createMoveRowToolbarItems() {
     return [
         {
             id: "move-row-up",
-            title: "Move selected row up",
+            title: __("Move selected row up"),
             iconSvg: TOOLBAR_ICON_SVG.moveUp,
             disabled: ({ table: instance }) => (
                 typeof instance.canNudgeCheckedRow !== "function"
@@ -21,7 +21,7 @@ function createMoveRowToolbarItems() {
         },
         {
             id: "move-row-down",
-            title: "Move selected row down",
+            title: __("Move selected row down"),
             iconSvg: TOOLBAR_ICON_SVG.moveDown,
             disabled: ({ table: instance }) => (
                 typeof instance.canNudgeCheckedRow !== "function"
@@ -43,7 +43,7 @@ const TOOLBAR_PRESET_BUILDERS = {
         return [
             {
                 id: "undo",
-                title: "Undo",
+                title: __("Undo"),
                 iconSvg: TOOLBAR_ICON_SVG.undo,
                 onClick: ({ table: instance }) => {
                     instance.undoClipboard();
@@ -51,7 +51,7 @@ const TOOLBAR_PRESET_BUILDERS = {
             },
             {
                 id: "redo",
-                title: "Redo",
+                title: __("Redo"),
                 iconSvg: TOOLBAR_ICON_SVG.redo,
                 onClick: ({ table: instance }) => {
                     instance.redoClipboard();
@@ -68,7 +68,7 @@ const TOOLBAR_PRESET_BUILDERS = {
         return [
             {
                 id: "expand-all",
-                title: "Expand all",
+                title: __("Expand all"),
                 iconSvg: TOOLBAR_ICON_SVG.expandAll,
                 onClick: ({ table: instance }) => {
                     void instance.expandAll();
@@ -76,7 +76,7 @@ const TOOLBAR_PRESET_BUILDERS = {
             },
             {
                 id: "collapse-all",
-                title: "Collapse all",
+                title: __("Collapse all"),
                 iconSvg: TOOLBAR_ICON_SVG.collapseAll,
                 onClick: ({ table: instance }) => {
                     instance.collapseAll();
@@ -117,7 +117,7 @@ const TOOLBAR_PRESET_BUILDERS = {
         if (typeof table.hasRowCheckAddHook === "function" && table.hasRowCheckAddHook()) {
             items.push({
                 id: "add-row",
-                title: "Add row",
+                title: __("Add row"),
                 iconSvg: TOOLBAR_ICON_SVG.addRow,
                 onClick: ({ table: instance }) => {
                     void instance.addRow();
@@ -127,7 +127,7 @@ const TOOLBAR_PRESET_BUILDERS = {
 
         items.push({
             id: "delete-rows",
-            title: "Delete selected rows",
+            title: __("Delete selected rows"),
             iconSvg: TOOLBAR_ICON_SVG.deleteRows,
             disabled: () => checkedCount() === 0,
             onClick: ({ table: instance }) => {
@@ -138,7 +138,7 @@ const TOOLBAR_PRESET_BUILDERS = {
         if (typeof table.hasRowCheckDuplicateHook === "function" && table.hasRowCheckDuplicateHook()) {
             items.push({
                 id: "duplicate-rows",
-                title: "Duplicate selected rows",
+                title: __("Duplicate selected rows"),
                 iconSvg: TOOLBAR_ICON_SVG.duplicateRows,
                 disabled: () => checkedCount() === 0,
                 onClick: ({ table: instance }) => {
@@ -170,7 +170,7 @@ const TOOLBAR_PRESET_BUILDERS = {
         return [
             {
                 id: "copy",
-                title: "Copy",
+                title: __("Copy"),
                 iconSvg: TOOLBAR_ICON_SVG.copy,
                 onClick: ({ table: instance }) => {
                     void instance.copySelectionToClipboard();
@@ -178,7 +178,7 @@ const TOOLBAR_PRESET_BUILDERS = {
             },
             {
                 id: "paste",
-                title: "Paste",
+                title: __("Paste"),
                 iconSvg: TOOLBAR_ICON_SVG.paste,
                 onClick: ({ table: instance }) => {
                     void instance.pasteFromClipboard();
@@ -186,7 +186,7 @@ const TOOLBAR_PRESET_BUILDERS = {
             },
             {
                 id: "clear",
-                title: "Clear",
+                title: __("Clear"),
                 iconSvg: TOOLBAR_ICON_SVG.clear,
                 onClick: ({ table: instance }) => {
                     instance.clearSelectionCells();
@@ -194,7 +194,7 @@ const TOOLBAR_PRESET_BUILDERS = {
             },
             {
                 id: "fill-down",
-                title: "Fill down",
+                title: __("Fill down"),
                 iconSvg: TOOLBAR_ICON_SVG.fillDown,
                 onClick: ({ table: instance }) => {
                     instance.fillDownSelection();
@@ -211,7 +211,7 @@ const TOOLBAR_PRESET_BUILDERS = {
         return [{
             id: "fullscreen",
             align: "end",
-            title: "Fullscreen",
+            title: __("Fullscreen"),
             iconSvg: TOOLBAR_ICON_SVG.fullscreen,
             hidden: ({ table: instance }) => instance.isFullscreen(),
             onClick: ({ table: instance }) => {
@@ -220,7 +220,7 @@ const TOOLBAR_PRESET_BUILDERS = {
         }, {
             id: "exit-fullscreen",
             align: "end",
-            title: "Exit fullscreen",
+            title: __("Exit fullscreen"),
             iconSvg: TOOLBAR_ICON_SVG.exitFullscreen,
             hidden: ({ table: instance }) => !instance.isFullscreen(),
             onClick: ({ table: instance }) => {
