@@ -64,6 +64,7 @@ test("resolveFilterKind from column type", () => {
     assert.equal(resolveFilterKind({ type: "integer" }), FILTER_KINDS.NUMBER);
     assert.equal(resolveFilterKind({ type: "date" }), FILTER_KINDS.DATE);
     assert.equal(resolveFilterKind({ type: "text" }), FILTER_KINDS.TEXT);
+    assert.equal(resolveFilterKind({ type: "select" }), FILTER_KINDS.TEXT);
     assert.equal(resolveFilterKind({}), FILTER_KINDS.TEXT);
 });
 
