@@ -20,7 +20,11 @@ export const ScrollMixin = (Base) => class extends Base {
                 if (event?.direction === "horizontal") {
                     this.syncTopHorizontalScrollFromBody();
                 }
-            }
+            },
+            onGridSizeChanged: () => this.syncTopHorizontalScrollLayout(),
+            onColumnResized: () => this.syncTopHorizontalScrollLayout(),
+            onDisplayedColumnsChanged: () => this.syncTopHorizontalScrollLayout(),
+            onFirstDataRendered: () => this.syncTopHorizontalScrollLayout()
         };
     }
 
@@ -70,17 +74,26 @@ export const ScrollMixin = (Base) => class extends Base {
         this._hscrollTopViewport.addEventListener("scroll", this._onTopHScroll, { passive: true });
 
         this.syncTopHorizontalScrollLayout();
+        requestAnimationFrame(() => this.syncTopHorizontalScrollLayout());
         if (typeof ResizeObserver === "function") {
             this._hscrollResizeObserver = new ResizeObserver(() => {
                 this.syncTopHorizontalScrollLayout();
             });
-            const bottom = this.container.querySelector(".ag-body-horizontal-scroll");
-            const center = this.container.querySelector(".ag-center-cols-viewport");
-            if (bottom) {
-                this._hscrollResizeObserver.observe(bottom);
-            }
-            if (center) {
-                this._hscrollResizeObserver.observe(center);
+            // Viewport size often stays put while *content* width changes.
+            // Observing the outer scroller missed first layout → bar stayed is-idle
+            // until a later reflow (filter row / window resize).
+            const observe = [
+                ".ag-body-horizontal-scroll-container",
+                ".ag-center-cols-container",
+                ".ag-center-cols-viewport",
+                ".ag-pinned-left-header",
+                ".ag-header"
+            ];
+            for (const sel of observe) {
+                const el = this.container.querySelector(sel);
+                if (el) {
+                    this._hscrollResizeObserver.observe(el);
+                }
             }
         }
     }
