@@ -53,6 +53,7 @@ core/
 | [sections-and-summary.md](usage-guides/sections-and-summary.md) | `summaryRows`, pin bottom, guards |
 | [columns-and-formatting.md](usage-guides/columns-and-formatting.md) | Колонки, presets, styling |
 | [date-columns.md](usage-guides/date-columns.md) | `type: date`, ISO, fill, Frappe cellEditor |
+| [select-columns.md](usage-guides/select-columns.md) | `type: select`, option key, fill, Frappe cellEditor |
 | [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md) | Range, TSV, fill handle, Tab/Enter |
 | [row-reorder.md](usage-guides/row-reorder.md) | Gutter row drag-and-drop reorder |
 | [row-check.md](usage-guides/row-check.md) | Checkbox col, toolbar rows, nudge |
@@ -242,6 +243,8 @@ toolbar: {
 | `DinextTable.CELL_CHANGE_SOURCES` | Константы `source` |
 | `DinextTable.ROW_CHECK_COL_ID` | Reserved system col id |
 | `DinextTable.ROW_CHECK_UNITS` | `"row"` \| `"mergeHead"` |
+| `DinextTable.SelectCellEditor` | Optional native `<select>` — не default для `type: "select"` |
+| `DinextTable.parseSelectValue` | raw / label → option key \| `null` |
 
 ---
 
