@@ -1050,14 +1050,16 @@
     cursor: pointer;
 }
 
-/* --- Date cell editor (type: date) --- */
+/* --- Date / select cell editors (type: date | select) --- */
 /* Inherit cell font — do not force --ag-font-size (14px). Hosts like Gantt
  * set the editing cell to --text-xs; Desk .form-control must not override. */
 
 .dinext-table .ag-cell.ag-cell-inline-editing .dinext-table-date-editor,
 .dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor,
 .dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control,
-.dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control.input-with-feedback {
+.dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control.input-with-feedback,
+.dinext-table .ag-cell.ag-cell-inline-editing .dinext-table-select-editor,
+.dinext-table .ag-cell.ag-cell-inline-editing select.dinext-table-select-editor {
     width: 100%;
     height: 100% !important;
     min-height: 0 !important;
@@ -1076,7 +1078,23 @@
     line-height: inherit !important;
 }
 
-.dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-date-editor) {
+.dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-date-editor),
+.dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-select-editor) {
     padding-left: 0;
     padding-right: 0;
+}
+
+/* Native <select> popup follows OS chrome unless color-scheme is set.
+ * Dark Desk + inherited --text-color → white-on-white options. */
+[data-theme="dark"] .dinext-table .ag-cell-inline-editing select.dinext-table-select-editor {
+    color-scheme: dark;
+}
+
+[data-theme="light"] .dinext-table .ag-cell-inline-editing select.dinext-table-select-editor {
+    color-scheme: light;
+}
+
+.dinext-table .ag-cell-inline-editing select.dinext-table-select-editor option {
+    background-color: Canvas;
+    color: CanvasText;
 }
