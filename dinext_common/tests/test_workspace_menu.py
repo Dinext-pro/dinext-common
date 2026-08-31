@@ -462,8 +462,19 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertEqual(settings.workspace_name, SETTINGS_WORKSPACE)
 		self.assertEqual(
 			[step.element_selector for step in settings.steps],
-			[".page-head", ".page-title"],
+			[
+				".page-title",
+				'[data-dinext-tour="section:workspaces"]',
+				'[data-dinext-tour="section:configuration"]',
+				'[data-dinext-tour="card:system-settings"]',
+			],
 		)
+		self.assertEqual(settings.steps[0].position, "Bottom")
+		for step in settings.steps:
+			self.assertTrue(step.ui_tour)
+			self.assertFalse(step.next_on_click)
+		for step in settings.steps[1:]:
+			self.assertEqual(step.position, "Top")
 
 	def test_workspace_guidance_strings_have_russian_translations(self):
 		with (
@@ -490,10 +501,14 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 			"Workspace documentation",
 			"Open Documentation for guides and reference material.",
 			"Settings Workspace Orientation",
-			"Settings navigation",
-			"Use these administrative sections to manage system configuration.",
 			"Settings workspace",
-			"Choose the configuration area that matches the administration task.",
+			"This workspace is the starting point for system administration.",
+			"Administrative workspaces",
+			"Users, Tools, Integrations, Build, and Website open the administrative areas.",
+			"System configuration",
+			"These cards open site-wide records for language, naming, logs, and search.",
+			"System Settings card",
+			"Language, date formats, sessions, and system flags live here.",
 		):
 			self.assertIn(source, rows)
 			self.assertTrue(rows[source].strip())
@@ -577,8 +592,10 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		frappe.local.lang = "en"
 		en_sections = get_dinext_hub()["sections"]
 		en_section_labels = {section["label"] for section in en_sections}
+		en_section_keys = {section["section_key"] for section in en_sections}
 		en_cards = {card["label"]: card for section in en_sections for card in section["items"]}
 		self.assertIn("My Work", en_section_labels)
+		self.assertIn("My Work", en_section_keys)
 		self.assertIn("My Tasks", en_cards)
 		self.assertTrue(
 			en_cards["My Tasks"]["description"].startswith("Personal dashboard for your Issues and Tasks")
@@ -603,8 +620,10 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		with patch("dinext_common.workspace_hub._", side_effect=fake_translate):
 			ru_sections = get_dinext_hub()["sections"]
 		ru_section_labels = {section["label"] for section in ru_sections}
+		ru_section_keys = {section["section_key"] for section in ru_sections}
 		ru_cards = {card["label"]: card for section in ru_sections for card in section["items"]}
 		self.assertIn("Моя работа", ru_section_labels)
+		self.assertIn("My Work", ru_section_keys)
 		self.assertIn("Мои задачи", ru_cards)
 		self.assertTrue(
 			ru_cards["Мои задачи"]["description"].startswith("Персональная панель запросов и задач")
@@ -634,8 +653,10 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		configure_workspace_menu()
 		payload = get_settings_hub()
 		sections = {section["label"]: section["items"] for section in payload["sections"]}
+		section_keys = {section["section_key"] for section in payload["sections"]}
 		self.assertIn("Workspaces", sections)
 		self.assertIn("Configuration", sections)
+		self.assertEqual(section_keys, {"Workspaces", "Configuration"})
 
 		workspace_items = sections["Workspaces"]
 		expected_workspace_labels = {label for label, _description, _icon in HUB_SETTINGS_CHILDREN}
@@ -835,7 +856,10 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertIn("clear_anchors", tour_js)
 		self.assertIn("dinext_common.ui_tour.raise", tour_js)
 		self.assertIn("dinext_common.ui_tour.clear_raised", tour_js)
+		self.assertIn("dinext_common.ui_tour.observe", tour_js)
 		self.assertIn("has_tour_contract", tour_js)
+		self.assertNotIn("DINEXT_TOUR_IDS", tour_js)
+		self.assertNotIn("DINEXT_TOUR_SETTINGS", tour_js)
 		self.assertIn("FormTour", tour_js)
 		self.assertIn("OnboardingTour", tour_js)
 		self.assertIn("__dinext_ui_tour_patched", tour_js)
@@ -884,6 +908,17 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertNotIn("personal-lists", tour_js)
 		self.assertNotIn("Workspaces", tour_js)
 		self.assertNotIn("Ваши списки", tour_js)
+		self.assertNotIn("DINEXT_TOUR_IDS", script)
+		self.assertNotIn("DINEXT_TOUR_SETTINGS", script)
+		self.assertNotIn("resolve_tour_sources", script)
+		self.assertNotIn('!== "Dinext"', script)
+		self.assertIn("kit.observe", script)
+		self.assertIn("section:", script)
+		self.assertIn("card:", script)
+		self.assertIn("lists:", script)
+		self.assertIn('"directions"', script)
+		self.assertIn('"help"', script)
+		self.assertIn('"personal-lists"', script)
 		self.assertIn("frappe.set_route", script)
 		self.assertIn("navigate_route", script)
 		self.assertIn("/assets/frappe/icons/timeless/icons.svg", script)
@@ -928,7 +963,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertIn('classList.add("dinext-workspace-hub__page-chip-icon")', script)
 		self.assertIn("frappe.router.on", script)
 		self.assertIn("refresh_connected_hubs", script)
-		self.assertIn("tour-kit-1", script)
+		self.assertIn("generic-kit-1", script)
 		self.assertNotIn('__("{0} Workspace"', script)
 		self.assertNotIn("Recently Opened", script)
 		self.assertNotIn("recent_doctypes", script)
@@ -1178,8 +1213,10 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		for section in payload["sections"]:
 			self.assertEqual(
 				set(section.keys()),
-				{"label", "items", "lists", "list_limit", "card_columns"},
+				{"label", "section_key", "items", "lists", "list_limit", "card_columns"},
 			)
+			self.assertEqual(section["section_key"], "Typed Contract")
+			self.assertEqual(section["label"], "Typed Contract")
 			for card in section["items"]:
 				self.assertEqual(set(card.keys()), {"label", "description", "icon", "route"})
 		ignored_form_input = get_workspace_hub("Does Not Exist")
