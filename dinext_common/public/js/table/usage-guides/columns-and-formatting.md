@@ -16,7 +16,7 @@
 | `render` | — | Tree col 0: inner content; indent + chevron — ядро |
 | `tree` | `true` на col 0 | `false` — без tree chrome |
 | `cellRenderer` | — | Full override без compose (advanced) |
-| `type` | — | Preset: `text`, `number`, `integer`, `date` |
+| `type` | — | Preset: `text`, `number`, `integer`, `date`, `select` |
 
 **Tree col 0:** `[indent][chevron|spacer][render(params)]`. Expand — **клик по chevron**.
 
@@ -32,11 +32,14 @@
 | `number` | `number` | `--align-right`, locale `valueParser` |
 | `integer` | `number` | как `number`, `Math.trunc` |
 | `date` | `text` | ISO `YYYY-MM-DD` \| `null`; `valueParser` / `valueFormatter`; **без** default `cellEditor` |
+| `select` | `text` | option key \| `null`; unknown paste → `null`; `cellEditorParams.values`; **без** default `cellEditor` |
 | `checkbox` / `boolean` | `boolean` | AG checkbox renderer/editor |
 
-`parseLocaleNumber` / `parseDateValue` — экспорт из `editors.js`.
+`parseLocaleNumber` / `parseDateValue` / `parseSelectValue` — экспорт из `editors.js`.
 
 **Date columns:** полный гайд — [`date-columns.md`](date-columns.md). Desk calendar (`ControlDate`) — в domain `cellEditor`, не в preset.
+
+**Select columns:** полный гайд — [`select-columns.md`](select-columns.md). Desk Select (`ControlSelect`) — в domain `cellEditor`, не в preset.
 
 ---
 
