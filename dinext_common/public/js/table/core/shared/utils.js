@@ -14,7 +14,11 @@ const GRID_CALLBACK_KEYS = new Set([
     "onCellMouseDown",
     "onCellMouseOver",
     "onCellFocused",
-    "onBodyScroll"
+    "onBodyScroll",
+    "onGridSizeChanged",
+    "onColumnResized",
+    "onDisplayedColumnsChanged",
+    "onFirstDataRendered"
 ]);
 
 const DEFAULT_ROW_ID_FIELD = "id";
