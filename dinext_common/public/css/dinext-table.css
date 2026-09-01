@@ -696,10 +696,15 @@
 .dinext-table-toolbar-item--checkbox {
     cursor: pointer;
     user-select: none;
+    /* label: Desk/Bootstrap margin-bottom lifts the row vs <button> items */
+    margin: 0;
 }
 
 .dinext-table-toolbar-checkbox-input {
-    margin: 0;
+    /* Frappe input[type=checkbox] sets margin-right !important */
+    margin: 0 !important;
+    flex-shrink: 0;
+    align-self: center;
     cursor: pointer;
 }
 
