@@ -13,8 +13,8 @@ test("parseBooleanValue accepts booleans and common literals", () => {
     assert.equal(parseBooleanValue("FALSE"), false);
     assert.equal(parseBooleanValue("1"), true);
     assert.equal(parseBooleanValue("0"), false);
-    assert.equal(parseBooleanValue("╨┤╨░"), true);
-    assert.equal(parseBooleanValue("╨╜╨╡╤В"), false);
+    assert.equal(parseBooleanValue("да"), true);
+    assert.equal(parseBooleanValue("нет"), false);
 });
 
 test("parseBooleanValue returns null for empty or unknown input", () => {
@@ -68,13 +68,13 @@ test("parseDateValue reverses frappe.datetime.user_to_str formats", () => {
 });
 
 const PRIORITY = ["High", "Medium", "Low"];
-const PRIORITY_LABELS = { High: "╨Т╤Л╤Б╨╛╨║╨╕╨╣", Medium: "╨б╤А╨╡╨┤╨╜╨╕╨╣", Low: "╨Э╨╕╨╖╨║╨╕╨╣" };
+const PRIORITY_LABELS = { High: "Высокий", Medium: "Средний", Low: "Низкий" };
 
 test("parseSelectValue maps key or label to option key", () => {
     assert.equal(parseSelectValue("High", PRIORITY), "High");
     assert.equal(parseSelectValue("high", PRIORITY), "High");
     assert.equal(parseSelectValue("  Medium  ", PRIORITY), "Medium");
-    assert.equal(parseSelectValue("╨Т╤Л╤Б╨╛╨║╨╕╨╣", PRIORITY, { labels: PRIORITY_LABELS }), "High");
+    assert.equal(parseSelectValue("Высокий", PRIORITY, { labels: PRIORITY_LABELS }), "High");
 });
 
 test("parseSelectValue unknown or empty becomes null, never raw", () => {
@@ -85,7 +85,7 @@ test("parseSelectValue unknown or empty becomes null, never raw", () => {
     assert.equal(parseSelectValue("High", []), null);
 });
 
-test("selectValueParser reads cellEditorParams.values; unknown тЖТ null", () => {
+test("selectValueParser reads cellEditorParams.values; unknown → null", () => {
     const params = {
         newValue: "Medium",
         colDef: { cellEditorParams: { values: PRIORITY } }
@@ -94,7 +94,7 @@ test("selectValueParser reads cellEditorParams.values; unknown тЖТ null", () 
     assert.equal(selectValueParser({ ...params, newValue: "Nope" }), null);
     assert.equal(
         selectValueParser({
-            newValue: "╨Т╤Л╤Б╨╛╨║╨╕╨╣",
+            newValue: "Высокий",
             colDef: { cellEditorParams: { values: PRIORITY, labels: PRIORITY_LABELS } }
         }),
         "High"
@@ -115,7 +115,7 @@ test("selectValueParser accepts values as function", () => {
 });
 
 test("formatSelectValue uses labels map when present", () => {
-    assert.equal(formatSelectValue("High", { labels: PRIORITY_LABELS }), "╨Т╤Л╤Б╨╛╨║╨╕╨╣");
+    assert.equal(formatSelectValue("High", { labels: PRIORITY_LABELS }), "Высокий");
     assert.equal(formatSelectValue("High"), "High");
     assert.equal(formatSelectValue(null), "");
     assert.equal(
@@ -123,16 +123,16 @@ test("formatSelectValue uses labels map when present", () => {
             value: "Low",
             colDef: { cellEditorParams: { values: PRIORITY, labels: PRIORITY_LABELS } }
         }),
-        "╨Э╨╕╨╖╨║╨╕╨╣"
+        "Низкий"
     );
 });
 
 test("parseSelectValue matches frappe __ label via globalThis", () => {
     const prev = globalThis.__;
-    globalThis.__ = (key) => (key === "High" ? "╨Т╤Л╤Б╨╛╨║╨╕╨╣" : key);
+    globalThis.__ = (key) => (key === "High" ? "Высокий" : key);
     try {
-        assert.equal(parseSelectValue("╨Т╤Л╤Б╨╛╨║╨╕╨╣", PRIORITY), "High");
-        assert.equal(formatSelectValue("High"), "╨Т╤Л╤Б╨╛╨║╨╕╨╣");
+        assert.equal(parseSelectValue("Высокий", PRIORITY), "High");
+        assert.equal(formatSelectValue("High"), "Высокий");
     } finally {
         if (prev === undefined) {
             delete globalThis.__;
@@ -149,5 +149,5 @@ test("resolveSelectSpec reads function cellEditorParams", () => {
         }
     });
     assert.deepEqual(spec.values, PRIORITY);
-    assert.equal(spec.labels.High, "╨Т╤Л╤Б╨╛╨║╨╕╨╣");
+    assert.equal(spec.labels.High, "Высокий");
 });
