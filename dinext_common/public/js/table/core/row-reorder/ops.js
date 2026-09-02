@@ -290,6 +290,9 @@ export function resolveDropPosition(offsetY, height, allowInside) {
  *   indentLevel: number,
  *   sameParent: boolean
  * }}
+ *
+ * `orderLocked` — display order is owned by sort: reject same-parent
+ * slot drops; nesting (inside / cross-parent) still allowed.
  */
 export function resolveDropTarget({
     sourceRows,
@@ -297,6 +300,7 @@ export function resolveDropTarget({
     hoverRowId,
     position,
     allowTree = ROW_REORDER_TREE_MODES.SIBLINGS,
+    orderLocked = false,
     options = {}
 }) {
     if (!dragCtx || hoverRowId == null || !position) {
@@ -366,6 +370,9 @@ export function resolveDropTarget({
     if (sameParent
         && toIndex >= dragCtx.index
         && toIndex <= dragCtx.index + dragCtx.blockSize) {
+        return null;
+    }
+    if (orderLocked && sameParent) {
         return null;
     }
 

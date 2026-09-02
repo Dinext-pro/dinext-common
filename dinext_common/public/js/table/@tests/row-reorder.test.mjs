@@ -219,3 +219,70 @@ test("computeNudgeToIndex moves single row down/up", () => {
     assert.equal(reorderSiblingBlock(copy2, 1, 1, up), true);
     assert.deepEqual(collectLocalRowIds(copy2), ["b", "a", "c"]);
 });
+
+test("resolveDropTarget orderLocked blocks same-parent after", () => {
+    const data = [
+        { id: "p", children: [{ id: "a" }, { id: "b" }] }
+    ];
+    const dragCtx = resolveReorderContext(data, "p:a");
+    assert.equal(resolveDropTarget({
+        sourceRows: data,
+        dragCtx,
+        hoverRowId: "p:b",
+        position: ROW_REORDER_POSITIONS.AFTER,
+        allowTree: "reparent",
+        orderLocked: true
+    }), null);
+});
+
+test("resolveDropTarget orderLocked allows nest inside sibling", () => {
+    const data = [
+        { id: "p", children: [{ id: "a" }, { id: "b" }] }
+    ];
+    const dragCtx = resolveReorderContext(data, "p:a");
+    const drop = resolveDropTarget({
+        sourceRows: data,
+        dragCtx,
+        hoverRowId: "p:b",
+        position: ROW_REORDER_POSITIONS.INSIDE,
+        allowTree: "reparent",
+        orderLocked: true
+    });
+    assert.ok(drop);
+    assert.equal(drop.toParentRowId, "p:b");
+    assert.equal(drop.sameParent, false);
+});
+
+test("resolveDropTarget orderLocked allows outdent after parent", () => {
+    const data = [
+        { id: "p", children: [{ id: "a" }, { id: "b" }] },
+        { id: "z" }
+    ];
+    const dragCtx = resolveReorderContext(data, "p:a");
+    const drop = resolveDropTarget({
+        sourceRows: data,
+        dragCtx,
+        hoverRowId: "p",
+        position: ROW_REORDER_POSITIONS.AFTER,
+        allowTree: "reparent",
+        orderLocked: true
+    });
+    assert.ok(drop);
+    assert.equal(drop.toParentRowId, null);
+    assert.equal(drop.sameParent, false);
+});
+
+test("resolveDropTarget orderLocked blocks inside current parent", () => {
+    const data = [
+        { id: "p", children: [{ id: "a" }, { id: "b" }] }
+    ];
+    const dragCtx = resolveReorderContext(data, "p:a");
+    assert.equal(resolveDropTarget({
+        sourceRows: data,
+        dragCtx,
+        hoverRowId: "p",
+        position: ROW_REORDER_POSITIONS.INSIDE,
+        allowTree: "reparent",
+        orderLocked: true
+    }), null);
+});
