@@ -977,6 +977,15 @@
     opacity: 0.85;
 }
 
+.dinext-table--row-reorder-sort-locked .dinext-table-row-reorder-handle,
+.dinext-table-row-reorder-handle--locked {
+    cursor: not-allowed;
+}
+
+.dinext-table--row-reorder-sort-locked .dinext-table-row-reorder-handle:hover {
+    opacity: 0.38;
+}
+
 .dinext-table-row-reorder-handle-host {
     display: flex;
     align-items: center;

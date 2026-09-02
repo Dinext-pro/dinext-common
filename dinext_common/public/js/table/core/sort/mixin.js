@@ -1,7 +1,10 @@
 import { walkLeafColumns } from "../tree/model.js";
 import {
+    captureSortOrder,
     cycleSortState,
     normalizeSortState,
+    patchSortOrderChildren,
+    restoreSortOrder,
     sortTreeInPlace,
     SORT_DIRS
 } from "./model.js";
@@ -93,7 +96,9 @@ export const SortMixin = (Base) => class extends Base {
     initSortState() {
         const opts = this.getSortOptions();
         this._sortState = normalizeSortState(opts.state);
+        this._sortBaseline = null;
         if (this.isSortEnabled() && this._sortState.length && Array.isArray(this.sourceData)) {
+            this._sortBaseline = captureSortOrder(this.sourceData, this.options);
             sortTreeInPlace(this.sourceData, this._sortState, this.options);
             if (typeof this.syncVisibleRows === "function") {
                 this.syncVisibleRows();
@@ -153,7 +158,15 @@ export const SortMixin = (Base) => class extends Base {
             return;
         }
         if (this._sortState.length) {
+            if (!this._sortBaseline) {
+                this._sortBaseline = captureSortOrder(this.sourceData, this.options);
+            } else {
+                restoreSortOrder(this.sourceData, this._sortBaseline, this.options);
+            }
             sortTreeInPlace(this.sourceData, this._sortState, this.options);
+        } else if (this._sortBaseline) {
+            restoreSortOrder(this.sourceData, this._sortBaseline, this.options);
+            this._sortBaseline = null;
         }
         if (typeof this.syncVisibleRows === "function") {
             this.syncVisibleRows();
@@ -187,8 +200,10 @@ export const SortMixin = (Base) => class extends Base {
         if (data !== undefined) {
             this.sourceData = data;
             this.options.data = data;
+            this._sortBaseline = null;
         }
         if (this.isSortActive() && Array.isArray(this.sourceData)) {
+            this._sortBaseline = captureSortOrder(this.sourceData, this.options);
             sortTreeInPlace(this.sourceData, this._sortState, this.options);
         }
         super.refresh();
@@ -198,6 +213,9 @@ export const SortMixin = (Base) => class extends Base {
     setRowChildren(rowId, children) {
         let next = children;
         if (this.isSortActive() && Array.isArray(children)) {
+            if (this._sortBaseline) {
+                patchSortOrderChildren(this._sortBaseline, rowId, children, this.options);
+            }
             next = children.slice();
             sortTreeInPlace(next, this._sortState, this.options);
         }
@@ -207,6 +225,7 @@ export const SortMixin = (Base) => class extends Base {
     refreshAfterRowReorder(section) {
         if (section !== "summary" && this._sortState?.length) {
             this._sortState = [];
+            this._sortBaseline = null;
             this.emitSortChange();
         }
         super.refreshAfterRowReorder?.(section);
@@ -309,13 +328,11 @@ export const SortMixin = (Base) => class extends Base {
             this._sortState = normalizeSortState(opts.state);
             if (this.isSortEnabled()) {
                 this.setGridOption("columnDefs", this.buildColumnDefs());
-                if (this._sortState.length) {
-                    this.applySortToSource();
-                } else {
-                    this.syncSortHeaderClasses();
-                }
+                this.applySortToSource();
+                this.syncSortHeaderClasses();
             } else {
                 this._sortState = [];
+                this.applySortToSource();
                 this.setGridOption("columnDefs", this.buildColumnDefs());
             }
             return true;
