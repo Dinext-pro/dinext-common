@@ -23,8 +23,7 @@ import {
     isDraggedPreviewRowId,
     isHomePreviewHit,
     planRowReorderPreview,
-    resolveReorderIntent,
-    resolveRowReorderExpandId
+    resolveReorderIntent
 } from "../core/row-reorder/preview.js";
 
 test("resolveReorderContext finds top-level row", () => {
@@ -516,45 +515,5 @@ test("resolveDropTarget orderLocked blocks inside current parent", () => {
         position: ROW_REORDER_POSITIONS.INSIDE,
         allowTree: "reparent",
         orderLocked: true
-    }), null);
-});
-
-test("resolveRowReorderExpandId uses nest parent, not dragged pointer row", () => {
-    const intent = {
-        hoverRowId: "b",
-        position: ROW_REORDER_POSITIONS.INSIDE
-    };
-    assert.equal(resolveRowReorderExpandId({ intent, draggedIds: ["c"] }), "b");
-    assert.equal(resolveRowReorderExpandId({
-        intent: { home: true },
-        draggedIds: ["c"]
-    }), null);
-    assert.equal(resolveRowReorderExpandId({
-        intent: { hoverRowId: "b", position: ROW_REORDER_POSITIONS.AFTER },
-        draggedIds: ["c"]
-    }), null);
-});
-
-test("resolveRowReorderExpandId home-plus-right expands the row above", () => {
-    const hits = [
-        { rowId: "a", top: 0, bottom: 28, height: 28 },
-        { rowId: "b", top: 28, bottom: 56, height: 28 },
-        { rowId: "c", top: 56, bottom: 84, height: 28, isDragged: true }
-    ];
-    const intent = resolveReorderIntent({
-        hits,
-        clientY: 70,
-        clientX: 10 + NEST_SHIFT_PX,
-        startClientX: 10,
-        allowNest: true,
-        draggedIds: ["c"]
-    });
-    assert.equal(resolveRowReorderExpandId({ intent, draggedIds: ["c"] }), "b");
-});
-
-test("resolveRowReorderExpandId skips nest into the dragged block", () => {
-    assert.equal(resolveRowReorderExpandId({
-        intent: { hoverRowId: "c", position: ROW_REORDER_POSITIONS.INSIDE },
-        draggedIds: ["c"]
     }), null);
 });

@@ -32,8 +32,7 @@ import {
     collectPreviewRows,
     planRowReorderPreview,
     previewTargetKey,
-    resolveReorderIntent,
-    resolveRowReorderExpandId
+    resolveReorderIntent
 } from "./preview.js";
 
 const ROW_REORDER_DEFAULTS = {
@@ -542,6 +541,21 @@ export const RowReorderMixin = (Base) => class extends Base {
             return;
         }
 
+        const hoverRowEl = this.getRowElementFromPoint(event.clientX, event.clientY);
+        if (hoverRowEl) {
+            const hoverNode = this.getDisplayedRowNodeFromElement(hoverRowEl);
+            if (hoverNode?.data) {
+                this.scheduleRowReorderExpandDwell(
+                    getStableRowId(hoverNode.data, this.options),
+                    hoverNode
+                );
+            } else {
+                this.clearRowReorderExpandDwell();
+            }
+        } else {
+            this.clearRowReorderExpandDwell();
+        }
+
         const allowTree = this.getRowReorderTreeMode();
         const intent = resolveReorderIntent({
             hits: drag.hitMap,
@@ -551,7 +565,6 @@ export const RowReorderMixin = (Base) => class extends Base {
             allowNest: allowTree === ROW_REORDER_TREE_MODES.REPARENT,
             draggedIds: drag.draggedIds
         });
-        this.syncRowReorderExpandDwell(intent);
         if (!intent) {
             if (drag.dropTarget) {
                 this.setRowReorderDropInvalid(false);
@@ -1134,20 +1147,6 @@ export const RowReorderMixin = (Base) => class extends Base {
         });
     }
 
-    syncRowReorderExpandDwell(intent) {
-        const expandId = resolveRowReorderExpandId({
-            intent,
-            draggedIds: this._rowReorderDrag?.draggedIds || []
-        });
-        if (!expandId) {
-            this.clearRowReorderExpandDwell();
-            return;
-        }
-        const node = this.api?.getRowNode?.(String(expandId));
-        const row = node?.data || this.findSourceRow?.(String(expandId));
-        this.scheduleRowReorderExpandDwell(expandId, node || (row ? { data: row } : null));
-    }
-
     clearRowReorderExpandDwell() {
         if (this._rowReorderExpandTimer) {
             clearTimeout(this._rowReorderExpandTimer);
@@ -1234,7 +1233,6 @@ export const RowReorderMixin = (Base) => class extends Base {
             return;
         }
         this.restampRowReorderDragEls();
-        this.refreshRowReorderHitMap();
         const drag = this._rowReorderDrag;
         if (drag.lastClientX || drag.lastClientY) {
             this.updateRowReorderDrag({
