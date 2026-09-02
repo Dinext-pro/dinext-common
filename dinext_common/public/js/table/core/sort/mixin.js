@@ -206,8 +206,9 @@ export const SortMixin = (Base) => class extends Base {
 
     refreshAfterRowReorder(section) {
         if (section !== "summary" && this._sortState?.length) {
-            this._sortState = [];
-            this.emitSortChange();
+            if (Array.isArray(this.sourceData)) {
+                sortTreeInPlace(this.sourceData, this._sortState, this.options);
+            }
         }
         super.refreshAfterRowReorder?.(section);
         this.syncSortHeaderClasses();

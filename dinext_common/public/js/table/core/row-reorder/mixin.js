@@ -3,8 +3,11 @@ import {
     ROW_REORDER_COL_ID,
     ROW_REORDER_POSITIONS,
     ROW_REORDER_SOURCES,
-    ROW_REORDER_TREE_MODES
+    ROW_REORDER_TREE_MODES,
+    ROW_REORDER_EXPAND_DWELL_MS
 } from "./constants.js";
+import { getChildrenField } from "../shared/utils.js";
+import { rowIsExpandable } from "../tree/model.js";
 import { RowReorderHandleCellRenderer } from "./handle.js";
 import {
     buildRowReorderMovePayload,
@@ -14,6 +17,7 @@ import {
     getLocalRowId,
     getSiblingListForParent,
     getStableRowId,
+    isSelfOrDescendantId,
     moveRowBlock,
     remapPathIdsForBlockMove,
     resolveDropTarget,
@@ -63,10 +67,14 @@ export const RowReorderMixin = (Base) => class extends Base {
         this._rowReorderDrag = null;
         this._rowReorderDropGapEl = null;
         this._rowReorderDropInsideEl = null;
+        this._rowReorderExpandTimer = 0;
+        this._rowReorderExpandHoverId = null;
+        this._rowReorderExpandingId = null;
     }
 
     destroyFeatures() {
         this.destroyRowReorderListeners();
+        this.clearRowReorderExpandDwell();
         this.clearRowReorderUi();
         super.destroyFeatures();
     }
@@ -126,6 +134,14 @@ export const RowReorderMixin = (Base) => class extends Base {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Dinext sort owns sibling display order — DnD stays for nesting only.
+     * AG column sort (`isGridSorted`) still blocks all reorder.
+     */
+    isRowReorderOrderLocked() {
+        return typeof this.isSortActive === "function" && this.isSortActive();
     }
 
     isGridSorted() {
@@ -456,6 +472,8 @@ export const RowReorderMixin = (Base) => class extends Base {
             dropTarget: null,
             previewKey: "",
             startClientX: event?.clientX ?? 0,
+            lastClientX: event?.clientX ?? 0,
+            lastClientY: event?.clientY ?? 0,
             draggedIds: collectDraggedRowIds(ctx, this.options),
             hitMap: [],
             dragRowEls: this.collectDisplayedRowElementsForBlock(ctx, section)
@@ -512,12 +530,30 @@ export const RowReorderMixin = (Base) => class extends Base {
         }
 
         this.autoScrollRowReorderViewport(event.clientY);
+        drag.lastClientX = event.clientX;
+        drag.lastClientY = event.clientY;
 
         if (!this.isRowReorderPointerInGrid(event.clientX, event.clientY)) {
+            this.clearRowReorderExpandDwell();
             this.clearRowReorderDragPreview();
             drag.dropTarget = null;
             this.setRowReorderDropInvalid(true);
             return;
+        }
+
+        const hoverRowEl = this.getRowElementFromPoint(event.clientX, event.clientY);
+        if (hoverRowEl) {
+            const hoverNode = this.getDisplayedRowNodeFromElement(hoverRowEl);
+            if (hoverNode?.data) {
+                this.scheduleRowReorderExpandDwell(
+                    getStableRowId(hoverNode.data, this.options),
+                    hoverNode
+                );
+            } else {
+                this.clearRowReorderExpandDwell();
+            }
+        } else {
+            this.clearRowReorderExpandDwell();
         }
 
         const allowTree = this.getRowReorderTreeMode();
@@ -546,6 +582,7 @@ export const RowReorderMixin = (Base) => class extends Base {
             hoverRowId: intent.hoverRowId,
             position: intent.position,
             allowTree,
+            orderLocked: this.isRowReorderOrderLocked(),
             options: this.options
         });
 
@@ -749,6 +786,7 @@ export const RowReorderMixin = (Base) => class extends Base {
     finishRowReorderDrag() {
         const drag = this._rowReorderDrag;
         this._rowReorderDrag = null;
+        this.clearRowReorderExpandDwell();
         this.clearRowReorderUi();
 
         if (!drag?.dropTarget) {
@@ -777,7 +815,7 @@ export const RowReorderMixin = (Base) => class extends Base {
     }
 
     refreshAfterRowReorder(section) {
-        // Inner mixins (e.g. Sort) may clear derived state before we rebind rows.
+        // Inner mixins (Sort) re-apply derived sibling order before we rebind rows.
         super.refreshAfterRowReorder?.(section);
 
         if (section === TABLE_SECTIONS.SUMMARY) {
@@ -810,6 +848,9 @@ export const RowReorderMixin = (Base) => class extends Base {
 
     resolveNudgeRowReorder(rowId, direction) {
         if (!rowId || !direction || this.isRowReorderBlocked()) {
+            return null;
+        }
+        if (this.isRowReorderOrderLocked()) {
             return null;
         }
 
@@ -971,8 +1012,9 @@ export const RowReorderMixin = (Base) => class extends Base {
 
         this.refreshAfterRowReorder(section);
 
-        // No expand-on-hover. After drop under a collapsed parent — open it
-        // so the moved row is visible (lazy: expandRow loads if children still empty).
+        // After drop under a collapsed parent — open it so the moved row
+        // is visible (lazy: expandRow loads if children still empty).
+        // Hover-dwell expand during drag is separate (see scheduleRowReorderExpandDwell).
         if (
             toParentRowId != null
             && typeof this.expandRow === "function"
@@ -1105,6 +1147,101 @@ export const RowReorderMixin = (Base) => class extends Base {
         });
     }
 
+    clearRowReorderExpandDwell() {
+        if (this._rowReorderExpandTimer) {
+            clearTimeout(this._rowReorderExpandTimer);
+            this._rowReorderExpandTimer = 0;
+        }
+        this._rowReorderExpandHoverId = null;
+    }
+
+    shouldExpandOnRowReorderHover(hoverRowId, hoverNode) {
+        if (!hoverRowId || typeof this.expandRow !== "function") {
+            return false;
+        }
+        if (this.isRowExpanded?.(hoverRowId)) {
+            return false;
+        }
+        const row = hoverNode?.data;
+        if (!rowIsExpandable(row, getChildrenField(this.options), this.options)) {
+            return false;
+        }
+        const drag = this._rowReorderDrag;
+        if (!drag?.ctx) {
+            return false;
+        }
+        const draggedIds = collectDraggedRowIds(drag.ctx, this.options);
+        if (draggedIds.includes(hoverRowId)) {
+            return false;
+        }
+        if (draggedIds.some((id) => isSelfOrDescendantId(id, hoverRowId))) {
+            return false;
+        }
+        return true;
+    }
+
+    scheduleRowReorderExpandDwell(hoverRowId, hoverNode) {
+        if (this._rowReorderExpandHoverId === hoverRowId) {
+            return;
+        }
+        this.clearRowReorderExpandDwell();
+        if (!this.shouldExpandOnRowReorderHover(hoverRowId, hoverNode)) {
+            return;
+        }
+        this._rowReorderExpandHoverId = hoverRowId;
+        this._rowReorderExpandTimer = setTimeout(() => {
+            this._rowReorderExpandTimer = 0;
+            const id = this._rowReorderExpandHoverId;
+            if (!id || !this._rowReorderDrag) {
+                return;
+            }
+            void this.expandCollapsedRowDuringReorder(id);
+        }, ROW_REORDER_EXPAND_DWELL_MS);
+    }
+
+    restampRowReorderDragEls() {
+        const drag = this._rowReorderDrag;
+        if (!drag) {
+            return;
+        }
+        this.container?.classList.add("dinext-table--row-reorder-grabbing");
+        drag.dragRowEls = this.collectDisplayedRowElementsForBlock(drag.ctx, drag.section);
+        for (const el of drag.dragRowEls) {
+            el.classList.add("dinext-table-row--dragging");
+        }
+    }
+
+    async expandCollapsedRowDuringReorder(rowId) {
+        if (!this._rowReorderDrag || this._rowReorderExpandingId === rowId) {
+            return;
+        }
+        if (this.isRowExpanded?.(rowId)) {
+            return;
+        }
+        this._rowReorderExpandingId = rowId;
+        try {
+            await this.expandRow(rowId);
+        } catch (err) {
+            console.error("DinextTable: expand during row-reorder failed", err);
+            return;
+        } finally {
+            if (this._rowReorderExpandingId === rowId) {
+                this._rowReorderExpandingId = null;
+            }
+        }
+        if (!this._rowReorderDrag) {
+            return;
+        }
+        this.restampRowReorderDragEls();
+        const drag = this._rowReorderDrag;
+        if (drag.lastClientX || drag.lastClientY) {
+            this.updateRowReorderDrag({
+                clientX: drag.lastClientX,
+                clientY: drag.lastClientY
+            });
+        }
+    }
+
     handleRowReorderBodyScroll() {
         const drag = this._rowReorderDrag;
         if (!drag) {
@@ -1130,6 +1267,7 @@ export const RowReorderMixin = (Base) => class extends Base {
                 }
             } else {
                 this.destroyRowReorderListeners();
+                this.clearRowReorderExpandDwell();
                 this.clearRowReorderUi();
             }
             this.refreshToolbar?.();
