@@ -45,7 +45,14 @@ const ROW_REORDER_DEFAULTS = {
      */
     allowTree: ROW_REORDER_TREE_MODES.SIBLINGS,
     /** Toolbar ↑↓ in preset `rows`. Keep false for tree UIs that only want gutter DnD. */
-    toolbarMove: true
+    toolbarMove: true,
+    /**
+     * Domain opt-in: Dinext sort (`isSortActive`) blocks starting a drag.
+     * Handle stays visible; cursor + tooltip explain how to unlock.
+     */
+    blockWhenSorted: false,
+    /** English source for `__()`. Empty → "Clear sort to move a row". */
+    blockWhenSortedTooltip: ""
 };
 
 const TREE_INDENT_PX = 20;
@@ -77,6 +84,7 @@ export const RowReorderMixin = (Base) => class extends Base {
             this.ensureRowReorderDropIndicator();
             this.bindRowReorderListeners();
             this.container?.classList.add("dinext-table--row-reorder-enabled");
+            this.syncRowReorderSortLockUi();
         }
     }
 
@@ -119,6 +127,9 @@ export const RowReorderMixin = (Base) => class extends Base {
         if (this.isGridSorted()) {
             return true;
         }
+        if (this.isRowReorderSortLocked()) {
+            return true;
+        }
         if (typeof this.isFilterActive === "function" && this.isFilterActive()) {
             return true;
         }
@@ -131,6 +142,52 @@ export const RowReorderMixin = (Base) => class extends Base {
     isGridSorted() {
         const state = this.api?.getColumnState?.() || [];
         return state.some((col) => col.sort != null);
+    }
+
+    /** Domain `blockWhenSorted`: any Dinext column sort locks the handle. */
+    isRowReorderSortLocked() {
+        if (!this.getRowReorderOptions().blockWhenSorted) {
+            return false;
+        }
+        return typeof this.isSortActive === "function" && this.isSortActive();
+    }
+
+    getRowReorderSortLockTooltip() {
+        const raw = this.getRowReorderOptions().blockWhenSortedTooltip;
+        const text = raw || "Clear sort to move a row";
+        return typeof __ === "function" ? __(text) : text;
+    }
+
+    getRowReorderHandleTooltip() {
+        if (this.isRowReorderSortLocked()) {
+            return this.getRowReorderSortLockTooltip();
+        }
+        return typeof __ === "function" ? __("Move") : "Move";
+    }
+
+    syncRowReorderSortLockUi() {
+        const locked = this.isRowReorderSortLocked();
+        this.container?.classList.toggle("dinext-table--row-reorder-sort-locked", locked);
+        if (!this.container || !this.isRowReorderEnabled()) {
+            return;
+        }
+        this.api?.refreshCells?.({
+            columns: [ROW_REORDER_COL_ID],
+            force: true
+        });
+        this.stampRowReorderHandleTooltips();
+    }
+
+    stampRowReorderHandleTooltips() {
+        const tip = this.getRowReorderHandleTooltip();
+        const safeId = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+            ? CSS.escape(ROW_REORDER_COL_ID)
+            : ROW_REORDER_COL_ID;
+        this.container?.querySelectorAll(
+            `.ag-cell[col-id="${safeId}"], .dinext-table-row-reorder-handle, .dinext-table-row-reorder-handle-host`
+        ).forEach((el) => {
+            el.setAttribute("title", tip);
+        });
     }
 
     getRowReorderSourceRows(section) {
@@ -245,6 +302,7 @@ export const RowReorderMixin = (Base) => class extends Base {
             cellClass: "dinext-table-cell--align-center dinext-table-row-reorder-cell",
             headerClass: "dinext-table-header--align-center dinext-table-row-reorder-header",
             valueGetter: () => null,
+            tooltipValueGetter: () => this.getRowReorderHandleTooltip(),
             cellRenderer: RowReorderHandleCellRenderer
         };
     }
@@ -331,7 +389,8 @@ export const RowReorderMixin = (Base) => class extends Base {
         this.container?.classList.remove(
             "dinext-table--row-reorder-grabbing",
             "dinext-table--row-reorder-gutter-hover",
-            "dinext-table--row-reorder-drop-invalid"
+            "dinext-table--row-reorder-drop-invalid",
+            "dinext-table--row-reorder-sort-locked"
         );
         this.hideRowReorderDropVisuals();
         this.clearRowReorderPreview();
@@ -362,6 +421,10 @@ export const RowReorderMixin = (Base) => class extends Base {
 
             const rowNode = this.getDisplayedRowNodeFromElement(rowEl);
             if (!this.canStartRowReorder(rowNode)) {
+                if (this.isRowReorderSortLocked()) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
                 return;
             }
 
@@ -776,6 +839,11 @@ export const RowReorderMixin = (Base) => class extends Base {
         this.refreshAfterRowReorder(section);
     }
 
+    applySortToSource() {
+        super.applySortToSource?.();
+        this.syncRowReorderSortLockUi();
+    }
+
     refreshAfterRowReorder(section) {
         // Inner mixins (e.g. Sort) may clear derived state before we rebind rows.
         super.refreshAfterRowReorder?.(section);
@@ -784,6 +852,7 @@ export const RowReorderMixin = (Base) => class extends Base {
             if (typeof this.syncSummarySection === "function") {
                 this.syncSummarySection();
             }
+            this.syncRowReorderSortLockUi();
             return;
         }
 
@@ -792,6 +861,7 @@ export const RowReorderMixin = (Base) => class extends Base {
         }
         this.setGridOption("rowData", [...(this.rowData || [])]);
         this.refreshAllTreeToggles?.();
+        this.syncRowReorderSortLockUi();
     }
 
     remapRowPathIdsAfterReorder(fromParentRowId, toParentRowId, localIds) {
@@ -1133,6 +1203,7 @@ export const RowReorderMixin = (Base) => class extends Base {
                 this.clearRowReorderUi();
             }
             this.refreshToolbar?.();
+            this.syncRowReorderSortLockUi();
             return true;
         }
         return super.handleSetOption?.(key, value) ?? false;
