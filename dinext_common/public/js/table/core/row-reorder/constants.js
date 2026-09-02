@@ -24,6 +24,3 @@ export const ROW_REORDER_TREE_MODES = {
     SIBLINGS: "siblings",
     REPARENT: "reparent"
 };
-
-/** Dwell over collapsed parent during drag before auto-expand. */
-export const ROW_REORDER_EXPAND_DWELL_MS = 600;
