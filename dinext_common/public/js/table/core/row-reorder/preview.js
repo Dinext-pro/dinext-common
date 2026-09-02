@@ -183,21 +183,6 @@ export function resolveReorderIntent({
     return { hoverRowId: vertical.hoverRowId, position: vertical.position };
 }
 
-/**
- * Expand the nest parent (INSIDE), not the DOM row under the cursor.
- * Home / sibling swap must not start load — pointer usually sits on the dragged row.
- */
-export function resolveRowReorderExpandId({ intent, draggedIds = [] }) {
-    if (intent?.position !== ROW_REORDER_POSITIONS.INSIDE || intent.hoverRowId == null) {
-        return null;
-    }
-    const id = String(intent.hoverRowId);
-    if (isDraggedPreviewRowId(id, draggedIds)) {
-        return null;
-    }
-    return id;
-}
-
 export function previewTargetKey(dropTarget) {
     if (!dropTarget) {
         return "";
