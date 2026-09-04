@@ -8,6 +8,7 @@ import {
     cycleSortState,
     normalizeSortState,
     patchSortOrderChildren,
+    pruneSortOrder,
     restoreSortOrder,
     sortTreeInPlace,
     sortTreeCopy
@@ -150,6 +151,30 @@ test("patchSortOrderChildren records lazy-loaded sibling order", () => {
     assert.deepEqual(
         rows[0].children.map((r) => r.id),
         ["z", "a"]
+    );
+});
+
+test("pruneSortOrder drops deleted ids and keeps sibling restore order", () => {
+    const rows = [
+        makeRow("p", {
+            name: "P",
+            children: [makeRow("c1", { name: "x" }), makeRow("c2", { name: "y" })]
+        }),
+        makeRow("q", { name: "Q" })
+    ];
+    const baseline = captureSortOrder(rows);
+    pruneSortOrder(baseline, new Set(["c1", "q"]));
+    rows[0].children = rows[0].children.filter((row) => row.id !== "c1");
+    rows.splice(1, 1);
+    sortTreeInPlace(rows, [{ field: "name", dir: "desc" }]);
+    restoreSortOrder(rows, baseline);
+    assert.deepEqual(
+        rows.map((r) => r.id),
+        ["p"]
+    );
+    assert.deepEqual(
+        rows[0].children.map((r) => r.id),
+        ["c2"]
     );
 });
 

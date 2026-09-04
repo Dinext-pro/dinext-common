@@ -4,6 +4,7 @@ import {
     cycleSortState,
     normalizeSortState,
     patchSortOrderChildren,
+    pruneSortOrder,
     restoreSortOrder,
     sortTreeInPlace,
     SORT_DIRS
@@ -220,6 +221,14 @@ export const SortMixin = (Base) => class extends Base {
             sortTreeInPlace(next, this._sortState, this.options);
         }
         super.setRowChildren(rowId, next);
+    }
+
+    pruneSortBaseline(ids) {
+        const removeSet = new Set((ids || []).map(String).filter(Boolean));
+        if (!this._sortBaseline || !removeSet.size) {
+            return;
+        }
+        pruneSortOrder(this._sortBaseline, removeSet);
     }
 
     refreshAfterRowReorder(section) {
