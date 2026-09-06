@@ -304,6 +304,23 @@ export function restoreSortOrder(rows, snapshot, options = {}) {
     return rows;
 }
 
+/** Drop deleted business ids from a `captureSortOrder` snapshot. */
+export function pruneSortOrder(snapshot, removeIds) {
+    if (!snapshot || !removeIds?.size) {
+        return snapshot;
+    }
+    snapshot.ids = (snapshot.ids || []).filter((id) => !removeIds.has(String(id)));
+    const children = snapshot.children || {};
+    for (const id of Object.keys(children)) {
+        if (removeIds.has(String(id))) {
+            delete children[id];
+        } else {
+            pruneSortOrder(children[id], removeIds);
+        }
+    }
+    return snapshot;
+}
+
 /** Write captured children order for `rowId` (`p` or `p:c`) into a baseline tree. */
 export function patchSortOrderChildren(snapshot, rowId, children, options = {}) {
     if (!snapshot || rowId == null) {
