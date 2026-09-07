@@ -4,6 +4,8 @@ const GRID_CALLBACK_KEYS = new Set([
     "onCellClicked",
     "onCellKeyDown",
     "onColumnHeaderClicked",
+    "onColumnHeaderMouseOver",
+    "onColumnHeaderMouseLeave",
     "tabToNextCell",
     "navigateToNextCell",
     "onCellValueChanged",
@@ -12,7 +14,11 @@ const GRID_CALLBACK_KEYS = new Set([
     "onCellMouseDown",
     "onCellMouseOver",
     "onCellFocused",
-    "onBodyScroll"
+    "onBodyScroll",
+    "onGridSizeChanged",
+    "onColumnResized",
+    "onDisplayedColumnsChanged",
+    "onFirstDataRendered"
 ]);
 
 const DEFAULT_ROW_ID_FIELD = "id";
@@ -119,6 +125,47 @@ const DEFAULT_MERGE_GROUP_FIELD_NAMES = {
     sizeField: "mergeGroupSize"
 };
 
+// Display-only projection metadata. Symbols keep filter projection details out
+// of domain data, callbacks that serialize rows, and sourceData.
+const DISPLAY_MERGE_GROUP_META = Symbol("dinextTableDisplayMergeGroupMeta");
+const TREE_SOURCE_ROW_ID = Symbol("dinextTableTreeSourceRowId");
+
+/** Return a display clone treated as a plain row by merge-aware layers. */
+export function asStandaloneMergeGroupRow(row) {
+    if (!row) {
+        return row;
+    }
+    return {
+        ...row,
+        [DISPLAY_MERGE_GROUP_META]: null
+    };
+}
+
+/**
+ * Return a display clone with projected merge metadata.
+ * `treeSourceRowId` points a promoted display head back to the source head.
+ */
+export function asProjectedMergeGroupRow(row, mergeMeta, treeSourceRowId) {
+    if (!row) {
+        return row;
+    }
+    const projected = {
+        ...row,
+        [DISPLAY_MERGE_GROUP_META]: mergeMeta || null
+    };
+    if (treeSourceRowId != null && treeSourceRowId !== "") {
+        projected[TREE_SOURCE_ROW_ID] = String(treeSourceRowId);
+    }
+    return projected;
+}
+
+/** Source head local id for a row promoted to display merge head. */
+export function getTreeSourceRowId(row) {
+    return row?.[TREE_SOURCE_ROW_ID] == null
+        ? null
+        : String(row[TREE_SOURCE_ROW_ID]);
+}
+
 /** @layer tree — field names for merge-group row metadata */
 export function getMergeGroupFieldNames(options = {}) {
     const mergeGroup = options.mergeGroup || {};
@@ -133,6 +180,9 @@ export function getMergeGroupFieldNames(options = {}) {
 export function getMergeGroupMeta(row, options = {}) {
     if (!row) {
         return null;
+    }
+    if (Object.prototype.hasOwnProperty.call(row, DISPLAY_MERGE_GROUP_META)) {
+        return row[DISPLAY_MERGE_GROUP_META];
     }
     const { idField, indexField, sizeField } = getMergeGroupFieldNames(options);
     const id = row[idField];
@@ -155,7 +205,7 @@ export function isMergeGroupHead(row, options = {}) {
     return meta != null && meta.index === 0;
 }
 
-/** Displayed-row offset from parent node to insert position after merge tail (or next row). */
+/** Source-row offset from parent node to insert after merge tail (or next row). */
 export function getMergeGroupChildInsertOffset(row, options = {}) {
     const meta = getMergeGroupMeta(row, options);
     if (!meta || meta.index !== 0) {
@@ -176,7 +226,8 @@ export function createMergeGroupSpanRows(options = {}) {
 }
 
 export function normalizeColumn(col, globalEdit) {
-    const { edit, render, tree, children, ...rest } = col;
+    // treeContentKey — domain-only; wired by TreeMixin, not AG colDef.
+    const { edit, render, tree, treeContentKey, children, ...rest } = col;
 
     if (Array.isArray(children) && children.length) {
         return {

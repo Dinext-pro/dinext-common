@@ -69,9 +69,9 @@ Select-all в тулбаре появляется **автоматически**
 | Add | есть `onAddRow` |
 | Delete | всегда (disabled если 0 checked); persist optional via `onDeleteRows` |
 | Duplicate | есть `onDuplicateRows` (disabled если 0) |
-| Move up / down | только если `rowReorder.enabled`; active при **ровно 1** checked и nudge возможен |
+| Move up / down | если `rowReorder.enabled` и `rowReorder.toolbarMove !== false`; active при **ровно 1** checked и nudge возможен |
 
-Move = тот же контур что gutter (`rowReorder.enabled` обязателен). Без reorder стрелок в тулбаре нет.
+Move = тот же контур что gutter (`rowReorder.enabled` обязателен). Без reorder стрелок нет. Tree UI с DnD: `toolbarMove: false`.
 
 ---
 
@@ -116,6 +116,7 @@ Move = тот же контур что gutter (`rowReorder.enabled` обязат
 | `canCheckRow` | Per-row guard (section / leave / locked) |
 | `onAddRow` | Factory: plain row |
 | `onValidateDeleteRows` | Sync; `false` = stop |
+| `onBeforeDeleteRows` | Optional async; before optimistic remove; `false`/throw = stop (confirm here) |
 | `onDeleteRows` | После optimistic remove |
 | `onValidateDuplicateRows` | Sync; `false` = stop |
 | `onDuplicateRows` | Factory: rows[] |

@@ -1,0 +1,37 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Custom HTML Block",
+  "html": "<div class=\"dinext-workspace-hub\" data-settings-name=\"Dinext\"></div>",
+  "modified": "2026-08-13 02:40:00",
+  "name": "Dinext Hub",
+  "private": 0,
+  "roles": [],
+  "script": "frappe.require([\"/assets/dinext_common/js/workspace_hub.js\"], () => {\n\tdinext_common.workspace_hub.mount(root_element);\n});\n",
+  "style": ""
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Custom HTML Block",
+  "html": "<div class=\"dinext-workspace-hub\" data-settings-name=\"Settings\"></div>",
+  "modified": "2026-08-13 02:40:00",
+  "name": "Dinext Settings Hub",
+  "private": 0,
+  "roles": [
+   {
+    "parent": "Dinext Settings Hub",
+    "parentfield": "roles",
+    "parenttype": "Custom HTML Block",
+    "role": "System Manager"
+   },
+   {
+    "parent": "Dinext Settings Hub",
+    "parentfield": "roles",
+    "parenttype": "Custom HTML Block",
+    "role": "Workspace Manager"
+   }
+  ],
+  "script": "frappe.require([\"/assets/dinext_common/js/workspace_hub.js\"], () => {\n\tdinext_common.workspace_hub.mount(root_element);\n});\n",
+  "style": ""
+ }
+]

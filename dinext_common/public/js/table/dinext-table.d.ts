@@ -10,7 +10,7 @@
  * - `tree`       — N-level expand, lazy load
  * - `sort`       — recursive sibling sort on source tree (not AG flat sort)
  * - `edit`       — scalar edit, validate/save, undo sync
- * - `editors`    — columnTypes presets (text/number/integer/date)
+ * - `editors`    — columnTypes presets (text/number/integer/date/select)
  * - `navigation` — Tab/Enter Excel-like (AG Grid hooks)
  * - `selection`  — custom range (Community, без Enterprise)
  * - `clipboard`  — custom TSV copy/paste/fill (Community)
@@ -123,9 +123,10 @@ export type DinextTableRowData = Record<string, unknown> & DinextTableTreeMeta &
 /**
  * Пресеты `column.type` из EditorsMixin. @layer editors
  * `date` = ISO string contract + parser/formatter (no default cellEditor).
- * See usage-guides/date-columns.md.
+ * `select` = option key string | null; unknown paste → null (no default cellEditor).
+ * See usage-guides/date-columns.md, usage-guides/select-columns.md.
  */
-export type DinextTableColumnTypePreset = "text" | "number" | "integer" | "date" | "checkbox" | "boolean";
+export type DinextTableColumnTypePreset = "text" | "number" | "integer" | "date" | "select" | "checkbox" | "boolean";
 
 // ---------------------------------------------------------------------------
 // Column
@@ -172,6 +173,11 @@ export interface DinextTableColumnDef {
      * Default from `type` / `cellDataType`.
      */
     filterKind?: "text" | "number" | "date";
+    /**
+     * @layer filter — searchable value for the floating filter (display label, names, etc.).
+     * Default: `row[field]`.
+     */
+    filterValueGetter?: (row: DinextTableRowData, field: string) => unknown;
 
     // --- tree ---
     /** @layer tree — inner content; indent + chevron добавляет ядро */
@@ -186,7 +192,7 @@ export interface DinextTableColumnDef {
     cellRenderer?: unknown;
 
     // --- editors ---
-    /** @layer editors — preset: text | number | integer | date | checkbox | boolean */
+    /** @layer editors — preset: text | number | integer | date | select | checkbox | boolean */
     type?: DinextTableColumnTypePreset | string;
 
     // --- layout @layer ag-grid ---
@@ -202,7 +208,15 @@ export interface DinextTableColumnDef {
     valueFormatter?: (params: DinextTableCellRendererParams) => string;
     valueParser?: (params: { newValue: unknown; oldValue: unknown; data: DinextTableRowData }) => unknown;
     cellEditor?: string | unknown;
-    cellEditorParams?: Record<string, unknown>;
+    /**
+     * @layer ag-grid
+     * For `type: "select"`: `values` = `string[]` or `(params) => string[]`;
+     * optional `labels` = `{ [key]: display }`.
+     */
+    cellEditorParams?: Record<string, unknown> & {
+        values?: string[] | ((params: DinextTableCellRendererParams) => string[]);
+        labels?: Record<string, string>;
+    };
 
     // --- formatting @layer formatting (passthrough → AG Grid) ---
     cellStyle?: Record<string, string> | ((params: DinextTableCellRendererParams) => Record<string, string>);
@@ -263,6 +277,10 @@ export interface DinextTableThemeOptions {
         borderRadius?: number | string;
         /** Overrides wrapper radius; falls back to `borderRadius` / default `4` */
         wrapperBorderRadius?: number | string;
+        /**
+         * Text font family. Default: Desk `--font-stack` (Inter), not Quartz IBM Plex Sans.
+         */
+        fontFamily?: string;
     };
 }
 
@@ -339,6 +357,21 @@ export interface DinextTableFilterOptions {
         active?: boolean;
         /** @layer filter — initial / controlled `{ field: query }` */
         state?: DinextTableFilterState;
+        /**
+         * @layer filter — matching rows inside a merge group.
+         * `"atom"` (default) keeps the whole group; `"rows"` keeps matching rows only.
+         */
+        mergeMatchMode?: "atom" | "rows";
+        /**
+         * @layer filter — merge atom kept only as an ancestor of a tree match.
+         * `"atom"` (default) keeps all tails; `"head"` renders one context head.
+         */
+        mergeAncestorMode?: "atom" | "head";
+        /**
+         * @layer filter — head-owned merged fields inherited by role/tail rows
+         * for filtering and display projection.
+         */
+        mergeInheritedFields?: string[];
     };
     /** @layer filter — after state / active change */
     onFilterChange?: (ctx: {
@@ -410,6 +443,14 @@ export interface DinextTableEditOptions {
     onSaveCells?: (ctx: DinextTableCellChangeContext) => void | false | Promise<void | false>;
     /** @layer edit + ag-grid — onCellEditRequest pipeline */
     readOnlyEdit?: boolean;
+    /**
+     * @layer edit — Sheets-like: plain click starts edit when the same cell was
+     * the previous completed click (not live AG focus — that moves before click).
+     * First click still only focuses/selects. Skips dblclick (`detail !== 1`), modifiers,
+     * checkbox columns, fill-handle, and multi-cell selection.
+     * Default: on when `edit: true` OR any column has `edit` (not `false`).
+     */
+    clickWhenActive?: boolean;
 }
 
 /** @layer navigation */
@@ -511,6 +552,8 @@ export interface DinextTableRowReorderOptions {
          * - `"reparent"` — cross-parent before/after + nest inside
          */
         allowTree?: DinextTableRowReorderTreeMode;
+        /** Default: true. Toolbar ↑↓ in preset `rows`; set false for tree-only gutter DnD. */
+        toolbarMove?: boolean;
     };
     /** @layer rowReorder — sync, before commit */
     onValidateRowReorder?: (ctx: DinextTableRowReorderContext) => boolean | string;
@@ -687,6 +730,11 @@ export interface DinextTableToolbarOptions {
         enabled?: boolean;
         /** Default: true — panel visible (pinned) on first open */
         defaultPinned?: boolean;
+        /**
+         * Keep toolbar pinned; unpin button disabled. Gantt-style always-on chrome.
+         * Default false — other tables unchanged.
+         */
+        lockPinned?: boolean;
         /**
          * localStorage key suffix for UI snapshot (per table instance).
          * Key: `dinext-table:toolbar:${persistKey}`.
@@ -913,6 +961,8 @@ export interface DinextTableInstance {
 
     /** @layer rowReorder */
     isRowReorderEnabled(): boolean;
+    /** @layer rowReorder — toolbar ↑↓ when preset `rows` + toolbarMove */
+    isRowReorderToolbarMoveEnabled(): boolean;
     /** @layer rowReorder — true while gutter drag active */
     isRowReorderDragging(): boolean;
     /** @layer rowReorder — one sibling slot; used by toolbar move arrows */
@@ -959,10 +1009,39 @@ export interface DinextTableInstance {
     exitFullscreen(): Promise<boolean>;
     /** @layer fullscreen */
     toggleFullscreen(): Promise<boolean>;
+    /** @layer fullscreen — fullscreenElement or document.body */
+    getOverlayHost(): HTMLElement | null;
 
     // --- edit (advanced / used by clipboard) ---
     /** @layer edit — write nested sourceData by path id */
     writeSourceField?(rowId: string, field: string, value: unknown): DinextTableRowData | null;
+    /**
+     * @layer edit — apply values already persisted externally (server side-effects).
+     * Updates grid + sourceData; does not call onValidateCells / onSaveCells.
+     * Item: `{ field, value, rowId? }` and/or `{ id }` (business rowIdField).
+     */
+    applyExternalCellValues?(
+        changes: Array<{
+            field: string;
+            value: unknown;
+            rowId?: string;
+            id?: string;
+        }>
+    ): number;
+    /** @layer edit — unified batch commit (validate → grid+source → onSaveCells) */
+    commitCellChanges?(params: {
+        source?: DinextTableCellChangeSource;
+        changes?: Array<{
+            node?: unknown;
+            field: string;
+            oldValue?: unknown;
+            newValue?: unknown;
+            rowIndex?: number;
+            colId?: string;
+        }>;
+        range?: DinextTableCellChangeRange | null;
+        alreadyApplied?: boolean;
+    }): { applied: number; entries: object[] };
 }
 
 // ---------------------------------------------------------------------------
@@ -986,6 +1065,31 @@ export interface DinextTableStatic {
     >;
     /** @layer core */
     create(options: DinextTableCreateOptions): Promise<DinextTableInstance>;
+    /**
+     * @layer fullscreen — native FS host or `document.body`.
+     * Body-portaled overlays (datepicker) must mount here.
+     */
+    getOverlayHost(doc?: Document): HTMLElement | null;
+    /**
+     * @layer fullscreen — move overlay into getOverlayHost(); no-op outside FS.
+     */
+    adoptOverlay(
+        node: HTMLElement,
+        opts?: { anchor?: HTMLElement | null; host?: HTMLElement | null }
+    ): boolean;
+    /**
+     * @layer editors — optional native `<select>`; not default for `type: "select"`.
+     * See usage-guides/select-columns.md.
+     */
+    SelectCellEditor: unknown;
+    /**
+     * @layer editors — raw / label → option key or null (unknown never kept as raw).
+     */
+    parseSelectValue(
+        raw: unknown,
+        options?: string[],
+        meta?: { labels?: Record<string, string> }
+    ): string | null;
 }
 
 declare global {
