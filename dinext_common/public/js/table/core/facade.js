@@ -3,6 +3,9 @@ import { createMergeGroupSpanRows } from "./shared/utils.js";
 import { CELL_CHANGE_SOURCES } from "./edit/changes.js";
 import { DateCellEditor } from "./edit/date-editor.js";
 import { parseDateValue, toIsoDateString } from "./edit/date-utils.js";
+import { SelectCellEditor } from "./edit/select-editor.js";
+import { parseSelectValue } from "./edit/select-utils.js";
+import { adoptOverlay, getOverlayHost } from "./toolbar/overlay-host.js";
 import { ROW_REORDER_SOURCES } from "./row-reorder/constants.js";
 import { ROW_CHECK_COL_ID, ROW_CHECK_SOURCES, ROW_CHECK_UNITS } from "./row-check/constants.js";
 
@@ -35,6 +38,11 @@ DinextTable.ROW_CHECK_UNITS = ROW_CHECK_UNITS;
 DinextTable.DateCellEditor = DateCellEditor;
 DinextTable.parseDateValue = parseDateValue;
 DinextTable.toIsoDateString = toIsoDateString;
+/** Optional native `<select>` — not default for `type: "select"`. */
+DinextTable.SelectCellEditor = SelectCellEditor;
+DinextTable.parseSelectValue = parseSelectValue;
+DinextTable.getOverlayHost = getOverlayHost;
+DinextTable.adoptOverlay = adoptOverlay;
 DinextTable.create = async function(options) {
     await loadAgGrid();
     if (!options?.container) {

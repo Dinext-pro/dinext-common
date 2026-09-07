@@ -1,7 +1,11 @@
 import { walkLeafColumns } from "../tree/model.js";
 import {
+    captureSortOrder,
     cycleSortState,
     normalizeSortState,
+    patchSortOrderChildren,
+    pruneSortOrder,
+    restoreSortOrder,
     sortTreeInPlace,
     SORT_DIRS
 } from "./model.js";
@@ -12,6 +16,57 @@ const SORT_DEFAULTS = {
     nulls: "last",
     state: []
 };
+
+const SORT_CLICK_SEL = ".dinext-table-header-sort-text, .dinext-table-header-sort-icon";
+const RESIZE_SKIP_SEL = ".ag-header-cell-resize, .ag-header-cell-menu-button";
+
+/** Two-box header: title + sort icon. Sort binds only on those two boxes. */
+class DinextSortHeader {
+    init(params) {
+        this.params = params;
+        this.eGui = document.createElement("div");
+        this.eGui.className = "dinext-table-header-sort";
+        this.eText = document.createElement("div");
+        this.eText.className = "dinext-table-header-sort-text";
+        this.eIcon = document.createElement("div");
+        this.eIcon.className = "dinext-table-header-sort-icon";
+        this.eIcon.setAttribute("aria-hidden", "true");
+        this.eGui.append(this.eText, this.eIcon);
+        this.eText.textContent = params.displayName || "";
+        this._onSortClick = (event) => this.handleSortClick(event);
+        this.eText.addEventListener("click", this._onSortClick);
+        this.eIcon.addEventListener("click", this._onSortClick);
+    }
+
+    getGui() {
+        return this.eGui;
+    }
+
+    refresh(params) {
+        this.params = params;
+        this.eText.textContent = params.displayName || "";
+        return true;
+    }
+
+    handleSortClick(event) {
+        if (event.target?.closest?.(RESIZE_SKIP_SEL)) {
+            return;
+        }
+        if (!event.target?.closest?.(SORT_CLICK_SEL)) {
+            return;
+        }
+        event.stopPropagation();
+        const field = this.params?.column?.getColDef?.()?.field;
+        if (typeof this.params?.onDinextSortClick === "function") {
+            this.params.onDinextSortClick(field);
+        }
+    }
+
+    destroy() {
+        this.eText?.removeEventListener("click", this._onSortClick);
+        this.eIcon?.removeEventListener("click", this._onSortClick);
+    }
+}
 
 function findRawColumn(columns, field) {
     let match = null;
@@ -42,7 +97,9 @@ export const SortMixin = (Base) => class extends Base {
     initSortState() {
         const opts = this.getSortOptions();
         this._sortState = normalizeSortState(opts.state);
+        this._sortBaseline = null;
         if (this.isSortEnabled() && this._sortState.length && Array.isArray(this.sourceData)) {
+            this._sortBaseline = captureSortOrder(this.sourceData, this.options);
             sortTreeInPlace(this.sourceData, this._sortState, this.options);
             if (typeof this.syncVisibleRows === "function") {
                 this.syncVisibleRows();
@@ -102,7 +159,15 @@ export const SortMixin = (Base) => class extends Base {
             return;
         }
         if (this._sortState.length) {
+            if (!this._sortBaseline) {
+                this._sortBaseline = captureSortOrder(this.sourceData, this.options);
+            } else {
+                restoreSortOrder(this.sourceData, this._sortBaseline, this.options);
+            }
             sortTreeInPlace(this.sourceData, this._sortState, this.options);
+        } else if (this._sortBaseline) {
+            restoreSortOrder(this.sourceData, this._sortBaseline, this.options);
+            this._sortBaseline = null;
         }
         if (typeof this.syncVisibleRows === "function") {
             this.syncVisibleRows();
@@ -136,8 +201,10 @@ export const SortMixin = (Base) => class extends Base {
         if (data !== undefined) {
             this.sourceData = data;
             this.options.data = data;
+            this._sortBaseline = null;
         }
         if (this.isSortActive() && Array.isArray(this.sourceData)) {
+            this._sortBaseline = captureSortOrder(this.sourceData, this.options);
             sortTreeInPlace(this.sourceData, this._sortState, this.options);
         }
         super.refresh();
@@ -147,15 +214,27 @@ export const SortMixin = (Base) => class extends Base {
     setRowChildren(rowId, children) {
         let next = children;
         if (this.isSortActive() && Array.isArray(children)) {
+            if (this._sortBaseline) {
+                patchSortOrderChildren(this._sortBaseline, rowId, children, this.options);
+            }
             next = children.slice();
             sortTreeInPlace(next, this._sortState, this.options);
         }
         super.setRowChildren(rowId, next);
     }
 
+    pruneSortBaseline(ids) {
+        const removeSet = new Set((ids || []).map(String).filter(Boolean));
+        if (!this._sortBaseline || !removeSet.size) {
+            return;
+        }
+        pruneSortOrder(this._sortBaseline, removeSet);
+    }
+
     refreshAfterRowReorder(section) {
         if (section !== "summary" && this._sortState?.length) {
             this._sortState = [];
+            this._sortBaseline = null;
             this.emitSortChange();
         }
         super.refreshAfterRowReorder?.(section);
@@ -183,11 +262,28 @@ export const SortMixin = (Base) => class extends Base {
             }
             const sortable = this.isColumnSortable(col.field);
             const headerClass = this.buildSortHeaderClass(col.field, col.headerClass);
+            const useDinextHeader = sortable && !col.headerComponent;
+            const existingParams = col.headerComponentParams;
             return {
                 ...col,
                 sortable: false,
                 headerClass,
-                ...(sortable ? { headerTooltip: col.headerTooltip } : {})
+                ...(sortable
+                    ? {
+                        headerTooltip: col.headerTooltip,
+                        headerComponent: col.headerComponent || DinextSortHeader
+                    }
+                    : {}),
+                ...(useDinextHeader
+                    ? {
+                        headerComponentParams: {
+                            ...(existingParams && typeof existingParams === "object"
+                                ? existingParams
+                                : {}),
+                            onDinextSortClick: (field) => this.cycleColumnSort(field)
+                        }
+                    }
+                    : {})
             };
         });
     }
@@ -230,27 +326,8 @@ export const SortMixin = (Base) => class extends Base {
     }
 
     buildSortGridOptions() {
-        if (!this.isSortEnabled()) {
-            return {};
-        }
-        return {
-            onColumnHeaderClicked: (event) => {
-                const col = event?.column;
-                if (!col || typeof col.getColDef !== "function") {
-                    return; // column group header
-                }
-                const field = col.getColDef()?.field;
-                if (!field || !this.isColumnSortable(field)) {
-                    return;
-                }
-                // Ignore clicks on resize handle / filter button when possible
-                const target = event?.event?.target;
-                if (target?.closest?.(".ag-header-cell-resize, .ag-header-cell-menu-button")) {
-                    return;
-                }
-                this.cycleColumnSort(field);
-            }
-        };
+        // Sort is bound on DinextSortHeader text/icon only — never the full cell.
+        return {};
     }
 
     handleSetOption(key, value) {
@@ -260,13 +337,11 @@ export const SortMixin = (Base) => class extends Base {
             this._sortState = normalizeSortState(opts.state);
             if (this.isSortEnabled()) {
                 this.setGridOption("columnDefs", this.buildColumnDefs());
-                if (this._sortState.length) {
-                    this.applySortToSource();
-                } else {
-                    this.syncSortHeaderClasses();
-                }
+                this.applySortToSource();
+                this.syncSortHeaderClasses();
             } else {
                 this._sortState = [];
+                this.applySortToSource();
                 this.setGridOption("columnDefs", this.buildColumnDefs());
             }
             return true;

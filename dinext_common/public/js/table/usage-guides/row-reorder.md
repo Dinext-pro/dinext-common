@@ -41,6 +41,7 @@ DinextTable.create({
 | Key | Default | Описание |
 |-----|---------|----------|
 | `rowReorder.enabled` | `false` | Reorder contour: gutter DnD + toolbar ↑↓ (preset `rows`) + `nudgeRowReorder` |
+| `rowReorder.toolbarMove` | `true` | Show ↑↓ in preset `rows`; set `false` for tree UIs that only need gutter DnD |
 | `rowReorder.handle` | `"gutter"` | `"gutter"` (v1). `"column"` — зарезервировано |
 | `rowReorder.gutterWidth` | `12` | Ширина hit-zone слева (px) |
 | `rowReorder.allowSummary` | `false` | Reorder pinned summary |

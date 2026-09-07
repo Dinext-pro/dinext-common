@@ -123,6 +123,8 @@ summary: {
 
 Ядро вешает `dinext-table-row--summary` на pinned summary-строки. Стили — в `dinext-table.css`; можно дополнить через `gridOptions.getRowClass` (ядро склеивает с user callback).
 
+Горизонтальное выравнивание summary **по центру** по умолчанию (в т.ч. поверх column `align-right` / number presets). Body-колонки не меняются.
+
 ---
 
 ## Чеклист клиента

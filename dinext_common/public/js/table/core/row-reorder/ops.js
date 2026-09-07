@@ -277,7 +277,7 @@ export function resolveDropPosition(offsetY, height, allowInside) {
  * `toIndex` is always the pre-removal insert index in the destination list
  * (same convention as {@link computeNudgeToIndex} / {@link reorderSiblingBlock}).
  *
- * @returns {null|{
+ * @returns {null|{ noop: true }|{
  *   position: string,
  *   targetRowId: string,
  *   fromParentRowId: string|null,
@@ -366,7 +366,7 @@ export function resolveDropTarget({
     if (sameParent
         && toIndex >= dragCtx.index
         && toIndex <= dragCtx.index + dragCtx.blockSize) {
-        return null;
+        return { noop: true };
     }
 
     const localId = String(dragCtx.rowId).split(":").pop();

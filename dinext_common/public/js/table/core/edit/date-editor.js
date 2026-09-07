@@ -42,7 +42,16 @@ export class DateCellEditor {
 
 /** valueParser for paste / typed edit → ISO string or null. */
 export function dateValueParser(params) {
-	return parseDateValue(params.newValue);
+	const raw = params.newValue;
+	if (raw == null || raw === "") {
+		return null;
+	}
+	const iso = parseDateValue(raw);
+	if (iso) {
+		return iso;
+	}
+	// Unparseable non-empty paste must not wipe the cell.
+	return params.oldValue === undefined ? null : params.oldValue;
 }
 
 /** valueFormatter for display (ISO → locale when frappe available). */

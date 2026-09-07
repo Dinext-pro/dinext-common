@@ -66,29 +66,33 @@ export function formatSelectionStatusNumber(value) {
     return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
+function translateStatusLabel(src) {
+    return typeof __ === "function" ? __(src) : src;
+}
+
 export function formatSelectionStatusText(stats, metrics = SELECTION_STATUS_DEFAULTS.metrics) {
     const parts = [];
 
     for (const metric of metrics) {
         if (metric === "count") {
-            parts.push(`${METRIC_LABELS.count}: ${stats.cellCount}`);
+            parts.push(`${translateStatusLabel(METRIC_LABELS.count)}: ${stats.cellCount}`);
             continue;
         }
         if (metric === "numericCount") {
-            parts.push(`${METRIC_LABELS.numericCount}: ${stats.numericCount}`);
+            parts.push(`${translateStatusLabel(METRIC_LABELS.numericCount)}: ${stats.numericCount}`);
             continue;
         }
         if (stats.numericCount === 0) {
             continue;
         }
         if (metric === "sum") {
-            parts.push(`${METRIC_LABELS.sum}: ${formatSelectionStatusNumber(stats.sum)}`);
+            parts.push(`${translateStatusLabel(METRIC_LABELS.sum)}: ${formatSelectionStatusNumber(stats.sum)}`);
         } else if (metric === "average") {
-            parts.push(`${METRIC_LABELS.average}: ${formatSelectionStatusNumber(stats.average)}`);
+            parts.push(`${translateStatusLabel(METRIC_LABELS.average)}: ${formatSelectionStatusNumber(stats.average)}`);
         } else if (metric === "min") {
-            parts.push(`${METRIC_LABELS.min}: ${formatSelectionStatusNumber(stats.min)}`);
+            parts.push(`${translateStatusLabel(METRIC_LABELS.min)}: ${formatSelectionStatusNumber(stats.min)}`);
         } else if (metric === "max") {
-            parts.push(`${METRIC_LABELS.max}: ${formatSelectionStatusNumber(stats.max)}`);
+            parts.push(`${translateStatusLabel(METRIC_LABELS.max)}: ${formatSelectionStatusNumber(stats.max)}`);
         }
     }
 

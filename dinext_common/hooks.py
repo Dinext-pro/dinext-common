@@ -46,24 +46,29 @@ fixtures = [
         "filters": [
             ["module", "in", ["Dinext Common"]]
         ]
+    },
+    {
+        "doctype": "Custom HTML Block",
+        "filters": [
+            ["name", "in", ["Dinext Hub", "Dinext Settings Hub"]]
+        ]
     }
 ]
 ''' '''
 # Apps
 # ------------------
 
-# required_apps = []
+required_apps = ["erpnext"]
 
 # Each item in the list will be shown as an app in the apps page
-# add_to_apps_screen = [
-# 	{
-# 		"name": "dinext_common",
-# 		"logo": "/assets/dinext_common/logo.png",
-# 		"title": "Dinext Common",
-# 		"route": "/dinext_common",
-# 		"has_permission": "dinext_common.api.permission.has_app_permission"
-# 	}
-# ]
+add_to_apps_screen = [
+	{
+		"name": "dinext_common",
+		"logo": "/assets/dinext_common/images/DI_SQ_NBG.png",
+		"title": "Dinext",
+		"route": "/app/dinext",
+	}
+]
 
 # Includes in <head>
 # ------------------
@@ -72,17 +77,22 @@ fixtures = [
 app_include_css = [
     "/assets/dinext_common/css/common.css",
     "/assets/dinext_common/css/workspace_sidebar_hover.css",
+    "/assets/dinext_common/css/dinext-tour.css?v=cutout-animate-1",
 ]
 app_include_js = [
+    "/assets/dinext_common/js/workspace_slug_redirects.js",
     "/assets/dinext_common/js/breadcrumbs_update.js",
     "/assets/dinext_common/js/listview_resize.js",
-    "/assets/dinext_common/js/dinext-desk.js",
+    "/assets/dinext_common/js/dinext-tour.js?v=cutout-target-1",
+    "/assets/dinext_common/js/dinext-desk.js?v=ui-tour-1",
     "/assets/dinext_common/js/dashboard_filters_fix.js",
     "/assets/dinext_common/js/workspace_sidebar_hover.js",
 ]
 
 # Expose site_config flags to Desk bootinfo
 extend_bootinfo = ["dinext_common.boot.extend_bootinfo"]
+boot_session = ["dinext_common.apps.configure_boot_app_filter"]
+update_website_context = ["dinext_common.apps.update_website_context"]
 
 # include js, css files in header of web template
 # web_include_css = "/assets/dinext_common/css/common.css"
@@ -139,7 +149,12 @@ doctype_js = {"Project" : "public/js/sticky-datatable.js"}
 # ------------
 
 # before_install = "dinext_common.install.before_install"
-# after_install = "dinext_common.install.after_install"
+after_install = "dinext_common.install.after_install"
+after_migrate = [
+	"dinext_common.changelog_feed.on_after_migrate",
+	"dinext_common.setup.workspace.configure_workspace_menu",
+	"dinext_common.apps.ensure_default_apps",
+]
 
 # Uninstallation
 # ------------
@@ -177,50 +192,45 @@ doctype_js = {"Project" : "public/js/sticky-datatable.js"}
 # 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
 # }
 #
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+has_permission = {
+	"Dinext Workspace Settings": (
+		"dinext_common.dinext_common.doctype.dinext_workspace_settings"
+		".dinext_workspace_settings.has_permission"
+	),
+}
 
 # DocType Class
 # ---------------
 # Override standard doctype classes
 
-# override_doctype_class = {
-# 	"ToDo": "custom_app.overrides.CustomToDo"
-# }
+override_doctype_class = {
+	"Company": "dinext_common.setup.company.DinextCompany",
+}
 
 # Document Events
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"User": {
+		"after_insert": [
+			"dinext_common.setup.workspace.set_default_workspace_for_new_user",
+			"dinext_common.apps.set_default_app_for_new_user",
+		],
+	},
+}
 
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"dinext_common.tasks.all"
-# 	],
-# 	"daily": [
-# 		"dinext_common.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"dinext_common.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"dinext_common.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"dinext_common.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"daily": [
+		"dinext_common.changelog_feed.sync_dinext_news_feed",
+	],
+}
+
+# What's New consumer (publisher lives on docs / configured site)
+get_changelog_feed = "dinext_common.changelog_feed.get_feed"
 
 # Testing
 # -------
@@ -230,9 +240,16 @@ doctype_js = {"Project" : "public/js/sticky-datatable.js"}
 # Overriding Methods
 # ------------------------------
 #
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "dinext_common.event.get_events"
-# }
+override_whitelisted_methods = {
+	"frappe.apps.get_apps": "dinext_common.apps.get_apps",
+	"erpnext.accounts.doctype.account.chart_of_accounts.chart_of_accounts.get_charts_for_country": (
+		"dinext_common.setup.chart_of_accounts.get_charts_for_country"
+	),
+	"erpnext.accounts.utils.get_coa": "dinext_common.setup.chart_of_accounts.get_coa",
+	"frappe.desk.desktop.get_workspace_sidebar_items": (
+		"dinext_common.setup.workspace.get_workspace_sidebar_items"
+	),
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,

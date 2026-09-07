@@ -4,6 +4,27 @@
  * (applyTransaction vs pinnedBottomRowData resync).
  */
 
+/**
+ * `applyTransaction.addIndex` is AG Grid `_leafs` / `sourceRowIndex`.
+ * `rowIndex` is packed display index after external filter — wrong insert slot.
+ * @param {{ sourceRowIndex?: number, rowIndex?: number } | null | undefined} parentNode
+ * @param {number} [insertOffset]
+ * @returns {number | undefined}
+ */
+export function resolveTreeChildAddIndex(parentNode, insertOffset = 1) {
+    if (!parentNode) {
+        return undefined;
+    }
+    const sourceIndex = parentNode.sourceRowIndex;
+    const base = typeof sourceIndex === "number" && sourceIndex >= 0
+        ? sourceIndex
+        : parentNode.rowIndex;
+    if (typeof base !== "number" || base < 0) {
+        return undefined;
+    }
+    return base + insertOffset;
+}
+
 export function clearExpandedDescendantIds(expandedIds, rowId) {
     rowId = String(rowId);
     const prefix = `${rowId}:`;
@@ -45,7 +66,7 @@ export async function expandTreeRow(table, rowId, ctx) {
         try {
             await table.options.onExpandRow({
                 rowId,
-                row: table.findSourceRow(rowId),
+                row: table.findTreeSourceRow?.(rowId) || table.findSourceRow(rowId),
                 table,
                 ...(ctx.expandCallbackExtra || {})
             });

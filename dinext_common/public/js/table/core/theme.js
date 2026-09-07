@@ -42,6 +42,24 @@ function resolveCssColor(value) {
 	return resolved && resolved !== "rgba(0, 0, 0, 0)" ? resolved : str;
 }
 
+/**
+ * Quartz defaults to "IBM Plex Sans" (not shipped). Desk uses Inter via `--font-stack`.
+ * Resolve a concrete family string for theme API (vars often ignored in withParams).
+ */
+function resolveDeskFontFamily(override) {
+	if (override != null && String(override).trim()) {
+		return String(override).trim();
+	}
+	const root = document.documentElement;
+	const fromStack = getComputedStyle(root).getPropertyValue("--font-stack")?.trim();
+	if (fromStack) {
+		return fromStack;
+	}
+	const body = document.body;
+	const fromBody = body ? getComputedStyle(body).fontFamily : "";
+	return fromBody?.trim() || undefined;
+}
+
 function resolveHeaderColumnBorderOn(themeOpts) {
 	
 	if (themeOpts.headerColumnBorder !== undefined) {
@@ -102,6 +120,7 @@ function applyBorderOffCssVars(container, themeOpts) {
 
 	container.classList.toggle("dinext-table--no-row-borders", rowOff);
 	container.classList.toggle("dinext-table--no-column-borders", columnOff);
+	container.classList.toggle("dinext-table--no-pinned-column-borders", pinnedColumnOff);
 }
 
 export const ThemeMixin = (Base) => class extends Base {
@@ -131,6 +150,7 @@ export const ThemeMixin = (Base) => class extends Base {
 		const columnBorder = themeOpts.columnBorder !== false;
 		const radius = resolveThemeRadius(themeOpts);
 
+		const fontFamily = resolveDeskFontFamily(themeOpts.fontFamily);
 		const params = {
 			backgroundColor: resolveCssColor("var(--card-bg)"),
 			foregroundColor: resolveCssColor("var(--text-color)"),
@@ -149,6 +169,9 @@ export const ThemeMixin = (Base) => class extends Base {
 				?? themeOpts.borderRadius
 				?? radius,
 		};
+		if (fontFamily) {
+			params.fontFamily = fontFamily;
+		}
 
 		for (const key of [ "rowBorder", "headerRowBorder", "wrapperBorder", "pinnedColumnBorder", "pinnedRowBorder"]) {
 			if (themeOpts[key] !== undefined) {
@@ -179,8 +202,14 @@ export const ThemeMixin = (Base) => class extends Base {
 	syncThemeCssVars() {
 		const themeOpts = this.options.theme || {};
 		const radius = resolveThemeRadius(themeOpts);
+		const fontFamily = resolveDeskFontFamily(themeOpts.fontFamily);
 
 		this.container.style.setProperty("--dinext-table-radius", cssLength(radius));
+		if (fontFamily) {
+			this.container.style.setProperty("--ag-font-family", fontFamily);
+		} else {
+			this.container.style.removeProperty("--ag-font-family");
+		}
 
 		if (themeOpts.cellHorizontalPadding != null) {
 			this.container.style.setProperty("--ag-cell-horizontal-padding", cssLength(themeOpts.cellHorizontalPadding));
@@ -215,6 +244,11 @@ export const ThemeMixin = (Base) => class extends Base {
 		host.style.setProperty("--ag-header-foreground-color", fg);
 		host.style.setProperty("--ag-header-background-color", headerBg);
 		host.style.setProperty("--ag-border-color", border);
+
+		const fontFamily = resolveDeskFontFamily(this.options.theme?.fontFamily);
+		if (fontFamily) {
+			host.style.setProperty("--ag-font-family", fontFamily);
+		}
 	}
 
 	watchTheme() {
