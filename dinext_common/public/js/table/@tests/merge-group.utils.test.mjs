@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+    asStandaloneMergeGroupRow,
     getMergeGroupMeta,
     getMergeGroupChildInsertOffset,
     isMergeGroupHead,
@@ -18,6 +19,18 @@ test("getMergeGroupMeta returns null when size < 2", () => {
 test("getMergeGroupMeta parses valid merge group row", () => {
     const row = makeMergeHead("1", 2);
     assert.deepEqual(getMergeGroupMeta(row), { id: "g-1", index: 0, size: 2 });
+});
+
+test("standalone merge projection preserves source fields but disables display merge", () => {
+    const source = makeMergeHead("1", 2);
+    const projected = asStandaloneMergeGroupRow(source);
+
+    assert.notEqual(projected, source);
+    assert.equal(projected.mergeGroupId, source.mergeGroupId);
+    assert.equal(projected.mergeGroupIndex, source.mergeGroupIndex);
+    assert.equal(projected.mergeGroupSize, source.mergeGroupSize);
+    assert.equal(getMergeGroupMeta(projected), null);
+    assert.deepEqual(getMergeGroupMeta(source), { id: "g-1", index: 0, size: 2 });
 });
 
 test("getMergeGroupChildInsertOffset inserts after tail for merge head", () => {

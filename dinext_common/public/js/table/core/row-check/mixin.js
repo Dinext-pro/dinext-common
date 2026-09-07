@@ -1,6 +1,7 @@
 import { createMergeGroupSpanRows } from "../shared/utils.js";
 import { TABLE_SECTIONS } from "../section/sections.js";
 import { TOOLBAR_ICON_SVG } from "../toolbar/icons.js";
+import { ROW_REORDER_COL_ID } from "../row-reorder/constants.js";
 import { ROW_CHECK_COL_ID, ROW_CHECK_SOURCES, ROW_CHECK_UNITS } from "./constants.js";
 import { remapPathIdsForBlockMove } from "../row-reorder/ops.js";
 import {
@@ -74,15 +75,18 @@ class RowCheckCellRenderer {
     sync(params) {
         const table = this.table;
         const row = params?.data;
-        if (!table?.isRowCheckable?.(row)) {
+        const checkable = !!table?.isRowCheckable?.(row);
+
+        if (!checkable) {
             this.eGui.replaceChildren();
             this.input = null;
+            this._boundRowId = null;
             return;
         }
-        const rowId = getStableRowId(row, table.options);
+
+        const rowId = table.getRowCheckId(row);
         const checked = table.isRowChecked(rowId);
         if (!this.input) {
-            this.eGui.replaceChildren();
             this.input = createCheckboxInput({
                 checked,
                 onChange: (value) => table.toggleRowCheck(rowId, value)
@@ -92,7 +96,7 @@ class RowCheckCellRenderer {
             return;
         }
         if (this._boundRowId !== rowId) {
-            this.eGui.replaceChildren();
+            this.input.remove();
             this.input = createCheckboxInput({
                 checked,
                 onChange: (value) => table.toggleRowCheck(rowId, value)
@@ -158,7 +162,7 @@ export const RowCheckMixin = (Base) => class extends Base {
         return [{
             id: "select-all-rows",
             title: ({ table }) => (
-                getState(table) === "checked" ? "Clear selection" : "Select all rows"
+                getState(table) === "checked" ? __("Clear selection") : __("Select all rows")
             ),
             iconSvg: ({ table }) => (
                 getState(table) === "checked"
@@ -184,6 +188,17 @@ export const RowCheckMixin = (Base) => class extends Base {
         };
     }
 
+    getRowCheckId(row) {
+        const rowId = getStableRowId(row, this.options);
+        if (
+            this.getRowCheckUnit() === ROW_CHECK_UNITS.MERGE_HEAD
+            && typeof this.resolveProjectedSourceRowId === "function"
+        ) {
+            return this.resolveProjectedSourceRowId(rowId, { includeLeaf: true });
+        }
+        return rowId;
+    }
+
     isRowCheckable(row) {
         if (!this.isRowCheckEnabled() || !row) {
             return false;
@@ -195,7 +210,7 @@ export const RowCheckMixin = (Base) => class extends Base {
         if (typeof canCheckRow !== "function") {
             return true;
         }
-        const rowId = getStableRowId(row, this.options);
+        const rowId = this.getRowCheckId(row);
         const section = row._section === TABLE_SECTIONS.SUMMARY
             ? TABLE_SECTIONS.SUMMARY
             : TABLE_SECTIONS.BODY;
@@ -228,7 +243,7 @@ export const RowCheckMixin = (Base) => class extends Base {
     isRowChecked(rowOrId) {
         const id = typeof rowOrId === "string" || typeof rowOrId === "number"
             ? String(rowOrId)
-            : getStableRowId(rowOrId, this.options);
+            : this.getRowCheckId(rowOrId);
         return this._checkedRowIds.has(id);
     }
 
@@ -441,7 +456,19 @@ export const RowCheckMixin = (Base) => class extends Base {
             return false;
         });
 
-        return [this.buildRowCheckColumnDef(), ...filtered];
+        const checkCol = this.buildRowCheckColumnDef();
+        // Keep order: [rowReorder?, rowCheck, ...domain] — handle never inside checkbox.
+        const reorderIdx = filtered.findIndex(
+            (col) => (col.colId || col.field) === ROW_REORDER_COL_ID
+        );
+        if (reorderIdx >= 0) {
+            return [
+                ...filtered.slice(0, reorderIdx + 1),
+                checkCol,
+                ...filtered.slice(reorderIdx + 1)
+            ];
+        }
+        return [checkCol, ...filtered];
     }
 
     buildRowCheckColumnDef() {
@@ -593,6 +620,18 @@ export const RowCheckMixin = (Base) => class extends Base {
 
         if (this.options.onValidateDeleteRows?.(ctx) === false) {
             return false;
+        }
+
+        if (typeof this.options.onBeforeDeleteRows === "function") {
+            try {
+                const beforeOk = await Promise.resolve(this.options.onBeforeDeleteRows(ctx));
+                if (beforeOk === false) {
+                    return false;
+                }
+            } catch (err) {
+                console.error("DinextTable: onBeforeDeleteRows failed", err);
+                return false;
+            }
         }
 
         const allowSummary = !!this.getRowCheckOptions().allowSummary;

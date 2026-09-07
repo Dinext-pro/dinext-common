@@ -1,3 +1,4 @@
+import { isEditorArrowNavTarget } from "../edit/keyboard.js";
 import { matchKeyboardShortcut, queryAgCellElement } from "../shared/utils.js";
 
 const SELECTION_DEFAULTS = {
@@ -406,7 +407,7 @@ export const SelectionMixin = (Base) => class extends Base {
             this._isExtending = false;
             return;
         }
-        if (this.api?.getEditingCells()?.length) {
+        if (this.api?.getEditingCells()?.length || isEditorArrowNavTarget(domEvent.target)) {
             return;
         }
         if (!event.node?.data || !event.column) {

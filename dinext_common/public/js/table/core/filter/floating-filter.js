@@ -39,7 +39,7 @@ export class DinextTextFloatingFilter {
         const headerName = params?.column?.getColDef?.()?.headerName;
         this.input.setAttribute(
             "aria-label",
-            headerName ? `Filter ${headerName}` : "Filter column"
+            headerName ? __("Filter {0}", [headerName]) : __("Filter column")
         );
         // Empty placeholder keeps :placeholder-shown for hover lupa CSS.
         this.input.placeholder = " ";

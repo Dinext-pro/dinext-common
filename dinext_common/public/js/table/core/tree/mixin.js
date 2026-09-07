@@ -2,7 +2,8 @@ import {
     getChildrenField,
     getMergeGroupChildInsertOffset,
     getMergeGroupMeta,
-    getRowIdField
+    getRowIdField,
+    getTreeSourceRowId
 } from "../shared/utils.js";
 import {
     collectExpandableRowIds,
@@ -12,12 +13,14 @@ import {
     resolveTreeColumnField,
     rowIsExpandable,
     toVisibleRows,
-    treeHasExpandable
+    treeHasExpandable,
+    walkLeafColumns
 } from "./model.js";
 import {
     clearExpandedDescendantIds,
     collapseTreeRow,
-    expandTreeRow
+    expandTreeRow,
+    resolveTreeChildAddIndex
 } from "./expand.js";
 
 const TREE_INDENT_PX = 20;
@@ -41,14 +44,22 @@ function mountCellContent(contentEl, params, renderFn) {
 /**
  * When to remount tree cell body (not chevron).
  * Core: `_rowId` + column `value` only — no domain fields.
- * Finer key (avatar URL etc.): см. todo/README.md → treeContentKey.
+ * Domain extras: column `treeContentKey(params) => string` (e.g. dep flags).
  */
-function treeContentStableKey(params) {
+function treeContentStableKey(params, contentKeyFn) {
 	const data = params?.data || {};
-	return `${data._rowId ?? ""}\0${params?.value ?? ""}`;
+	const base = `${data._rowId ?? ""}\0${params?.value ?? ""}`;
+	if (typeof contentKeyFn !== "function") {
+		return base;
+	}
+	const extra = contentKeyFn(params);
+	if (extra == null || extra === "") {
+		return base;
+	}
+	return `${base}\0${extra}`;
 }
 
-function createTreeCellRenderer(renderFn) {
+function createTreeCellRenderer(renderFn, contentKeyFn) {
     return class TreeComposedCellRenderer {
         init(params) {
             this.params = params;
@@ -91,13 +102,9 @@ function createTreeCellRenderer(renderFn) {
                 toggle.appendChild(chevron);
                 toggle.onclick = this.onChevronClick;
                 this.leadEl.appendChild(toggle);
-                return;
             }
-
-            const spacer = document.createElement("span");
-            spacer.className = "dinext-table-tree-spacer";
-            spacer.setAttribute("aria-hidden", "true");
-            this.leadEl.appendChild(spacer);
+            // Leaf / no children: leave lead empty. CSS :empty drops the slot so
+            // content starts at the chevron X (no reserved gutter).
         }
 
         render(params, { remountContent } = { remountContent: true }) {
@@ -114,12 +121,12 @@ function createTreeCellRenderer(renderFn) {
             this.renderLead(params);
             if (remountContent) {
                 mountCellContent(this.contentEl, params, renderFn);
-                this.contentKey = treeContentStableKey(params);
+                this.contentKey = treeContentStableKey(params, contentKeyFn);
             }
         }
 
         refresh(params) {
-            const nextKey = treeContentStableKey(params);
+            const nextKey = treeContentStableKey(params, contentKeyFn);
             this.render(params, { remountContent: nextKey !== this.contentKey });
             return true;
         }
@@ -137,10 +144,45 @@ export const TreeMixin = (Base) => class extends Base {
     }
 
     buildColumnDefs() {
-        if (!this.hasNestedRows() || !this.columns.length) {
+        if (!this.columns.length) {
+            return super.buildColumnDefs();
+        }
+        this.warnIgnoredTreeContent(this.getTreeColumnField());
+        // Remembered so refresh() can rebuild colDefs on flat <-> nested flips;
+        // with domain render on the tree column both shapes yield the same defs.
+        this._treeColumnDefsApplied = this.needsTreeColumnDefs();
+        if (!this._treeColumnDefsApplied) {
             return super.buildColumnDefs();
         }
         return this.buildTreeColumnDefs();
+    }
+
+    needsTreeColumnDefs() {
+        return this.hasNestedRows() || this.treeColumnDeclaresContent();
+    }
+
+    /**
+     * Domain `render` / `treeContentKey` on the tree column is a column contract,
+     * not a data-shape one: compose the tree renderer even when no row has children
+     * (chevron/indent stay hidden — see renderLead / `_level`).
+     */
+    treeColumnDeclaresContent() {
+        const rawCol = findRawColumnByField(this.columns, this.getTreeColumnField());
+        if (!rawCol || rawCol.tree === false) {
+            return false;
+        }
+        return typeof rawCol.render === "function"
+            || typeof rawCol.treeContentKey === "function";
+    }
+
+    refresh(data) {
+        super.refresh(data);
+        if (
+            this._treeColumnDefsApplied !== undefined
+            && this._treeColumnDefsApplied !== this.needsTreeColumnDefs()
+        ) {
+            this.setGridOption("columnDefs", this.buildColumnDefs());
+        }
     }
 
     initTreeState() {
@@ -167,8 +209,31 @@ export const TreeMixin = (Base) => class extends Base {
         this.rowData = toVisibleRows(this.sourceData, this.expandedIds, this.options);
     }
 
+    resolveProjectedSourceRowId(rowId, { includeLeaf = false } = {}) {
+        const displayParts = String(rowId).split(":");
+        const sourceParts = [...displayParts];
+        const limit = includeLeaf ? displayParts.length : Math.max(displayParts.length - 1, 0);
+        for (let index = 0; index < limit; index++) {
+            const displayPath = displayParts.slice(0, index + 1).join(":");
+            const visibleRow = (this.rowData || []).find(
+                (row) => String(row?._rowId) === displayPath
+            );
+            const sourceLocalId = getTreeSourceRowId(visibleRow);
+            if (sourceLocalId != null) {
+                sourceParts[index] = sourceLocalId;
+            }
+        }
+        return sourceParts.join(":");
+    }
+
     findSourceRow(rowId) {
-        return findSourceRowInData(this.sourceData, rowId, this.options);
+        const sourceRowId = this.resolveProjectedSourceRowId(rowId);
+        return findSourceRowInData(this.sourceData, sourceRowId, this.options);
+    }
+
+    findTreeSourceRow(rowId) {
+        const sourceRowId = this.resolveProjectedSourceRowId(rowId, { includeLeaf: true });
+        return findSourceRowInData(this.sourceData, sourceRowId, this.options);
     }
 
     isRowExpanded(rowId) {
@@ -176,7 +241,7 @@ export const TreeMixin = (Base) => class extends Base {
     }
 
     getSourceChildren(rowId) {
-        const row = this.findSourceRow(rowId);
+        const row = this.findTreeSourceRow(rowId);
         if (!row) {
             return [];
         }
@@ -227,7 +292,7 @@ export const TreeMixin = (Base) => class extends Base {
 
     setRowChildren(rowId, children) {
         rowId = String(rowId);
-        const row = this.findSourceRow(rowId);
+        const row = this.findTreeSourceRow(rowId);
         if (!row) return;
         
         const childrenField = this.getChildrenField();
@@ -248,7 +313,7 @@ export const TreeMixin = (Base) => class extends Base {
     }
 
     insertVisibleChildren(rowId) {
-        const parentRow = this.findSourceRow(rowId);
+        const parentRow = this.findTreeSourceRow(rowId);
         if (!parentRow) return;
 
         const parentLevel = this.getRowLevel(rowId);
@@ -263,7 +328,7 @@ export const TreeMixin = (Base) => class extends Base {
 
         const parentNode = this.api?.getRowNode(rowId);
         const insertOffset = getMergeGroupChildInsertOffset(parentRow, this.options);
-        const addIndex = parentNode ? parentNode.rowIndex + insertOffset : undefined;
+        const addIndex = resolveTreeChildAddIndex(parentNode, insertOffset);
         this.api.applyTransaction({ add: childRows, addIndex });
         this.syncRowDataFromGrid();
     }
@@ -312,9 +377,31 @@ export const TreeMixin = (Base) => class extends Base {
 
             return {
                 ...col,
-                cellRenderer: createTreeCellRenderer(rawCol.render)
+                cellRenderer: createTreeCellRenderer(
+                    rawCol.render,
+                    rawCol.treeContentKey
+                )
             };
         });
+    }
+
+    /** `render` / `treeContentKey` are honoured on the tree column only; normalizeColumn drops them silently elsewhere. */
+    warnIgnoredTreeContent(treeField) {
+        if (this._treeRenderWarned) return;
+        const ignored = [];
+        walkLeafColumns(this.columns, (col) => {
+            const declares = typeof col.render === "function"
+                || typeof col.treeContentKey === "function";
+            const applied = col.field === treeField && col.tree !== false;
+            if (declares && !applied) {
+                ignored.push(col.field);
+            }
+        });
+        if (!ignored.length) return;
+        this._treeRenderWarned = true;
+        console.warn(
+            `DinextTable: render/treeContentKey on non-tree column(s) ${ignored.map((f) => `"${f}"`).join(", ")} are ignored (tree column: ${treeField ? `"${treeField}"` : "none"})`
+        );
     }
 
     buildTreeColumnDefs() {

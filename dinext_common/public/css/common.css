@@ -6,3 +6,9 @@
 .page-form .multiselect-list.dropdown {
 	width: 100%;
 }
+
+/* Keep notification dropdown tabs (Уведомления / События / Новости) on one row */
+.notifications-list .notification-item-tabs .notifications-category {
+	white-space: nowrap;
+	margin-right: var(--margin-md);
+}

@@ -40,3 +40,40 @@ class TestBootWorkspaceSidebarFlag(unittest.TestCase):
 			mock_frappe.conf.get.return_value = 0
 			extend_bootinfo(bootinfo)
 			self.assertFalse(bootinfo.dinext_workspace_sidebar_hover_expand)
+
+	def test_extend_bootinfo_preserves_changelog_feed(self):
+		from dinext_common.boot import extend_bootinfo
+
+		bootinfo = MagicMock()
+		bootinfo.changelog_feed = [
+			{
+				"title": "A",
+				"app_name": "dinext_projects",
+				"link": "https://docs.dinext.ru/a",
+				"posting_timestamp": "2026-08-01 00:00:00",
+			}
+		]
+		with patch("dinext_common.boot.frappe") as mock_frappe:
+			mock_frappe.conf.get.return_value = 1
+			extend_bootinfo(bootinfo)
+			self.assertEqual(len(bootinfo.changelog_feed), 1)
+			self.assertEqual(bootinfo.changelog_feed[0]["app_name"], "dinext_projects")
+
+	def test_extend_bootinfo_omits_home_keeps_dinext(self):
+		from dinext_common.boot import extend_bootinfo
+
+		bootinfo = MagicMock()
+		bootinfo.allowed_workspaces = [
+			{"name": "Home", "title": "Home"},
+			{"name": "Dinext", "title": "Dinext"},
+			{"name": "Settings", "title": "Settings"},
+		]
+		with patch("dinext_common.boot.frappe") as mock_frappe:
+			mock_frappe.conf.get.return_value = 1
+			extend_bootinfo(bootinfo)
+
+		names = {page["name"] for page in bootinfo.allowed_workspaces}
+		self.assertNotIn("Home", names)
+		self.assertIn("Dinext", names)
+		self.assertIn("Settings", names)
+

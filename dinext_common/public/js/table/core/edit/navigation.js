@@ -1,3 +1,5 @@
+import { columnsAllowEdit } from "./click-when-active.js";
+
 const NAVIGATION_DEFAULTS = {
     skipNonEditable: true,
     enterMovesDown: true,
@@ -5,18 +7,6 @@ const NAVIGATION_DEFAULTS = {
     isRowNavigable: () => true,
     isCellNavigable: () => true
 };
-
-/** True when any leaf column opts into edit (global `edit: false` + per-column edit). */
-function columnsAllowEdit(columns) {
-    for (const col of columns || []) {
-        if (Array.isArray(col.children) && col.children.length) {
-            if (columnsAllowEdit(col.children)) return true;
-            continue;
-        }
-        if (col.edit !== undefined && col.edit !== false) return true;
-    }
-    return false;
-}
 
 export const NavigationMixin = (Base) => class extends Base {
     /**

@@ -84,3 +84,27 @@ onSaveCells: async ({ source, changes }) => {
     if (res.exc) return false;
 }
 ```
+
+---
+
+## Server side-effects (другие строки)
+
+`onSaveCells` коммитит **только** `changes` из UI. Если сервер дописал другие строки
+(каскад дат родителя, rollup, …), верни их в ответе и примени через:
+
+```js
+table.applyExternalCellValues([
+    { id: "TASK-PARENT", field: "exp_end_date", value: "2026-08-20" },
+    // или tree path: { rowId: "ROOT:TASK-PARENT", field: "exp_end_date", value: "…" }
+]);
+```
+
+Это тот же путь, что у обычного commit: **grid copy + `sourceData`**, без
+`onValidateCells` / повторного `onSaveCells`.
+
+Нельзя:
+
+- ❌ писать только `node.data` / `refreshCells` — tree grid-строка это **копия**
+  (`makeVisibleRow` spread); `sourceData` останется stale и перетрёт UI при
+  следующем flatten/refresh
+- ❌ звать `commitCellChanges` для side-effect — снова уйдёт в `onSaveCells`

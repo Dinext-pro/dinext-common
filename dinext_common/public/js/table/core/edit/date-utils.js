@@ -1,9 +1,35 @@
 /**
  * ISO date helpers for column type `date` (YYYY-MM-DD strings).
  * Storage contract: string | null — not JS Date (Frappe / fill / paste friendly).
+ *
+ * Clipboard copies `valueFormatter` output (`frappe.format` Date → user date_format).
+ * Default/common Frappe format is `dd-mm-yyyy` — must parse back to ISO.
  */
 
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD, optional time after T or space. */
+const YMD_RE = /^(\d{4})[./-](\d{1,2})[./-](\d{1,2})(?:[T\s].*)?$/;
+
+/** DD.MM.YYYY / DD/MM/YYYY / DD-MM-YYYY (Frappe user formats). */
+const DMY_RE = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/;
+
+function fromFrappeUserDate(s) {
+	const userToStr = globalThis.frappe?.datetime?.user_to_str;
+	if (typeof userToStr !== "function") {
+		return null;
+	}
+	try {
+		const converted = userToStr(s);
+		if (!converted || converted === "Invalid date") {
+			return null;
+		}
+		const iso = String(converted).trim().slice(0, 10);
+		return ISO_DATE_RE.test(iso) ? iso : null;
+	} catch (_e) {
+		return null;
+	}
+}
 
 /** @returns {string | null} */
 export function toIsoDateString(value) {
@@ -20,20 +46,15 @@ export function toIsoDateString(value) {
 	if (!s) {
 		return null;
 	}
-	if (s.includes("T")) {
-		return s.slice(0, 10);
+	const ymd = s.match(YMD_RE);
+	if (ymd) {
+		return `${ymd[1]}-${ymd[2].padStart(2, "0")}-${ymd[3].padStart(2, "0")}`;
 	}
-	// DD.MM.YYYY or DD/MM/YYYY (common paste)
-	const dmy = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
+	const dmy = s.match(DMY_RE);
 	if (dmy) {
-		const dd = dmy[1].padStart(2, "0");
-		const mm = dmy[2].padStart(2, "0");
-		return `${dmy[3]}-${mm}-${dd}`;
+		return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
 	}
-	if (ISO_DATE_RE.test(s)) {
-		return s;
-	}
-	return null;
+	return fromFrappeUserDate(s);
 }
 
 /** @returns {string | null} */
