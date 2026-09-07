@@ -11,6 +11,10 @@
     --dinext-table-selection-bg: color-mix(in srgb, var(--dinext-table-accent) 16%, transparent);
     --dinext-table-fill-preview-bg: color-mix(in srgb, var(--dinext-table-accent) 10%, transparent);
     --dinext-table-readonly-focus: color-mix(in srgb, var(--text-color) 38%, transparent);
+    --dinext-table-col-hover-bg: color-mix(in srgb, var(--dinext-table-accent) 10%, transparent);
+    --dinext-table-filter-row-height: 28px;
+    /* Cell change flash (enableCellChangeFlash) — softer than AG default 0.5 */
+    --ag-value-change-value-highlight-background-color: rgba(22, 160, 133, 0.1);
 }
 
 /*
@@ -31,6 +35,8 @@
     --ag-border-color: color-mix(in srgb, var(--text-color) 10%, transparent);
     --ag-row-border-color: color-mix(in srgb, var(--text-color) 10%, transparent);
     --ag-modal-overlay-background-color: color-mix(in srgb, var(--bg-color, var(--card-bg)) 66%, transparent);
+    /* Quartz default IBM Plex Sans is not shipped; follow Desk Inter stack. */
+    --ag-font-family: var(--font-stack, inherit);
 }
 
 .dinext-table .ag-root-wrapper {
@@ -66,38 +72,123 @@
 }
 
 /* --- sort layer (custom; AG sortable stays false) --- */
+/* Two boxes in one nowrap row: title + triangle. Centered in the header cell.
+ * No ::after on .ag-header-cell-text. Hide AG quartz sort indicator. */
 
 .dinext-table .ag-header-cell.dinext-table-header--sortable {
+    cursor: default;
+    padding: 0;
+}
+
+.dinext-table .ag-header-cell.dinext-table-header--sortable .ag-header-cell-comp-wrapper,
+.dinext-table .ag-header-cell.dinext-table-header--sortable .ag-cell-label-container,
+.dinext-table .ag-header-cell.dinext-table-header--sortable .ag-header-cell-label {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+    position: relative;
+    z-index: 0;
+}
+
+.dinext-table .ag-header-cell.dinext-table-header--sortable .ag-sort-indicator-container,
+.dinext-table .ag-header-cell.dinext-table-header--sortable .ag-filter-icon,
+.dinext-table .ag-header-cell.dinext-table-header--sortable .ag-header-label-icon {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.dinext-table .ag-header-cell.dinext-table-header--sortable .ag-header-cell-text::after,
+.dinext-table .ag-header-cell.dinext-table-header--sortable .ag-header-cell-label::after {
+    content: none !important;
+    display: none !important;
+}
+
+.dinext-table .dinext-table-header-sort {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    margin: 0;
+    /* Inset from resize strip; title+icon stay a centered pair, not far-right. */
+    padding: 0 10px;
+}
+
+/* Resize handle must sit above the 100%-wide sort header and take the edge. */
+.dinext-table .ag-header-cell-resize {
+    z-index: 5;
+    width: 10px;
+    pointer-events: auto;
+}
+
+.dinext-table .dinext-table-header-sort-text {
+    min-width: 0;
+    text-align: center;
+    white-space: normal;
+    cursor: pointer;
+    /* Same type as default `.ag-header-cell-text` (hosts may override both). */
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+}
+
+.dinext-table .dinext-table-header-sort-icon {
+    flex: 0 0 auto;
+    width: 0;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    border-left: 3.5px solid transparent;
+    border-right: 3.5px solid transparent;
+    border-top: 4px solid currentColor;
+    border-bottom: none;
+    opacity: 0.35;
     cursor: pointer;
 }
 
-.dinext-table .ag-header-cell.dinext-table-header--sortable .ag-header-cell-label {
-    padding-right: 14px;
-}
-
-.dinext-table .ag-header-cell.dinext-table-header--sortable .ag-header-cell-text::after {
-    content: "";
-    display: inline-block;
-    width: 0;
-    height: 0;
-    margin-left: 5px;
-    vertical-align: middle;
-    border-left: 3.5px solid transparent;
-    border-right: 3.5px solid transparent;
-    opacity: 0.35;
-    border-top: 4px solid currentColor;
-}
-
-.dinext-table .ag-header-cell.dinext-table-header--sort-asc .ag-header-cell-text::after {
+.dinext-table .ag-header-cell.dinext-table-header--sort-asc .dinext-table-header-sort-icon {
     opacity: 0.9;
     border-top: none;
     border-bottom: 4px solid currentColor;
 }
 
-.dinext-table .ag-header-cell.dinext-table-header--sort-desc .ag-header-cell-text::after {
+.dinext-table .ag-header-cell.dinext-table-header--sort-desc .dinext-table-header-sort-icon {
     opacity: 0.9;
     border-top: 4px solid currentColor;
     border-bottom: none;
+}
+
+/* Header hover: header cell only (not the body column). */
+.dinext-table .ag-header-row:not(.ag-header-row-column-filter) .ag-header-cell:hover {
+    background-color: var(--dinext-table-col-hover-bg);
+}
+
+/* Sheet-like cursors. Fill-handle / reorder keep their own rules (higher specificity). */
+.dinext-table .ag-cell:not(.dinext-table-cell--readonly) {
+    cursor: text;
+}
+
+.dinext-table .ag-cell.dinext-table-cell--readonly {
+    cursor: default;
+}
+
+.dinext-table--row-reorder-enabled.dinext-table--row-reorder-gutter-hover .ag-row:hover .ag-cell {
+    cursor: grab;
 }
 
 /* Opt-in heatmap: ThemeMixin toggles these when theme.*Border === false */
@@ -106,6 +197,30 @@
 .dinext-table--no-column-borders.dinext-table .ag-ltr .ag-header-group-cell {
     border-left: none !important;
     border-right-color: transparent !important;
+}
+
+/*
+ * AG pin seam uses --ag-borders-critical (not --ag-pinned-column-border).
+ * Beat .ag-cell-last-left-pinned / .ag-pinned-left-header.
+ */
+.dinext-table--no-pinned-column-borders.dinext-table .ag-pinned-left-header,
+.dinext-table--no-column-borders.dinext-table .ag-pinned-left-header {
+    border-right: none !important;
+}
+
+.dinext-table--no-pinned-column-borders.dinext-table .ag-pinned-right-header,
+.dinext-table--no-column-borders.dinext-table .ag-pinned-right-header {
+    border-left: none !important;
+}
+
+.dinext-table--no-pinned-column-borders.dinext-table .ag-cell.ag-cell-last-left-pinned,
+.dinext-table--no-column-borders.dinext-table .ag-cell.ag-cell-last-left-pinned {
+    border-right: none !important;
+}
+
+.dinext-table--no-pinned-column-borders.dinext-table .ag-cell.ag-cell-first-right-pinned,
+.dinext-table--no-column-borders.dinext-table .ag-cell.ag-cell-first-right-pinned {
+    border-left: none !important;
 }
 
 /* AG: border-bottom: var(--ag-row-border-style) var(--ag-row-border-color) var(--ag-row-border-width) */
@@ -121,6 +236,39 @@
 .dinext-table-grid-host {
     flex: 1 1 auto;
     min-height: 0;
+}
+
+/* Dual horizontal scroll: top spacer synced with .ag-body-horizontal-scroll.
+ * Lives between header and body. Pinned cols use spacers, not their own bar. */
+.dinext-table-hscroll-top {
+    display: flex;
+    flex: 0 0 auto;
+    width: 100%;
+    overflow: hidden;
+}
+
+.dinext-table-hscroll-top.is-idle {
+    display: none;
+}
+
+.dinext-table-hscroll-top-spacer {
+    flex: 0 0 auto;
+}
+
+/* Scrollbar gutter corners (top dual-scroll + AG bottom). Desk token. */
+.dinext-table .ag-scroller-corner {
+    background-color: var(--scrollbar-track-color);
+}
+
+.dinext-table-hscroll-top-viewport {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: scroll;
+    overflow-y: hidden;
+}
+
+.dinext-table-hscroll-top-content {
+    height: 1px;
 }
 
 .dinext-table:fullscreen {
@@ -191,6 +339,11 @@
     flex-shrink: 0;
 }
 
+/* No chevron → no reserved slot (cell gap would otherwise indent content). */
+.dinext-table-tree-lead:empty {
+    display: none;
+}
+
 .dinext-table-tree-content {
     flex: 1;
     min-width: 0;
@@ -204,7 +357,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 16px;
+    width: 8px;
     height: 16px;
     flex-shrink: 0;
     user-select: none;
@@ -543,10 +696,15 @@
 .dinext-table-toolbar-item--checkbox {
     cursor: pointer;
     user-select: none;
+    /* label: Desk/Bootstrap margin-bottom lifts the row vs <button> items */
+    margin: 0;
 }
 
 .dinext-table-toolbar-checkbox-input {
-    margin: 0;
+    /* Frappe input[type=checkbox] sets margin-right !important */
+    margin: 0 !important;
+    flex-shrink: 0;
+    align-self: center;
     cursor: pointer;
 }
 
@@ -587,6 +745,15 @@
 }
 
 /* --- column filter floating row --- */
+
+.dinext-table .ag-header-row.ag-header-row-column-filter {
+    min-height: 0;
+}
+
+.dinext-table .ag-header-row.ag-header-row-column-filter .ag-header-cell {
+    padding-top: 0;
+    padding-bottom: 0;
+}
 
 /* Kill AG floating-filter menu (funnel) — filter is input-only. */
 .dinext-table .ag-floating-filter-button {
@@ -705,24 +872,32 @@
 }
 
 /*
- * Pinned-bottom / summary vertical center.
+ * Pinned-bottom / summary: vertical + horizontal center by default.
  * AG Grid normally centers via line-height ≈ rowHeight. With empty body (or
  * overlay / fractional layout) that line-height can diverge from the cell box
  * until a later reflow — numbers sit top-aligned until body rows appear.
- * Flex stretch (same idea as tree cells) keeps summary centered always.
+ * Flex stretch keeps summary centered; justify-content overrides column
+ * align-right/left (number presets) so summary values sit in the middle.
  */
 .dinext-table .ag-floating-bottom .ag-cell,
 .dinext-table .ag-pinned-left-floating-bottom .ag-cell,
-.dinext-table .ag-pinned-right-floating-bottom .ag-cell {
+.dinext-table .ag-pinned-right-floating-bottom .ag-cell,
+.dinext-table .dinext-table-row--summary .ag-cell {
     display: flex;
     align-items: center;
+    justify-content: center;
+    text-align: center;
 }
 
 .dinext-table .ag-floating-bottom .ag-cell > .ag-cell-wrapper,
 .dinext-table .ag-pinned-left-floating-bottom .ag-cell > .ag-cell-wrapper,
-.dinext-table .ag-pinned-right-floating-bottom .ag-cell > .ag-cell-wrapper {
+.dinext-table .ag-pinned-right-floating-bottom .ag-cell > .ag-cell-wrapper,
+.dinext-table .dinext-table-row--summary .ag-cell > .ag-cell-wrapper,
+.dinext-table .ag-floating-bottom .ag-cell .ag-spanned-cell-wrapper > .ag-spanned-cell > .ag-cell-wrapper,
+.dinext-table .dinext-table-row--summary .ag-cell .ag-spanned-cell-wrapper > .ag-spanned-cell > .ag-cell-wrapper {
     display: flex;
     align-items: center;
+    justify-content: center;
     width: 100%;
     height: 100%;
     min-height: 0;
@@ -747,9 +922,78 @@
     cursor: not-allowed !important;
 }
 
-.dinext-table .dinext-table-row--dragging {
-    opacity: 0.4;
-    filter: saturate(0.85);
+.dinext-table .dinext-table-row--dragging,
+.dinext-table .dinext-table-row--reorder-preview-drag {
+    opacity: 1;
+    filter: none;
+}
+
+.dinext-table .dinext-table-row--reorder-preview-drag {
+    pointer-events: none;
+    z-index: 4;
+}
+
+/* Tint only — never position:relative on .ag-row/.ag-cell (AG uses absolute + translateY). */
+.dinext-table .dinext-table-row--dragging .ag-cell,
+.dinext-table .dinext-table-row--reorder-preview-drag .ag-cell {
+    box-shadow: inset 0 0 0 100vmax var(--dinext-table-selection-bg) !important;
+}
+
+/* Reserved system column for 6-dot (3×2) drag handle — independent of rowCheck. */
+.dinext-table .dinext-table-row-reorder-cell,
+.dinext-table .dinext-table-row-reorder-header {
+    padding-left: 6px !important;
+    padding-right: 2px !important;
+}
+
+.dinext-table-row-reorder-handle {
+    flex: 0 0 auto;
+    display: inline-block;
+    width: 10px;
+    height: 16px;
+    cursor: grab;
+    opacity: 0.38;
+    background-color: currentColor;
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 16'%3E%3Ccircle cx='2.5' cy='2.5' r='1.25' fill='%23000'/%3E%3Ccircle cx='7.5' cy='2.5' r='1.25' fill='%23000'/%3E%3Ccircle cx='2.5' cy='8' r='1.25' fill='%23000'/%3E%3Ccircle cx='7.5' cy='8' r='1.25' fill='%23000'/%3E%3Ccircle cx='2.5' cy='13.5' r='1.25' fill='%23000'/%3E%3Ccircle cx='7.5' cy='13.5' r='1.25' fill='%23000'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 16'%3E%3Ccircle cx='2.5' cy='2.5' r='1.25' fill='%23000'/%3E%3Ccircle cx='7.5' cy='2.5' r='1.25' fill='%23000'/%3E%3Ccircle cx='2.5' cy='8' r='1.25' fill='%23000'/%3E%3Ccircle cx='7.5' cy='8' r='1.25' fill='%23000'/%3E%3Ccircle cx='2.5' cy='13.5' r='1.25' fill='%23000'/%3E%3Ccircle cx='7.5' cy='13.5' r='1.25' fill='%23000'/%3E%3C/svg%3E");
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+}
+
+/* Only the hovered handle — never all rows via container gutter-hover class. */
+.dinext-table-row-reorder-handle:hover {
+    opacity: 0.72;
+}
+
+.dinext-table--row-reorder-grabbing .dinext-table-row-reorder-handle {
+    cursor: grabbing;
+}
+
+.dinext-table--row-reorder-grabbing .dinext-table-row-reorder-handle:hover {
+    opacity: 0.85;
+}
+
+.dinext-table--row-reorder-sort-locked .dinext-table-row-reorder-handle,
+.dinext-table-row-reorder-handle--locked {
+    cursor: not-allowed;
+}
+
+.dinext-table--row-reorder-sort-locked .dinext-table-row-reorder-handle:hover {
+    opacity: 0.38;
+}
+
+.dinext-table-row-reorder-handle-host {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    min-width: 0;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
 }
 
 /* Nest-into: overlay frame (AG .ag-row outline/bg are clipped or overridden). */
@@ -758,19 +1002,33 @@
     z-index: 8;
     pointer-events: none;
     box-sizing: border-box;
-    border: 2px solid color-mix(in srgb, CanvasText 42%, transparent);
+    border: 2px solid color-mix(in srgb, var(--primary, CanvasText) 55%, transparent);
     border-radius: 2px;
-    background: transparent;
+    background: color-mix(in srgb, var(--primary, CanvasText) 10%, transparent);
 }
 
-/* Sibling insert: gap band between rows (neutral gray). */
+.dinext-table-row-reorder-drop-inside-label {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    padding: 0 5px;
+    border-radius: 2px;
+    font-size: 10px;
+    line-height: 16px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-on-primary, Canvas);
+    background: color-mix(in srgb, var(--primary, CanvasText) 72%, transparent);
+}
+
+/* Sibling insert: gap band between rows, indented to tree level. */
 .dinext-table-row-reorder-drop-gap {
     position: absolute;
     z-index: 8;
     pointer-events: none;
-    border-radius: 2px;
-    background: color-mix(in srgb, CanvasText 42%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, CanvasText 22%, transparent);
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--primary, CanvasText) 55%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary, CanvasText) 28%, transparent);
 }
 
 /* --- Row check (system checkbox column) --- */
@@ -788,6 +1046,11 @@
     transition: none !important;
 }
 
+/* Fade ~30% faster than AG default cellFadeDuration 1000ms (see edit mixin). */
+.dinext-table .ag-cell.ag-cell-data-changed-animation {
+    transition: background-color 0.5s ease !important;
+}
+
 .dinext-table .dinext-table-row-check-cell-inner {
     display: flex;
     align-items: center;
@@ -801,18 +1064,51 @@
     cursor: pointer;
 }
 
-/* --- Date cell editor (type: date) --- */
+/* --- Date / select cell editors (type: date | select) --- */
+/* Inherit cell font — do not force --ag-font-size (14px). Hosts like Gantt
+ * set the editing cell to --text-xs; Desk .form-control must not override. */
 
-.dinext-table .dinext-table-date-editor {
+.dinext-table .ag-cell.ag-cell-inline-editing .dinext-table-date-editor,
+.dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor,
+.dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control,
+.dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control.input-with-feedback,
+.dinext-table .ag-cell.ag-cell-inline-editing .dinext-table-select-editor,
+.dinext-table .ag-cell.ag-cell-inline-editing select.dinext-table-select-editor {
     width: 100%;
-    height: 100%;
-    min-height: 22px;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100%;
     box-sizing: border-box;
     margin: 0;
-    padding: 0 4px;
-    border: none;
+    padding: 0 var(--ag-cell-horizontal-padding, 4px) !important;
+    border: none !important;
     border-radius: 0;
+    box-shadow: none !important;
     background: var(--control-bg, var(--card-bg));
     color: var(--text-color);
-    font: inherit;
+    font-family: inherit !important;
+    font-size: inherit !important;
+    font-weight: inherit !important;
+    line-height: inherit !important;
+}
+
+.dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-date-editor),
+.dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-select-editor) {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+/* Native <select> popup follows OS chrome unless color-scheme is set.
+ * Dark Desk + inherited --text-color → white-on-white options. */
+[data-theme="dark"] .dinext-table .ag-cell-inline-editing select.dinext-table-select-editor {
+    color-scheme: dark;
+}
+
+[data-theme="light"] .dinext-table .ag-cell-inline-editing select.dinext-table-select-editor {
+    color-scheme: light;
+}
+
+.dinext-table .ag-cell-inline-editing select.dinext-table-select-editor option {
+    background-color: Canvas;
+    color: CanvasText;
 }

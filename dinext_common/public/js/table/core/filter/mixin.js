@@ -1,3 +1,4 @@
+import { getRowIdField } from "../shared/utils.js";
 import { toVisibleRows, walkLeafColumns } from "../tree/model.js";
 import { ROW_CHECK_COL_ID } from "../row-check/constants.js";
 import { TOOLBAR_ICON_SVG } from "../toolbar/icons.js";
@@ -5,15 +6,22 @@ import {
     filterFlatRows,
     filterTreeRows,
     isFilterStateEmpty,
-    normalizeFilterState
+    normalizeFilterState,
+    sameFilterState
 } from "./model.js";
 import { DinextNoopFilter, DinextTextFloatingFilter } from "./floating-filter.js";
 
 const FILTER_DEFAULTS = {
     enabled: true,
     active: false,
+    mergeMatchMode: "atom",
+    mergeAncestorMode: "atom",
+    mergeInheritedFields: [],
     state: {}
 };
+
+/** Compact search row. AG defaults this to `headerHeight` (76px on wtree). */
+export const FLOATING_FILTER_ROW_HEIGHT = 28;
 
 function findRawColumn(columns, field) {
     let match = null;
@@ -106,7 +114,7 @@ export const FilterMixin = (Base) => class extends Base {
         }
         return [{
             id: "filter",
-            title: "Filter columns",
+            title: __("Filter columns"),
             iconSvg: TOOLBAR_ICON_SVG.search,
             active: ({ table: instance }) => (
                 typeof instance.isFilterRowOpen === "function" && instance.isFilterRowOpen()
@@ -142,7 +150,14 @@ export const FilterMixin = (Base) => class extends Base {
         if (!this.isFilterEnabled()) {
             return this.getFilter();
         }
-        this._filterState = normalizeFilterState(state);
+        const next = normalizeFilterState(state);
+        if (sameFilterState(this._filterState, next)) {
+            if (syncInputs) {
+                this.syncFloatingFilterInputs();
+            }
+            return this.getFilter();
+        }
+        this._filterState = next;
         this.applyFilterToGrid();
         if (syncInputs) {
             this.syncFloatingFilterInputs();
@@ -192,14 +207,30 @@ export const FilterMixin = (Base) => class extends Base {
 
     syncVisibleRows() {
         super.syncVisibleRows();
-        this.applyFilterToRowData();
+        if (this.isFilterActive()) {
+            this.rebuildFilterPassIds();
+        } else {
+            this._filterPassIds = null;
+        }
     }
 
-    applyFilterToRowData() {
-        if (!this.isFilterEnabled() || isFilterStateEmpty(this._filterState)) {
+    getFilterRowId(row) {
+        if (!row) {
+            return "";
+        }
+        if (row._rowId !== undefined) {
+            return String(row._rowId);
+        }
+        return String(row[getRowIdField(this.options)]);
+    }
+
+    rebuildFilterPassIds() {
+        if (!this.isFilterActive()) {
+            this._filterPassIds = null;
             return;
         }
 
+        const ids = new Set();
         const nested = typeof this.hasNestedRows === "function" && this.hasNestedRows();
         if (nested) {
             const { rows: pruned, expandIds } = filterTreeRows(
@@ -211,18 +242,100 @@ export const FilterMixin = (Base) => class extends Base {
                 ...(this.expandedIds || []),
                 ...expandIds
             ]);
-            this.rowData = toVisibleRows(pruned, expanded, this.options);
+            const visible = toVisibleRows(pruned, expanded, this.options);
+            for (const row of visible) {
+                ids.add(this.getFilterRowId(row));
+            }
+        } else {
+            const rows = filterFlatRows(
+                this.sourceData || this.rowData || [],
+                this._filterState,
+                this.options
+            );
+            for (const row of rows) {
+                ids.add(this.getFilterRowId(row));
+            }
+        }
+        this._filterPassIds = ids;
+    }
+
+    doesExternalFilterPass(node) {
+        if (!this.isFilterActive()) {
+            return true;
+        }
+        if (!this._filterPassIds) {
+            this.rebuildFilterPassIds();
+        }
+        const id = this.getFilterRowId(node?.data);
+        if (!id) {
+            return true;
+        }
+        return this._filterPassIds.has(id);
+    }
+
+    ensureFilterAncestorsExpanded() {
+        if (!this.isFilterActive() || typeof this.hasNestedRows !== "function") {
+            return;
+        }
+        if (!this.hasNestedRows() || !this.expandedIds) {
             return;
         }
 
-        this.rowData = filterFlatRows(this.rowData || [], this._filterState, this.options);
+        const { expandIds } = filterTreeRows(
+            this.sourceData || [],
+            this._filterState,
+            this.options
+        );
+        const sorted = [...expandIds].sort((a, b) => a.length - b.length);
+        for (const id of sorted) {
+            const wasExpanded = this.expandedIds.has(id);
+            this.expandedIds.add(id);
+            if (wasExpanded) {
+                continue;
+            }
+            if (this.api?.getRowNode?.(id)) {
+                super.insertVisibleChildren(id);
+            }
+        }
+    }
+
+    refreshFilteredProjection() {
+        this.rebuildFilterPassIds();
+        this.api?.onFilterChanged?.();
+        this._filterProjectionRefreshVersion =
+            (this._filterProjectionRefreshVersion || 0) + 1;
+    }
+
+    /** Active filter: insert as usual, then hide via AG external filter. */
+    insertVisibleChildren(rowId) {
+        super.insertVisibleChildren(rowId);
+        if (this.isFilterActive()) {
+            this.refreshFilteredProjection();
+        }
+    }
+
+    /**
+     * Lazy children stay in the row model. Re-run external filter once if
+     * Tree/Sort did not already notify AG (same version guard as before).
+     */
+    setRowChildren(rowId, children) {
+        const refreshVersion = this._filterProjectionRefreshVersion || 0;
+        const result = super.setRowChildren(rowId, children);
+        if (
+            this.isFilterActive()
+            && (this._filterProjectionRefreshVersion || 0) === refreshVersion
+        ) {
+            this.refreshFilteredProjection();
+        }
+        return result;
     }
 
     applyFilterToGrid() {
-        if (typeof this.syncVisibleRows === "function") {
-            this.syncVisibleRows();
+        this.ensureFilterAncestorsExpanded();
+        this.rebuildFilterPassIds();
+        if (this.api?.onFilterChanged) {
+            this.api.onFilterChanged();
         }
-        this.setGridOption("rowData", [...(this.rowData || [])]);
         if (typeof this.clearCellSelection === "function") {
             this.clearCellSelection();
         }
@@ -317,7 +430,11 @@ export const FilterMixin = (Base) => class extends Base {
         if (!this.isFilterEnabled()) {
             return {};
         }
-        return {};
+        return {
+            floatingFiltersHeight: FLOATING_FILTER_ROW_HEIGHT,
+            isExternalFilterPresent: () => this.isFilterActive(),
+            doesExternalFilterPass: (node) => this.doesExternalFilterPass(node)
+        };
     }
 
     handleSetOption(key, value) {

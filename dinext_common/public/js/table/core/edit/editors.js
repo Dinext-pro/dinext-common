@@ -1,7 +1,9 @@
 import { DateCellEditor, dateValueFormatter, dateValueParser } from "./date-editor.js";
 import { parseDateValue } from "./date-utils.js";
+import { SelectCellEditor, selectValueFormatter, selectValueParser } from "./select-editor.js";
+import { parseSelectValue } from "./select-utils.js";
 
-export { parseDateValue, DateCellEditor };
+export { parseDateValue, DateCellEditor, parseSelectValue, SelectCellEditor };
 
 /** Parses user input with comma or dot decimal separator. Returns null for empty/invalid. */
 export function parseLocaleNumber(raw) {
@@ -95,6 +97,15 @@ const DEFAULT_COLUMN_TYPES = {
         valueParser: dateValueParser,
         valueFormatter: dateValueFormatter,
         cellClass: "dinext-table-cell--align-center"
+    },
+    select: {
+        // Contract only: option key string | null. Unknown paste → null.
+        // Options: cellEditorParams.values (string[] or (params) => string[]).
+        // Interactive editor → column.cellEditor (see usage-guides/select-columns.md).
+        // Optional native fallback: DinextTable.SelectCellEditor.
+        cellDataType: "text",
+        valueParser: selectValueParser,
+        valueFormatter: selectValueFormatter
     },
     checkbox: CHECKBOX_COLUMN_TYPE,
     boolean: CHECKBOX_COLUMN_TYPE

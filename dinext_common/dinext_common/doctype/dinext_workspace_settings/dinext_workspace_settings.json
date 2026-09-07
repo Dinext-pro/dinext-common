@@ -1,0 +1,145 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:settings_name",
+ "creation": "2026-08-11 01:44:24.455791",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "settings_name",
+  "section_break_page_lists",
+  "show_frequent_pages",
+  "column_break_page_lists",
+  "show_recent_pages",
+  "section_break_access",
+  "roles",
+  "section_break_cards",
+  "items",
+  "section_break_sections",
+  "sections",
+  "section_break_doctype_items",
+  "doctype_items"
+ ],
+ "fields": [
+  {
+   "bold": 1,
+   "description": "Unique key passed to the hub Custom HTML Block.",
+   "fieldname": "settings_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Settings Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "section_break_page_lists",
+   "fieldtype": "Section Break",
+   "label": "Page Lists"
+  },
+  {
+   "default": "1",
+   "fieldname": "show_frequent_pages",
+   "fieldtype": "Check",
+   "label": "Frequent Pages"
+  },
+  {
+   "fieldname": "column_break_page_lists",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "show_recent_pages",
+   "fieldtype": "Check",
+   "label": "Recent Pages"
+  },
+  {
+   "fieldname": "section_break_access",
+   "fieldtype": "Section Break",
+   "label": "Access"
+  },
+  {
+   "description": "If set, only these roles can load this hub via the API.",
+   "fieldname": "roles",
+   "fieldtype": "Table",
+   "label": "Roles",
+   "options": "Has Role"
+  },
+  {
+   "fieldname": "section_break_cards",
+   "fieldtype": "Section Break",
+   "label": "Navigation Cards"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Workspace Items",
+   "options": "Dinext Workspace Settings Item"
+  },
+  {
+   "fieldname": "section_break_sections",
+   "fieldtype": "Section Break",
+   "label": "Sections"
+  },
+  {
+   "fieldname": "sections",
+   "fieldtype": "Table",
+   "label": "Sections",
+   "options": "Dinext Workspace Settings Section"
+  },
+  {
+   "fieldname": "section_break_doctype_items",
+   "fieldtype": "Section Break",
+   "label": "DocType Lists"
+  },
+  {
+   "fieldname": "doctype_items",
+   "fieldtype": "Table",
+   "label": "DocType Items",
+   "options": "Dinext Workspace Settings DocType"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 0,
+ "links": [],
+ "modified": "2026-08-14 02:00:00",
+ "modified_by": "Administrator",
+ "module": "Dinext Common",
+ "name": "Dinext Workspace Settings",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Workspace Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Desk User"
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "settings_name"
+}

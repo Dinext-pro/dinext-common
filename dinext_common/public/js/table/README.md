@@ -53,6 +53,7 @@ core/
 | [sections-and-summary.md](usage-guides/sections-and-summary.md) | `summaryRows`, pin bottom, guards |
 | [columns-and-formatting.md](usage-guides/columns-and-formatting.md) | Колонки, presets, styling |
 | [date-columns.md](usage-guides/date-columns.md) | `type: date`, ISO, fill, Frappe cellEditor |
+| [select-columns.md](usage-guides/select-columns.md) | `type: select`, option key, fill, Frappe cellEditor |
 | [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md) | Range, TSV, fill handle, Tab/Enter |
 | [row-reorder.md](usage-guides/row-reorder.md) | Gutter row drag-and-drop reorder |
 | [row-check.md](usage-guides/row-check.md) | Checkbox col, toolbar rows, nudge |
@@ -105,6 +106,7 @@ DinextTable.create({
 | `theme.pinnedRowBorder` | Quartz default | Border between pinned rows and body |
 | `theme.cellHorizontalPadding` | Quartz default | Cell/header horizontal padding; `0` for abutting heatmap cells |
 | `theme.borderRadius` | `4` | Quartz + `--dinext-table-radius` (toolbar/status) |
+| `theme.fontFamily` | Desk `--font-stack` | Override; default Inter stack (not IBM Plex Sans) |
 
 Borderless heatmap (opt-in): set border flags to `false` + `cellHorizontalPadding: 0`. Quartz `false` alone leaves transparent 1px seams — core maps to `{ width: 0 }`, forces `--ag-*-border*` off, and toggles `.dinext-table--no-row-borders` / `--no-column-borders`. Paint fills on `.ag-cell` (`cellClassRules` / `cellStyle`), not on child renderer wrappers. Unset flags keep default borders.
 
@@ -170,11 +172,12 @@ Domain: что видно в FS — через `shell` + CSS hide siblings, не
 | `onValidateCells` | Sync validate до commit; reject → revert batch |
 | `onSaveCells` | Async persist; `false`/throw → revert |
 | `readOnlyEdit` | AG Grid `readOnlyEdit` pipeline |
+| `clickWhenActive` | Повторный одиночный клик по уже focused → edit (default: как navigation / edit availability) |
 
 `changes[]`: `{ rowId, field, oldValue, newValue, row, section, … }`.  
 `source`: `edit` \| `paste` \| `fillDown` \| `fillHandle` \| `clear` \| `undo` \| `redo`.
 
-→ [cell-changes.md](usage-guides/cell-changes.md).
+→ [cell-changes.md](usage-guides/cell-changes.md), [selection-clipboard-navigation.md](usage-guides/selection-clipboard-navigation.md).
 
 ### Interaction
 
@@ -185,6 +188,7 @@ Domain: что видно в FS — через `shell` + CSS hide siblings, не
 | `clipboard.enabled` | `selection.enabled` | TSV copy/paste |
 | `fillHandle.enabled` | `clipboard.enabled` | Corner drag fill |
 | `rowReorder.enabled` | `false` | Reorder contour: gutter + toolbar ↑↓ + nudge; auto `animateRows` |
+| `rowReorder.toolbarMove` | `true` | Toolbar ↑↓ in preset `rows`; `false` = gutter DnD only |
 | `rowReorder.allowTree` | `"siblings"` | `false` \| `"siblings"` \| `"reparent"` (cross-parent + nest) |
 | `rowCheck.enabled` | `false` | Checkbox col + checked Set; toolbar select/deselect icon |
 | `rowCheck.unit` | `"row"` | `"mergeHead"` — check only merge head + span |
@@ -239,6 +243,8 @@ toolbar: {
 | `DinextTable.CELL_CHANGE_SOURCES` | Константы `source` |
 | `DinextTable.ROW_CHECK_COL_ID` | Reserved system col id |
 | `DinextTable.ROW_CHECK_UNITS` | `"row"` \| `"mergeHead"` |
+| `DinextTable.SelectCellEditor` | Optional native `<select>` — не default для `type: "select"` |
+| `DinextTable.parseSelectValue` | raw / label → option key \| `null` |
 
 ---
 

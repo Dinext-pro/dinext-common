@@ -1,17 +1,56 @@
+import {
+    adoptMatchingOverlays,
+    getDocumentFullscreenElement,
+    getOverlayHost
+} from "./overlay-host.js";
+
 const FULLSCREEN_DEFAULTS = {
     enabled: true,
     target: "container"
 };
 
-function getDocumentFullscreenElement() {
-    if (typeof document === "undefined") {
-        return null;
+const OVERLAY_WATCH_DELAYS_MS = [0, 50, 150, 300];
+const PAGE_LEAVE_NS = "page-change.dinextTableFullscreen";
+
+function getJquery() {
+    return typeof window !== "undefined" ? window.$ : null;
+}
+
+/** jQuery `.hide()` and Desk page-container hide. */
+export function isElementHidden(el) {
+    if (!el) {
+        return true;
     }
-    return document.fullscreenElement
-        || document.webkitFullscreenElement
-        || document.mozFullScreenElement
-        || document.msFullscreenElement
-        || null;
+    if (el.hidden) {
+        return true;
+    }
+    const style = el.style;
+    if (style && (style.display === "none" || style.visibility === "hidden")) {
+        return true;
+    }
+    const view = el.ownerDocument?.defaultView;
+    if (view?.getComputedStyle) {
+        const cs = view.getComputedStyle(el);
+        if (cs.display === "none" || cs.visibility === "hidden") {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Desk SPA hides `.page-container` instead of destroying the table.
+ * False → host left the visible page (or disconnected).
+ */
+export function isHostOnVisibleDeskPage(host) {
+    if (!host || host.isConnected === false) {
+        return false;
+    }
+    const page = typeof host.closest === "function" ? host.closest(".page-container") : null;
+    if (!page) {
+        return true;
+    }
+    return !isElementHidden(page);
 }
 
 function getElementFullscreenRequest(element) {
@@ -58,6 +97,7 @@ export const FullscreenMixin = (Base) => class extends Base {
 
     destroyFeatures() {
         this.unbindFullscreenListeners();
+        this.stopOverlayWatch();
         if (this._fullscreenActive) {
             void this.exitFullscreen();
         }
@@ -135,6 +175,7 @@ export const FullscreenMixin = (Base) => class extends Base {
             return { changed: false, active };
         }
 
+        this.syncFullscreenOverlays(active);
         if (active) {
             this.emitFullscreenEnter();
         } else {
@@ -148,6 +189,57 @@ export const FullscreenMixin = (Base) => class extends Base {
         requestAnimationFrame(() => {
             window.dispatchEvent(new Event("resize"));
         });
+    }
+
+    getOverlayHost() {
+        return getOverlayHost();
+    }
+
+    /**
+     * Native FS hides body-portaled overlays. AG popups → popupParent;
+     * Frappe datepicker / Dialog / freeze → reparent into fullscreen host.
+     */
+    syncFullscreenOverlays(active) {
+        const host = active ? this.getFullscreenElement() : null;
+        this.api?.setGridOption?.("popupParent", host || document.body);
+        if (active && host) {
+            this.startOverlayWatch(host);
+        } else {
+            this.stopOverlayWatch();
+        }
+    }
+
+    startOverlayWatch(host) {
+        this.stopOverlayWatch();
+        const adopt = () => adoptMatchingOverlays(document.body, { host });
+        adopt();
+        const schedule = () => {
+            if (this._overlayWatchRaf) {
+                cancelAnimationFrame(this._overlayWatchRaf);
+            }
+            this._overlayWatchRaf = requestAnimationFrame(() => {
+                this._overlayWatchRaf = null;
+                adopt();
+            });
+        };
+        this._overlayWatchObserver = new MutationObserver(schedule);
+        this._overlayWatchObserver.observe(document.body, { childList: true, subtree: true });
+        this._overlayWatchTimers = OVERLAY_WATCH_DELAYS_MS.map((ms) => setTimeout(adopt, ms));
+    }
+
+    stopOverlayWatch() {
+        if (this._overlayWatchObserver) {
+            this._overlayWatchObserver.disconnect();
+            this._overlayWatchObserver = null;
+        }
+        if (this._overlayWatchRaf) {
+            cancelAnimationFrame(this._overlayWatchRaf);
+            this._overlayWatchRaf = null;
+        }
+        for (const id of this._overlayWatchTimers || []) {
+            clearTimeout(id);
+        }
+        this._overlayWatchTimers = [];
     }
 
     async enterFullscreen() {
@@ -197,15 +289,51 @@ export const FullscreenMixin = (Base) => class extends Base {
         };
         document.addEventListener("fullscreenchange", this._onFullscreenChange);
         document.addEventListener("webkitfullscreenchange", this._onFullscreenChange);
+        this.bindFullscreenPageLeave();
     }
 
     unbindFullscreenListeners() {
+        this.unbindFullscreenPageLeave();
         if (!this._onFullscreenChange) {
             return;
         }
         document.removeEventListener("fullscreenchange", this._onFullscreenChange);
         document.removeEventListener("webkitfullscreenchange", this._onFullscreenChange);
         this._onFullscreenChange = null;
+    }
+
+    /**
+     * Desk keeps hidden pages in DOM — destroy() never runs on route change.
+     * Native FS stays on the hidden host; exit when our page-container is hidden.
+     */
+    bindFullscreenPageLeave() {
+        this.unbindFullscreenPageLeave();
+        this._onFullscreenPageLeave = () => {
+            this.exitFullscreenIfHostLeftPage();
+        };
+        const $ = getJquery();
+        if ($ && typeof $.fn?.on === "function") {
+            $(document).on(PAGE_LEAVE_NS, this._onFullscreenPageLeave);
+        }
+    }
+
+    unbindFullscreenPageLeave() {
+        const $ = getJquery();
+        if ($ && typeof $.fn?.off === "function" && this._onFullscreenPageLeave) {
+            $(document).off(PAGE_LEAVE_NS, this._onFullscreenPageLeave);
+        }
+        this._onFullscreenPageLeave = null;
+    }
+
+    exitFullscreenIfHostLeftPage() {
+        if (!this._fullscreenActive) {
+            return false;
+        }
+        if (isHostOnVisibleDeskPage(this.getFullscreenElement())) {
+            return false;
+        }
+        void this.exitFullscreen();
+        return true;
     }
 
     handleSetOption(key, value) {

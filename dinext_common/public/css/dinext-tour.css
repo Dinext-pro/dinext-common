@@ -1,0 +1,23 @@
+.dinext-ui-tour-anchors {
+	position: static;
+}
+.dinext-ui-tour-anchor {
+	position: fixed;
+	pointer-events: none;
+	z-index: 1;
+	background: transparent;
+}
+.dinext-tour-source-host {
+	position: relative;
+	z-index: 100004;
+}
+.dinext-tour-source-raised {
+	position: relative;
+	z-index: 100005;
+}
+#driver-highlighted-element-stage.dinext-tour-stage-cutout {
+	background: transparent !important;
+	background-color: transparent !important;
+	outline: 5000px solid rgba(0, 0, 0, 0.5);
+	transition: top 0.3s ease, left 0.3s ease, width 0.3s ease, height 0.3s ease !important;
+}

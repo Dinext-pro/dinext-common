@@ -17,6 +17,11 @@ const TOOLBAR_DEFAULTS = {
     /** Show toolbar panel by default (pin). Flip false to start collapsed. */
     defaultPinned: true,
     /**
+     * Keep toolbar pinned; unpin control disabled.
+     * Persist still stores filter; pin state forced on.
+     */
+    lockPinned: false,
+    /**
      * Opt-in localStorage key suffix for UI snapshot (pin + filter).
      * Storage: `dinext-table:toolbar:${persistKey}` → JSON `{ pinned, filter }`.
      * Per-table: unique key (e.g. `work-efforts:${project}`).
@@ -89,6 +94,10 @@ export const ToolbarMixin = (Base) => class extends Base {
         return this._toolbarPinned;
     }
 
+    isToolbarPinLocked() {
+        return !!this.getToolbarOptions().lockPinned;
+    }
+
     isToolbarOpen() {
         return this._toolbarOpen;
     }
@@ -100,22 +109,25 @@ export const ToolbarMixin = (Base) => class extends Base {
     loadToolbarPersistedState() {
         const opts = this.getToolbarOptions();
         const defaultPinned = !!opts.defaultPinned;
+        const lockPinned = !!opts.lockPinned;
         this._uiPersistFilter = null;
 
         if (!opts.persistKey) {
-            this._toolbarPinned = defaultPinned;
+            this._toolbarPinned = lockPinned || defaultPinned;
             return;
         }
 
         const raw = readUiPersistRaw(opts.persistKey);
         if (raw == null) {
-            this._toolbarPinned = defaultPinned;
+            this._toolbarPinned = lockPinned || defaultPinned;
             return;
         }
 
         const parsed = parseUiPersistRaw(raw);
-        this._toolbarPinned = parsed.pinned != null ? parsed.pinned : defaultPinned;
         this._uiPersistFilter = parsed.filter;
+        this._toolbarPinned = lockPinned
+            ? true
+            : (parsed.pinned != null ? parsed.pinned : defaultPinned);
     }
 
     /** Persist pin + filter UI/state (same key as pin-only legacy). */
@@ -172,7 +184,7 @@ export const ToolbarMixin = (Base) => class extends Base {
         const trigger = document.createElement("button");
         trigger.type = "button";
         trigger.className = "dinext-table-toolbar-trigger";
-        trigger.setAttribute("aria-label", "Table menu");
+        trigger.setAttribute("aria-label", __("Table menu"));
         trigger.setAttribute("aria-haspopup", "true");
         trigger.innerHTML = TOOLBAR_ICON_SVG.menu;
         trigger.addEventListener("click", event => this.handleToolbarTriggerClick(event));
@@ -285,6 +297,9 @@ export const ToolbarMixin = (Base) => class extends Base {
     }
 
     setToolbarPinned(pinned, { persist = true } = {}) {
+        if (this.isToolbarPinLocked()) {
+            pinned = true;
+        }
         this._toolbarPinned = !!pinned;
         if (this._toolbarPinned) {
             this._toolbarOpen = false;
@@ -309,11 +324,17 @@ export const ToolbarMixin = (Base) => class extends Base {
     }
 
     createToolbarPinButton() {
+        const locked = this.isToolbarPinLocked();
         const button = document.createElement("button");
         button.type = "button";
         button.className = "dinext-table-toolbar-item dinext-table-toolbar-item--pin";
         button.setAttribute("role", "button");
-        button.title = this._toolbarPinned ? "Unpin toolbar" : "Pin toolbar";
+        button.disabled = locked;
+        button.title = locked
+            ? __("Toolbar always visible")
+            : this._toolbarPinned
+                ? __("Unpin toolbar")
+                : __("Pin toolbar");
         button.innerHTML = this._toolbarPinned
             ? TOOLBAR_ICON_SVG.unpin
             : TOOLBAR_ICON_SVG.pin;
@@ -321,6 +342,9 @@ export const ToolbarMixin = (Base) => class extends Base {
         button.addEventListener("click", (event) => {
             event.preventDefault();
             event.stopPropagation();
+            if (locked) {
+                return;
+            }
             this.toggleToolbarPinned();
             this.renderToolbarItems();
         });
@@ -403,7 +427,7 @@ export const ToolbarMixin = (Base) => class extends Base {
         input.disabled = resolveToolbarFlag(item.disabled, ctx);
         input.checked = resolveToolbarFlag(item.checked, ctx);
         input.indeterminate = resolveToolbarFlag(item.indeterminate, ctx);
-        input.setAttribute("aria-label", item.title || item.label || "Toggle");
+        input.setAttribute("aria-label", item.title || item.label || __("Toggle"));
 
         input.addEventListener("click", (event) => {
             event.stopPropagation();
