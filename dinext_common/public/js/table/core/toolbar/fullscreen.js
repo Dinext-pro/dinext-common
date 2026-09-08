@@ -9,7 +9,49 @@ const FULLSCREEN_DEFAULTS = {
     target: "container"
 };
 
-const OVERLAY_WATCH_DELAYS_MS = [0, 50, 150];
+const OVERLAY_WATCH_DELAYS_MS = [0, 50, 150, 300];
+const PAGE_LEAVE_NS = "page-change.dinextTableFullscreen";
+
+function getJquery() {
+    return typeof window !== "undefined" ? window.$ : null;
+}
+
+/** jQuery `.hide()` and Desk page-container hide. */
+export function isElementHidden(el) {
+    if (!el) {
+        return true;
+    }
+    if (el.hidden) {
+        return true;
+    }
+    const style = el.style;
+    if (style && (style.display === "none" || style.visibility === "hidden")) {
+        return true;
+    }
+    const view = el.ownerDocument?.defaultView;
+    if (view?.getComputedStyle) {
+        const cs = view.getComputedStyle(el);
+        if (cs.display === "none" || cs.visibility === "hidden") {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Desk SPA hides `.page-container` instead of destroying the table.
+ * False → host left the visible page (or disconnected).
+ */
+export function isHostOnVisibleDeskPage(host) {
+    if (!host || host.isConnected === false) {
+        return false;
+    }
+    const page = typeof host.closest === "function" ? host.closest(".page-container") : null;
+    if (!page) {
+        return true;
+    }
+    return !isElementHidden(page);
+}
 
 function getElementFullscreenRequest(element) {
     if (!element) {
@@ -155,7 +197,7 @@ export const FullscreenMixin = (Base) => class extends Base {
 
     /**
      * Native FS hides body-portaled overlays. AG popups → popupParent;
-     * Frappe datepicker etc. → reparent into fullscreen host.
+     * Frappe datepicker / Dialog / freeze → reparent into fullscreen host.
      */
     syncFullscreenOverlays(active) {
         const host = active ? this.getFullscreenElement() : null;
@@ -247,15 +289,51 @@ export const FullscreenMixin = (Base) => class extends Base {
         };
         document.addEventListener("fullscreenchange", this._onFullscreenChange);
         document.addEventListener("webkitfullscreenchange", this._onFullscreenChange);
+        this.bindFullscreenPageLeave();
     }
 
     unbindFullscreenListeners() {
+        this.unbindFullscreenPageLeave();
         if (!this._onFullscreenChange) {
             return;
         }
         document.removeEventListener("fullscreenchange", this._onFullscreenChange);
         document.removeEventListener("webkitfullscreenchange", this._onFullscreenChange);
         this._onFullscreenChange = null;
+    }
+
+    /**
+     * Desk keeps hidden pages in DOM — destroy() never runs on route change.
+     * Native FS stays on the hidden host; exit when our page-container is hidden.
+     */
+    bindFullscreenPageLeave() {
+        this.unbindFullscreenPageLeave();
+        this._onFullscreenPageLeave = () => {
+            this.exitFullscreenIfHostLeftPage();
+        };
+        const $ = getJquery();
+        if ($ && typeof $.fn?.on === "function") {
+            $(document).on(PAGE_LEAVE_NS, this._onFullscreenPageLeave);
+        }
+    }
+
+    unbindFullscreenPageLeave() {
+        const $ = getJquery();
+        if ($ && typeof $.fn?.off === "function" && this._onFullscreenPageLeave) {
+            $(document).off(PAGE_LEAVE_NS, this._onFullscreenPageLeave);
+        }
+        this._onFullscreenPageLeave = null;
+    }
+
+    exitFullscreenIfHostLeftPage() {
+        if (!this._fullscreenActive) {
+            return false;
+        }
+        if (isHostOnVisibleDeskPage(this.getFullscreenElement())) {
+            return false;
+        }
+        void this.exitFullscreen();
+        return true;
     }
 
     handleSetOption(key, value) {

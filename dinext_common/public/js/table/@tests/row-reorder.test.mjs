@@ -16,6 +16,15 @@ import {
     restoreSiblingListOrder
 } from "../core/row-reorder/ops.js";
 import { ROW_REORDER_POSITIONS } from "../core/row-reorder/constants.js";
+import {
+    NEST_SHIFT_PX,
+    SWAP_EDGE_PX,
+    hitPreviewRow,
+    isDraggedPreviewRowId,
+    isHomePreviewHit,
+    planRowReorderPreview,
+    resolveReorderIntent
+} from "../core/row-reorder/preview.js";
 
 test("resolveReorderContext finds top-level row", () => {
     const data = [{ id: "a" }, { id: "b" }];
@@ -218,4 +227,226 @@ test("computeNudgeToIndex moves single row down/up", () => {
     const copy2 = list.map((r) => ({ ...r }));
     assert.equal(reorderSiblingBlock(copy2, 1, 1, up), true);
     assert.deepEqual(collectLocalRowIds(copy2), ["b", "a", "c"]);
+});
+
+function previewRows(specs) {
+    return specs.map((spec) => ({
+        rowId: spec.id,
+        y: spec.y,
+        height: spec.height ?? 28,
+        level: spec.level ?? 0,
+        isDragged: !!spec.dragged
+    }));
+}
+
+test("planRowReorderPreview moves block down between siblings", () => {
+    const rows = previewRows([
+        { id: "a", y: 0, dragged: true },
+        { id: "b", y: 28 },
+        { id: "c", y: 56 },
+        { id: "d", y: 84 }
+    ]);
+    const plan = planRowReorderPreview(rows, {
+        position: ROW_REORDER_POSITIONS.AFTER,
+        targetRowId: "c",
+        indentLevel: 0
+    });
+    const byId = Object.fromEntries(plan.map((item) => [item.rowId, item.y]));
+    assert.equal(byId.b, 0);
+    assert.equal(byId.c, 28);
+    assert.equal(byId.a, 56);
+    assert.equal(byId.d, 84);
+});
+
+test("planRowReorderPreview moves block up before sibling", () => {
+    const rows = previewRows([
+        { id: "a", y: 0 },
+        { id: "b", y: 28 },
+        { id: "c", y: 56, dragged: true }
+    ]);
+    const plan = planRowReorderPreview(rows, {
+        position: ROW_REORDER_POSITIONS.BEFORE,
+        targetRowId: "a",
+        indentLevel: 0
+    });
+    const byId = Object.fromEntries(plan.map((item) => [item.rowId, item.y]));
+    assert.equal(byId.c, 0);
+    assert.equal(byId.a, 28);
+    assert.equal(byId.b, 56);
+});
+
+test("planRowReorderPreview nests after visible children and bumps indent", () => {
+    const rows = previewRows([
+        { id: "move", y: 0, dragged: true, level: 0 },
+        { id: "p", y: 28, level: 0 },
+        { id: "p:c1", y: 56, level: 1 }
+    ]);
+    const plan = planRowReorderPreview(rows, {
+        position: ROW_REORDER_POSITIONS.INSIDE,
+        targetRowId: "p",
+        indentLevel: 1
+    });
+    const byId = Object.fromEntries(plan.map((item) => [item.rowId, item]));
+    assert.equal(byId.p.y, 0);
+    assert.equal(byId["p:c1"].y, 28);
+    assert.equal(byId.move.y, 56);
+    assert.equal(byId.move.indentDelta, 20);
+});
+
+test("isDraggedPreviewRowId includes visible descendants", () => {
+    assert.equal(isDraggedPreviewRowId("p:c", ["p"]), true);
+    assert.equal(isDraggedPreviewRowId("q", ["p"]), false);
+});
+
+test("hitPreviewRow ignores gaps between mapped rows", () => {
+    const hits = [
+        { rowId: "b", top: 0, bottom: 28, height: 28 },
+        { rowId: "c", top: 56, bottom: 84, height: 28 }
+    ];
+    assert.equal(hitPreviewRow(hits, 10)?.rowId, "b");
+    assert.equal(hitPreviewRow(hits, 40), null);
+    assert.equal(hitPreviewRow(hits, 60)?.rowId, "c");
+});
+
+test("resolveReorderIntent swaps after SWAP_EDGE_PX into neighbor, same up and down", () => {
+    const hits = [
+        { rowId: "a", top: 0, bottom: 28, height: 28, isDragged: true },
+        { rowId: "b", top: 28, bottom: 56, height: 28 }
+    ];
+    const stillHome = resolveReorderIntent({
+        hits,
+        clientY: 28 + SWAP_EDGE_PX - 1,
+        clientX: 10,
+        startClientX: 10,
+        allowNest: true,
+        draggedIds: ["a"]
+    });
+    assert.equal(stillHome.home, true);
+
+    const down = resolveReorderIntent({
+        hits,
+        clientY: 28 + SWAP_EDGE_PX + 1,
+        clientX: 10,
+        startClientX: 10,
+        allowNest: true,
+        draggedIds: ["a"]
+    });
+    assert.equal(down.position, ROW_REORDER_POSITIONS.AFTER);
+    assert.equal(down.hoverRowId, "b");
+
+    const upHits = [
+        { rowId: "b", top: 0, bottom: 28, height: 28 },
+        { rowId: "a", top: 28, bottom: 56, height: 28, isDragged: true }
+    ];
+    const upHome = resolveReorderIntent({
+        hits: upHits,
+        clientY: 28 - SWAP_EDGE_PX + 1,
+        clientX: 10,
+        startClientX: 10,
+        allowNest: true,
+        draggedIds: ["a"]
+    });
+    assert.equal(upHome.home, true);
+
+    const up = resolveReorderIntent({
+        hits: upHits,
+        clientY: 28 - SWAP_EDGE_PX - 1,
+        clientX: 10,
+        startClientX: 10,
+        allowNest: true,
+        draggedIds: ["a"]
+    });
+    assert.equal(up.position, ROW_REORDER_POSITIONS.BEFORE);
+    assert.equal(up.hoverRowId, "b");
+});
+
+test("resolveReorderIntent right shift nests into row above", () => {
+    const hits = [
+        { rowId: "a", top: 0, bottom: 28, height: 28 },
+        { rowId: "b", top: 28, bottom: 56, height: 28, isDragged: true }
+    ];
+    const nestAfter = resolveReorderIntent({
+        hits: [
+            { rowId: "a", top: 0, bottom: 28, height: 28, isDragged: true },
+            { rowId: "b", top: 28, bottom: 56, height: 28 }
+        ],
+        clientY: 28 + SWAP_EDGE_PX + 1,
+        clientX: 10 + NEST_SHIFT_PX,
+        startClientX: 10,
+        allowNest: true,
+        draggedIds: ["a"]
+    });
+    assert.equal(nestAfter.position, ROW_REORDER_POSITIONS.INSIDE);
+    assert.equal(nestAfter.hoverRowId, "b");
+});
+
+test("resolveReorderIntent nest after swap with b is parent a, not b", () => {
+    const hits = [
+        { rowId: "a", top: 0, bottom: 28, height: 28 },
+        { rowId: "b", top: 28, bottom: 56, height: 28 },
+        { rowId: "c", top: 56, bottom: 84, height: 28, isDragged: true }
+    ];
+    const nest = resolveReorderIntent({
+        hits,
+        clientY: 56 - SWAP_EDGE_PX - 1,
+        clientX: 10 + NEST_SHIFT_PX,
+        startClientX: 10,
+        allowNest: true,
+        draggedIds: ["c"]
+    });
+    assert.equal(nest.position, ROW_REORDER_POSITIONS.INSIDE);
+    assert.equal(nest.hoverRowId, "a");
+});
+
+test("resolveReorderIntent home plus right nests under the row above", () => {
+    const hits = [
+        { rowId: "a", top: 0, bottom: 28, height: 28 },
+        { rowId: "b", top: 28, bottom: 56, height: 28 },
+        { rowId: "c", top: 56, bottom: 84, height: 28, isDragged: true }
+    ];
+    const nest = resolveReorderIntent({
+        hits,
+        clientY: 70,
+        clientX: 10 + NEST_SHIFT_PX,
+        startClientX: 10,
+        allowNest: true,
+        draggedIds: ["c"]
+    });
+    assert.equal(nest.position, ROW_REORDER_POSITIONS.INSIDE);
+    assert.equal(nest.hoverRowId, "b");
+});
+
+test("resolveDropTarget same slot is noop so preview can return home", () => {
+    const data = [{ id: "a" }, { id: "b" }];
+    const dragCtx = resolveReorderContext(data, "a");
+    const drop = resolveDropTarget({
+        sourceRows: data,
+        dragCtx,
+        hoverRowId: "b",
+        position: ROW_REORDER_POSITIONS.BEFORE,
+        allowTree: "siblings"
+    });
+    assert.equal(drop.noop, true);
+});
+
+test("isHomePreviewHit treats original dragged slot as home", () => {
+    assert.equal(isHomePreviewHit({ rowId: "a", isDragged: true }, ["a"]), true);
+    assert.equal(isHomePreviewHit({ rowId: "b", isDragged: false }, ["a"]), false);
+});
+
+test("resolveReorderIntent does not nest when tree reparent off", () => {
+    const hits = [
+        { rowId: "a", top: 0, bottom: 28, height: 28, isDragged: true },
+        { rowId: "b", top: 28, bottom: 56, height: 28 }
+    ];
+    const intent = resolveReorderIntent({
+        hits,
+        clientY: 28 + SWAP_EDGE_PX + 1,
+        clientX: 80,
+        startClientX: 10,
+        allowNest: false,
+        draggedIds: ["a"]
+    });
+    assert.equal(intent.position, ROW_REORDER_POSITIONS.AFTER);
+    assert.equal(intent.hoverRowId, "b");
 });

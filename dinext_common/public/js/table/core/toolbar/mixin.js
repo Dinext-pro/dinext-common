@@ -184,7 +184,7 @@ export const ToolbarMixin = (Base) => class extends Base {
         const trigger = document.createElement("button");
         trigger.type = "button";
         trigger.className = "dinext-table-toolbar-trigger";
-        trigger.setAttribute("aria-label", "Table menu");
+        trigger.setAttribute("aria-label", __("Table menu"));
         trigger.setAttribute("aria-haspopup", "true");
         trigger.innerHTML = TOOLBAR_ICON_SVG.menu;
         trigger.addEventListener("click", event => this.handleToolbarTriggerClick(event));
@@ -331,10 +331,10 @@ export const ToolbarMixin = (Base) => class extends Base {
         button.setAttribute("role", "button");
         button.disabled = locked;
         button.title = locked
-            ? "Toolbar always visible"
+            ? __("Toolbar always visible")
             : this._toolbarPinned
-                ? "Unpin toolbar"
-                : "Pin toolbar";
+                ? __("Unpin toolbar")
+                : __("Pin toolbar");
         button.innerHTML = this._toolbarPinned
             ? TOOLBAR_ICON_SVG.unpin
             : TOOLBAR_ICON_SVG.pin;
@@ -427,7 +427,7 @@ export const ToolbarMixin = (Base) => class extends Base {
         input.disabled = resolveToolbarFlag(item.disabled, ctx);
         input.checked = resolveToolbarFlag(item.checked, ctx);
         input.indeterminate = resolveToolbarFlag(item.indeterminate, ctx);
-        input.setAttribute("aria-label", item.title || item.label || "Toggle");
+        input.setAttribute("aria-label", item.title || item.label || __("Toggle"));
 
         input.addEventListener("click", (event) => {
             event.stopPropagation();

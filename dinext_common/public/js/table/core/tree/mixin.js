@@ -13,7 +13,8 @@ import {
     resolveTreeColumnField,
     rowIsExpandable,
     toVisibleRows,
-    treeHasExpandable
+    treeHasExpandable,
+    walkLeafColumns
 } from "./model.js";
 import {
     clearExpandedDescendantIds,
@@ -143,10 +144,45 @@ export const TreeMixin = (Base) => class extends Base {
     }
 
     buildColumnDefs() {
-        if (!this.hasNestedRows() || !this.columns.length) {
+        if (!this.columns.length) {
+            return super.buildColumnDefs();
+        }
+        this.warnIgnoredTreeContent(this.getTreeColumnField());
+        // Remembered so refresh() can rebuild colDefs on flat <-> nested flips;
+        // with domain render on the tree column both shapes yield the same defs.
+        this._treeColumnDefsApplied = this.needsTreeColumnDefs();
+        if (!this._treeColumnDefsApplied) {
             return super.buildColumnDefs();
         }
         return this.buildTreeColumnDefs();
+    }
+
+    needsTreeColumnDefs() {
+        return this.hasNestedRows() || this.treeColumnDeclaresContent();
+    }
+
+    /**
+     * Domain `render` / `treeContentKey` on the tree column is a column contract,
+     * not a data-shape one: compose the tree renderer even when no row has children
+     * (chevron/indent stay hidden — see renderLead / `_level`).
+     */
+    treeColumnDeclaresContent() {
+        const rawCol = findRawColumnByField(this.columns, this.getTreeColumnField());
+        if (!rawCol || rawCol.tree === false) {
+            return false;
+        }
+        return typeof rawCol.render === "function"
+            || typeof rawCol.treeContentKey === "function";
+    }
+
+    refresh(data) {
+        super.refresh(data);
+        if (
+            this._treeColumnDefsApplied !== undefined
+            && this._treeColumnDefsApplied !== this.needsTreeColumnDefs()
+        ) {
+            this.setGridOption("columnDefs", this.buildColumnDefs());
+        }
     }
 
     initTreeState() {
@@ -347,6 +383,25 @@ export const TreeMixin = (Base) => class extends Base {
                 )
             };
         });
+    }
+
+    /** `render` / `treeContentKey` are honoured on the tree column only; normalizeColumn drops them silently elsewhere. */
+    warnIgnoredTreeContent(treeField) {
+        if (this._treeRenderWarned) return;
+        const ignored = [];
+        walkLeafColumns(this.columns, (col) => {
+            const declares = typeof col.render === "function"
+                || typeof col.treeContentKey === "function";
+            const applied = col.field === treeField && col.tree !== false;
+            if (declares && !applied) {
+                ignored.push(col.field);
+            }
+        });
+        if (!ignored.length) return;
+        this._treeRenderWarned = true;
+        console.warn(
+            `DinextTable: render/treeContentKey on non-tree column(s) ${ignored.map((f) => `"${f}"`).join(", ")} are ignored (tree column: ${treeField ? `"${treeField}"` : "none"})`
+        );
     }
 
     buildTreeColumnDefs() {

@@ -16,12 +16,20 @@ import {
     getStableRowId,
     moveRowBlock,
     remapPathIdsForBlockMove,
-    resolveDropPosition,
     resolveDropTarget,
     resolveReorderContext,
     restoreCrossParentOrders,
     restoreSiblingListOrder
 } from "./ops.js";
+import {
+    applyRowReorderPreviewPlan,
+    buildPreviewHitMap,
+    clearRowReorderPreview,
+    collectPreviewRows,
+    planRowReorderPreview,
+    previewTargetKey,
+    resolveReorderIntent
+} from "./preview.js";
 
 const ROW_REORDER_DEFAULTS = {
     enabled: false,
@@ -37,8 +45,20 @@ const ROW_REORDER_DEFAULTS = {
      */
     allowTree: ROW_REORDER_TREE_MODES.SIBLINGS,
     /** Toolbar ↑↓ in preset `rows`. Keep false for tree UIs that only want gutter DnD. */
-    toolbarMove: true
+    toolbarMove: true,
+    /**
+     * Domain opt-in: Dinext sort (`isSortActive`) blocks starting a drag.
+     * Handle stays visible; cursor + tooltip explain how to unlock.
+     */
+    blockWhenSorted: false,
+    /** English source for `__()`. Empty → "Clear sort to move a row". */
+    blockWhenSortedTooltip: ""
 };
+
+const TREE_INDENT_PX = 20;
+const SCROLL_EDGE_PX = 36;
+const SCROLL_STEP_PX = 14;
+const DROP_GAP_HEIGHT = 7;
 
 /**
  * Row drag-and-drop reorder layer (custom gutter DnD, not AG Grid rowDrag module).
@@ -64,6 +84,7 @@ export const RowReorderMixin = (Base) => class extends Base {
             this.ensureRowReorderDropIndicator();
             this.bindRowReorderListeners();
             this.container?.classList.add("dinext-table--row-reorder-enabled");
+            this.syncRowReorderSortLockUi();
         }
     }
 
@@ -106,6 +127,9 @@ export const RowReorderMixin = (Base) => class extends Base {
         if (this.isGridSorted()) {
             return true;
         }
+        if (this.isRowReorderSortLocked()) {
+            return true;
+        }
         if (typeof this.isFilterActive === "function" && this.isFilterActive()) {
             return true;
         }
@@ -118,6 +142,52 @@ export const RowReorderMixin = (Base) => class extends Base {
     isGridSorted() {
         const state = this.api?.getColumnState?.() || [];
         return state.some((col) => col.sort != null);
+    }
+
+    /** Domain `blockWhenSorted`: any Dinext column sort locks the handle. */
+    isRowReorderSortLocked() {
+        if (!this.getRowReorderOptions().blockWhenSorted) {
+            return false;
+        }
+        return typeof this.isSortActive === "function" && this.isSortActive();
+    }
+
+    getRowReorderSortLockTooltip() {
+        const raw = this.getRowReorderOptions().blockWhenSortedTooltip;
+        const text = raw || "Clear sort to move a row";
+        return typeof __ === "function" ? __(text) : text;
+    }
+
+    getRowReorderHandleTooltip() {
+        if (this.isRowReorderSortLocked()) {
+            return this.getRowReorderSortLockTooltip();
+        }
+        return typeof __ === "function" ? __("Move") : "Move";
+    }
+
+    syncRowReorderSortLockUi() {
+        const locked = this.isRowReorderSortLocked();
+        this.container?.classList.toggle("dinext-table--row-reorder-sort-locked", locked);
+        if (!this.container || !this.isRowReorderEnabled()) {
+            return;
+        }
+        this.api?.refreshCells?.({
+            columns: [ROW_REORDER_COL_ID],
+            force: true
+        });
+        this.stampRowReorderHandleTooltips();
+    }
+
+    stampRowReorderHandleTooltips() {
+        const tip = this.getRowReorderHandleTooltip();
+        const safeId = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+            ? CSS.escape(ROW_REORDER_COL_ID)
+            : ROW_REORDER_COL_ID;
+        this.container?.querySelectorAll(
+            `.ag-cell[col-id="${safeId}"], .dinext-table-row-reorder-handle, .dinext-table-row-reorder-handle-host`
+        ).forEach((el) => {
+            el.setAttribute("title", tip);
+        });
     }
 
     getRowReorderSourceRows(section) {
@@ -232,6 +302,7 @@ export const RowReorderMixin = (Base) => class extends Base {
             cellClass: "dinext-table-cell--align-center dinext-table-row-reorder-cell",
             headerClass: "dinext-table-header--align-center dinext-table-row-reorder-header",
             valueGetter: () => null,
+            tooltipValueGetter: () => this.getRowReorderHandleTooltip(),
             cellRenderer: RowReorderHandleCellRenderer
         };
     }
@@ -244,15 +315,23 @@ export const RowReorderMixin = (Base) => class extends Base {
     }
 
     getRowElementFromPoint(clientX, clientY) {
-        const el = document.elementFromPoint(clientX, clientY);
-        const rowEl = el?.closest?.(".ag-row");
-        if (!rowEl || !this.container?.contains(rowEl)) {
-            return null;
+        const stack = typeof document.elementsFromPoint === "function"
+            ? document.elementsFromPoint(clientX, clientY)
+            : [document.elementFromPoint(clientX, clientY)];
+        for (const el of stack) {
+            const rowEl = el?.closest?.(".ag-row");
+            if (!rowEl || !this.container?.contains(rowEl)) {
+                continue;
+            }
+            if (rowEl.classList.contains("dinext-table-row--reorder-preview-drag")) {
+                continue;
+            }
+            if (rowEl.closest(".ag-floating-bottom, .ag-pinned-left-floating-bottom, .ag-pinned-right-floating-bottom")) {
+                return null;
+            }
+            return rowEl;
         }
-        if (rowEl.closest(".ag-floating-bottom, .ag-pinned-left-floating-bottom, .ag-pinned-right-floating-bottom")) {
-            return null;
-        }
-        return rowEl;
+        return null;
     }
 
     getDisplayedRowNodeFromElement(rowEl) {
@@ -284,8 +363,25 @@ export const RowReorderMixin = (Base) => class extends Base {
             frame.className = "dinext-table-row-reorder-drop-inside-frame";
             frame.setAttribute("aria-hidden", "true");
             frame.hidden = true;
+            const label = document.createElement("span");
+            label.className = "dinext-table-row-reorder-drop-inside-label";
+            label.textContent = __("Inside");
+            frame.appendChild(label);
             this.container.appendChild(frame);
             this._rowReorderDropInsideEl = frame;
+        }
+    }
+
+    autoScrollRowReorderViewport(clientY) {
+        const viewport = this.container?.querySelector(".ag-body-viewport");
+        if (!viewport) {
+            return;
+        }
+        const rect = viewport.getBoundingClientRect();
+        if (clientY < rect.top + SCROLL_EDGE_PX) {
+            viewport.scrollTop -= SCROLL_STEP_PX;
+        } else if (clientY > rect.bottom - SCROLL_EDGE_PX) {
+            viewport.scrollTop += SCROLL_STEP_PX;
         }
     }
 
@@ -293,9 +389,11 @@ export const RowReorderMixin = (Base) => class extends Base {
         this.container?.classList.remove(
             "dinext-table--row-reorder-grabbing",
             "dinext-table--row-reorder-gutter-hover",
-            "dinext-table--row-reorder-drop-invalid"
+            "dinext-table--row-reorder-drop-invalid",
+            "dinext-table--row-reorder-sort-locked"
         );
         this.hideRowReorderDropVisuals();
+        this.clearRowReorderPreview();
         this.container?.querySelectorAll(".ag-row.dinext-table-row--dragging").forEach((el) => {
             el.classList.remove("dinext-table-row--dragging");
         });
@@ -323,6 +421,10 @@ export const RowReorderMixin = (Base) => class extends Base {
 
             const rowNode = this.getDisplayedRowNodeFromElement(rowEl);
             if (!this.canStartRowReorder(rowNode)) {
+                if (this.isRowReorderSortLocked()) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
                 return;
             }
 
@@ -330,7 +432,7 @@ export const RowReorderMixin = (Base) => class extends Base {
             event.preventDefault();
             event.stopPropagation();
             event.stopImmediatePropagation?.();
-            this.beginRowReorderDrag(rowNode, rowEl);
+            this.beginRowReorderDrag(rowNode, rowEl, event);
         };
 
         this._onRowReorderMouseMove = (event) => {
@@ -398,7 +500,7 @@ export const RowReorderMixin = (Base) => class extends Base {
         this.container.classList.add("dinext-table--row-reorder-gutter-hover");
     }
 
-    beginRowReorderDrag(rowNode, rowEl) {
+    beginRowReorderDrag(rowNode, rowEl, event) {
         const rowId = getStableRowId(rowNode.data, this.options);
         const section = this.resolveRowReorderSection(rowNode.data);
         const sourceRows = this.getRowReorderSourceRows(section);
@@ -415,6 +517,10 @@ export const RowReorderMixin = (Base) => class extends Base {
             ctx,
             fromOrderBefore: collectLocalRowIds(fromList, this.options),
             dropTarget: null,
+            previewKey: "",
+            startClientX: event?.clientX ?? 0,
+            draggedIds: collectDraggedRowIds(ctx, this.options),
+            hitMap: [],
             dragRowEls: this.collectDisplayedRowElementsForBlock(ctx, section)
         };
 
@@ -425,6 +531,7 @@ export const RowReorderMixin = (Base) => class extends Base {
         for (const el of this._rowReorderDrag.dragRowEls) {
             el.classList.add("dinext-table-row--dragging");
         }
+        this.refreshRowReorderHitMap();
     }
 
     /** True while gutter row-drag is active (selection/clipboard layers check this). */
@@ -452,10 +559,10 @@ export const RowReorderMixin = (Base) => class extends Base {
             if (rowIndex == null) {
                 return;
             }
-            const rowEl = this.container.querySelector(`.ag-row[row-index="${rowIndex}"]`);
-            if (rowEl) {
-                elements.push(rowEl);
-            }
+            const safeIndex = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+                ? CSS.escape(String(rowIndex))
+                : String(rowIndex);
+            elements.push(...this.container.querySelectorAll(`.ag-row[row-index="${safeIndex}"]`));
         });
 
         return elements;
@@ -467,53 +574,83 @@ export const RowReorderMixin = (Base) => class extends Base {
             return;
         }
 
-        drag.dropTarget = null;
+        this.autoScrollRowReorderViewport(event.clientY);
 
-        const hoverRowEl = this.getRowElementFromPoint(event.clientX, event.clientY);
-        if (!hoverRowEl) {
-            this.hideRowReorderDropVisuals();
+        if (!this.isRowReorderPointerInGrid(event.clientX, event.clientY)) {
+            this.clearRowReorderDragPreview();
+            drag.dropTarget = null;
             this.setRowReorderDropInvalid(true);
             return;
         }
 
-        const hoverNode = this.getDisplayedRowNodeFromElement(hoverRowEl);
-        if (!hoverNode?.data) {
-            this.hideRowReorderDropVisuals();
-            this.setRowReorderDropInvalid(true);
-            return;
-        }
-
-        const hoverRowId = getStableRowId(hoverNode.data, this.options);
         const allowTree = this.getRowReorderTreeMode();
-        const allowInside = allowTree === ROW_REORDER_TREE_MODES.REPARENT;
-        const rect = hoverRowEl.getBoundingClientRect();
-        const position = resolveDropPosition(event.clientY - rect.top, rect.height, allowInside);
+        const intent = resolveReorderIntent({
+            hits: drag.hitMap,
+            clientY: event.clientY,
+            clientX: event.clientX,
+            startClientX: drag.startClientX,
+            allowNest: allowTree === ROW_REORDER_TREE_MODES.REPARENT,
+            draggedIds: drag.draggedIds
+        });
+        if (!intent) {
+            if (drag.dropTarget) {
+                this.setRowReorderDropInvalid(false);
+            }
+            return;
+        }
+        if (intent.home) {
+            this.restoreRowReorderHome();
+            return;
+        }
 
         const dropTarget = resolveDropTarget({
             sourceRows: drag.sourceRows,
             dragCtx: drag.ctx,
-            hoverRowId,
-            position,
+            hoverRowId: intent.hoverRowId,
+            position: intent.position,
             allowTree,
             options: this.options
         });
 
+        if (dropTarget?.noop) {
+            this.restoreRowReorderHome();
+            return;
+        }
+
         if (!dropTarget) {
-            this.hideRowReorderDropVisuals();
-            this.setRowReorderDropInvalid(true);
+            if (drag.dropTarget) {
+                this.setRowReorderDropInvalid(false);
+            } else {
+                this.setRowReorderDropInvalid(true);
+            }
             return;
         }
 
         drag.dropTarget = dropTarget;
         this.setRowReorderDropInvalid(false);
+        this.syncRowReorderPreview(dropTarget);
+        this.hideRowReorderDropVisuals();
+    }
 
-        if (dropTarget.position === ROW_REORDER_POSITIONS.INSIDE) {
-            this.hideRowReorderDropGap();
-            this.showRowReorderDropInside(hoverRowEl);
-        } else {
-            this.hideRowReorderDropInside();
-            this.showRowReorderDropGap(hoverRowEl, dropTarget);
+    isRowReorderPointerInGrid(clientX, clientY) {
+        const viewport = this.container?.querySelector(".ag-body-viewport") || this.container;
+        if (!viewport) {
+            return false;
         }
+        const rect = viewport.getBoundingClientRect();
+        return clientX >= rect.left
+            && clientX <= rect.right
+            && clientY >= rect.top
+            && clientY <= rect.bottom;
+    }
+
+    refreshRowReorderHitMap() {
+        const drag = this._rowReorderDrag;
+        if (!drag) {
+            return;
+        }
+        const rows = collectPreviewRows(this, drag.section, drag.draggedIds);
+        drag.hitMap = buildPreviewHitMap(rows);
     }
 
     /** Union rect of all AG pin slices for the same displayed row-index. */
@@ -548,25 +685,24 @@ export const RowReorderMixin = (Base) => class extends Base {
         return { left, top, right, bottom, width: right - left, height: bottom - top };
     }
 
-    showRowReorderDropGap(rowEl, dropTarget) {
+    showRowReorderDropGap(rowEl, dropTarget, level = 0) {
         const gapEl = this._rowReorderDropGapEl;
         if (!gapEl || !this.container || !dropTarget) {
             return;
         }
 
-        const gapHeight = 4;
         const containerRect = this.container.getBoundingClientRect();
         const rowRect = rowEl.getBoundingClientRect();
         const edge = dropTarget.position === ROW_REORDER_POSITIONS.BEFORE
             ? rowRect.top
             : rowRect.bottom;
-        const top = edge - (gapHeight / 2) - containerRect.top + this.container.scrollTop;
+        const top = edge - (DROP_GAP_HEIGHT / 2) - containerRect.top + this.container.scrollTop;
+        const indent = Math.max(0, Number(level) || 0) * TREE_INDENT_PX;
 
         gapEl.hidden = false;
-        gapEl.style.height = `${gapHeight}px`;
+        gapEl.style.height = `${DROP_GAP_HEIGHT}px`;
         gapEl.style.top = `${top}px`;
-        // Full-bleed: no left indent (tree level / chevron offset).
-        gapEl.style.left = "0";
+        gapEl.style.left = `${indent}px`;
         gapEl.style.right = "0";
         gapEl.style.width = "";
     }
@@ -608,6 +744,71 @@ export const RowReorderMixin = (Base) => class extends Base {
         this.hideRowReorderDropInside();
     }
 
+    clearRowReorderPreview() {
+        clearRowReorderPreview(this.container);
+        if (this._rowReorderDrag) {
+            this._rowReorderDrag.previewKey = "";
+        }
+    }
+
+    clearRowReorderDragPreview() {
+        this.hideRowReorderDropVisuals();
+        this.clearRowReorderPreview();
+    }
+
+    restoreRowReorderHome() {
+        const drag = this._rowReorderDrag;
+        if (!drag) {
+            return;
+        }
+        this.clearRowReorderDragPreview();
+        drag.dropTarget = null;
+        this.setRowReorderDropInvalid(false);
+    }
+
+    syncRowReorderPreview(dropTarget) {
+        const drag = this._rowReorderDrag;
+        if (!drag || !dropTarget) {
+            return;
+        }
+
+        const key = previewTargetKey(dropTarget);
+        if (key && key === drag.previewKey) {
+            return;
+        }
+
+        this.clearRowReorderPreview();
+        const rows = collectPreviewRows(this, drag.section, drag.draggedIds);
+        const plan = planRowReorderPreview(rows, dropTarget);
+        if (!applyRowReorderPreviewPlan(rows, plan)) {
+            this.fallbackRowReorderDropVisual(dropTarget);
+            return;
+        }
+
+        drag.previewKey = key;
+    }
+
+    fallbackRowReorderDropVisual(dropTarget) {
+        const hoverRowId = dropTarget?.targetRowId;
+        if (!hoverRowId || !this.api) {
+            return;
+        }
+        const node = this.api.getRowNode?.(String(hoverRowId));
+        const rowIndex = node?.rowIndex;
+        if (rowIndex == null) {
+            return;
+        }
+        const hoverRowEl = this.container?.querySelector(`.ag-row[row-index="${rowIndex}"]`);
+        if (!hoverRowEl) {
+            return;
+        }
+        if (dropTarget.position === ROW_REORDER_POSITIONS.INSIDE) {
+            this.showRowReorderDropInside(hoverRowEl);
+        } else {
+            this.showRowReorderDropGap(hoverRowEl, dropTarget, node.data?._level || 0);
+        }
+    }
+
     finishRowReorderDrag() {
         const drag = this._rowReorderDrag;
         this._rowReorderDrag = null;
@@ -638,6 +839,11 @@ export const RowReorderMixin = (Base) => class extends Base {
         this.refreshAfterRowReorder(section);
     }
 
+    applySortToSource() {
+        super.applySortToSource?.();
+        this.syncRowReorderSortLockUi();
+    }
+
     refreshAfterRowReorder(section) {
         // Inner mixins (e.g. Sort) may clear derived state before we rebind rows.
         super.refreshAfterRowReorder?.(section);
@@ -646,6 +852,7 @@ export const RowReorderMixin = (Base) => class extends Base {
             if (typeof this.syncSummarySection === "function") {
                 this.syncSummarySection();
             }
+            this.syncRowReorderSortLockUi();
             return;
         }
 
@@ -654,6 +861,7 @@ export const RowReorderMixin = (Base) => class extends Base {
         }
         this.setGridOption("rowData", [...(this.rowData || [])]);
         this.refreshAllTreeToggles?.();
+        this.syncRowReorderSortLockUi();
     }
 
     remapRowPathIdsAfterReorder(fromParentRowId, toParentRowId, localIds) {
@@ -968,8 +1176,14 @@ export const RowReorderMixin = (Base) => class extends Base {
     }
 
     handleRowReorderBodyScroll() {
-        if (this._rowReorderDrag) {
-            this.hideRowReorderDropVisuals();
+        const drag = this._rowReorderDrag;
+        if (!drag) {
+            return;
+        }
+        this.clearRowReorderPreview();
+        this.refreshRowReorderHitMap();
+        if (drag.dropTarget) {
+            this.syncRowReorderPreview(drag.dropTarget);
         }
     }
 
@@ -989,6 +1203,7 @@ export const RowReorderMixin = (Base) => class extends Base {
                 this.clearRowReorderUi();
             }
             this.refreshToolbar?.();
+            this.syncRowReorderSortLockUi();
             return true;
         }
         return super.handleSetOption?.(key, value) ?? false;

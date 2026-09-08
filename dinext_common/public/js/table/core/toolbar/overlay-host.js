@@ -1,12 +1,68 @@
 /**
  * Native Fullscreen only paints `fullscreenElement` subtree.
- * Overlays appended to `body` (Frappe datepicker, AG popup) are invisible there.
+ * Overlays appended to `body` (datepicker, AG popup, Frappe Dialog) are invisible there.
  */
 
 export const OVERLAY_Z_INDEX = "10050";
+export const MODAL_Z_INDEX = "10050";
+export const BACKDROP_Z_INDEX = "10040";
 
 /** Desk / AG overlays that normally portal to body. */
-export const OVERLAY_SELECTOR = ".datepicker, .ag-popup";
+export const OVERLAY_SELECTOR = [
+	".datepicker",
+	".ag-popup",
+	".awesomplete > ul",
+	"#freeze",
+	"#dialog-container",
+	".modal",
+	".modal-backdrop",
+	".frappe-toast-area",
+].join(", ");
+
+function nodeHasClass(node, name) {
+	return String(node?.className || "")
+		.split(/\s+/)
+		.includes(name);
+}
+
+/** Bootstrap / Frappe viewport overlays — already position:fixed; do not snapshot rect. */
+export function isViewportOverlay(node) {
+	if (!node) {
+		return false;
+	}
+	if (node.id === "freeze" || node.id === "dialog-container") {
+		return true;
+	}
+	return (
+		nodeHasClass(node, "modal") ||
+		nodeHasClass(node, "modal-backdrop") ||
+		nodeHasClass(node, "frappe-toast-area")
+	);
+}
+
+function resolveAdoptNode(node, host) {
+	if (nodeHasClass(node, "modal")) {
+		return node;
+	}
+	const modalRoot = node.closest?.(".modal");
+	if (modalRoot && modalRoot !== host) {
+		return modalRoot;
+	}
+	return node;
+}
+
+function applyViewportOverlayZ(node) {
+	if (!node?.style) {
+		return;
+	}
+	if (nodeHasClass(node, "modal") || node.id === "dialog-container") {
+		node.style.zIndex = MODAL_Z_INDEX;
+	} else if (nodeHasClass(node, "modal-backdrop")) {
+		node.style.zIndex = BACKDROP_Z_INDEX;
+	} else if (node.id === "freeze") {
+		node.style.zIndex = node.style.zIndex || "10060";
+	}
+}
 
 export function getDocumentFullscreenElement(doc = typeof document !== "undefined" ? document : null) {
 	if (!doc) {
@@ -67,23 +123,31 @@ export function adoptOverlay(node, { anchor, host, doc } = {}) {
 	if (!node || !overlayHost) {
 		return false;
 	}
-	if (overlayHost === ownerDoc?.body && node.parentNode === overlayHost) {
+	const target = resolveAdoptNode(node, overlayHost);
+	if (overlayHost === ownerDoc?.body && target.parentNode === overlayHost) {
 		return false;
 	}
-	if (node.parentNode !== overlayHost) {
-		const rect = typeof node.getBoundingClientRect === "function" ? node.getBoundingClientRect() : null;
-		overlayHost.appendChild(node);
+	if (target.parentNode !== overlayHost) {
+		const rect =
+			typeof target.getBoundingClientRect === "function"
+				? target.getBoundingClientRect()
+				: null;
+		overlayHost.appendChild(target);
+		if (isViewportOverlay(target)) {
+			applyViewportOverlayZ(target);
+			return true;
+		}
 		if (anchor) {
-			placeOverlayNearAnchor(node, anchor);
+			placeOverlayNearAnchor(target, anchor);
 		} else if (rect && (rect.width || rect.height)) {
-			applyFixedRect(node, rect);
+			applyFixedRect(target, rect);
 		} else {
-			node.style.zIndex = node.style.zIndex || OVERLAY_Z_INDEX;
+			target.style.zIndex = target.style.zIndex || OVERLAY_Z_INDEX;
 		}
 		return true;
 	}
 	if (anchor) {
-		placeOverlayNearAnchor(node, anchor);
+		placeOverlayNearAnchor(target, anchor);
 		return true;
 	}
 	return false;
