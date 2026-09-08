@@ -206,7 +206,9 @@ left padding (`--dinext-ws-rail-pad-left`), чтобы контент не пр�
 icon-rail. На List/Form/Report и других экранах Desk свёрнутый workspace rail
 монтируется в `.layout-side-section` текущей страницы (при необходимости
 колонка создаётся). List/form sidebar остаётся рядом и не превращается в
-icon-rail; кнопка toggle страницы управляет ими, не workspace-меню.
+icon-rail; кнопка toggle страницы управляет ими, не workspace-меню. На Form
+сохранённого документа нативная form-sidebar открыта по умолчанию; у нового
+несохранённого документа Frappe по-прежнему скрывает её до Save.
 
 На мобильной ширине остаётся стандартный overlay Frappe.
 

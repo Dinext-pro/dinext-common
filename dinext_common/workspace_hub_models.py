@@ -60,6 +60,7 @@ class WorkspaceHubSection(TypedDict):
 	"""One projected hub section."""
 
 	label: str
+	section_key: str
 	items: list[WorkspaceHubCard]
 	lists: WorkspaceHubSectionLists | None
 	list_limit: int
