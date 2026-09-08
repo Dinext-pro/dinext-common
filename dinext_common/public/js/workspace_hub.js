@@ -1,9 +1,8 @@
 frappe.provide("dinext_common.workspace_hub");
 
 const DINEXT_WORKSPACE_HUB_CSS = "/assets/dinext_common/css/workspace_hub.css";
-const DINEXT_WORKSPACE_HUB_ASSETS = "tour-kit-1";
-const DINEXT_TOUR_SETTINGS = "Dinext";
-const DINEXT_TOUR_IDS = ["personal-lists", "directions", "help"];
+const DINEXT_WORKSPACE_HUB_ASSETS = "generic-kit-1";
+const DOCS_HELP_ROUTE = "https://docs.dinext.ru";
 const PAGE_SKIP = new Set(["setup-wizard", "social", "recorder"]);
 const mounted_hubs = new Set();
 const hub_mounted_at = new WeakMap();
@@ -660,11 +659,6 @@ const make_section_lists = (lists) => {
 	return wrap;
 };
 
-const get_shadow_host = (hub) => {
-	const root = hub.getRootNode();
-	return root && root.host ? root.host : null;
-};
-
 const tour_kit = () => window.dinext_common && dinext_common.ui_tour;
 
 const clear_tour_anchors = (hub) => {
@@ -674,50 +668,64 @@ const clear_tour_anchors = (hub) => {
 	}
 };
 
-const tour_source = (scroll, rect_nodes, visible_nodes) => {
-	const rects = rect_nodes && rect_nodes.length ? rect_nodes : scroll ? [scroll] : [];
-	return {
-		scroll,
-		rect_nodes: rects,
-		visible_nodes: visible_nodes && visible_nodes.length ? visible_nodes : rects,
-	};
-};
-
 const is_help_section_label = (label) => {
 	const value = String(label || "").trim();
 	return value === "Help" || value === __("Help");
 };
 
-const resolve_tour_sources = (hub) => {
-	const sources = {};
-	const lists = hub.querySelector(".dinext-workspace-hub__lists");
-	if (lists) {
-		const titles = [...lists.querySelectorAll(".dinext-workspace-hub__list-title")];
-		if (titles.length) {
-			sources["personal-lists"] = tour_source(titles[0], titles, titles);
-		}
-	}
-	hub.querySelectorAll(".dinext-workspace-hub__section").forEach((section) => {
-		const key = section.getAttribute("data-dinext-section") || "";
-		const heading = section.querySelector("h3");
-		if (!heading) {
-			return;
-		}
-		if (is_help_section_label(key) || is_help_section_label(heading.textContent)) {
-			const card = section.querySelector('a[href^="https://docs.dinext.ru"]');
-			const help_node = card || heading;
-			sources.help = tour_source(help_node, [help_node], [help_node]);
-			return;
-		}
-		const cards = section.querySelector(".dinext-workspace-hub__cards");
-		if (cards && cards.childElementCount && !sources.directions) {
-			sources.directions = tour_source(heading, [heading], [heading]);
-		}
-	});
-	return sources;
+const tour_scrub = (value) => {
+	const scrubbed =
+		frappe.scrub && typeof frappe.scrub === "function"
+			? frappe.scrub(value)
+			: String(value || "")
+					.toLowerCase()
+					.replace(/ /g, "_");
+	return String(scrubbed).replace(/_/g, "-");
 };
 
-const sync_tour_anchors = (hub, settled) => {
+const card_tour_id = (route) => {
+	const raw = String(route || "").trim();
+	if (!raw) {
+		return "";
+	}
+	if (/^https?:\/\//i.test(raw)) {
+		try {
+			const url = new URL(raw);
+			const parts = url.pathname.split("/").filter(Boolean);
+			return parts.length ? parts[parts.length - 1] : url.host.replace(/[^\w.-]+/g, "-");
+		} catch (error) {
+			return "";
+		}
+	}
+	const parts = raw
+		.replace(/^\/app\//, "")
+		.replace(/^\//, "")
+		.split("/")
+		.filter(Boolean);
+	return parts.length ? parts[parts.length - 1] : "";
+};
+
+const add_tour_id = (node, id) => {
+	if (!node || !id) {
+		return;
+	}
+	const current = String(node.getAttribute("data-dinext-tour") || "")
+		.split(/\s+/)
+		.filter(Boolean);
+	if (!current.includes(id)) {
+		current.push(id);
+		node.setAttribute("data-dinext-tour", current.join(" "));
+	}
+};
+
+const is_docs_help_route = (route) => {
+	const value = String(route || "")
+		.trim()
+		.replace(/\/$/, "");
+	return value === DOCS_HELP_ROUTE;
+};
+
+const sync_tour_anchors = (hub) => {
 	const kit = tour_kit();
 	if (!hub || !hub.isConnected) {
 		if (hub) {
@@ -725,35 +733,11 @@ const sync_tour_anchors = (hub, settled) => {
 		}
 		return;
 	}
-	if (!kit || typeof kit.place_anchor !== "function") {
-		return;
-	}
-	if (hub.getAttribute("data-settings-name") !== DINEXT_TOUR_SETTINGS) {
-		clear_tour_anchors(hub);
-		return;
-	}
-	const host = get_shadow_host(hub);
-	if (!host || !document.body) {
-		clear_tour_anchors(hub);
+	if (!kit || typeof kit.observe !== "function") {
 		return;
 	}
 	ensure_light_hub_styles(hub);
-	const sources = resolve_tour_sources(hub);
-	let placed = 0;
-	let attempted = 0;
-	DINEXT_TOUR_IDS.forEach((id) => {
-		const source = sources[id];
-		if (source) {
-			attempted += 1;
-		}
-		const el = kit.place_anchor(id, source ? { ...source, host } : null, { owner: hub });
-		if (el) {
-			placed += 1;
-		}
-	});
-	if (settled && (placed || !attempted) && typeof kit.mark_ready === "function") {
-		kit.mark_ready(hub);
-	}
+	kit.observe(hub);
 };
 
 const sync_mounted_tour_anchors = (hub) => {
@@ -779,13 +763,16 @@ const render = (hub, payload) => {
 	const token = (hub_render_tokens.get(hub) || 0) + 1;
 	hub_render_tokens.set(hub, token);
 	hub.replaceChildren();
+	let stamped_directions = false;
+	let stamped_lists = false;
 	for (const section of payload.sections || []) {
+		const section_key = section.section_key || "";
 		const group = document.createElement("section");
 		group.className = "dinext-workspace-hub__section";
-		group.setAttribute(
-			"data-dinext-section",
-			is_help_section_label(section.label) ? "Help" : section.label || ""
-		);
+		group.setAttribute("data-dinext-section", section_key || section.label || "");
+		if (section_key) {
+			add_tour_id(group, `section:${tour_scrub(section_key)}`);
+		}
 		const heading = document.createElement("h3");
 		heading.textContent = __(section.label);
 		group.append(heading);
@@ -798,13 +785,38 @@ const render = (hub, payload) => {
 			"--dinext-hub-card-columns",
 			String(Math.min(columns, Math.max(1, items.length)))
 		);
-		items.forEach((item) => cards.append(make_card(item)));
+		items.forEach((item) => {
+			const card = make_card(item);
+			const card_id = card_tour_id(item.route);
+			if (card_id) {
+				add_tour_id(card, `card:${card_id}`);
+			}
+			if (is_docs_help_route(item.route)) {
+				add_tour_id(card, "help");
+			}
+			cards.append(card);
+		});
 		if (cards.childElementCount) {
 			group.append(cards);
+			if (
+				!stamped_directions &&
+				!is_help_section_label(section_key) &&
+				!is_help_section_label(section.label)
+			) {
+				add_tour_id(group, "directions");
+				stamped_directions = true;
+			}
 		}
 
 		const personal = make_section_lists(section.lists);
 		if (personal) {
+			if (section_key) {
+				add_tour_id(personal, `lists:${tour_scrub(section_key)}`);
+			}
+			if (!stamped_lists) {
+				add_tour_id(personal, "personal-lists");
+				stamped_lists = true;
+			}
 			group.append(personal);
 		}
 

@@ -114,6 +114,16 @@
 		return get_or_create_rail_section($wrapper);
 	}
 
+	function get_native_side_sections($wrapper) {
+		return $($wrapper).find(".layout-side-section").not(`.${RAIL_SECTION_CLASS}`);
+	}
+
+	function wrapper_is_workspaces($wrapper) {
+		const $page = $wrapper.closest(".page-container").add($wrapper.filter(".page-container")).first();
+		const route = ($page.attr("data-page-route") || $page.attr("id") || "").toString();
+		return route === "Workspaces" || route === "page-Workspaces";
+	}
+
 	function hide_empty_native_side_sections($wrapper) {
 		if (!$wrapper || !$wrapper.length) {
 			return;
@@ -123,8 +133,17 @@
 			.first()
 			.children(`.layout-side-section:not(.${RAIL_SECTION_CLASS})`)
 			.each(function () {
-				if (!$(this).find(".desk-sidebar").length) {
-					$(this).hide();
+				const $el = $(this);
+				if ($el.hasClass("hide-sidebar")) {
+					$el.css("display", "");
+					return;
+				}
+				if ($el.find(".form-sidebar, .list-sidebar, .desk-sidebar").length) {
+					$el.show();
+					return;
+				}
+				if (wrapper_is_workspaces($wrapper)) {
+					$el.hide();
 				}
 			});
 	}
@@ -297,14 +316,52 @@
 		);
 	}
 
+	function update_native_sidebar_icon(page) {
+		if (!page || !page.wrapper) {
+			return;
+		}
+		const $toggle = $(page.wrapper).find(".page-head .sidebar-toggle-btn");
+		const $icon = $toggle.find(".sidebar-toggle-icon");
+		if (!$icon.length) {
+			return;
+		}
+		const visible = get_native_side_sections(page.wrapper).is(":visible");
+		$icon.html(
+			frappe.utils.icon(visible ? "es-line-sidebar-collapse" : "es-line-sidebar-expand", "md")
+		);
+	}
+
+	function bind_native_sidebar_toggle(page) {
+		if (!page || !page.wrapper) {
+			return;
+		}
+		const $toggle = $(page.wrapper).find(".page-head .sidebar-toggle-btn");
+		$toggle.off("click.dinextWsSidebar");
+		$toggle.off("click.dinextWsNativeSidebar");
+		$toggle.off("click");
+		$toggle.on("click.dinextWsNativeSidebar", () => {
+			if (is_mobile()) {
+				page.setup_overlay_sidebar();
+				$(document.body).trigger("toggleSidebar");
+				update_native_sidebar_icon(page);
+				return;
+			}
+			get_native_side_sections(page.wrapper).toggle();
+			$(document.body).trigger("toggleSidebar");
+			update_native_sidebar_icon(page);
+		});
+		update_native_sidebar_icon(page);
+	}
+
 	function restore_frappe_toggle(page) {
 		if (!page || !page.wrapper) {
 			return;
 		}
 		const $toggle = $(page.wrapper).find(".page-head .sidebar-toggle-btn");
 		$toggle.off("click.dinextWsSidebar");
+		$toggle.off("click.dinextWsNativeSidebar");
 		$toggle.off("click");
-		const sidebar_wrapper = $(page.wrapper).find(".layout-side-section");
+		const sidebar_wrapper = get_native_side_sections(page.wrapper);
 		$toggle.on("click", () => {
 			if (frappe.utils.is_xs() || frappe.utils.is_sm()) {
 				page.setup_overlay_sidebar();
@@ -389,6 +446,7 @@
 	function bind_workspaces_toggle(page, $side) {
 		const $wrapper = $(page.wrapper);
 		const $toggle = $wrapper.find(".page-head .sidebar-toggle-btn");
+		$toggle.off("click.dinextWsNativeSidebar");
 		$toggle.off("click");
 		$toggle.on("click.dinextWsSidebar", () => {
 			if (is_mobile()) {
@@ -438,6 +496,8 @@
 		active_page = page;
 		apply_collapsed_state(true, $side, { persist: false });
 		bind_hover($side);
+		bind_native_sidebar_toggle(page);
+		hide_empty_native_side_sections($(page.wrapper));
 	}
 
 	function is_workspaces_page(page) {
@@ -456,7 +516,7 @@
 			unbind_hover(active_side_section);
 		}
 		active_side_section = null;
-		$(".page-head .sidebar-toggle-btn").off("click.dinextWsSidebar");
+		$(".page-head .sidebar-toggle-btn").off("click.dinextWsSidebar click.dinextWsNativeSidebar");
 		if (active_page) {
 			restore_frappe_toggle(active_page);
 		}
@@ -532,6 +592,10 @@
 			update_toggle_icon(this);
 			return;
 		}
+		if (frappe.boot.dinext_workspace_sidebar_hover_expand && !is_mobile() && !is_workspaces_route()) {
+			update_native_sidebar_icon(this);
+			return;
+		}
 		return original_update_sidebar_icon.apply(this, arguments);
 	};
 
@@ -594,9 +658,14 @@
 				sync_for_route();
 			}
 		});
-		$(document).on("form-load form-refresh", () => {
-			if (!is_mobile() && !is_workspaces_route()) {
-				sync_for_route();
+		$(document).on("form-load form-refresh", (_e, frm) => {
+			if (is_mobile() || is_workspaces_route()) {
+				return;
+			}
+			sync_for_route();
+			const page = (frm && frm.page) || get_current_page();
+			if (page && page.wrapper) {
+				hide_empty_native_side_sections($(page.wrapper));
 			}
 		});
 
