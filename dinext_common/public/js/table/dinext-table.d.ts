@@ -10,7 +10,7 @@
  * - `tree`       — N-level expand, lazy load
  * - `sort`       — recursive sibling sort on source tree (not AG flat sort)
  * - `edit`       — scalar edit, validate/save, undo sync
- * - `editors`    — columnTypes presets (text/number/integer/date)
+ * - `editors`    — columnTypes presets (text/number/integer/date/select)
  * - `navigation` — Tab/Enter Excel-like (AG Grid hooks)
  * - `selection`  — custom range (Community, без Enterprise)
  * - `clipboard`  — custom TSV copy/paste/fill (Community)
@@ -123,9 +123,10 @@ export type DinextTableRowData = Record<string, unknown> & DinextTableTreeMeta &
 /**
  * Пресеты `column.type` из EditorsMixin. @layer editors
  * `date` = ISO string contract + parser/formatter (no default cellEditor).
- * See usage-guides/date-columns.md.
+ * `select` = option key string | null; unknown paste → null (no default cellEditor).
+ * See usage-guides/date-columns.md, usage-guides/select-columns.md.
  */
-export type DinextTableColumnTypePreset = "text" | "number" | "integer" | "date" | "checkbox" | "boolean";
+export type DinextTableColumnTypePreset = "text" | "number" | "integer" | "date" | "select" | "checkbox" | "boolean";
 
 // ---------------------------------------------------------------------------
 // Column
@@ -191,7 +192,7 @@ export interface DinextTableColumnDef {
     cellRenderer?: unknown;
 
     // --- editors ---
-    /** @layer editors — preset: text | number | integer | date | checkbox | boolean */
+    /** @layer editors — preset: text | number | integer | date | select | checkbox | boolean */
     type?: DinextTableColumnTypePreset | string;
 
     // --- layout @layer ag-grid ---
@@ -207,7 +208,15 @@ export interface DinextTableColumnDef {
     valueFormatter?: (params: DinextTableCellRendererParams) => string;
     valueParser?: (params: { newValue: unknown; oldValue: unknown; data: DinextTableRowData }) => unknown;
     cellEditor?: string | unknown;
-    cellEditorParams?: Record<string, unknown>;
+    /**
+     * @layer ag-grid
+     * For `type: "select"`: `values` = `string[]` or `(params) => string[]`;
+     * optional `labels` = `{ [key]: display }`.
+     */
+    cellEditorParams?: Record<string, unknown> & {
+        values?: string[] | ((params: DinextTableCellRendererParams) => string[]);
+        labels?: Record<string, string>;
+    };
 
     // --- formatting @layer formatting (passthrough → AG Grid) ---
     cellStyle?: Record<string, string> | ((params: DinextTableCellRendererParams) => Record<string, string>);
@@ -1068,6 +1077,19 @@ export interface DinextTableStatic {
         node: HTMLElement,
         opts?: { anchor?: HTMLElement | null; host?: HTMLElement | null }
     ): boolean;
+    /**
+     * @layer editors — optional native `<select>`; not default for `type: "select"`.
+     * See usage-guides/select-columns.md.
+     */
+    SelectCellEditor: unknown;
+    /**
+     * @layer editors — raw / label → option key or null (unknown never kept as raw).
+     */
+    parseSelectValue(
+        raw: unknown,
+        options?: string[],
+        meta?: { labels?: Record<string, string> }
+    ): string | null;
 }
 
 declare global {

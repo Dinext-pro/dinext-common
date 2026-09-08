@@ -1,6 +1,7 @@
 import {
     getChildrenField,
     getMergeGroupMeta,
+    getRowIdField,
     isMergeGroupHead
 } from "../shared/utils.js";
 
@@ -237,4 +238,113 @@ export function cycleSortState(current, field, { multi = false } = {}) {
         return specs.map((s) => (s.field === key ? { field: key, dir: SORT_DIRS.DESC } : s));
     }
     return specs.filter((s) => s.field !== key);
+}
+
+/**
+ * Sibling-id tree for restoring pre-sort order. Same row objects stay;
+ * only array order is recorded. Unknown ids on restore append at the end.
+ * @returns {{ ids: string[], children: Record<string, object> }}
+ */
+export function captureSortOrder(rows, options = {}) {
+    const childrenField = getChildrenField(options);
+    const rowIdField = getRowIdField(options);
+    if (!Array.isArray(rows)) {
+        return { ids: [], children: {} };
+    }
+
+    const ids = [];
+    const children = {};
+    for (const row of rows) {
+        const id = String(row?.[rowIdField]);
+        ids.push(id);
+        const nested = row?.[childrenField];
+        if (Array.isArray(nested) && nested.length) {
+            children[id] = captureSortOrder(nested, options);
+        }
+    }
+    return { ids, children };
+}
+
+function reorderListByIds(list, orderedIds, options = {}) {
+    const rowIdField = getRowIdField(options);
+    const byId = new Map(list.map((row) => [String(row?.[rowIdField]), row]));
+    const reordered = [];
+    for (const id of orderedIds || []) {
+        const key = String(id);
+        const row = byId.get(key);
+        if (row) {
+            reordered.push(row);
+            byId.delete(key);
+        }
+    }
+    for (const row of byId.values()) {
+        reordered.push(row);
+    }
+    list.splice(0, list.length, ...reordered);
+}
+
+/** Restore sibling (and nested) order captured by `captureSortOrder`. */
+export function restoreSortOrder(rows, snapshot, options = {}) {
+    if (!Array.isArray(rows) || !snapshot) {
+        return rows || [];
+    }
+
+    reorderListByIds(rows, snapshot.ids, options);
+
+    const childrenField = getChildrenField(options);
+    const rowIdField = getRowIdField(options);
+    for (const row of rows) {
+        const id = String(row?.[rowIdField]);
+        const childSnap = snapshot.children?.[id];
+        const nested = row?.[childrenField];
+        if (childSnap && Array.isArray(nested)) {
+            restoreSortOrder(nested, childSnap, options);
+        }
+    }
+    return rows;
+}
+
+/** Drop deleted business ids from a `captureSortOrder` snapshot. */
+export function pruneSortOrder(snapshot, removeIds) {
+    if (!snapshot || !removeIds?.size) {
+        return snapshot;
+    }
+    snapshot.ids = (snapshot.ids || []).filter((id) => !removeIds.has(String(id)));
+    const children = snapshot.children || {};
+    for (const id of Object.keys(children)) {
+        if (removeIds.has(String(id))) {
+            delete children[id];
+        } else {
+            pruneSortOrder(children[id], removeIds);
+        }
+    }
+    return snapshot;
+}
+
+/** Write captured children order for `rowId` (`p` or `p:c`) into a baseline tree. */
+export function patchSortOrderChildren(snapshot, rowId, children, options = {}) {
+    if (!snapshot || rowId == null) {
+        return snapshot;
+    }
+    const parts = String(rowId).split(":").filter(Boolean);
+    if (!parts.length) {
+        return snapshot;
+    }
+
+    let node = snapshot;
+    for (let i = 0; i < parts.length; i++) {
+        const id = parts[i];
+        if (!node.children) {
+            node.children = {};
+        }
+        if (i === parts.length - 1) {
+            node.children[id] = captureSortOrder(children, options);
+            return snapshot;
+        }
+        if (!node.children[id]) {
+            node.children[id] = { ids: [], children: {} };
+        }
+        node = node.children[id];
+    }
+    return snapshot;
 }

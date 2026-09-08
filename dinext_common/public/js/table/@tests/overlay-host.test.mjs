@@ -118,6 +118,28 @@ test("placeOverlayNearAnchor sits below the cell", () => {
 	assert.equal(picker.style.top, "34px");
 });
 
+test("adoptOverlay moves modal into fullscreen host without rewriting position", () => {
+	const shell = makeEl("div");
+	const doc = makeDoc({ fullscreen: shell });
+	const modal = makeEl("div");
+	modal.className = "modal";
+	modal.getBoundingClientRect = () => ({
+		left: 100,
+		top: 80,
+		right: 500,
+		bottom: 400,
+		width: 400,
+		height: 320
+	});
+	doc.body.appendChild(modal);
+
+	assert.equal(adoptOverlay(modal, { doc, host: shell }), true);
+	assert.equal(modal.parentNode, shell);
+	assert.equal(modal.style.position, undefined);
+	assert.equal(modal.style.left, undefined);
+	assert.equal(modal.style.zIndex, "10050");
+});
+
 test("adoptMatchingOverlays moves datepicker under host", () => {
 	const shell = makeEl("div");
 	const doc = makeDoc({ fullscreen: shell });

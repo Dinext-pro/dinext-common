@@ -199,6 +199,30 @@
     border-right-color: transparent !important;
 }
 
+/*
+ * AG pin seam uses --ag-borders-critical (not --ag-pinned-column-border).
+ * Beat .ag-cell-last-left-pinned / .ag-pinned-left-header.
+ */
+.dinext-table--no-pinned-column-borders.dinext-table .ag-pinned-left-header,
+.dinext-table--no-column-borders.dinext-table .ag-pinned-left-header {
+    border-right: none !important;
+}
+
+.dinext-table--no-pinned-column-borders.dinext-table .ag-pinned-right-header,
+.dinext-table--no-column-borders.dinext-table .ag-pinned-right-header {
+    border-left: none !important;
+}
+
+.dinext-table--no-pinned-column-borders.dinext-table .ag-cell.ag-cell-last-left-pinned,
+.dinext-table--no-column-borders.dinext-table .ag-cell.ag-cell-last-left-pinned {
+    border-right: none !important;
+}
+
+.dinext-table--no-pinned-column-borders.dinext-table .ag-cell.ag-cell-first-right-pinned,
+.dinext-table--no-column-borders.dinext-table .ag-cell.ag-cell-first-right-pinned {
+    border-left: none !important;
+}
+
 /* AG: border-bottom: var(--ag-row-border-style) var(--ag-row-border-color) var(--ag-row-border-width) */
 .dinext-table--no-row-borders.dinext-table .ag-row,
 .dinext-table--no-row-borders.dinext-table .ag-header-row,
@@ -229,6 +253,11 @@
 
 .dinext-table-hscroll-top-spacer {
     flex: 0 0 auto;
+}
+
+/* Scrollbar gutter corners (top dual-scroll + AG bottom). Desk token. */
+.dinext-table .ag-scroller-corner {
+    background-color: var(--scrollbar-track-color);
 }
 
 .dinext-table-hscroll-top-viewport {
@@ -667,10 +696,15 @@
 .dinext-table-toolbar-item--checkbox {
     cursor: pointer;
     user-select: none;
+    /* label: Desk/Bootstrap margin-bottom lifts the row vs <button> items */
+    margin: 0;
 }
 
 .dinext-table-toolbar-checkbox-input {
-    margin: 0;
+    /* Frappe input[type=checkbox] sets margin-right !important */
+    margin: 0 !important;
+    flex-shrink: 0;
+    align-self: center;
     cursor: pointer;
 }
 
@@ -888,9 +922,21 @@
     cursor: not-allowed !important;
 }
 
-.dinext-table .dinext-table-row--dragging {
-    opacity: 0.4;
-    filter: saturate(0.85);
+.dinext-table .dinext-table-row--dragging,
+.dinext-table .dinext-table-row--reorder-preview-drag {
+    opacity: 1;
+    filter: none;
+}
+
+.dinext-table .dinext-table-row--reorder-preview-drag {
+    pointer-events: none;
+    z-index: 4;
+}
+
+/* Tint only — never position:relative on .ag-row/.ag-cell (AG uses absolute + translateY). */
+.dinext-table .dinext-table-row--dragging .ag-cell,
+.dinext-table .dinext-table-row--reorder-preview-drag .ag-cell {
+    box-shadow: inset 0 0 0 100vmax var(--dinext-table-selection-bg) !important;
 }
 
 /* Reserved system column for 6-dot (3×2) drag handle — independent of rowCheck. */
@@ -931,6 +977,15 @@
     opacity: 0.85;
 }
 
+.dinext-table--row-reorder-sort-locked .dinext-table-row-reorder-handle,
+.dinext-table-row-reorder-handle--locked {
+    cursor: not-allowed;
+}
+
+.dinext-table--row-reorder-sort-locked .dinext-table-row-reorder-handle:hover {
+    opacity: 0.38;
+}
+
 .dinext-table-row-reorder-handle-host {
     display: flex;
     align-items: center;
@@ -947,19 +1002,33 @@
     z-index: 8;
     pointer-events: none;
     box-sizing: border-box;
-    border: 2px solid color-mix(in srgb, CanvasText 42%, transparent);
+    border: 2px solid color-mix(in srgb, var(--primary, CanvasText) 55%, transparent);
     border-radius: 2px;
-    background: transparent;
+    background: color-mix(in srgb, var(--primary, CanvasText) 10%, transparent);
 }
 
-/* Sibling insert: gap band between rows (neutral gray). */
+.dinext-table-row-reorder-drop-inside-label {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    padding: 0 5px;
+    border-radius: 2px;
+    font-size: 10px;
+    line-height: 16px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-on-primary, Canvas);
+    background: color-mix(in srgb, var(--primary, CanvasText) 72%, transparent);
+}
+
+/* Sibling insert: gap band between rows, indented to tree level. */
 .dinext-table-row-reorder-drop-gap {
     position: absolute;
     z-index: 8;
     pointer-events: none;
-    border-radius: 2px;
-    background: color-mix(in srgb, CanvasText 42%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, CanvasText 22%, transparent);
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--primary, CanvasText) 55%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary, CanvasText) 28%, transparent);
 }
 
 /* --- Row check (system checkbox column) --- */
@@ -995,14 +1064,16 @@
     cursor: pointer;
 }
 
-/* --- Date cell editor (type: date) --- */
+/* --- Date / select cell editors (type: date | select) --- */
 /* Inherit cell font — do not force --ag-font-size (14px). Hosts like Gantt
  * set the editing cell to --text-xs; Desk .form-control must not override. */
 
 .dinext-table .ag-cell.ag-cell-inline-editing .dinext-table-date-editor,
 .dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor,
 .dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control,
-.dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control.input-with-feedback {
+.dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control.input-with-feedback,
+.dinext-table .ag-cell.ag-cell-inline-editing .dinext-table-select-editor,
+.dinext-table .ag-cell.ag-cell-inline-editing select.dinext-table-select-editor {
     width: 100%;
     height: 100% !important;
     min-height: 0 !important;
@@ -1021,7 +1092,23 @@
     line-height: inherit !important;
 }
 
-.dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-date-editor) {
+.dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-date-editor),
+.dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-select-editor) {
     padding-left: 0;
     padding-right: 0;
+}
+
+/* Native <select> popup follows OS chrome unless color-scheme is set.
+ * Dark Desk + inherited --text-color → white-on-white options. */
+[data-theme="dark"] .dinext-table .ag-cell-inline-editing select.dinext-table-select-editor {
+    color-scheme: dark;
+}
+
+[data-theme="light"] .dinext-table .ag-cell-inline-editing select.dinext-table-select-editor {
+    color-scheme: light;
+}
+
+.dinext-table .ag-cell-inline-editing select.dinext-table-select-editor option {
+    background-color: Canvas;
+    color: CanvasText;
 }

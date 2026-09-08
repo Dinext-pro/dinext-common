@@ -3,9 +3,13 @@ import assert from "node:assert/strict";
 
 import {
     buildSortAtoms,
+    captureSortOrder,
     compareSortValues,
     cycleSortState,
     normalizeSortState,
+    patchSortOrderChildren,
+    pruneSortOrder,
+    restoreSortOrder,
     sortTreeInPlace,
     sortTreeCopy
 } from "../core/sort/model.js";
@@ -100,6 +104,78 @@ test("cycleSortState single column", () => {
     assert.deepEqual(cycleSortState([{ field: "name", dir: "asc" }], "other"), [
         { field: "other", dir: "asc" }
     ]);
+});
+
+test("restoreSortOrder after in-place sort returns original tree", () => {
+    const rows = [
+        makeRow("2", {
+            name: "B",
+            children: [makeRow("2.2", { name: "z" }), makeRow("2.1", { name: "a" })]
+        }),
+        makeRow("1", { name: "A", children: [] })
+    ];
+    const baseline = captureSortOrder(rows);
+    sortTreeInPlace(rows, [{ field: "name", dir: "asc" }]);
+    sortTreeInPlace(rows, [{ field: "name", dir: "desc" }]);
+    restoreSortOrder(rows, baseline);
+    assert.deepEqual(
+        rows.map((r) => r.id),
+        ["2", "1"]
+    );
+    assert.deepEqual(
+        rows[0].children.map((r) => r.id),
+        ["2.2", "2.1"]
+    );
+});
+
+test("restoreSortOrder appends rows missing from snapshot", () => {
+    const rows = [makeRow("b", { name: "B" }), makeRow("a", { name: "A" })];
+    const baseline = captureSortOrder(rows);
+    rows.push(makeRow("c", { name: "C" }));
+    sortTreeInPlace(rows, [{ field: "name", dir: "asc" }]);
+    restoreSortOrder(rows, baseline);
+    assert.deepEqual(
+        rows.map((r) => r.id),
+        ["b", "a", "c"]
+    );
+});
+
+test("patchSortOrderChildren records lazy-loaded sibling order", () => {
+    const rows = [makeRow("p", { name: "P", children: [] })];
+    const baseline = captureSortOrder(rows);
+    const incoming = [makeRow("z", { name: "Z" }), makeRow("a", { name: "A" })];
+    patchSortOrderChildren(baseline, "p", incoming);
+    rows[0].children = incoming.slice();
+    sortTreeInPlace(rows[0].children, [{ field: "name", dir: "asc" }]);
+    restoreSortOrder(rows, baseline);
+    assert.deepEqual(
+        rows[0].children.map((r) => r.id),
+        ["z", "a"]
+    );
+});
+
+test("pruneSortOrder drops deleted ids and keeps sibling restore order", () => {
+    const rows = [
+        makeRow("p", {
+            name: "P",
+            children: [makeRow("c1", { name: "x" }), makeRow("c2", { name: "y" })]
+        }),
+        makeRow("q", { name: "Q" })
+    ];
+    const baseline = captureSortOrder(rows);
+    pruneSortOrder(baseline, new Set(["c1", "q"]));
+    rows[0].children = rows[0].children.filter((row) => row.id !== "c1");
+    rows.splice(1, 1);
+    sortTreeInPlace(rows, [{ field: "name", dir: "desc" }]);
+    restoreSortOrder(rows, baseline);
+    assert.deepEqual(
+        rows.map((r) => r.id),
+        ["p"]
+    );
+    assert.deepEqual(
+        rows[0].children.map((r) => r.id),
+        ["c2"]
+    );
 });
 
 test("sortTreeCopy does not mutate original", () => {
