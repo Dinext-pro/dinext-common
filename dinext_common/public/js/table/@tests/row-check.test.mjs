@@ -188,3 +188,31 @@ test("ROW_CHECK_COL_ID is reserved system id", () => {
     assert.equal(ROW_CHECK_COL_ID, "__dinext_row_check");
     assert.equal(getStableRowId({ id: "x", _rowId: "1:2" }), "1:2");
 });
+
+function stubCheckTable(rowCheck, onAddRow) {
+    class FakeBase {
+        initFeatures() {}
+    }
+    const Table = RowCheckMixin(FakeBase);
+    const table = new Table();
+    table.initFeatures();
+    table.options = { rowCheck: { enabled: true, ...rowCheck }, onAddRow };
+    table.sourceData = [{ id: "a" }];
+    table.rowData = [{ id: "a" }];
+    table.setGridOption = () => {};
+    table.refreshToolbar = () => {};
+    return table;
+}
+
+test("addRow checks new row by default", async () => {
+    const table = stubCheckTable({}, () => ({ id: "n1" }));
+    assert.equal(await table.addRow(), true);
+    assert.deepEqual(table.getCheckedRowIds(), ["n1"]);
+});
+
+test("addRow skips check when checkNewRow is false", async () => {
+    const table = stubCheckTable({ checkNewRow: false }, () => ({ id: "n1" }));
+    assert.equal(await table.addRow(), true);
+    assert.deepEqual(table.getCheckedRowIds(), []);
+    assert.equal(table.sourceData.some((r) => r.id === "n1"), true);
+});
