@@ -20,6 +20,7 @@
  * - `selectionStatus` — Excel-like status bar aggregates
  * - `toolbar`        — floating trigger + slide-down command bar
  * - `fullscreen`     — native Fullscreen API on container/shell
+ * - `pinEnd`         — auto unpin declared `pinned: "right"` when columns fit
  * - `formatting` — passthrough styling (→ AG Grid colDef / gridOptions)
  * - `ag-grid`    — passthrough напрямую в AG Grid 35 Community
  *
@@ -49,6 +50,7 @@ export type DinextTableLayer =
     | "selectionStatus"
     | "toolbar"
     | "fullscreen"
+    | "pinEnd"
     | "formatting"
     | "ag-grid";
 
@@ -241,6 +243,21 @@ export interface DinextTableCoreOptions {
     columns?: DinextTableColumnDef[];
     /** @layer edit — global editable default */
     edit?: boolean;
+}
+
+/**
+ * Runtime policy for declared `columns[].pinned: "right"`.
+ * Does not mutate `options.columns[].pinned`.
+ * @layer pinEnd
+ */
+export interface DinextTablePinEndOptions {
+    pinEnd?: {
+        /**
+         * `auto` (default) — pin only when leaf widths overflow the body.
+         * `always` — AG Grid stick-to-viewport right.
+         */
+        mode?: "always" | "auto";
+    };
 }
 
 /** @layer theme */
@@ -821,6 +838,7 @@ export interface DinextTableCreateOptions
         DinextTableSelectionStatusOptions,
         DinextTableToolbarOptions,
         DinextTableFullscreenOptions,
+        DinextTablePinEndOptions,
         DinextTableCallbackOptions,
         DinextTableAgGridPassthrough {}
 

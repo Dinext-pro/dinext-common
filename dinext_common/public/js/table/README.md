@@ -33,6 +33,7 @@ core/
   row-reorder/           — gutter DnD + nudge ±1
   row-check/             — checkbox col + checked Set + row mutations
   toolbar/               — command bar + fullscreen
+  pin-end.js             — auto unpin `pinned: "right"` when columns fit
 ```
 
 Импорт: напрямую из файлов домена (`./edit/mixin.js`, `./tree/model.js`). Без barrel `index.js`.
@@ -96,6 +97,7 @@ DinextTable.create({
 | `container` | — | **required** — DOM для grid |
 | `data` | `[]` | Body rows (top-level) |
 | `columns` | `[]` | → [columns-and-formatting.md](usage-guides/columns-and-formatting.md) |
+| `pinEnd.mode` | `"auto"` | pin `pinned: "right"` only on overflow; `"always"` = AG stick-right |
 | `edit` | `false` | Global editable default |
 | `theme.columnBorder` | `true` | Vertical borders (body) |
 | `theme.headerColumnBorder` | same as `columnBorder` | Vertical borders (header) |

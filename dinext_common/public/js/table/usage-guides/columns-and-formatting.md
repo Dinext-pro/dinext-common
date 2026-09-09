@@ -18,7 +18,7 @@
 | `cellRenderer` | — | Full override без compose (advanced) |
 | `type` | — | Preset: `text`, `number`, `integer`, `date`, `select` |
 
-**Tree col 0:** `[indent][chevron|spacer][render(params)]`. Expand — **клик по chevron**.
+**Tree col 0:** `[inset 8px + level×20][chevron|spacer][render(params)]`. Expand — **клик по chevron**.
 
 ---
 
@@ -46,6 +46,8 @@
 ## Layout & display (passthrough AG Grid)
 
 `width`, `flex`, `minWidth`, `maxWidth`, `pinned`, `hide`, `cellDataType`, `valueFormatter`, `valueParser`, `cellEditor`, `cellEditorParams` — уходят в AG Grid как есть.
+
+`pinned: "right"` — intent («итоги справа»). Runtime pin владеет ядро: default `pinEnd.mode: "auto"` снимает pin, пока колонки влезают в body; overflow → снова `right`. `pinEnd: { mode: "always" }` — как AG Grid (всегда к правому краю). `options.columns[].pinned` не мутируется.
 
 ---
 
