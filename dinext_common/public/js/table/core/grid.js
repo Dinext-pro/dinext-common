@@ -30,6 +30,7 @@ export const GridMixin = (Base) => class extends Base {
             this.buildFillHandleGridOptions?.(),
             this.buildRowReorderGridOptions?.(),
             this.buildRowCheckGridOptions?.(),
+            this.buildPinEndGridOptions?.(),
             this.buildScrollGridOptions?.(),
             this.buildChromeGridOptions()
         ].filter(part => part && Object.keys(part).length);
