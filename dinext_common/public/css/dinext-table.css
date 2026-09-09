@@ -46,8 +46,9 @@
 /*
  * Vertical column separators.
  * AG default: border-right on position:absolute + overflow:hidden cells.
- * Next cell paints over that edge (worse at fractional DPR) → center/header/summary
- * look borderless; only pin edge (last-left-pinned) stays. Draw on LEFT instead.
+ * Next cell paints over that edge (worse at fractional DPR) → center looks
+ * borderless. Draw on LEFT instead. Transparent-right only in the scrolling
+ * center — pinned cols keep both edges (seam + Plan/Actual/Δ).
  * Honors --ag-column-border. When theme.columnBorder === false, ThemeMixin sets
  * the var to `none` (transparent 1px still shows as gaps between fills).
  */
@@ -55,8 +56,18 @@
     border-left: var(--ag-column-border);
 }
 
-.dinext-table .ag-ltr .ag-cell:not(.ag-cell-last-left-pinned) {
+.dinext-table .ag-ltr .ag-center-cols-container .ag-cell {
     border-right-color: transparent;
+}
+
+.dinext-table .ag-ltr .ag-pinned-left-cols-container .ag-cell,
+.dinext-table .ag-ltr .ag-pinned-right-cols-container .ag-cell,
+.dinext-table .ag-ltr .ag-pinned-left-floating-top .ag-cell,
+.dinext-table .ag-ltr .ag-pinned-right-floating-top .ag-cell,
+.dinext-table .ag-ltr .ag-pinned-left-floating-bottom .ag-cell,
+.dinext-table .ag-ltr .ag-pinned-right-floating-bottom .ag-cell {
+    border-left: var(--ag-column-border);
+    border-right: var(--ag-column-border);
 }
 
 .dinext-table .ag-header-cell:not(.ag-column-first),

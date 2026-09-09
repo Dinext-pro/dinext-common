@@ -24,6 +24,8 @@ import {
 } from "./expand.js";
 
 const TREE_INDENT_PX = 20;
+/** Gutter before level-0 chevron. Not tied to theme.cellHorizontalPadding (P&L uses 2px). */
+const TREE_INSET_PX = 8;
 
 function mountCellContent(contentEl, params, renderFn) {
     contentEl.replaceChildren();
@@ -113,7 +115,7 @@ function createTreeCellRenderer(renderFn, contentKeyFn) {
             const table = params.context?.dinextTable;
             const level = data._level || 0;
             const mergeMeta = getMergeGroupMeta(data, table?.options);
-            this.eGui.style.paddingLeft = `${level * TREE_INDENT_PX}px`;
+            this.eGui.style.paddingLeft = `${TREE_INSET_PX + level * TREE_INDENT_PX}px`;
             this.eGui.classList.toggle(
                 "dinext-table-tree-cell--merge-group",
                 !!(mergeMeta && mergeMeta.index === 0 && mergeMeta.size > 1)
