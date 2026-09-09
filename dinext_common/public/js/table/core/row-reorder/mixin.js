@@ -201,8 +201,52 @@ export const RowReorderMixin = (Base) => class extends Base {
         return isSummarySectionRow(row) ? TABLE_SECTIONS.SUMMARY : TABLE_SECTIONS.BODY;
     }
 
+    /**
+     * Visible 6-dot handle. Independent of drag-start blockers (edit/sort/filter).
+     * Skip pinned-bottom / summary unless `allowSummary`; honor `canReorderRow`.
+     */
+    shouldShowRowReorderHandle(rowNode) {
+        if (!this.isRowReorderEnabled() || !rowNode?.data) {
+            return false;
+        }
+        if (!this.shouldApplyRowReorderToRow(rowNode)) {
+            return false;
+        }
+
+        const pinned = rowNode.rowPinned;
+        if (pinned === "top") {
+            return false;
+        }
+
+        const section = this.resolveRowReorderSection(rowNode.data);
+        const isPinnedBottom = pinned === "bottom";
+        if (
+            (isPinnedBottom || section === TABLE_SECTIONS.SUMMARY)
+            && !this.getRowReorderOptions().allowSummary
+        ) {
+            return false;
+        }
+
+        const canReorderRow = this.options.canReorderRow;
+        if (typeof canReorderRow === "function") {
+            const rowId = getStableRowId(rowNode.data, this.options);
+            return canReorderRow({
+                table: this,
+                row: rowNode.data,
+                rowId,
+                section,
+                parentRowId: null
+            }) !== false;
+        }
+
+        return true;
+    }
+
     canStartRowReorder(rowNode) {
         if (!this.isRowReorderEnabled() || !rowNode?.data || this.isRowReorderBlocked()) {
+            return false;
+        }
+        if (!this.shouldShowRowReorderHandle(rowNode)) {
             return false;
         }
         if (!this.shouldApplyRowReorderToRow(rowNode)) {

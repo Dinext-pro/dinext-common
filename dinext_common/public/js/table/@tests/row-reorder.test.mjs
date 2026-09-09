@@ -16,6 +16,7 @@ import {
     restoreSiblingListOrder
 } from "../core/row-reorder/ops.js";
 import { ROW_REORDER_POSITIONS } from "../core/row-reorder/constants.js";
+import { RowReorderMixin } from "../core/row-reorder/mixin.js";
 import {
     NEST_SHIFT_PX,
     SWAP_EDGE_PX,
@@ -449,4 +450,60 @@ test("resolveReorderIntent does not nest when tree reparent off", () => {
     });
     assert.equal(intent.position, ROW_REORDER_POSITIONS.AFTER);
     assert.equal(intent.hoverRowId, "b");
+});
+
+test("shouldShowRowReorderHandle skips pinned-bottom summary", () => {
+    class FakeBase {
+        initFeatures() {}
+        destroyFeatures() {}
+        afterGridCreated() {}
+        buildColumnDefs() {
+            return [];
+        }
+        handleSetOption() {
+            return false;
+        }
+    }
+    const Table = RowReorderMixin(FakeBase);
+    const table = new Table();
+    table.options = { rowReorder: { enabled: true, allowSummary: false } };
+    assert.equal(
+        table.shouldShowRowReorderHandle({
+            data: { id: "sum", _section: "summary" },
+            rowPinned: "bottom"
+        }),
+        false
+    );
+    assert.equal(
+        table.shouldShowRowReorderHandle({ data: { id: "a" }, rowPinned: null }),
+        true
+    );
+});
+
+test("shouldShowRowReorderHandle honors canReorderRow", () => {
+    class FakeBase {
+        initFeatures() {}
+        destroyFeatures() {}
+        afterGridCreated() {}
+        buildColumnDefs() {
+            return [];
+        }
+        handleSetOption() {
+            return false;
+        }
+    }
+    const Table = RowReorderMixin(FakeBase);
+    const table = new Table();
+    table.options = {
+        rowReorder: { enabled: true },
+        canReorderRow: ({ row }) => row.rowType === "position"
+    };
+    assert.equal(
+        table.shouldShowRowReorderHandle({ data: { id: "s", rowType: "section" } }),
+        false
+    );
+    assert.equal(
+        table.shouldShowRowReorderHandle({ data: { id: "p", rowType: "position" } }),
+        true
+    );
 });
