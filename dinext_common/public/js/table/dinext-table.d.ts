@@ -622,6 +622,11 @@ export interface DinextTableRowCheckOptions {
          */
         selectAll?: boolean;
         width?: number;
+        /**
+         * After `addRow`, check the new row. Default: true.
+         * Set false to leave the inserted row unchecked.
+         */
+        checkNewRow?: boolean;
     };
     /** @layer rowCheck */
     onRowCheckChange?: (ctx: DinextTableRowCheckChangeContext) => void;
