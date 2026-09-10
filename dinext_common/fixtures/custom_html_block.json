@@ -33,5 +33,16 @@
   ],
   "script": "frappe.require([\"/assets/dinext_common/js/workspace_hub.js\"], () => {\n\tdinext_common.workspace_hub.mount(root_element);\n});\n",
   "style": ""
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Custom HTML Block",
+  "html": "<div class=\"dinext-my-approvals\"></div>",
+  "modified": "2026-09-10 20:07:01.280722",
+  "name": "My Approvals Dashboard",
+  "private": 0,
+  "roles": [],
+  "script": "frappe.require([\"/assets/dinext_common/js/my_approvals_workspace.js\"], () => {\n\tdinext_common.my_approvals.mount(root_element);\n});\n",
+  "style": ""
  }
 ]

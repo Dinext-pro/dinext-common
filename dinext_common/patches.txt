@@ -6,3 +6,6 @@ dinext_common.patches.v1_0.dump_workspace_settings_single
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
 dinext_common.patches.v1_0.migrate_workspace_settings_single
+dinext_common.patches.v1_0.generalize_parallel_workflow_approvals
+dinext_common.patches.v1_0.migrate_workflow_approval_assignees_v2
+dinext_common.patches.v1_0.cutover_parallel_workflow_approvals

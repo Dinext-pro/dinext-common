@@ -40,6 +40,10 @@ def extend_bootinfo(bootinfo) -> None:
 	"""
 	raw = frappe.conf.get(CONF_KEY, 1)
 	bootinfo.dinext_workspace_sidebar_hover_expand = as_bool(raw, default=True)
+	bootinfo.enable_parallel_workflow_approval = as_bool(
+		frappe.conf.get("enable_parallel_workflow_approval", False),
+		default=False,
+	)
 	pages = getattr(bootinfo, "allowed_workspaces", None)
 	if isinstance(pages, (list, tuple)):
 		bootinfo.allowed_workspaces = omit_replaced_workspaces(pages)
