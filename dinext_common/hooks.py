@@ -47,9 +47,35 @@ fixtures = [
         ]
     },
     {
+        "doctype": "Email Template",
+        "filters": [
+            ["name", "in", [
+                "Dinext Workflow Action",
+                "Dinext Workflow Correction",
+                "Dinext Workflow Digest",
+                "Dinext Timesheet Workflow Digest",
+            ]]
+        ]
+    },
+    {
+        "doctype": "Number Card",
+        "filters": [
+            ["name", "in", [
+                "My open approvals",
+                "Новые сегодня",
+                "My completed approvals",
+                "Автоматически выполнено за 30 дней",
+            ]]
+        ]
+    },
+    {
         "doctype": "Custom HTML Block",
         "filters": [
-            ["name", "in", ["Dinext Hub", "Dinext Settings Hub"]]
+            ["name", "in", [
+                "Dinext Hub",
+                "Dinext Settings Hub",
+                "My Approvals Dashboard",
+            ]]
         ]
     }
 ]
@@ -77,6 +103,7 @@ app_include_css = [
     "/assets/dinext_common/css/common.css",
     "/assets/dinext_common/css/workspace_sidebar_hover.css",
     "/assets/dinext_common/css/dinext-tour.css",
+    "/assets/dinext_common/css/workflow_approval.css",
 ]
 app_include_js = [
     "/assets/dinext_common/js/workspace_slug_redirects.js",
@@ -86,6 +113,7 @@ app_include_js = [
     "/assets/dinext_common/js/dinext-desk.js",
     "/assets/dinext_common/js/dashboard_filters_fix.js",
     "/assets/dinext_common/js/workspace_sidebar_hover.js",
+    "/assets/dinext_common/js/workflow_approval.js",
 ]
 
 # Expose site_config flags to Desk bootinfo
@@ -196,6 +224,15 @@ has_permission = {
 		"dinext_common.dinext_common.doctype.dinext_workspace_settings"
 		".dinext_workspace_settings.has_permission"
 	),
+	"Workflow Task": "dinext_common.workflow_approval.permissions.has_workflow_task_permission",
+	"Workflow Action": "dinext_common.workflow_approval.permissions.has_workflow_action_permission",
+}
+
+permission_query_conditions = {
+	"Workflow Task": "dinext_common.workflow_approval.permissions.get_workflow_task_query_conditions",
+	"Workflow Action": (
+		"dinext_common.workflow_approval.permissions.get_workflow_action_query_conditions"
+	),
 }
 
 # DocType Class
@@ -218,6 +255,21 @@ doc_events = {
 			"dinext_common.apps.set_default_app_for_new_user",
 		],
 	},
+	"Workflow": {
+		"validate": [
+			"dinext_common.workflow_approval.metadata.validate_workflow_doc",
+		],
+	},
+	"*": {
+		"validate": ["dinext_common.workflow_approval.lifecycle.validate_source"],
+		"after_insert": ["dinext_common.workflow_approval.lifecycle.after_source_insert"],
+		"on_update": ["dinext_common.workflow_approval.lifecycle.on_source_update"],
+		"on_update_after_submit": [
+			"dinext_common.workflow_approval.lifecycle.on_source_update_after_submit"
+		],
+		"on_cancel": ["dinext_common.workflow_approval.lifecycle.on_source_cancel"],
+		"on_trash": ["dinext_common.workflow_approval.lifecycle.on_source_trash"],
+	},
 }
 
 # Scheduled Tasks
@@ -227,6 +279,12 @@ scheduler_events = {
 	"daily": [
 		"dinext_common.changelog_feed.sync_dinext_news_feed",
 	],
+	"cron": {
+		"* * * * *": [
+			"dinext_common.workflow_approval.notifications.dispatch_due_notifications",
+			"dinext_common.workflow_approval.finalization.repair_pending_finalizations",
+		],
+	},
 }
 
 # What's New consumer (publisher lives on docs / configured site)
@@ -242,6 +300,24 @@ get_changelog_feed = "dinext_common.changelog_feed.get_feed"
 #
 override_whitelisted_methods = {
 	"frappe.apps.get_apps": "dinext_common.apps.get_apps",
+	"frappe.model.workflow.apply_workflow": (
+		"dinext_common.workflow_approval.api.apply_workflow"
+	),
+	"frappe.model.workflow.bulk_workflow_approval": (
+		"dinext_common.workflow_approval.api.bulk_workflow_approval"
+	),
+	"frappe.model.workflow.get_common_transition_actions": (
+		"dinext_common.workflow_approval.api.get_common_transition_actions"
+	),
+	"frappe.model.workflow.get_transitions": (
+		"dinext_common.workflow_approval.api.get_transitions"
+	),
+	"frappe.workflow.doctype.workflow_action.workflow_action.apply_action": (
+		"dinext_common.workflow_approval.signed_links.apply_action"
+	),
+	"frappe.workflow.doctype.workflow_action.workflow_action.confirm_action": (
+		"dinext_common.workflow_approval.signed_links.confirm_legacy_action"
+	),
 	"erpnext.accounts.doctype.account.chart_of_accounts.chart_of_accounts.get_charts_for_country": (
 		"dinext_common.setup.chart_of_accounts.get_charts_for_country"
 	),
@@ -265,7 +341,7 @@ override_whitelisted_methods = {
 # Ignore links to specified DocTypes when deleting documents
 # -----------------------------------------------------------
 
-# ignore_links_on_delete = ["Communication", "ToDo"]
+ignore_links_on_delete = ["Workflow Task"]
 
 # Request Events
 # ----------------

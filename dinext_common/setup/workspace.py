@@ -40,6 +40,14 @@ DINEXT_DOCUMENTATION_CARD = {
 	"description": "Guides and reference material for working with Dinext.",
 	"icon": "help",
 }
+MY_APPROVALS_CARD = {
+	"section": "My Work",
+	"element_type": "Workspace",
+	"target": "Мои согласования",
+	"label": "Мои согласования",
+	"description": "Персональная очередь, история и контроль согласований.",
+	"icon": "task-checked",
+}
 
 
 def omit_replaced_workspaces(pages):
@@ -254,7 +262,7 @@ def ensure_default_dinext_hub_settings() -> None:
 	ensure_workspace_settings(DINEXT_HUB_SETTINGS)
 	ensure_workspace_settings(SETTINGS_HUB_SETTINGS, roles=SETTINGS_ROLES)
 	register_hub_items(
-		[DINEXT_DOCUMENTATION_CARD],
+		[DINEXT_DOCUMENTATION_CARD, MY_APPROVALS_CARD],
 		source_app="dinext_common",
 		settings_name=DINEXT_HUB_SETTINGS,
 	)

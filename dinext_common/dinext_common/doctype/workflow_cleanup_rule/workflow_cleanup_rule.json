@@ -13,7 +13,7 @@
  ],
  "fields": [
   {
-   "default": "1",
+   "default": "0",
    "fieldname": "enabled",
    "fieldtype": "Check",
    "in_list_view": 1,

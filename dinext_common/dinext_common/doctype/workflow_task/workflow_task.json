@@ -1,22 +1,56 @@
 {
  "actions": [],
- "allow_rename": 1,
- "autoname": "WT-.YYYY.-.#####",
+ "allow_rename": 0,
+ "autoname": "prompt",
  "creation": "2025-01-18 18:51:46.315606",
- "custom": 1,
+ "custom": 0,
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "doc",
   "wt_docname",
+  "reference_doctype",
+  "reference_name",
   "column_break_fjt8",
   "status",
+  "round_status",
+  "finalization_status",
   "column_break_wm1u",
+  "workflow",
+  "workflow_state",
+  "approval_round_id",
+  "approver",
+  "source_snapshot_section",
+  "source_created_at",
+  "source_title",
+  "source_owner",
+  "source_deleted_at",
+  "completed_transition_section",
   "state",
   "next_state",
   "column_break_emcj",
   "action",
   "user",
+  "transition_uuid",
+  "transition_semantic_hash",
+  "policy",
+  "threshold",
+  "vote_comment",
+  "completed_at",
+  "completion_source",
+  "reused_from_workflow_task",
+  "cancelled_at",
+  "cancellation_reason",
+  "fingerprint_section",
+  "entry_fingerprint",
+  "entry_fingerprint_version",
+  "content_fingerprint",
+  "content_fingerprint_version",
+  "technical_section",
+  "round_manifest",
+  "submission_queue",
+  "failure_metadata",
+  "correlation_id",
   "section_break_8nqw",
   "available_workflow_transitions"
  ],
@@ -98,6 +132,251 @@
    "fieldtype": "Table",
    "options": "Available Workflow Transitions",
    "read_only": 1
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference DocType",
+   "options": "DocType",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Reference",
+   "options": "reference_doctype",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "round_status",
+   "fieldtype": "Select",
+   "label": "Round Status",
+   "options": "Open\nStalled\nFinalizing\nTransitioned\nCancelled\nConflicted",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "default": "Not Required",
+   "fieldname": "finalization_status",
+   "fieldtype": "Select",
+   "label": "Finalization Status",
+   "options": "Not Required\nQueued\nFinished\nFailed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "workflow",
+   "fieldtype": "Link",
+   "label": "Workflow",
+   "options": "Workflow",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "workflow_state",
+   "fieldtype": "Link",
+   "label": "Workflow State",
+   "options": "Workflow State",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approval_round_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Approval Round ID",
+   "read_only": 1,
+   "search_index": 1,
+   "unique": 0
+  },
+  {
+   "fieldname": "approver",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Approver",
+   "options": "User",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "source_snapshot_section",
+   "fieldtype": "Section Break",
+   "label": "Source Snapshot"
+  },
+  {
+   "fieldname": "source_created_at",
+   "fieldtype": "Datetime",
+   "hidden": 1,
+   "label": "Source Created At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "source_title",
+   "fieldtype": "Data",
+   "label": "Source Title",
+   "read_only": 1
+  },
+  {
+   "fieldname": "source_owner",
+   "fieldtype": "Link",
+   "label": "Source Owner",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "source_deleted_at",
+   "fieldtype": "Datetime",
+   "label": "Source Deleted At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "completed_transition_section",
+   "fieldtype": "Section Break",
+   "label": "Completed Workflow Transition"
+  },
+  {
+   "fieldname": "transition_uuid",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Transition UUID",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "transition_semantic_hash",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Transition Semantic Hash",
+   "read_only": 1
+  },
+  {
+   "fieldname": "policy",
+   "fieldtype": "Select",
+   "label": "Approval Policy",
+   "options": "Any\nAll\nMinimum",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.policy=='Minimum'",
+   "fieldname": "threshold",
+   "fieldtype": "Int",
+   "label": "Required Approvals",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.status=='Completed'",
+   "fieldname": "vote_comment",
+   "fieldtype": "Small Text",
+   "label": "Comment",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.status=='Completed'",
+   "fieldname": "completed_at",
+   "fieldtype": "Datetime",
+   "label": "Completed At",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "depends_on": "eval:doc.status=='Completed'",
+   "fieldname": "completion_source",
+   "fieldtype": "Select",
+   "label": "Completion Source",
+   "options": "Manual\nSigned Link\nBulk\nAutomatic Unchanged",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.completion_source=='Automatic Unchanged'",
+   "fieldname": "reused_from_workflow_task",
+   "fieldtype": "Link",
+   "label": "Reused From Workflow Task",
+   "options": "Workflow Task",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.status=='Cancelled'",
+   "fieldname": "cancelled_at",
+   "fieldtype": "Datetime",
+   "label": "Cancelled At",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.status=='Cancelled'",
+   "fieldname": "cancellation_reason",
+   "fieldtype": "Small Text",
+   "label": "Cancellation Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fingerprint_section",
+   "fieldtype": "Section Break",
+   "hidden": 1,
+   "label": "Content Fingerprint"
+  },
+  {
+   "fieldname": "entry_fingerprint",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Entry Fingerprint",
+   "read_only": 1
+  },
+  {
+   "fieldname": "entry_fingerprint_version",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Entry Fingerprint Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "content_fingerprint",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Content Fingerprint",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "content_fingerprint_version",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Content Fingerprint Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "technical_section",
+   "fieldtype": "Section Break",
+   "hidden": 1,
+   "label": "Technical"
+  },
+  {
+   "fieldname": "round_manifest",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Round Manifest",
+   "read_only": 1
+  },
+  {
+   "fieldname": "submission_queue",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Submission Queue",
+   "options": "Submission Queue",
+   "read_only": 1
+  },
+  {
+   "fieldname": "failure_metadata",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Failure Metadata",
+   "read_only": 1
+  },
+  {
+   "fieldname": "correlation_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Correlation ID",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
@@ -111,16 +390,18 @@
  "owner": "iodyshev@dinord.email",
  "permissions": [
   {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
+   "read": 1,
+   "report": 1,
+   "role": "All",
+   "select": 1
+  },
+  {
    "export": 1,
    "print": 1,
    "read": 1,
    "report": 1,
    "role": "System Manager",
-   "share": 1,
-   "write": 1
+   "select": 1
   }
  ],
  "row_format": "Dynamic",

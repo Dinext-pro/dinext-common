@@ -1,0 +1,50 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Email Template",
+  "enabled": 0,
+  "modified": "2026-09-10 20:21:58.888082",
+  "name": "Dinext Workflow Correction",
+  "reference_doctype": null,
+  "response": null,
+  "response_html": "<p><strong>{{ doc.doctype }} {{ doc.name }}</strong> requires correction.</p>",
+  "subject": "Correction required for {{ doc.doctype }}: {{ doc.name }}",
+  "use_html": 1
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Email Template",
+  "enabled": 0,
+  "modified": "2026-09-10 19:50:26.155262",
+  "name": "Dinext Workflow Action",
+  "reference_doctype": null,
+  "response": null,
+  "response_html": "<p>A workflow action is required for <strong>{{ doc.doctype }} {{ doc.name }}</strong>.</p>",
+  "subject": "Workflow Action on {{ doc.doctype }}: {{ doc.name }}",
+  "use_html": 1
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Email Template",
+  "enabled": 0,
+  "modified": "2026-09-10 21:29:13.267552",
+  "name": "Dinext Workflow Digest",
+  "reference_doctype": null,
+  "response": null,
+  "response_html": "<p>Pending workflow approvals:</p><ul>{% for row in rows %}<li><a href=\"{{ row.link }}\">{{ row.title }}</a>{% if row.count > 1 %} ({{ row.count }}){% endif %}</li>{% endfor %}</ul>",
+  "subject": "Pending workflow approvals",
+  "use_html": 1
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Email Template",
+  "enabled": 0,
+  "modified": "2026-09-10 21:29:13.747490",
+  "name": "Dinext Timesheet Workflow Digest",
+  "reference_doctype": null,
+  "response": null,
+  "response_html": "<p>Timesheets awaiting approval:</p><ul>{% for row in rows %}<li><a href=\"{{ row.link }}\">{{ row.title }}</a> — {{ row.count }} position(s)</li>{% endfor %}</ul>",
+  "subject": "Timesheets awaiting approval",
+  "use_html": 1
+ }
+]
