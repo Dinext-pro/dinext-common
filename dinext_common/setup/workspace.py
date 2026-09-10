@@ -10,6 +10,8 @@ from dinext_common.setup.hub_catalog import (
 	DINEXT_HUB_SETTINGS,
 	SETTINGS_HUB_SETTINGS,
 	SETTINGS_SECTION_CARD_COLUMNS,
+	SETTINGS_WORKSPACES_SECTION_CARD_COLUMNS,
+	SETTINGS_WORKSPACES_SECTION_LIST_LIMIT,
 	ensure_workspace_settings,
 	register_hub_items,
 	register_hub_sections,
@@ -254,7 +256,11 @@ def ensure_default_dinext_hub_settings() -> None:
 	)
 	register_hub_sections(
 		[
-			{"section": "Workspaces", "card_columns": SETTINGS_SECTION_CARD_COLUMNS},
+			{
+				"section": "Workspaces",
+				"list_limit": SETTINGS_WORKSPACES_SECTION_LIST_LIMIT,
+				"card_columns": SETTINGS_WORKSPACES_SECTION_CARD_COLUMNS,
+			},
 			{"section": "Configuration", "card_columns": SETTINGS_SECTION_CARD_COLUMNS},
 		],
 		source_app="dinext_common",
