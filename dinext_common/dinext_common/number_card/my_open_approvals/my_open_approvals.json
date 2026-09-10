@@ -1,0 +1,23 @@
+{
+ "color": "#2490EF",
+ "creation": "2026-09-10 21:49:46.278692",
+ "currency": "",
+ "docstatus": 0,
+ "doctype": "Number Card",
+ "function": "Count",
+ "idx": 0,
+ "is_public": 1,
+ "is_standard": 1,
+ "label": "\u041e\u0436\u0438\u0434\u0430\u044e\u0442 \u043c\u043e\u0435\u0433\u043e \u0440\u0435\u0448\u0435\u043d\u0438\u044f",
+ "method": "dinext_common.workflow_approval.api.open_approval_count",
+ "modified": "2026-09-10 21:55:50.101690",
+ "modified_by": "Administrator",
+ "module": "Dinext Common",
+ "name": "My open approvals",
+ "owner": "Administrator",
+ "report_function": "Sum",
+ "show_full_number": 1,
+ "show_percentage_stats": 0,
+ "stats_time_interval": "Daily",
+ "type": "Custom"
+}

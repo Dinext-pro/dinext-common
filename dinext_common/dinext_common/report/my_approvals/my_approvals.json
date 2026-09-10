@@ -1,0 +1,30 @@
+{
+ "add_total_row": 0,
+ "columns": [],
+ "creation": "2026-09-10 00:00:00",
+ "disabled": 0,
+ "docstatus": 0,
+ "doctype": "Report",
+ "filters": [
+  {"fieldname": "workflow", "fieldtype": "Link", "label": "Workflow", "options": "Workflow"},
+  {"fieldname": "reference_doctype", "fieldtype": "Link", "label": "Document Type", "options": "DocType"},
+  {"fieldname": "workflow_state", "fieldtype": "Data", "label": "State"},
+  {"fieldname": "action", "fieldtype": "Link", "label": "Action", "options": "Workflow Action Master"},
+  {"fieldname": "minimum_age", "fieldtype": "Int", "label": "Minimum Age (days)"},
+  {"fieldname": "created_today", "fieldtype": "Check", "label": "Created Today"}
+ ],
+ "idx": 0,
+ "is_standard": "Yes",
+ "json": "{}",
+ "modified": "2026-09-10 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Dinext Common",
+ "name": "My Approvals",
+ "owner": "Administrator",
+ "prepared_report": 0,
+ "ref_doctype": "Workflow Task",
+ "report_name": "My Approvals",
+ "report_type": "Script Report",
+ "roles": [{"role": "Desk User"}],
+ "timeout": 0
+}

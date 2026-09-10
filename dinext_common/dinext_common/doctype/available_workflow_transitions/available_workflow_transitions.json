@@ -2,7 +2,7 @@
  "actions": [],
  "allow_rename": 1,
  "creation": "2025-01-18 18:47:38.611861",
- "custom": 1,
+ "custom": 0,
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
@@ -10,6 +10,18 @@
   "state",
   "action",
   "next_state",
+  "transition_uuid",
+  "transition_semantic_hash",
+  "transition_idx",
+  "allowed_role",
+  "policy",
+  "threshold",
+  "comment_is_required",
+  "send_email_to_creator",
+  "auto_complete_unchanged",
+  "email_template",
+  "attach_document_pdf",
+  "eligible_approvers",
   "custom_all_users_with_role"
  ],
  "fields": [
@@ -39,7 +51,93 @@
    "fieldname": "custom_all_users_with_role",
    "fieldtype": "Check",
    "in_list_view": 1,
-   "label": "All Users"
+   "label": "All Users",
+   "read_only": 1
+  },
+  {
+   "fieldname": "transition_uuid",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Transition UUID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "transition_semantic_hash",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Transition Semantic Hash",
+   "read_only": 1
+  },
+  {
+   "fieldname": "transition_idx",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Transition Row",
+   "read_only": 1
+  },
+  {
+   "fieldname": "allowed_role",
+   "fieldtype": "Link",
+   "label": "Allowed Role",
+   "options": "Role",
+   "read_only": 1
+  },
+  {
+   "default": "Any",
+   "fieldname": "policy",
+   "fieldtype": "Select",
+   "label": "Approval Policy",
+   "options": "Any\nAll\nMinimum",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.policy=='Minimum'",
+   "fieldname": "threshold",
+   "fieldtype": "Int",
+   "label": "Required Approvals",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "comment_is_required",
+   "fieldtype": "Check",
+   "label": "Comment Is Required",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "send_email_to_creator",
+   "fieldtype": "Check",
+   "label": "Send Email To Creator",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_complete_unchanged",
+   "fieldtype": "Check",
+   "label": "Auto Complete Unchanged",
+   "read_only": 1
+  },
+  {
+   "fieldname": "email_template",
+   "fieldtype": "Link",
+   "label": "Email Template",
+   "options": "Email Template",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "attach_document_pdf",
+   "fieldtype": "Check",
+   "label": "Attach Document Print",
+   "read_only": 1
+  },
+  {
+   "fieldname": "eligible_approvers",
+   "fieldtype": "JSON",
+   "hidden": 1,
+   "label": "Eligible Approvers",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,

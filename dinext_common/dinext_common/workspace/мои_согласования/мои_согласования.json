@@ -1,0 +1,51 @@
+{
+ "charts": [],
+ "content": "[{\"id\": \"approvals-header\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\">\u041c\u043e\u0438 \u0441\u043e\u0433\u043b\u0430\u0441\u043e\u0432\u0430\u043d\u0438\u044f</span>\", \"col\": 12}}, {\"id\": \"approvals-open\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"My open approvals\", \"col\": 3}}, {\"id\": \"approvals-new\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"\u041d\u043e\u0432\u044b\u0435 \u0441\u0435\u0433\u043e\u0434\u043d\u044f\", \"col\": 3}}, {\"id\": \"approvals-completed\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"My completed approvals\", \"col\": 3}}, {\"id\": \"approvals-automatic\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"\u0410\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438 \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e \u0437\u0430 30 \u0434\u043d\u0435\u0439\", \"col\": 3}}, {\"id\": \"approvals-spacer\", \"type\": \"spacer\", \"data\": {\"col\": 12}}, {\"id\": \"approvals-dashboard\", \"type\": \"custom_block\", \"data\": {\"custom_block_name\": \"My Approvals Dashboard\", \"col\": 12}}]",
+ "creation": "2026-09-10 00:00:00",
+ "custom_blocks": [
+  {
+   "custom_block_name": "My Approvals Dashboard",
+   "label": "\u041c\u043e\u0438 \u0441\u043e\u0433\u043b\u0430\u0441\u043e\u0432\u0430\u043d\u0438\u044f"
+  }
+ ],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "task-checked",
+ "idx": 0,
+ "indicator_color": "blue",
+ "is_hidden": 0,
+ "label": "\u041c\u043e\u0438 \u0441\u043e\u0433\u043b\u0430\u0441\u043e\u0432\u0430\u043d\u0438\u044f",
+ "links": [],
+ "modified": "2026-09-10 21:55:50.341798",
+ "modified_by": "Administrator",
+ "module": "Dinext Common",
+ "name": "\u041c\u043e\u0438 \u0441\u043e\u0433\u043b\u0430\u0441\u043e\u0432\u0430\u043d\u0438\u044f",
+ "number_cards": [
+  {
+   "label": "\u0422\u0440\u0435\u0431\u0443\u044e\u0442 \u0440\u0435\u0448\u0435\u043d\u0438\u044f",
+   "number_card_name": "My open approvals"
+  },
+  {
+   "label": "\u041d\u043e\u0432\u044b\u0435 \u0441\u0435\u0433\u043e\u0434\u043d\u044f",
+   "number_card_name": "\u041d\u043e\u0432\u044b\u0435 \u0441\u0435\u0433\u043e\u0434\u043d\u044f"
+  },
+  {
+   "label": "\u0420\u0435\u0448\u0435\u043d\u0438\u0439 \u0437\u0430 30 \u0434\u043d\u0435\u0439",
+   "number_card_name": "My completed approvals"
+  },
+  {
+   "label": "\u0410\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438 \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e \u0437\u0430 30 \u0434\u043d\u0435\u0439",
+   "number_card_name": "\u0410\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438 \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e \u0437\u0430 30 \u0434\u043d\u0435\u0439"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 44.0,
+ "shortcuts": [],
+ "title": "\u041c\u043e\u0438 \u0441\u043e\u0433\u043b\u0430\u0441\u043e\u0432\u0430\u043d\u0438\u044f"
+}
