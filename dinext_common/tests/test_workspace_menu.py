@@ -15,6 +15,8 @@ from dinext_common.setup.hub_catalog import (
 	DINEXT_HUB_SETTINGS,
 	SETTINGS_HUB_SETTINGS,
 	SETTINGS_SECTION_CARD_COLUMNS,
+	SETTINGS_WORKSPACES_SECTION_CARD_COLUMNS,
+	SETTINGS_WORKSPACES_SECTION_LIST_LIMIT,
 	ensure_workspace_settings,
 	register_hub_doctype_items,
 	register_hub_items,
@@ -1131,14 +1133,32 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertTrue(dinext.show_frequent_pages)
 		self.assertTrue(dinext.show_recent_pages)
 
-	def test_settings_sections_use_five_card_columns(self):
+	def test_settings_section_insert_uses_workspaces_three_and_configuration_five(self):
 		configure_workspace_menu()
+		snapshot = _snapshot_hub_settings(SETTINGS_HUB_SETTINGS)
+		self.addCleanup(_restore_hub_settings, snapshot, SETTINGS_HUB_SETTINGS)
 		settings = frappe.get_doc("Dinext Workspace Settings", SETTINGS_HUB_SETTINGS)
-		by_section = {row.section: int(row.card_columns) for row in settings.sections}
-		self.assertEqual(by_section.get("Workspaces"), SETTINGS_SECTION_CARD_COLUMNS)
-		self.assertEqual(by_section.get("Configuration"), SETTINGS_SECTION_CARD_COLUMNS)
-		for section in get_settings_hub()["sections"]:
-			self.assertEqual(section["card_columns"], SETTINGS_SECTION_CARD_COLUMNS)
+		settings.sections = [
+			row for row in settings.sections if row.section not in {"Workspaces", "Configuration"}
+		]
+		settings.save(ignore_permissions=True)
+		ensure_default_dinext_hub_settings()
+		settings.reload()
+		by_section = {row.section: row for row in settings.sections}
+		workspaces = by_section["Workspaces"]
+		self.assertEqual(int(workspaces.list_limit), SETTINGS_WORKSPACES_SECTION_LIST_LIMIT)
+		self.assertEqual(int(workspaces.card_columns), SETTINGS_WORKSPACES_SECTION_CARD_COLUMNS)
+		self.assertEqual(int(by_section["Configuration"].card_columns), SETTINGS_SECTION_CARD_COLUMNS)
+		payload_by_label = {section["label"]: section for section in get_settings_hub()["sections"]}
+		self.assertEqual(
+			payload_by_label["Workspaces"]["list_limit"], SETTINGS_WORKSPACES_SECTION_LIST_LIMIT
+		)
+		self.assertEqual(
+			payload_by_label["Workspaces"]["card_columns"], SETTINGS_WORKSPACES_SECTION_CARD_COLUMNS
+		)
+		self.assertEqual(
+			payload_by_label["Configuration"]["card_columns"], SETTINGS_SECTION_CARD_COLUMNS
+		)
 
 	def test_hub_card_columns_default_without_section_row(self):
 		configure_workspace_menu()
