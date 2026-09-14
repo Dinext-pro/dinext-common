@@ -83,6 +83,8 @@ Summary живёт в **отдельном** `summarySourceData` / `summaryRowDa
 
 Не передавайте `pinnedBottomRowData` в `gridOptions` сами — ядро перезапишет при `summaryRows.length > 0`.
 
+Мало строк + фикс. высота хоста → дыра над pinned footer. Не unpin summary. Opt-in `layout.height: "auto"` + `maxHeight` — ядро сжимает вьюпорт. → [`layout.md`](layout.md).
+
 ---
 
 ## Merge + tree на summary

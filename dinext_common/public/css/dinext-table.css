@@ -17,6 +17,11 @@
     --ag-value-change-value-highlight-background-color: rgba(22, 160, 133, 0.1);
 }
 
+/* Auto height: do not stretch to parent 100% — JS sets px (FS clears inline). */
+.dinext-table.dinext-table--layout-auto:not(:fullscreen):not(.dinext-table--fullscreen) {
+    height: auto;
+}
+
 /*
  * Legacy class-theme CSS (ag-grid.css) sets light tokens on `[class*=ag-theme-]`.
  * AG Theming API injects `:where(.ag-theme-params-N)` (specificity 0) → loses to that
