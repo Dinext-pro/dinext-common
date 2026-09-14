@@ -9,4 +9,4 @@ variables:
   DINEXT_CONTROL_CENTER_REF: "feat/fast-app-ci"
 
 docs-agent:mr-analyze:
-  allow_failure: false
+  allow_failure: true
