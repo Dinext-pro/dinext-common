@@ -18,7 +18,8 @@ const GRID_CALLBACK_KEYS = new Set([
     "onGridSizeChanged",
     "onColumnResized",
     "onDisplayedColumnsChanged",
-    "onFirstDataRendered"
+    "onFirstDataRendered",
+    "onModelUpdated"
 ]);
 
 const DEFAULT_ROW_ID_FIELD = "id";
