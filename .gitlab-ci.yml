@@ -7,3 +7,6 @@ include:
 
 variables:
   DINEXT_CONTROL_CENTER_REF: "main"
+
+docs-agent:mr-analyze:
+  allow_failure: false
