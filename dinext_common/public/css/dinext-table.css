@@ -17,6 +17,11 @@
     --ag-value-change-value-highlight-background-color: rgba(22, 160, 133, 0.1);
 }
 
+/* Auto height: JS sets container px. FS keeps container fill; JS hugs grid-host. */
+.dinext-table.dinext-table--layout-auto:not(:fullscreen):not(.dinext-table--fullscreen) {
+    height: auto;
+}
+
 /*
  * Legacy class-theme CSS (ag-grid.css) sets light tokens on `[class*=ag-theme-]`.
  * AG Theming API injects `:where(.ag-theme-params-N)` (specificity 0) → loses to that
@@ -293,6 +298,12 @@
 .dinext-table:fullscreen .dinext-table-grid-host {
     flex: 1 1 auto;
     min-height: 0;
+}
+
+.dinext-table.dinext-table--layout-auto:fullscreen .dinext-table-grid-host,
+.dinext-table.dinext-table--layout-auto.dinext-table--fullscreen .dinext-table-grid-host {
+    flex: 0 1 auto;
+    max-height: 100%;
 }
 
 /* Status bar visible: bottom radius moves from grid shell to status bar. */
