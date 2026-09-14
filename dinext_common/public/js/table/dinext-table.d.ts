@@ -266,6 +266,7 @@ export interface DinextTablePinEndOptions {
  * Vertical size policy. Default `host` — consumer CSS/inline owns height.
  * `auto` shrinks to header+rows+summary+chrome and caps at `maxHeight`
  * so pinned summary hugs content when short.
+ * Fullscreen: same hug, cap = available viewport (not `maxHeight`); height on grid-host.
  * @layer layout
  */
 export interface DinextTableLayoutOptions {

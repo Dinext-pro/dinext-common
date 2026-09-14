@@ -24,7 +24,7 @@ AG Grid `pinnedBottom` клеится к низу **вьюпорта**. Хост
 | `layout.maxHeight` | — | px или CSS: `672`, `"60vh"`, `"min(60vh, 672px)"` |
 | `layout.minHeight` | — | пол. `280` снова даст дыру на короткой таблице |
 
-Fullscreen: auto выкл, inline height/max/min сбрасываются — CSS/`flex: 1` на shell.
+Fullscreen: тот же hug. Потолок — доступная высота экрана/shell, не `maxHeight`. Высота на `.dinext-table-grid-host`; контейнер остаётся `100%` (фон, оверлеи). Много строк → скролл тела, итоги снизу.
 
 Не включать `auto` там, где хост сам кормит высоту (PWR fill-viewport, gantt).
 

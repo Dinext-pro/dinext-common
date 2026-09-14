@@ -100,7 +100,7 @@ DinextTable.create({
 | `data` | `[]` | Body rows (top-level) |
 | `columns` | `[]` | → [columns-and-formatting.md](usage-guides/columns-and-formatting.md) |
 | `pinEnd.mode` | `"auto"` | pin `pinned: "right"` only on overflow; `"always"` = AG stick-right |
-| `layout.height` | `"host"` | `"auto"` — shrink to content, cap at `layout.maxHeight` |
+| `layout.height` | `"host"` | `"auto"` — shrink to content, cap at `layout.maxHeight`; FS cap = viewport |
 | `layout.maxHeight` | — | px or CSS (`"min(60vh, 672px)"`). Only with `height: "auto"` |
 | `layout.minHeight` | — | optional floor; omit so short tables hug |
 | `edit` | `false` | Global editable default |
