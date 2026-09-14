@@ -21,6 +21,7 @@ DINEXT_WORKSPACE = "Dinext"
 SETTINGS_WORKSPACE = "Settings"
 LEGACY_SETTINGS_WORKSPACE = "Настройки"
 SETTINGS_CHILDREN = ("Integrations", "Tools", "Users", "Build", "Website")
+SETTINGS_CHILDREN_HOOK = "dinext_settings_workspace_children"
 DINEXT_APP_PREFIX = "dinext_"
 DINEXT_MODULE = "Dinext Common"
 SETTINGS_ROLES = ("System Manager", "Workspace Manager")
@@ -71,6 +72,17 @@ def get_workspace_sidebar_items():
 	payload = original() or {}
 	payload["pages"] = omit_replaced_workspaces(payload.get("pages") or [])
 	return payload
+
+
+def get_settings_children() -> tuple[str, ...]:
+	"""Built-in Settings children plus names from hook dinext_settings_workspace_children."""
+	extra: list[str] = []
+	for value in frappe.get_hooks(SETTINGS_CHILDREN_HOOK) or []:
+		if isinstance(value, (list, tuple)):
+			extra.extend(str(item) for item in value if item)
+		elif value:
+			extra.append(str(value))
+	return tuple(dict.fromkeys((*SETTINGS_CHILDREN, *extra)))
 
 
 def configure_workspace_menu() -> None:
@@ -303,7 +315,7 @@ def hide_non_dinext_workspaces() -> None:
 		fields=["name", "is_hidden", "for_user", "module"],
 	)
 
-	keep_visible = set(SETTINGS_CHILDREN)
+	keep_visible = set(get_settings_children())
 	for workspace in workspaces:
 		if workspace.for_user:
 			continue
@@ -330,7 +342,7 @@ def hide_non_dinext_workspaces() -> None:
 
 
 def nest_settings_children() -> None:
-	for name in SETTINGS_CHILDREN:
+	for name in get_settings_children():
 		if not frappe.db.exists("Workspace", name):
 			continue
 

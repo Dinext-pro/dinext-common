@@ -31,6 +31,7 @@ from dinext_common.setup.workspace import (
 	SETTINGS_WORKSPACE,
 	configure_workspace_menu,
 	ensure_default_dinext_hub_settings,
+	get_settings_children,
 	get_workspace_sidebar_items,
 	omit_replaced_workspaces,
 	set_default_workspace_for_new_user,
@@ -180,7 +181,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 			if ws.for_user or ws.name in (
 				DINEXT_WORKSPACE,
 				SETTINGS_WORKSPACE,
-				*SETTINGS_CHILDREN,
+				*get_settings_children(),
 			):
 				continue
 
@@ -192,6 +193,74 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 				1,
 				msg=f"public non-Dinext workspace {ws.name!r} must be hidden",
 			)
+
+	def test_get_settings_children_unions_hook_and_keeps_builtins(self):
+		from unittest.mock import patch
+
+		original = frappe.get_hooks
+
+		def fake_hooks(hook=None, default="_unset"):
+			if hook == "dinext_settings_workspace_children":
+				return ["Raven"]
+			if default != "_unset":
+				return original(hook, default)
+			return original(hook)
+
+		with patch("frappe.get_hooks", side_effect=fake_hooks):
+			children = get_settings_children()
+		self.assertEqual(children[: len(SETTINGS_CHILDREN)], SETTINGS_CHILDREN)
+		self.assertIn("Raven", children)
+		for name in SETTINGS_CHILDREN:
+			self.assertIn(name, children)
+
+	def test_hook_registered_raven_is_settings_child_unregistered_is_hidden(self):
+		if not frappe.db.exists("Workspace", "Raven"):
+			self.skipTest("Desk Workspace Raven is not installed")
+		from unittest.mock import patch
+
+		original = frappe.get_hooks
+
+		def hooks_with_raven(hook=None, default="_unset"):
+			if hook == "dinext_settings_workspace_children":
+				return ["Raven"]
+			if default != "_unset":
+				return original(hook, default)
+			return original(hook)
+
+		def hooks_without_raven(hook=None, default="_unset"):
+			if hook == "dinext_settings_workspace_children":
+				return []
+			if default != "_unset":
+				return original(hook, default)
+			return original(hook)
+
+		with patch("frappe.get_hooks", side_effect=hooks_with_raven):
+			configure_workspace_menu()
+		ws = frappe.db.get_value(
+			"Workspace",
+			"Raven",
+			["parent_page", "is_hidden", "public"],
+			as_dict=True,
+		)
+		self.assertEqual(ws.parent_page, SETTINGS_WORKSPACE)
+		self.assertEqual(ws.is_hidden, 0)
+		self.assertEqual(ws.public, 1)
+		for name in SETTINGS_CHILDREN:
+			if not frappe.db.exists("Workspace", name):
+				continue
+			child = frappe.db.get_value(
+				"Workspace",
+				name,
+				["parent_page", "is_hidden", "public"],
+				as_dict=True,
+			)
+			self.assertEqual(child.parent_page, SETTINGS_WORKSPACE)
+			self.assertEqual(child.is_hidden, 0)
+			self.assertEqual(child.public, 1)
+
+		with patch("frappe.get_hooks", side_effect=hooks_without_raven):
+			configure_workspace_menu()
+		self.assertEqual(frappe.db.get_value("Workspace", "Raven", "is_hidden"), 1)
 
 	def test_omit_replaced_workspaces_drops_home(self):
 		pages = omit_replaced_workspaces(
