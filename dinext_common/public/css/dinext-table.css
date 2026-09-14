@@ -17,7 +17,7 @@
     --ag-value-change-value-highlight-background-color: rgba(22, 160, 133, 0.1);
 }
 
-/* Auto height: do not stretch to parent 100% — JS sets px (FS clears inline). */
+/* Auto height: JS sets container px. FS keeps container fill; JS hugs grid-host. */
 .dinext-table.dinext-table--layout-auto:not(:fullscreen):not(.dinext-table--fullscreen) {
     height: auto;
 }
@@ -298,6 +298,12 @@
 .dinext-table:fullscreen .dinext-table-grid-host {
     flex: 1 1 auto;
     min-height: 0;
+}
+
+.dinext-table.dinext-table--layout-auto:fullscreen .dinext-table-grid-host,
+.dinext-table.dinext-table--layout-auto.dinext-table--fullscreen .dinext-table-grid-host {
+    flex: 0 1 auto;
+    max-height: 100%;
 }
 
 /* Status bar visible: bottom radius moves from grid shell to status bar. */

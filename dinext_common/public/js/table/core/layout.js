@@ -2,11 +2,15 @@
  * Auto height: shrink viewport to content so pinned summary hugs last body row.
  * Cap at layout.maxHeight — then body scrolls, summary stays pinned bottom.
  *
- * Default `host` — consumer owns container height (PWR / gantt / FS).
+ * Default `host` — consumer owns container height (PWR / gantt fill-viewport).
  * Opt-in `auto`. Does not unpin summary rows (unlike pinEnd on columns).
+ *
+ * Fullscreen: same hug. Cap = available host space (not consumer maxHeight).
+ * Height goes on grid-host so the FS/shell element stays 100% for bg/overlays.
  */
 
 import { DEFAULT_ROW_HEIGHT } from "./grid.js";
+import { findAgGridRootElement, findGridMountElement } from "./shared/utils.js";
 
 const LAYOUT_FIT_SLACK_PX = 2;
 const AUTO_CLASS = "dinext-table--layout-auto";
@@ -91,6 +95,14 @@ export function resolveDesiredLayoutHeight({ contentPx, minPx, maxPx }) {
         height = Math.max(height, minPx);
     }
     return Math.round(height);
+}
+
+/** FS caps at host viewport; normal mode uses consumer maxHeight. */
+export function resolveLayoutMaxPx({ fullscreen, availablePx, optionMaxPx }) {
+    if (fullscreen) {
+        return availablePx;
+    }
+    return optionMaxPx;
 }
 
 function offsetHeightOf(el) {
@@ -203,6 +215,7 @@ export const LayoutMixin = (Base) => class extends Base {
             }
             this.scheduleLayoutHeightSync();
         });
+        this._layoutResizeObserver.observe(this.container);
         for (const sel of [
             ".dinext-table-toolbar",
             ".dinext-table-status-bar",
@@ -246,22 +259,42 @@ export const LayoutMixin = (Base) => class extends Base {
     }
 
     shouldSkipLayoutHeight() {
-        if (!this.isLayoutAuto() || !this.container) {
-            return true;
-        }
-        if (typeof this.isFullscreen === "function" && this.isFullscreen()) {
-            return true;
-        }
-        return false;
+        return !this.isLayoutAuto() || !this.container;
     }
 
-    clearLayoutInlineStyles() {
+    isLayoutFullscreen() {
+        return typeof this.isFullscreen === "function" && this.isFullscreen();
+    }
+
+    getLayoutGridHost() {
+        if (!this.container) {
+            return null;
+        }
+        return this.container.querySelector(".dinext-table-grid-host")
+            || findGridMountElement(this.container)
+            || findAgGridRootElement(this.container);
+    }
+
+    clearLayoutContainerInlineStyles() {
         if (!this.container) {
             return;
         }
         this.container.style.height = "";
         this.container.style.maxHeight = "";
         this.container.style.minHeight = "";
+    }
+
+    clearLayoutGridHostInlineStyles() {
+        const host = this.getLayoutGridHost();
+        if (!host) {
+            return;
+        }
+        host.style.height = "";
+    }
+
+    clearLayoutInlineStyles() {
+        this.clearLayoutContainerInlineStyles();
+        this.clearLayoutGridHostInlineStyles();
     }
 
     getLayoutRowHeight() {
@@ -296,13 +329,9 @@ export const LayoutMixin = (Base) => class extends Base {
         return count * this.getLayoutRowHeight();
     }
 
-    measureLayoutContentPx() {
+    measureLayoutGridChrome() {
         const wrapper = this.container?.querySelector?.(".ag-root-wrapper");
-        const borderPx = wrapper
-            ? Math.max(0, wrapper.offsetHeight - wrapper.clientHeight)
-            : 0;
-        return sumLayoutChromePx({
-            toolbarPx: offsetHeightOf(this.container?.querySelector?.(".dinext-table-toolbar")),
+        return {
             headerPx: offsetHeightOf(this.container?.querySelector?.(".ag-header")),
             topHScrollPx: offsetHeightOf(this.container?.querySelector?.(".dinext-table-hscroll-top")),
             bodyPx: this.getLayoutBodyPx(),
@@ -310,9 +339,53 @@ export const LayoutMixin = (Base) => class extends Base {
             bottomHScrollPx: offsetHeightOf(
                 this.container?.querySelector?.(".ag-body-horizontal-scroll")
             ),
-            statusPx: offsetHeightOf(this.container?.querySelector?.(".dinext-table-status-bar")),
-            borderPx
+            borderPx: wrapper
+                ? Math.max(0, wrapper.offsetHeight - wrapper.clientHeight)
+                : 0
+        };
+    }
+
+    measureLayoutGridPx() {
+        return sumLayoutChromePx(this.measureLayoutGridChrome());
+    }
+
+    measureLayoutContentPx() {
+        return sumLayoutChromePx({
+            ...this.measureLayoutGridChrome(),
+            toolbarPx: offsetHeightOf(this.container?.querySelector?.(".dinext-table-toolbar")),
+            statusPx: offsetHeightOf(this.container?.querySelector?.(".dinext-table-status-bar"))
         });
+    }
+
+    getLayoutAvailableGridPx() {
+        const containerPx = this.container?.clientHeight || 0;
+        const toolbarPx = offsetHeightOf(this.container?.querySelector?.(".dinext-table-toolbar"));
+        const statusPx = offsetHeightOf(this.container?.querySelector?.(".dinext-table-status-bar"));
+        const available = containerPx - toolbarPx - statusPx;
+        if (available > 0) {
+            return available;
+        }
+        if (typeof window !== "undefined" && window.innerHeight > 0) {
+            return window.innerHeight;
+        }
+        return null;
+    }
+
+    applyLayoutHeightPx(el, desired) {
+        if (!el) {
+            return false;
+        }
+        const nextInline = `${desired}px`;
+        if (el.style.height === nextInline) {
+            return false;
+        }
+        this._layoutSyncing = true;
+        try {
+            el.style.height = nextInline;
+        } finally {
+            this._layoutSyncing = false;
+        }
+        return true;
     }
 
     resolveLayoutBoundPx(value) {
@@ -324,11 +397,20 @@ export const LayoutMixin = (Base) => class extends Base {
             return;
         }
         if (this.shouldSkipLayoutHeight()) {
-            if (this.isLayoutAuto() && this.container) {
-                this.clearLayoutInlineStyles();
-            }
             return;
         }
+
+        const changed = this.isLayoutFullscreen()
+            ? this.syncLayoutHeightFullscreen()
+            : this.syncLayoutHeightHost();
+
+        if (changed && !followUp) {
+            requestAnimationFrame(() => this.syncLayoutHeight({ followUp: true }));
+        }
+    }
+
+    syncLayoutHeightHost() {
+        this.clearLayoutGridHostInlineStyles();
 
         const opts = this.getLayoutOptions();
         const maxCss = opts.maxHeight;
@@ -351,23 +433,32 @@ export const LayoutMixin = (Base) => class extends Base {
         const desired = resolveDesiredLayoutHeight({
             contentPx: this.measureLayoutContentPx(),
             minPx: this.resolveLayoutBoundPx(minCss),
-            maxPx: this.resolveLayoutBoundPx(maxCss)
+            maxPx: resolveLayoutMaxPx({
+                fullscreen: false,
+                optionMaxPx: this.resolveLayoutBoundPx(maxCss)
+            })
         });
-        const currentInline = this.container.style.height;
-        const nextInline = `${desired}px`;
-        if (currentInline === nextInline) {
-            return;
+        return this.applyLayoutHeightPx(this.container, desired);
+    }
+
+    syncLayoutHeightFullscreen() {
+        this.clearLayoutContainerInlineStyles();
+        if (this.container) {
+            void this.container.offsetHeight;
         }
 
-        this._layoutSyncing = true;
-        try {
-            this.container.style.height = nextInline;
-        } finally {
-            this._layoutSyncing = false;
+        const host = this.getLayoutGridHost();
+        if (host && !host.classList.contains("dinext-table-grid-host")) {
+            host.classList.add("dinext-table-grid-host");
         }
 
-        if (!followUp) {
-            requestAnimationFrame(() => this.syncLayoutHeight({ followUp: true }));
-        }
+        const desired = resolveDesiredLayoutHeight({
+            contentPx: this.measureLayoutGridPx(),
+            maxPx: resolveLayoutMaxPx({
+                fullscreen: true,
+                availablePx: this.getLayoutAvailableGridPx()
+            })
+        });
+        return this.applyLayoutHeightPx(host, desired);
     }
 };

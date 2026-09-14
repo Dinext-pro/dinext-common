@@ -5,6 +5,7 @@ import {
     parseLayoutSizePx,
     resolveDesiredLayoutHeight,
     resolveLayoutHeightMode,
+    resolveLayoutMaxPx,
     sumLayoutChromePx
 } from "../core/layout.js";
 
@@ -58,4 +59,44 @@ test("resolveDesiredLayoutHeight honors minHeight only when set", () => {
         minPx: 0,
         maxPx: 672
     }), 120);
+});
+
+test("resolveLayoutMaxPx uses host viewport in fullscreen, option max otherwise", () => {
+    assert.equal(resolveLayoutMaxPx({
+        fullscreen: false,
+        availablePx: 900,
+        optionMaxPx: 672
+    }), 672);
+    assert.equal(resolveLayoutMaxPx({
+        fullscreen: true,
+        availablePx: 900,
+        optionMaxPx: 672
+    }), 900);
+    assert.equal(resolveLayoutMaxPx({
+        fullscreen: true,
+        availablePx: null,
+        optionMaxPx: 672
+    }), null);
+});
+
+test("resolveDesiredLayoutHeight in FS hugs short content under viewport", () => {
+    assert.equal(resolveDesiredLayoutHeight({
+        contentPx: 220,
+        maxPx: resolveLayoutMaxPx({
+            fullscreen: true,
+            availablePx: 900,
+            optionMaxPx: 672
+        })
+    }), 220);
+});
+
+test("resolveDesiredLayoutHeight in FS caps tall content at viewport not option max", () => {
+    assert.equal(resolveDesiredLayoutHeight({
+        contentPx: 2000,
+        maxPx: resolveLayoutMaxPx({
+            fullscreen: true,
+            availablePx: 900,
+            optionMaxPx: 672
+        })
+    }), 900);
 });
