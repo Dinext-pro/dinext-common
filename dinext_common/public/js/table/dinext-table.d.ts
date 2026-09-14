@@ -21,6 +21,7 @@
  * - `toolbar`        — floating trigger + slide-down command bar
  * - `fullscreen`     — native Fullscreen API on container/shell
  * - `pinEnd`         — auto unpin declared `pinned: "right"` when columns fit
+ * - `layout`         — auto height: hug content + maxHeight cap (summary stays pinned)
  * - `formatting` — passthrough styling (→ AG Grid colDef / gridOptions)
  * - `ag-grid`    — passthrough напрямую в AG Grid 35 Community
  *
@@ -51,6 +52,7 @@ export type DinextTableLayer =
     | "toolbar"
     | "fullscreen"
     | "pinEnd"
+    | "layout"
     | "formatting"
     | "ag-grid";
 
@@ -257,6 +259,22 @@ export interface DinextTablePinEndOptions {
          * `always` — AG Grid stick-to-viewport right.
          */
         mode?: "always" | "auto";
+    };
+}
+
+/**
+ * Vertical size policy. Default `host` — consumer CSS/inline owns height.
+ * `auto` shrinks to header+rows+summary+chrome and caps at `maxHeight`
+ * so pinned summary hugs content when short.
+ * @layer layout
+ */
+export interface DinextTableLayoutOptions {
+    layout?: {
+        height?: "host" | "auto";
+        /** px or CSS (`672`, `"60vh"`, `"min(60vh, 672px)"`) */
+        maxHeight?: number | string;
+        /** px or CSS. Omit / 0 — no floor (a 280px min leaves a gap when short). */
+        minHeight?: number | string;
     };
 }
 
@@ -839,6 +857,7 @@ export interface DinextTableCreateOptions
         DinextTableToolbarOptions,
         DinextTableFullscreenOptions,
         DinextTablePinEndOptions,
+        DinextTableLayoutOptions,
         DinextTableCallbackOptions,
         DinextTableAgGridPassthrough {}
 
@@ -871,7 +890,7 @@ export interface DinextTableInstance {
     /** @layer core */
     refresh(data?: DinextTableRowData[]): void;
     /** @layer core — keys: data | columns | edit | toolbar | summaryRows | sort, … */
-    setOption(key: "data" | "columns" | "edit" | "toolbar" | "summaryRows" | "sort", value: unknown): void;
+    setOption(key: "data" | "columns" | "edit" | "toolbar" | "summaryRows" | "sort" | "layout", value: unknown): void;
     /** @layer core */
     destroy(): void;
 
@@ -892,6 +911,8 @@ export interface DinextTableInstance {
     setRowChildren(rowId: string, children: DinextTableRowData[]): void;
     /** @layer section */
     setSummaryRows(rows: DinextTableRowData[]): void;
+    /** @layer layout — recompute auto height (no-op unless `layout.height: "auto"`) */
+    syncLayoutHeight(opts?: { followUp?: boolean }): void;
 
     // --- sort ---
     /** @layer sort */

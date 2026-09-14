@@ -102,6 +102,7 @@
 
 - [x] **Filter layer** — `core/filter/` + auto toolbar search (как rowCheck) + floating row + tree match+ancestors + unit `@tests/filter-model.test.mjs`.
 - [x] **pinEnd auto** — `core/pin-end.js`: default `auto` (pin `pinned: "right"` только при overflow); `always` opt-in. Unit: `@tests/pin-end.test.mjs`.
+- [x] **layout auto height** — `core/layout.js`: opt-in `layout.height: "auto"` + `maxHeight`; shrink viewport so pinned summary hugs content; FS → host. Unit: `@tests/layout.test.mjs`.
 - [x] **Filter row UI** — AG floatingFilter + noop parent filter; `filterable: false` opt-out; system cols без инпута.
 
 ---
