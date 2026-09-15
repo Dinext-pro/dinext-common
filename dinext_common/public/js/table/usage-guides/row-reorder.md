@@ -105,11 +105,17 @@ onRowReorder: async ({ table, source, move }) => {
 
 ### `canReorderRow` (опционально)
 
-Per-row guard на **старт** drag:
+Один хук на три вещи: **иконка**, **старт drag**, **якорь drop**.
+
+`false` → нет 6-dot handle, строку нельзя тащить, над ней нельзя бросить (before/after/inside). Щель рядом с locked-блоком остаётся через соседа (`after` последней обычной строки = перед секцией отпуска).
+
+Не клади флаг `allow_dnd` в данные строки — это тот же контракт.
+
+`canAcceptRowReorder({ dropTarget, sourceRows })` — опциональный забор после resolve (preview + commit). Пример: блок отпуска всегда снизу, `toIndex` не дальше первой section/leave.
 
 ```js
 canReorderRow({ table, row, rowId, section, parentRowId }) {
-    return !row.locked;
+    return row.rowType === "position";
 }
 ```
 
@@ -145,6 +151,7 @@ Reparent undo восстанавливает оба sibling-списка и path
 
 | Условие | Поведение |
 |---------|-----------|
+| `canReorderRow === false` | нет handle, нет drag, нет drop-якоря |
 | Summary row | blocked, пока `allowSummary: true` |
 | Merge tail row | drag blocked — тянуть только **head** (весь блок) |
 | Merge block + nest / nested parent | reparent/nest blocked (flatten tree предполагает merge на top-level) |
