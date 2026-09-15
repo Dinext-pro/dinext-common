@@ -250,6 +250,39 @@ export function canNestIntoRow(row, options = {}) {
 }
 
 /**
+ * Same `canReorderRow` as handle / drag-start.
+ * Locked row is not a drop hover-anchor; slots next to it stay reachable
+ * from a reorderable neighbor (before last position = before leave block).
+ */
+export function isRowReorderDropAnchor(row, options = {}, ctx = {}) {
+    const canReorderRow = options.canReorderRow;
+    if (typeof canReorderRow !== "function") {
+        return true;
+    }
+    if (!row) {
+        return false;
+    }
+    return canReorderRow({
+        table: ctx.table ?? null,
+        row,
+        rowId: ctx.rowId ?? getStableRowId(row, options),
+        section: ctx.section ?? "body",
+        parentRowId: ctx.parentRowId ?? null
+    }) !== false;
+}
+
+/** True when insert sits between two locked siblings (leave block interior). */
+export function isInsertBetweenLockedRows(list, toIndex, options = {}, ctx = {}) {
+    const before = list?.[toIndex - 1];
+    const after = list?.[toIndex];
+    if (!before || !after) {
+        return false;
+    }
+    return !isRowReorderDropAnchor(before, options, ctx)
+        && !isRowReorderDropAnchor(after, options, ctx);
+}
+
+/**
  * @param {number} offsetY — pointer Y relative to row top
  * @param {number} height — row height
  * @param {boolean} allowInside
@@ -313,6 +346,15 @@ export function resolveDropTarget({
         return null;
     }
 
+    const hoverRow = findSourceRowInData(sourceRows, String(hoverRowId), options)
+        || findSourceRowInData(sourceRows, anchor.headRowId, options);
+    if (!isRowReorderDropAnchor(hoverRow, options, {
+        rowId: String(hoverRowId),
+        parentRowId: anchor.parentRowId
+    })) {
+        return null;
+    }
+
     let toParentRowId;
     let toIndex;
     let indentLevel;
@@ -369,10 +411,18 @@ export function resolveDropTarget({
         return { noop: true };
     }
 
+    const destList = getSiblingListForParent(sourceRows, toParentRowId, options);
+    if (
+        position !== ROW_REORDER_POSITIONS.INSIDE
+        && isInsertBetweenLockedRows(destList, toIndex, options, { parentRowId: toParentRowId })
+    ) {
+        return null;
+    }
+
     const localId = String(dragCtx.rowId).split(":").pop();
     const newRowId = buildFullRowId(toParentRowId, localId);
 
-    return {
+    const dropTarget = {
         position,
         targetRowId: String(hoverRowId),
         fromParentRowId: dragCtx.parentRowId,
@@ -385,6 +435,19 @@ export function resolveDropTarget({
         indentLevel,
         sameParent
     };
+
+    const canAccept = options.canAcceptRowReorder;
+    if (typeof canAccept === "function"
+        && canAccept({
+            dropTarget,
+            sourceRows,
+            dragCtx,
+            hoverRow
+        }) === false) {
+        return null;
+    }
+
+    return dropTarget;
 }
 
 export function reorderSiblingBlock(list, fromIndex, blockSize, toIndex) {

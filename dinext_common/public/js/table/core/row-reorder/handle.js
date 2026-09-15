@@ -35,9 +35,8 @@ export class RowReorderHandleCellRenderer {
     init(params) {
         this.eGui = document.createElement("div");
         this.eGui.className = "dinext-table-row-reorder-handle-host";
-        this.handleEl = createRowReorderHandleEl(params?.context?.dinextTable);
-        this.eGui.appendChild(this.handleEl);
-        this.params = params;
+        this.handleEl = null;
+        this.sync(params);
     }
 
     getGui() {
@@ -45,8 +44,25 @@ export class RowReorderHandleCellRenderer {
     }
 
     refresh(params) {
-        this.params = params;
-        applyRowReorderHandleState(this.handleEl, params?.context?.dinextTable);
+        this.sync(params);
         return true;
+    }
+
+    sync(params) {
+        this.params = params;
+        const table = params?.context?.dinextTable;
+        const show = !!table?.shouldShowRowReorderHandle?.(params?.node);
+        this.eGui.classList.toggle("dinext-table-row-reorder-handle-host--empty", !show);
+        if (!show) {
+            this.eGui.replaceChildren();
+            this.handleEl = null;
+            return;
+        }
+        if (!this.handleEl) {
+            this.handleEl = createRowReorderHandleEl(table);
+            this.eGui.appendChild(this.handleEl);
+            return;
+        }
+        applyRowReorderHandleState(this.handleEl, table);
     }
 }
