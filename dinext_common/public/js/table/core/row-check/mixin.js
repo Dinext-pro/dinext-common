@@ -24,7 +24,9 @@ const ROW_CHECK_DEFAULTS = {
     allowSummary: false,
     /** Toolbar select-all icon control (not column header — keeps header slot empty). */
     selectAll: true,
-    width: 36
+    width: 36,
+    /** After `addRow`, check the new id. Set false to leave it unchecked. */
+    checkNewRow: true
 };
 
 function createCheckboxInput({ checked, indeterminate, disabled, onChange }) {
@@ -584,7 +586,9 @@ export const RowCheckMixin = (Base) => class extends Base {
 
         insertRowsAfter(this.sourceData, null, [row], this.options);
         const newId = getStableRowId(row, this.options);
-        this._checkedRowIds.add(newId);
+        if (this.getRowCheckOptions().checkNewRow !== false) {
+            this._checkedRowIds.add(newId);
+        }
         this.syncRowCheckGrid();
         this.emitRowCheckChange();
 
