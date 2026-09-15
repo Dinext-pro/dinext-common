@@ -1018,6 +1018,11 @@
     box-sizing: border-box;
 }
 
+.dinext-table-row-reorder-handle-host--empty,
+.dinext-table .dinext-table-row--no-reorder .dinext-table-row-reorder-handle {
+    display: none;
+}
+
 /* Nest-into: overlay frame (AG .ag-row outline/bg are clipped or overridden). */
 .dinext-table-row-reorder-drop-inside-frame {
     position: absolute;

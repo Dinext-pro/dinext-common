@@ -595,7 +595,17 @@ export interface DinextTableRowReorderOptions {
     onValidateRowReorder?: (ctx: DinextTableRowReorderContext) => boolean | string;
     /** @layer rowReorder — after commit; false/reject → revert */
     onRowReorder?: (ctx: DinextTableRowReorderContext) => void | false | Promise<void | false>;
-    /** @layer rowReorder — per-row guard */
+    /**
+     * @layer rowReorder — after coordinates resolve, before preview/commit.
+     * Return false to reject the drop (same as invalid hover).
+     */
+    canAcceptRowReorder?: (ctx: {
+        dropTarget: DinextTableRowReorderMove;
+        sourceRows: DinextTableRowData[];
+        dragCtx: unknown;
+        hoverRow: DinextTableRowData | null;
+    }) => boolean;
+    /** @layer rowReorder — per-row guard: handle, drag-start, and drop-anchor */
     canReorderRow?: (ctx: {
         table: DinextTableInstance;
         row: DinextTableRowData;
