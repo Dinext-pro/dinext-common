@@ -2,11 +2,8 @@
 # Required MR jobs from /ci/dinext-app.yml: gitflow:mr-guard, app:unit, docs-agent:mr-analyze
 include:
   - project: erpnext/dinext/dinext_control_center
-    ref: feat/fast-app-ci
+    ref: main
     file: /ci/dinext-app.yml
 
 variables:
-  DINEXT_CONTROL_CENTER_REF: "feat/fast-app-ci"
-
-docs-agent:mr-analyze:
-  allow_failure: false
+  DINEXT_CONTROL_CENTER_REF: "main"
