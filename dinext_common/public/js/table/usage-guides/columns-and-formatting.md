@@ -29,7 +29,7 @@
 | Preset | `cellDataType` | По умолчанию |
 |--------|----------------|--------------|
 | `text` | `text` | — |
-| `number` | `number` | `--align-right`, locale `valueParser` |
+| `number` | `number` | `--align-right`, locale `valueParser`, default `NumberCellEditor` |
 | `integer` | `number` | как `number`, `Math.trunc` |
 | `date` | `text` | ISO `YYYY-MM-DD` \| `null`; `valueParser` / `valueFormatter`; **без** default `cellEditor` |
 | `select` | `text` | option key \| `null`; unknown paste → `null`; `cellEditorParams.values`; **без** default `cellEditor` |

@@ -1099,6 +1099,8 @@
 .dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor,
 .dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control,
 .dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control.input-with-feedback,
+.dinext-table .ag-cell.ag-cell-inline-editing .dinext-table-number-editor,
+.dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-number-editor,
 .dinext-table .ag-cell.ag-cell-inline-editing .dinext-table-select-editor,
 .dinext-table .ag-cell.ag-cell-inline-editing select.dinext-table-select-editor {
     width: 100%;
@@ -1120,6 +1122,7 @@
 }
 
 .dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-date-editor),
+.dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-number-editor),
 .dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-select-editor) {
     padding-left: 0;
     padding-right: 0;
