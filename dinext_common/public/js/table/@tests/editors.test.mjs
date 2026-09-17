@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { dateValueParser } from "../core/edit/date-editor.js";
-import { parseBooleanValue, parseDateValue, parseLocaleNumber, parseSelectValue } from "../core/edit/editors.js";
+import { localeNumberValueParser, parseBooleanValue, parseDateValue, parseLocaleNumber, parseSelectValue } from "../core/edit/editors.js";
+import { isAllowedNumberDraft, isNumberDraft } from "../core/edit/number-utils.js";
 import { formatSelectValue, resolveSelectSpec } from "../core/edit/select-utils.js";
 import { selectValueFormatter, selectValueParser } from "../core/edit/select-editor.js";
 
@@ -27,6 +28,31 @@ test("parseBooleanValue returns null for empty or unknown input", () => {
 test("parseLocaleNumber still parses decimals", () => {
     assert.equal(parseLocaleNumber("1,5"), 1.5);
     assert.equal(parseLocaleNumber("2"), 2);
+    assert.equal(parseLocaleNumber("abc"), null);
+});
+
+test("localeNumberValueParser keeps old value on garbage", () => {
+    assert.equal(localeNumberValueParser({ newValue: "abc", oldValue: 4 }), 4);
+    assert.equal(localeNumberValueParser({ newValue: "", oldValue: 4 }), null);
+    assert.equal(localeNumberValueParser({ newValue: "1,5", oldValue: 4 }), 1.5);
+});
+
+test("isNumberDraft allows locale decimals and rejects letters", () => {
+    assert.equal(isNumberDraft("1"), true);
+    assert.equal(isNumberDraft("1,"), true);
+    assert.equal(isNumberDraft("1,5"), true);
+    assert.equal(isNumberDraft(".5"), true);
+    assert.equal(isNumberDraft("-"), true);
+    assert.equal(isNumberDraft("ab"), false);
+    assert.equal(isNumberDraft("1a"), false);
+    assert.equal(isNumberDraft("1,2,3"), false);
+    assert.equal(isNumberDraft("1.5", true), false);
+});
+
+test("isAllowedNumberDraft rejects inserting a letter", () => {
+    assert.equal(isAllowedNumberDraft("12", "a", 2, 2), false);
+    assert.equal(isAllowedNumberDraft("1", ",", 1, 1), true);
+    assert.equal(isAllowedNumberDraft("1,5", ".", 1, 1), false);
 });
 
 test("parseDateValue normalizes to ISO YYYY-MM-DD", () => {

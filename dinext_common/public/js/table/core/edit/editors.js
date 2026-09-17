@@ -1,30 +1,18 @@
 import { DateCellEditor, dateValueFormatter, dateValueParser } from "./date-editor.js";
 import { parseDateValue } from "./date-utils.js";
+import { NumberCellEditor } from "./number-editor.js";
+import { parseLocaleNumber } from "./number-utils.js";
 import { SelectCellEditor, selectValueFormatter, selectValueParser } from "./select-editor.js";
 import { parseSelectValue } from "./select-utils.js";
 
-export { parseDateValue, DateCellEditor, parseSelectValue, SelectCellEditor };
-
-/** Parses user input with comma or dot decimal separator. Returns null for empty/invalid. */
-export function parseLocaleNumber(raw) {
-    if (raw == null || raw === "") {
-        return null;
-    }
-    if (typeof raw === "number") {
-        return Number.isFinite(raw) ? raw : null;
-    }
-
-    const trimmed = String(raw).trim().replace(/\s/g, "");
-    if (!trimmed) {
-        return null;
-    }
-
-    const normalized = trimmed.includes(",") && !trimmed.includes(".")
-        ? trimmed.replace(",", ".")
-        : trimmed.replace(/,/g, "");
-    const value = Number(normalized);
-    return Number.isFinite(value) ? value : null;
-}
+export {
+    parseDateValue,
+    DateCellEditor,
+    parseLocaleNumber,
+    NumberCellEditor,
+    parseSelectValue,
+    SelectCellEditor
+};
 
 /** Parses boolean from checkbox edit, paste, and fill. Returns null when ambiguous. */
 export function parseBooleanValue(raw) {
@@ -54,13 +42,28 @@ export function parseBooleanValue(raw) {
     return null;
 }
 
-function localeNumberValueParser(params) {
-    return parseLocaleNumber(params.newValue);
+export function localeNumberValueParser(params) {
+    const raw = params.newValue;
+    if (raw == null || raw === "") {
+        return null;
+    }
+    const parsed = parseLocaleNumber(raw);
+    if (parsed != null) {
+        return parsed;
+    }
+    return params.oldValue === undefined ? null : params.oldValue;
 }
 
 function localeIntegerValueParser(params) {
-    const value = parseLocaleNumber(params.newValue);
-    return value == null ? null : Math.trunc(value);
+    const raw = params.newValue;
+    if (raw == null || raw === "") {
+        return null;
+    }
+    const value = parseLocaleNumber(raw);
+    if (value == null) {
+        return params.oldValue === undefined ? null : params.oldValue;
+    }
+    return Math.trunc(value);
 }
 
 function booleanValueParser(params) {
@@ -82,11 +85,13 @@ const DEFAULT_COLUMN_TYPES = {
     number: {
         cellDataType: "number",
         cellClass: "dinext-table-cell--align-right",
+        cellEditor: NumberCellEditor,
         valueParser: localeNumberValueParser
     },
     integer: {
         cellDataType: "number",
         cellClass: "dinext-table-cell--align-right",
+        cellEditor: NumberCellEditor,
         valueParser: localeIntegerValueParser
     },
     date: {
