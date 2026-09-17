@@ -3,6 +3,8 @@ import { createMergeGroupSpanRows } from "./shared/utils.js";
 import { CELL_CHANGE_SOURCES } from "./edit/changes.js";
 import { DateCellEditor } from "./edit/date-editor.js";
 import { parseDateValue, toIsoDateString } from "./edit/date-utils.js";
+import { NumberCellEditor } from "./edit/number-editor.js";
+import { parseLocaleNumber } from "./edit/number-utils.js";
 import { SelectCellEditor } from "./edit/select-editor.js";
 import { parseSelectValue } from "./edit/select-utils.js";
 import { adoptOverlay, getOverlayHost } from "./toolbar/overlay-host.js";
@@ -34,6 +36,9 @@ DinextTable.ROW_REORDER_SOURCES = ROW_REORDER_SOURCES;
 DinextTable.ROW_CHECK_COL_ID = ROW_CHECK_COL_ID;
 DinextTable.ROW_CHECK_SOURCES = ROW_CHECK_SOURCES;
 DinextTable.ROW_CHECK_UNITS = ROW_CHECK_UNITS;
+/** Default for `type: "number"` / `"integer"`. */
+DinextTable.NumberCellEditor = NumberCellEditor;
+DinextTable.parseLocaleNumber = parseLocaleNumber;
 /** Optional native `<input type="date">` — not default for `type: "date"`. */
 DinextTable.DateCellEditor = DateCellEditor;
 DinextTable.parseDateValue = parseDateValue;

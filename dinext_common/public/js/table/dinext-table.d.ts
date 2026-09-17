@@ -1133,6 +1133,14 @@ export interface DinextTableStatic {
         opts?: { anchor?: HTMLElement | null; host?: HTMLElement | null }
     ): boolean;
     /**
+     * @layer editors — default for `type: "number"` / `"integer"`.
+     */
+    NumberCellEditor: unknown;
+    /**
+     * @layer editors — locale decimal parse (`,` / `.`); invalid → null.
+     */
+    parseLocaleNumber(raw: unknown): number | null;
+    /**
      * @layer editors — optional native `<select>`; not default for `type: "select"`.
      * See usage-guides/select-columns.md.
      */
