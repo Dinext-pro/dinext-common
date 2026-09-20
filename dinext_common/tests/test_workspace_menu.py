@@ -15,6 +15,8 @@ from dinext_common.setup.hub_catalog import (
 	DINEXT_HUB_SETTINGS,
 	SETTINGS_HUB_SETTINGS,
 	SETTINGS_SECTION_CARD_COLUMNS,
+	SETTINGS_WORKSPACES_SECTION_CARD_COLUMNS,
+	SETTINGS_WORKSPACES_SECTION_LIST_LIMIT,
 	ensure_workspace_settings,
 	register_hub_doctype_items,
 	register_hub_items,
@@ -29,6 +31,7 @@ from dinext_common.setup.workspace import (
 	SETTINGS_WORKSPACE,
 	configure_workspace_menu,
 	ensure_default_dinext_hub_settings,
+	get_settings_children,
 	get_workspace_sidebar_items,
 	omit_replaced_workspaces,
 	set_default_workspace_for_new_user,
@@ -178,7 +181,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 			if ws.for_user or ws.name in (
 				DINEXT_WORKSPACE,
 				SETTINGS_WORKSPACE,
-				*SETTINGS_CHILDREN,
+				*get_settings_children(),
 			):
 				continue
 
@@ -190,6 +193,74 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 				1,
 				msg=f"public non-Dinext workspace {ws.name!r} must be hidden",
 			)
+
+	def test_get_settings_children_unions_hook_and_keeps_builtins(self):
+		from unittest.mock import patch
+
+		original = frappe.get_hooks
+
+		def fake_hooks(hook=None, default="_unset"):
+			if hook == "dinext_settings_workspace_children":
+				return ["Raven"]
+			if default != "_unset":
+				return original(hook, default)
+			return original(hook)
+
+		with patch("frappe.get_hooks", side_effect=fake_hooks):
+			children = get_settings_children()
+		self.assertEqual(children[: len(SETTINGS_CHILDREN)], SETTINGS_CHILDREN)
+		self.assertIn("Raven", children)
+		for name in SETTINGS_CHILDREN:
+			self.assertIn(name, children)
+
+	def test_hook_registered_raven_is_settings_child_unregistered_is_hidden(self):
+		if not frappe.db.exists("Workspace", "Raven"):
+			self.skipTest("Desk Workspace Raven is not installed")
+		from unittest.mock import patch
+
+		original = frappe.get_hooks
+
+		def hooks_with_raven(hook=None, default="_unset"):
+			if hook == "dinext_settings_workspace_children":
+				return ["Raven"]
+			if default != "_unset":
+				return original(hook, default)
+			return original(hook)
+
+		def hooks_without_raven(hook=None, default="_unset"):
+			if hook == "dinext_settings_workspace_children":
+				return []
+			if default != "_unset":
+				return original(hook, default)
+			return original(hook)
+
+		with patch("frappe.get_hooks", side_effect=hooks_with_raven):
+			configure_workspace_menu()
+		ws = frappe.db.get_value(
+			"Workspace",
+			"Raven",
+			["parent_page", "is_hidden", "public"],
+			as_dict=True,
+		)
+		self.assertEqual(ws.parent_page, SETTINGS_WORKSPACE)
+		self.assertEqual(ws.is_hidden, 0)
+		self.assertEqual(ws.public, 1)
+		for name in SETTINGS_CHILDREN:
+			if not frappe.db.exists("Workspace", name):
+				continue
+			child = frappe.db.get_value(
+				"Workspace",
+				name,
+				["parent_page", "is_hidden", "public"],
+				as_dict=True,
+			)
+			self.assertEqual(child.parent_page, SETTINGS_WORKSPACE)
+			self.assertEqual(child.is_hidden, 0)
+			self.assertEqual(child.public, 1)
+
+		with patch("frappe.get_hooks", side_effect=hooks_without_raven):
+			configure_workspace_menu()
+		self.assertEqual(frappe.db.get_value("Workspace", "Raven", "is_hidden"), 1)
 
 	def test_omit_replaced_workspaces_drops_home(self):
 		pages = omit_replaced_workspaces(
@@ -1131,14 +1202,32 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		self.assertTrue(dinext.show_frequent_pages)
 		self.assertTrue(dinext.show_recent_pages)
 
-	def test_settings_sections_use_five_card_columns(self):
+	def test_settings_section_insert_uses_workspaces_three_and_configuration_five(self):
 		configure_workspace_menu()
+		snapshot = _snapshot_hub_settings(SETTINGS_HUB_SETTINGS)
+		self.addCleanup(_restore_hub_settings, snapshot, SETTINGS_HUB_SETTINGS)
 		settings = frappe.get_doc("Dinext Workspace Settings", SETTINGS_HUB_SETTINGS)
-		by_section = {row.section: int(row.card_columns) for row in settings.sections}
-		self.assertEqual(by_section.get("Workspaces"), SETTINGS_SECTION_CARD_COLUMNS)
-		self.assertEqual(by_section.get("Configuration"), SETTINGS_SECTION_CARD_COLUMNS)
-		for section in get_settings_hub()["sections"]:
-			self.assertEqual(section["card_columns"], SETTINGS_SECTION_CARD_COLUMNS)
+		settings.sections = [
+			row for row in settings.sections if row.section not in {"Workspaces", "Configuration"}
+		]
+		settings.save(ignore_permissions=True)
+		ensure_default_dinext_hub_settings()
+		settings.reload()
+		by_section = {row.section: row for row in settings.sections}
+		workspaces = by_section["Workspaces"]
+		self.assertEqual(int(workspaces.list_limit), SETTINGS_WORKSPACES_SECTION_LIST_LIMIT)
+		self.assertEqual(int(workspaces.card_columns), SETTINGS_WORKSPACES_SECTION_CARD_COLUMNS)
+		self.assertEqual(int(by_section["Configuration"].card_columns), SETTINGS_SECTION_CARD_COLUMNS)
+		payload_by_label = {section["label"]: section for section in get_settings_hub()["sections"]}
+		self.assertEqual(
+			payload_by_label["Workspaces"]["list_limit"], SETTINGS_WORKSPACES_SECTION_LIST_LIMIT
+		)
+		self.assertEqual(
+			payload_by_label["Workspaces"]["card_columns"], SETTINGS_WORKSPACES_SECTION_CARD_COLUMNS
+		)
+		self.assertEqual(
+			payload_by_label["Configuration"]["card_columns"], SETTINGS_SECTION_CARD_COLUMNS
+		)
 
 	def test_hub_card_columns_default_without_section_row(self):
 		configure_workspace_menu()

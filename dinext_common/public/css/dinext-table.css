@@ -17,6 +17,11 @@
     --ag-value-change-value-highlight-background-color: rgba(22, 160, 133, 0.1);
 }
 
+/* Auto height: JS sets container px. FS keeps container fill; JS hugs grid-host. */
+.dinext-table.dinext-table--layout-auto:not(:fullscreen):not(.dinext-table--fullscreen) {
+    height: auto;
+}
+
 /*
  * Legacy class-theme CSS (ag-grid.css) sets light tokens on `[class*=ag-theme-]`.
  * AG Theming API injects `:where(.ag-theme-params-N)` (specificity 0) → loses to that
@@ -293,6 +298,12 @@
 .dinext-table:fullscreen .dinext-table-grid-host {
     flex: 1 1 auto;
     min-height: 0;
+}
+
+.dinext-table.dinext-table--layout-auto:fullscreen .dinext-table-grid-host,
+.dinext-table.dinext-table--layout-auto.dinext-table--fullscreen .dinext-table-grid-host {
+    flex: 0 1 auto;
+    max-height: 100%;
 }
 
 /* Status bar visible: bottom radius moves from grid shell to status bar. */
@@ -1007,6 +1018,11 @@
     box-sizing: border-box;
 }
 
+.dinext-table-row-reorder-handle-host--empty,
+.dinext-table .dinext-table-row--no-reorder .dinext-table-row-reorder-handle {
+    display: none;
+}
+
 /* Nest-into: overlay frame (AG .ag-row outline/bg are clipped or overridden). */
 .dinext-table-row-reorder-drop-inside-frame {
     position: absolute;
@@ -1083,6 +1099,8 @@
 .dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor,
 .dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control,
 .dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control.input-with-feedback,
+.dinext-table .ag-cell.ag-cell-inline-editing .dinext-table-number-editor,
+.dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-number-editor,
 .dinext-table .ag-cell.ag-cell-inline-editing .dinext-table-select-editor,
 .dinext-table .ag-cell.ag-cell-inline-editing select.dinext-table-select-editor {
     width: 100%;
@@ -1104,6 +1122,7 @@
 }
 
 .dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-date-editor),
+.dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-number-editor),
 .dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-select-editor) {
     padding-left: 0;
     padding-right: 0;

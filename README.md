@@ -242,7 +242,7 @@ root из `/assets/dinext_common/css/workspace_hub.css`. Блоки подклю
 | `show_frequent_pages` / `show_recent_pages` | Чекбоксы секции **Page Lists** (по умолчанию включены). На записи **`Settings`** оба флага принудительно выключены при configure. |
 | `roles` | Если заданы, API хаба отдаёт каталог только пользователям с одной из этих ролей. Для `Settings` по умолчанию: `System Manager`, `Workspace Manager`. |
 | `items` (`Dinext Workspace Settings Item`) | Навигационные карточки: секция, тип (`Workspace` / `DocType` / `Report` / `Page` / `URL`), target, label, description, icon, enabled, optional `required_role`. |
-| `sections` (`Dinext Workspace Settings Section`) | Лимит персональных списков (`list_limit`, по умолчанию **5**) и максимум колонок карточек (`card_columns`, по умолчанию **4**; для секций записи `Settings` — **5**). Если карточек меньше лимита, ряд занимает всю ширину. |
+| `sections` (`Dinext Workspace Settings Section`) | Лимит персональных списков (`list_limit`, по умолчанию **5**) и максимум колонок карточек (`card_columns`, по умолчанию **4**; seed записи `Settings`: секция Workspaces — **3** / **3**, Configuration — `card_columns` **5**). Если карточек меньше лимита, ряд занимает всю ширину. Уже сохранённые строки registration не перезаписывает. |
 | `doctype_items` (`Dinext Workspace Settings DocType`) | Вклады DocType в секцию: quick create, assigned, liked, attention, JSON `attention_filter` и общий JSON `list_filter` для assigned/liked. |
 
 Стандартные записи, создаваемые `dinext_common`:
@@ -856,6 +856,9 @@ Python-тесты workspace, news feed, boot, CoA, Fixture Analysis и
 
 ### 2026-09-10
 
+- Seed секции Workspaces записи `Settings`: `list_limit` 3 и `card_columns` 3;
+  Configuration по-прежнему `card_columns` 5. Существующие строки не
+  перезаписываются.
 - Общий engine параллельного согласования в `dinext_common.workflow_approval`:
   раунды `Workflow Task`, overrides Workflow RPC, signed email, cron
   уведомлений и repair finalization.
