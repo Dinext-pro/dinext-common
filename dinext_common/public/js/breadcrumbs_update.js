@@ -30,11 +30,18 @@ frappe.breadcrumbs.update = function() {
                 const doc_name = active_route[2];
                 let document_title;
                 const stored = stored_views[doc_type];
-                
-                this.append_breadcrumb_element(
-                    stored?.path || `/app/${frappe.router.slug(doc_type)}`,
-                    stored?.title || __(doc_type)
+                const is_single = !!(
+                    frappe.get_meta?.(doc_type)?.issingle ||
+                    frappe.get_doc?.("DocType", doc_type)?.issingle
                 );
+
+                // Single has no list view — stock Frappe skips this crumb.
+                if (!is_single) {
+                    this.append_breadcrumb_element(
+                        stored?.path || `/app/${frappe.router.slug(doc_type)}`,
+                        stored?.title || __(doc_type)
+                    );
+                }
                
                 if (doc_name.startsWith("new-" + doc_type.toLowerCase().replace(/ /g, "-"))) {
                     document_title = __("New {0}", [__(doc_type)]);
