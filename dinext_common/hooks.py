@@ -81,7 +81,7 @@ app_include_css = [
 ]
 app_include_js = [
     "/assets/dinext_common/js/workspace_slug_redirects.js",
-    "/assets/dinext_common/js/breadcrumbs_update.js?v=tree-label-1",
+    "/assets/dinext_common/js/breadcrumbs_update.js?v=single-skip-1",
     "/assets/dinext_common/js/listview_resize.js",
     "/assets/dinext_common/js/dinext-tour.js",
     "/assets/dinext_common/js/dinext-desk.js",

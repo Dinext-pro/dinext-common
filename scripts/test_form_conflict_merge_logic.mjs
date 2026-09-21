@@ -277,5 +277,21 @@ const wfChanges = detect_form_control_changes(
 assert(wfChanges.includes("workflow_state"), "workflow_state change detected for resync");
 assert(!wfChanges.includes("docstatus"), "unchanged docstatus not flagged");
 
+const { is_fcm_debug_enabled } = await import(pathToFileURL(path.join(root, "debug.js")).href);
+delete globalThis.window.__dinext_fcm_debug;
+const fakeStorage = {
+	getItem() {
+		return null;
+	},
+};
+globalThis.window.localStorage = fakeStorage;
+assert(
+	is_fcm_debug_enabled({ cfg: { debug_log: true } }) === false,
+	"install debug_log does not enable console"
+);
+globalThis.window.__dinext_fcm_debug = true;
+assert(is_fcm_debug_enabled({ cfg: { debug_log: false } }) === true, "window opt-in enables debug");
+delete globalThis.window.__dinext_fcm_debug;
+
 console.log(`\nFormConflictMerge logic tests: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
