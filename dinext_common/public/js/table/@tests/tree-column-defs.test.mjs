@@ -171,7 +171,7 @@ test("tree cellRenderer: no toggle / indent for rows without _hasChildren, domai
     const flat = new Renderer();
     flat.init({ data: table.rowData[0], value: "1", context: { dinextTable: table } });
     assert.equal(flat.leadEl.children.length, 0);
-    assert.equal(flat.eGui.style.paddingLeft, "0px");
+    assert.equal(flat.eGui.style.paddingLeft, "8px");
     assert.equal(flat.contentEl.children.length, 1);
     assert.equal(flat.contentEl.children[0].className, "domain-content");
     assert.equal(flat.contentEl.children[0].textContent, "render:1");
@@ -185,7 +185,7 @@ test("tree cellRenderer: no toggle / indent for rows without _hasChildren, domai
     assert.equal(parent.leadEl.children.length, 1);
     assert.equal(parent.leadEl.children[0].className, "dinext-table-tree-toggle");
     assert.equal(parent.leadEl.children[0].classList.contains("is-collapsed"), true);
-    assert.equal(parent.eGui.style.paddingLeft, "20px");
+    assert.equal(parent.eGui.style.paddingLeft, "28px");
 });
 
 test("refresh rebuilds columnDefs only when hasNestedRows flips", () => {

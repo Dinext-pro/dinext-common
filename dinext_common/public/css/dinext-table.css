@@ -17,6 +17,11 @@
     --ag-value-change-value-highlight-background-color: rgba(22, 160, 133, 0.1);
 }
 
+/* Auto height: JS sets container px. FS keeps container fill; JS hugs grid-host. */
+.dinext-table.dinext-table--layout-auto:not(:fullscreen):not(.dinext-table--fullscreen) {
+    height: auto;
+}
+
 /*
  * Legacy class-theme CSS (ag-grid.css) sets light tokens on `[class*=ag-theme-]`.
  * AG Theming API injects `:where(.ag-theme-params-N)` (specificity 0) → loses to that
@@ -46,8 +51,9 @@
 /*
  * Vertical column separators.
  * AG default: border-right on position:absolute + overflow:hidden cells.
- * Next cell paints over that edge (worse at fractional DPR) → center/header/summary
- * look borderless; only pin edge (last-left-pinned) stays. Draw on LEFT instead.
+ * Next cell paints over that edge (worse at fractional DPR) → center looks
+ * borderless. Draw on LEFT instead. Transparent-right only in the scrolling
+ * center — pinned cols keep both edges (seam + Plan/Actual/Δ).
  * Honors --ag-column-border. When theme.columnBorder === false, ThemeMixin sets
  * the var to `none` (transparent 1px still shows as gaps between fills).
  */
@@ -55,8 +61,18 @@
     border-left: var(--ag-column-border);
 }
 
-.dinext-table .ag-ltr .ag-cell:not(.ag-cell-last-left-pinned) {
+.dinext-table .ag-ltr .ag-center-cols-container .ag-cell {
     border-right-color: transparent;
+}
+
+.dinext-table .ag-ltr .ag-pinned-left-cols-container .ag-cell,
+.dinext-table .ag-ltr .ag-pinned-right-cols-container .ag-cell,
+.dinext-table .ag-ltr .ag-pinned-left-floating-top .ag-cell,
+.dinext-table .ag-ltr .ag-pinned-right-floating-top .ag-cell,
+.dinext-table .ag-ltr .ag-pinned-left-floating-bottom .ag-cell,
+.dinext-table .ag-ltr .ag-pinned-right-floating-bottom .ag-cell {
+    border-left: var(--ag-column-border);
+    border-right: var(--ag-column-border);
 }
 
 .dinext-table .ag-header-cell:not(.ag-column-first),
@@ -282,6 +298,12 @@
 .dinext-table:fullscreen .dinext-table-grid-host {
     flex: 1 1 auto;
     min-height: 0;
+}
+
+.dinext-table.dinext-table--layout-auto:fullscreen .dinext-table-grid-host,
+.dinext-table.dinext-table--layout-auto.dinext-table--fullscreen .dinext-table-grid-host {
+    flex: 0 1 auto;
+    max-height: 100%;
 }
 
 /* Status bar visible: bottom radius moves from grid shell to status bar. */
@@ -996,6 +1018,11 @@
     box-sizing: border-box;
 }
 
+.dinext-table-row-reorder-handle-host--empty,
+.dinext-table .dinext-table-row--no-reorder .dinext-table-row-reorder-handle {
+    display: none;
+}
+
 /* Nest-into: overlay frame (AG .ag-row outline/bg are clipped or overridden). */
 .dinext-table-row-reorder-drop-inside-frame {
     position: absolute;
@@ -1072,6 +1099,8 @@
 .dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor,
 .dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control,
 .dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-date-editor.form-control.input-with-feedback,
+.dinext-table .ag-cell.ag-cell-inline-editing .dinext-table-number-editor,
+.dinext-table .ag-cell.ag-cell-inline-editing input.dinext-table-number-editor,
 .dinext-table .ag-cell.ag-cell-inline-editing .dinext-table-select-editor,
 .dinext-table .ag-cell.ag-cell-inline-editing select.dinext-table-select-editor {
     width: 100%;
@@ -1093,6 +1122,7 @@
 }
 
 .dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-date-editor),
+.dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-number-editor),
 .dinext-table .ag-cell.ag-cell-inline-editing:has(.dinext-table-select-editor) {
     padding-left: 0;
     padding-right: 0;

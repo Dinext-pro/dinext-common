@@ -41,6 +41,7 @@ DinextTable.create({
 | `rowCheck.allowSummary` | `false` | Check pinned summary |
 | `rowCheck.selectAll` | `true` | Toolbar leading icon (stack+check ↔ stack clear); header col empty |
 | `rowCheck.width` | `36` | Fixed col width |
+| `rowCheck.checkNewRow` | `true` | After `addRow`, check the new id. `false` = leave unchecked |
 
 **Не** добавляйте эту колонку в `columns`. Ядро inject `colId: "__dinext_row_check"` (`DinextTable.ROW_CHECK_COL_ID`).
 

@@ -33,6 +33,8 @@ core/
   row-reorder/           — gutter DnD + nudge ±1
   row-check/             — checkbox col + checked Set + row mutations
   toolbar/               — command bar + fullscreen
+  pin-end.js             — auto unpin `pinned: "right"` when columns fit
+  layout.js              — auto height: hug content + maxHeight (summary stays pinned)
 ```
 
 Импорт: напрямую из файлов домена (`./edit/mixin.js`, `./tree/model.js`). Без barrel `index.js`.
@@ -51,6 +53,7 @@ core/
 | [filtering.md](usage-guides/filtering.md) | Column filter: toolbar search + row under header |
 | [fullscreen.md](usage-guides/fullscreen.md) | Shell FS + enter/exit hooks |
 | [sections-and-summary.md](usage-guides/sections-and-summary.md) | `summaryRows`, pin bottom, guards |
+| [layout.md](usage-guides/layout.md) | Auto height + `maxHeight`; summary hugs short content |
 | [columns-and-formatting.md](usage-guides/columns-and-formatting.md) | Колонки, presets, styling |
 | [date-columns.md](usage-guides/date-columns.md) | `type: date`, ISO, fill, Frappe cellEditor |
 | [select-columns.md](usage-guides/select-columns.md) | `type: select`, option key, fill, Frappe cellEditor |
@@ -96,6 +99,10 @@ DinextTable.create({
 | `container` | — | **required** — DOM для grid |
 | `data` | `[]` | Body rows (top-level) |
 | `columns` | `[]` | → [columns-and-formatting.md](usage-guides/columns-and-formatting.md) |
+| `pinEnd.mode` | `"auto"` | pin `pinned: "right"` only on overflow; `"always"` = AG stick-right |
+| `layout.height` | `"host"` | `"auto"` — shrink to content, cap at `layout.maxHeight`; FS cap = viewport |
+| `layout.maxHeight` | — | px or CSS (`"min(60vh, 672px)"`). Only with `height: "auto"` |
+| `layout.minHeight` | — | optional floor; omit so short tables hug |
 | `edit` | `false` | Global editable default |
 | `theme.columnBorder` | `true` | Vertical borders (body) |
 | `theme.headerColumnBorder` | same as `columnBorder` | Vertical borders (header) |
@@ -163,7 +170,7 @@ Domain: что видно в FS — через `shell` + CSS hide siblings, не
 | `summary.pin` | `"bottom"` | `pinnedBottomRowData` |
 | `summary.edit` / `clipboard` / `selection` | `true` / `false` / `false` | Guards |
 
-→ [sections-and-summary.md](usage-guides/sections-and-summary.md).
+→ [sections-and-summary.md](usage-guides/sections-and-summary.md), [layout.md](usage-guides/layout.md).
 
 ### Edit
 
@@ -255,6 +262,7 @@ toolbar: {
 | `refresh(data?)` | Body data + resync rows |
 | `setOption(key, value)` | `data`, `columns`, `edit`, `summaryRows`, … |
 | `setSummaryRows(rows)` | Summary + pin sync |
+| `syncLayoutHeight()` | Auto-height resync (`layout.height: "auto"`) |
 | `toggleRow` / `expandRow` / `collapseRow` | Tree |
 | `setRowChildren(rowId, children)` | Lazy load result |
 | `getCellRanges()` / `clearCellSelection()` | Selection |

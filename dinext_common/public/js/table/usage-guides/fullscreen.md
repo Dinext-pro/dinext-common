@@ -34,6 +34,8 @@ Desk SPA прячет `.page-container`, таблицу не destroy. Ядро �
 
 Native Fullscreen рисует только дерево `fullscreenElement`. Оверлеи на `body` (datepicker, AG popup, Frappe Dialog / `#freeze` / backdrop) ядро переносит в host: `popupParent` + `DinextTable.adoptOverlay` / `getOverlayHost()`.
 
+`layout.height: "auto"` в FS: summary hug как в обычном режиме, потолок — экран. → [`layout.md`](layout.md).
+
 ---
 
 ## Shell + CSS (предпочтительно)

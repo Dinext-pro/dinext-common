@@ -7,10 +7,11 @@ import {
 } from "./constants.js";
 import { RowReorderHandleCellRenderer } from "./handle.js";
 import {
+    buildFullRowId,
     buildRowReorderMovePayload,
     collectDraggedRowIds,
     collectLocalRowIds,
-    computeNudgeToIndex,
+    findMergeBlockStartIndex,
     getLocalRowId,
     getSiblingListForParent,
     getStableRowId,
@@ -201,8 +202,52 @@ export const RowReorderMixin = (Base) => class extends Base {
         return isSummarySectionRow(row) ? TABLE_SECTIONS.SUMMARY : TABLE_SECTIONS.BODY;
     }
 
+    /**
+     * Visible 6-dot handle. Independent of drag-start blockers (edit/sort/filter).
+     * Skip pinned-bottom / summary unless `allowSummary`; honor `canReorderRow`.
+     */
+    shouldShowRowReorderHandle(rowNode) {
+        if (!this.isRowReorderEnabled() || !rowNode?.data) {
+            return false;
+        }
+        if (!this.shouldApplyRowReorderToRow(rowNode)) {
+            return false;
+        }
+
+        const pinned = rowNode.rowPinned;
+        if (pinned === "top") {
+            return false;
+        }
+
+        const section = this.resolveRowReorderSection(rowNode.data);
+        const isPinnedBottom = pinned === "bottom";
+        if (
+            (isPinnedBottom || section === TABLE_SECTIONS.SUMMARY)
+            && !this.getRowReorderOptions().allowSummary
+        ) {
+            return false;
+        }
+
+        const canReorderRow = this.options.canReorderRow;
+        if (typeof canReorderRow === "function") {
+            const rowId = getStableRowId(rowNode.data, this.options);
+            return canReorderRow({
+                table: this,
+                row: rowNode.data,
+                rowId,
+                section,
+                parentRowId: null
+            }) !== false;
+        }
+
+        return true;
+    }
+
     canStartRowReorder(rowNode) {
         if (!this.isRowReorderEnabled() || !rowNode?.data || this.isRowReorderBlocked()) {
+            return false;
+        }
+        if (!this.shouldShowRowReorderHandle(rowNode)) {
             return false;
         }
         if (!this.shouldApplyRowReorderToRow(rowNode)) {
@@ -302,7 +347,12 @@ export const RowReorderMixin = (Base) => class extends Base {
             cellClass: "dinext-table-cell--align-center dinext-table-row-reorder-cell",
             headerClass: "dinext-table-header--align-center dinext-table-row-reorder-header",
             valueGetter: () => null,
-            tooltipValueGetter: () => this.getRowReorderHandleTooltip(),
+            tooltipValueGetter: (params) => {
+                if (!this.shouldShowRowReorderHandle(params?.node)) {
+                    return undefined;
+                }
+                return this.getRowReorderHandleTooltip();
+            },
             cellRenderer: RowReorderHandleCellRenderer
         };
     }
@@ -901,30 +951,29 @@ export const RowReorderMixin = (Base) => class extends Base {
             return null;
         }
 
-        const toIndex = computeNudgeToIndex(
-            ctx.list,
-            ctx.index,
-            ctx.blockSize,
-            direction,
-            this.options
-        );
-        if (toIndex == null) {
+        const neighborIndex = direction < 0
+            ? findMergeBlockStartIndex(ctx.list, ctx.index - 1, this.options)
+            : ctx.index + ctx.blockSize;
+        if (neighborIndex < 0 || neighborIndex >= ctx.list.length) {
             return null;
         }
 
-        const dropTarget = {
+        const neighbor = ctx.list[neighborIndex];
+        const hoverRowId = buildFullRowId(
+            ctx.parentRowId,
+            getLocalRowId(neighbor, this.options)
+        );
+        const dropTarget = resolveDropTarget({
+            sourceRows,
+            dragCtx: ctx,
+            hoverRowId,
             position: direction < 0 ? ROW_REORDER_POSITIONS.BEFORE : ROW_REORDER_POSITIONS.AFTER,
-            targetRowId: ctx.rowId,
-            fromParentRowId: ctx.parentRowId,
-            toParentRowId: ctx.parentRowId,
-            fromIndex: ctx.index,
-            toIndex,
-            blockSize: ctx.blockSize,
-            rowId: ctx.rowId,
-            newRowId: ctx.rowId,
-            indentLevel: ctx.parentRowId == null ? 0 : String(ctx.parentRowId).split(":").length,
-            sameParent: true
-        };
+            allowTree: this.getRowReorderTreeMode(),
+            options: this.options
+        });
+        if (!dropTarget || dropTarget.noop) {
+            return null;
+        }
 
         return {
             section,
@@ -1215,7 +1264,13 @@ export const RowReorderMixin = (Base) => class extends Base {
         }
 
         const opts = {
-            onBodyScroll: () => this.handleRowReorderBodyScroll()
+            onBodyScroll: () => this.handleRowReorderBodyScroll(),
+            getRowClass: (params) => {
+                if (!this.shouldShowRowReorderHandle(params?.node)) {
+                    return "dinext-table-row--no-reorder";
+                }
+                return undefined;
+            }
         };
         // Soften order changes (gutter + toolbar nudge). Domain may override via gridOptions.
         if (this.options.gridOptions?.animateRows === undefined) {

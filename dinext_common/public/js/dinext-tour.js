@@ -14,6 +14,7 @@ frappe.provide("dinext_common.ui_tour");
 	const owner_ids = new Map();
 	const owner_listeners = new Map();
 	const ready_owners = new Set();
+	const observers = new WeakMap();
 	const SCROLL_KEYS = new Set([
 		"ArrowUp",
 		"ArrowDown",
@@ -196,6 +197,15 @@ frappe.provide("dinext_common.ui_tour");
 		});
 	};
 
+	const disconnect_observer = (owner) => {
+		const observer = observers.get(owner);
+		if (!observer) {
+			return;
+		}
+		observer.disconnect();
+		observers.delete(owner);
+	};
+
 	const clear_anchors = (owner) => {
 		const ids = owner_ids.get(owner);
 		if (ids) {
@@ -203,11 +213,122 @@ frappe.provide("dinext_common.ui_tour");
 			owner_ids.delete(owner);
 		}
 		unbind_owner_listeners(owner);
+		disconnect_observer(owner);
 		ready_owners.delete(owner);
 		if (!placed.size && wrap_el) {
 			wrap_el.remove();
 			wrap_el = null;
 		}
+	};
+
+	const is_kit_node = (node) => {
+		if (!node || !node.classList) {
+			return false;
+		}
+		return node.classList.contains(WRAP_CLASS) || node.classList.contains(ANCHOR_CLASS);
+	};
+
+	const split_tour_ids = (value) =>
+		String(value || "")
+			.split(/\s+/)
+			.map((id) => id.trim())
+			.filter(Boolean);
+
+	const collect_marked_nodes = (root) => {
+		const nodes = [];
+		const seen = new Set();
+		const scan = (ctx) => {
+			if (!ctx || seen.has(ctx)) {
+				return;
+			}
+			seen.add(ctx);
+			if (ctx.nodeType === 1 && is_kit_node(ctx)) {
+				return;
+			}
+			if (ctx.querySelectorAll) {
+				ctx.querySelectorAll(`[${ANCHOR_ATTR}]`).forEach((el) => {
+					if (!is_kit_node(el)) {
+						nodes.push(el);
+					}
+				});
+				ctx.querySelectorAll("*").forEach((el) => {
+					if (el.shadowRoot) {
+						scan(el.shadowRoot);
+					}
+				});
+			}
+			if (ctx.shadowRoot) {
+				scan(ctx.shadowRoot);
+			}
+		};
+		scan(root);
+		return nodes;
+	};
+
+	const observe_host = (root) => {
+		if (!root || !root.getRootNode) {
+			return null;
+		}
+		const tree = root.getRootNode();
+		return tree && tree.host ? tree.host : null;
+	};
+
+	const refresh_observed = (root) => {
+		if (!root || root.isConnected === false) {
+			clear_anchors(root);
+			return;
+		}
+		const host = observe_host(root);
+		const seen = new Set();
+		collect_marked_nodes(root).forEach((node) => {
+			const source = {
+				scroll: node,
+				rect_nodes: [node],
+				visible_nodes: [node],
+				host,
+			};
+			split_tour_ids(node.getAttribute(ANCHOR_ATTR)).forEach((id) => {
+				seen.add(id);
+				place_anchor(id, source, { owner: root, host });
+			});
+		});
+		const owned = owner_ids.get(root);
+		if (owned) {
+			[...owned].forEach((id) => {
+				if (!seen.has(id)) {
+					remove_anchor(id, root);
+				}
+			});
+		}
+		if (seen.size) {
+			ready_owners.add(root);
+		}
+	};
+
+	const observe = (root) => {
+		if (!root) {
+			return;
+		}
+		refresh_observed(root);
+		if (typeof MutationObserver !== "function" || observers.has(root)) {
+			return;
+		}
+		const mo = new MutationObserver(() => refresh_observed(root));
+		const opts = {
+			subtree: true,
+			childList: true,
+			attributes: true,
+			attributeFilter: [ANCHOR_ATTR],
+		};
+		try {
+			mo.observe(root, opts);
+		} catch (error) {
+			return;
+		}
+		if (root.shadowRoot) {
+			mo.observe(root.shadowRoot, opts);
+		}
+		observers.set(root, mo);
 	};
 
 	const apply_stage_cutout = () => {
@@ -714,6 +835,7 @@ frappe.provide("dinext_common.ui_tour");
 	};
 
 	dinext_common.ui_tour.place_anchor = place_anchor;
+	dinext_common.ui_tour.observe = observe;
 	dinext_common.ui_tour.sync_anchors = sync_anchors;
 	dinext_common.ui_tour.clear_anchors = clear_anchors;
 	dinext_common.ui_tour.raise = raise;
