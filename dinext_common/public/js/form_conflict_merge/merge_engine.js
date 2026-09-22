@@ -43,7 +43,6 @@ import {
 	fcm_debug_state_snapshot,
 	fcm_doc_label,
 	FCM_LOG_LEVELS,
-	FCM_LOG_PREFIX,
 	is_fcm_debug_enabled,
 } from "./debug.js";
 
@@ -551,9 +550,6 @@ export function install(frm, opts) {
 	});
 
 	if (is_fcm_debug_enabled(state)) {
-		console.info(
-			`${FCM_LOG_PREFIX} debug ON для ${fcm_doc_label(frm)}. Фильтр консоли: FCM. События: install, warmup_*, refresh_initial, poll_*, analyze, child_tables, apply_child_table, before_save_*, sync_matching_baseline, highlight, highlight_child_table, local_drift, form_resync_*. dump: dinext_common.formConflictMerge.dump_debug_state()`
-		);
 		fcm_debug_state_snapshot(state, frm, "install_snapshot");
 	}
 

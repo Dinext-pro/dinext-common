@@ -1,5 +1,5 @@
 # Managed by dinext_control_center — do not copy policy scripts into this repo.
-# Required MR jobs from /ci/dinext-app.yml: gitflow:mr-guard, app:smoke, app:unit
+# Required MR jobs from /ci/dinext-app.yml: gitflow:mr-guard, app:unit, docs-agent:mr-analyze
 include:
   - project: erpnext/dinext/dinext_control_center
     ref: main
@@ -7,7 +7,3 @@ include:
 
 variables:
   DINEXT_CONTROL_CENTER_REF: "main"
-
-# Temporary: docs-agent blocked by dinext-docs token Access denied; keep MR mergeable.
-docs-agent:mr-analyze:
-  allow_failure: true

@@ -338,8 +338,19 @@ export const SelectionMixin = (Base) => class extends Base {
         if (this._mouseFocusPending) {
             return;
         }
-        const node = this.api.getDisplayedRowAtIndex(event.rowIndex);
+        /* Pinned summary is rowIndex 0 — getDisplayedRowAtIndex(0) is the first body row. */
+        let node;
+        if (event.rowPinned === "bottom") {
+            node = this.api.getPinnedBottomRow?.(event.rowIndex);
+        } else if (event.rowPinned === "top") {
+            node = this.api.getPinnedTopRow?.(event.rowIndex);
+        } else {
+            node = this.api.getDisplayedRowAtIndex(event.rowIndex);
+        }
         if (!node?.data) {
+            return;
+        }
+        if (!this.shouldApplySelectionToRow(node)) {
             return;
         }
         if (!this.shouldApplySelectionToColumn(event.column)) {

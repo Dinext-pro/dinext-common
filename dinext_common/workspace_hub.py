@@ -165,6 +165,7 @@ def get_workspace_hub(settings_name: str | None = None) -> dict:
 		sections.append(
 			{
 				"label": _(section),
+				"section_key": section,
 				"items": cards,
 				"lists": lists,
 				"list_limit": section_limits.get(section, DEFAULT_SECTION_LIST_LIMIT),

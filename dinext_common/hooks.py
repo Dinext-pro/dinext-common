@@ -77,14 +77,14 @@ add_to_apps_screen = [
 app_include_css = [
     "/assets/dinext_common/css/common.css",
     "/assets/dinext_common/css/workspace_sidebar_hover.css",
-    "/assets/dinext_common/css/dinext-tour.css?v=cutout-animate-1",
+    "/assets/dinext_common/css/dinext-tour.css",
 ]
 app_include_js = [
     "/assets/dinext_common/js/workspace_slug_redirects.js",
-    "/assets/dinext_common/js/breadcrumbs_update.js",
+    "/assets/dinext_common/js/breadcrumbs_update.js?v=single-skip-1",
     "/assets/dinext_common/js/listview_resize.js",
-    "/assets/dinext_common/js/dinext-tour.js?v=cutout-target-1",
-    "/assets/dinext_common/js/dinext-desk.js?v=ui-tour-1",
+    "/assets/dinext_common/js/dinext-tour.js",
+    "/assets/dinext_common/js/dinext-desk.js",
     "/assets/dinext_common/js/dashboard_filters_fix.js",
     "/assets/dinext_common/js/workspace_sidebar_hover.js",
 ]

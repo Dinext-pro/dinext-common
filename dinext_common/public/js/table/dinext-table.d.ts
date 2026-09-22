@@ -20,6 +20,8 @@
  * - `selectionStatus` — Excel-like status bar aggregates
  * - `toolbar`        — floating trigger + slide-down command bar
  * - `fullscreen`     — native Fullscreen API on container/shell
+ * - `pinEnd`         — auto unpin declared `pinned: "right"` when columns fit
+ * - `layout`         — auto height: hug content + maxHeight cap (summary stays pinned)
  * - `formatting` — passthrough styling (→ AG Grid colDef / gridOptions)
  * - `ag-grid`    — passthrough напрямую в AG Grid 35 Community
  *
@@ -49,6 +51,8 @@ export type DinextTableLayer =
     | "selectionStatus"
     | "toolbar"
     | "fullscreen"
+    | "pinEnd"
+    | "layout"
     | "formatting"
     | "ag-grid";
 
@@ -241,6 +245,38 @@ export interface DinextTableCoreOptions {
     columns?: DinextTableColumnDef[];
     /** @layer edit — global editable default */
     edit?: boolean;
+}
+
+/**
+ * Runtime policy for declared `columns[].pinned: "right"`.
+ * Does not mutate `options.columns[].pinned`.
+ * @layer pinEnd
+ */
+export interface DinextTablePinEndOptions {
+    pinEnd?: {
+        /**
+         * `auto` (default) — pin only when leaf widths overflow the body.
+         * `always` — AG Grid stick-to-viewport right.
+         */
+        mode?: "always" | "auto";
+    };
+}
+
+/**
+ * Vertical size policy. Default `host` — consumer CSS/inline owns height.
+ * `auto` shrinks to header+rows+summary+chrome and caps at `maxHeight`
+ * so pinned summary hugs content when short.
+ * Fullscreen: same hug, cap = available viewport (not `maxHeight`); height on grid-host.
+ * @layer layout
+ */
+export interface DinextTableLayoutOptions {
+    layout?: {
+        height?: "host" | "auto";
+        /** px or CSS (`672`, `"60vh"`, `"min(60vh, 672px)"`) */
+        maxHeight?: number | string;
+        /** px or CSS. Omit / 0 — no floor (a 280px min leaves a gap when short). */
+        minHeight?: number | string;
+    };
 }
 
 /** @layer theme */
@@ -559,7 +595,17 @@ export interface DinextTableRowReorderOptions {
     onValidateRowReorder?: (ctx: DinextTableRowReorderContext) => boolean | string;
     /** @layer rowReorder — after commit; false/reject → revert */
     onRowReorder?: (ctx: DinextTableRowReorderContext) => void | false | Promise<void | false>;
-    /** @layer rowReorder — per-row guard */
+    /**
+     * @layer rowReorder — after coordinates resolve, before preview/commit.
+     * Return false to reject the drop (same as invalid hover).
+     */
+    canAcceptRowReorder?: (ctx: {
+        dropTarget: DinextTableRowReorderMove;
+        sourceRows: DinextTableRowData[];
+        dragCtx: unknown;
+        hoverRow: DinextTableRowData | null;
+    }) => boolean;
+    /** @layer rowReorder — per-row guard: handle, drag-start, and drop-anchor */
     canReorderRow?: (ctx: {
         table: DinextTableInstance;
         row: DinextTableRowData;
@@ -605,6 +651,11 @@ export interface DinextTableRowCheckOptions {
          */
         selectAll?: boolean;
         width?: number;
+        /**
+         * After `addRow`, check the new row. Default: true.
+         * Set false to leave the inserted row unchecked.
+         */
+        checkNewRow?: boolean;
     };
     /** @layer rowCheck */
     onRowCheckChange?: (ctx: DinextTableRowCheckChangeContext) => void;
@@ -821,6 +872,8 @@ export interface DinextTableCreateOptions
         DinextTableSelectionStatusOptions,
         DinextTableToolbarOptions,
         DinextTableFullscreenOptions,
+        DinextTablePinEndOptions,
+        DinextTableLayoutOptions,
         DinextTableCallbackOptions,
         DinextTableAgGridPassthrough {}
 
@@ -853,7 +906,7 @@ export interface DinextTableInstance {
     /** @layer core */
     refresh(data?: DinextTableRowData[]): void;
     /** @layer core — keys: data | columns | edit | toolbar | summaryRows | sort, … */
-    setOption(key: "data" | "columns" | "edit" | "toolbar" | "summaryRows" | "sort", value: unknown): void;
+    setOption(key: "data" | "columns" | "edit" | "toolbar" | "summaryRows" | "sort" | "layout", value: unknown): void;
     /** @layer core */
     destroy(): void;
 
@@ -874,6 +927,8 @@ export interface DinextTableInstance {
     setRowChildren(rowId: string, children: DinextTableRowData[]): void;
     /** @layer section */
     setSummaryRows(rows: DinextTableRowData[]): void;
+    /** @layer layout — recompute auto height (no-op unless `layout.height: "auto"`) */
+    syncLayoutHeight(opts?: { followUp?: boolean }): void;
 
     // --- sort ---
     /** @layer sort */
@@ -1077,6 +1132,14 @@ export interface DinextTableStatic {
         node: HTMLElement,
         opts?: { anchor?: HTMLElement | null; host?: HTMLElement | null }
     ): boolean;
+    /**
+     * @layer editors — default for `type: "number"` / `"integer"`.
+     */
+    NumberCellEditor: unknown;
+    /**
+     * @layer editors — locale decimal parse (`,` / `.`); invalid → null.
+     */
+    parseLocaleNumber(raw: unknown): number | null;
     /**
      * @layer editors — optional native `<select>`; not default for `type: "select"`.
      * See usage-guides/select-columns.md.

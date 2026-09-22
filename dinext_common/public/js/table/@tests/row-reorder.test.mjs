@@ -16,6 +16,7 @@ import {
     restoreSiblingListOrder
 } from "../core/row-reorder/ops.js";
 import { ROW_REORDER_POSITIONS } from "../core/row-reorder/constants.js";
+import { RowReorderMixin } from "../core/row-reorder/mixin.js";
 import {
     NEST_SHIFT_PX,
     SWAP_EDGE_PX,
@@ -449,4 +450,170 @@ test("resolveReorderIntent does not nest when tree reparent off", () => {
     });
     assert.equal(intent.position, ROW_REORDER_POSITIONS.AFTER);
     assert.equal(intent.hoverRowId, "b");
+});
+
+test("shouldShowRowReorderHandle skips pinned-bottom summary", () => {
+    class FakeBase {
+        initFeatures() {}
+        destroyFeatures() {}
+        afterGridCreated() {}
+        buildColumnDefs() {
+            return [];
+        }
+        handleSetOption() {
+            return false;
+        }
+    }
+    const Table = RowReorderMixin(FakeBase);
+    const table = new Table();
+    table.options = { rowReorder: { enabled: true, allowSummary: false } };
+    assert.equal(
+        table.shouldShowRowReorderHandle({
+            data: { id: "sum", _section: "summary" },
+            rowPinned: "bottom"
+        }),
+        false
+    );
+    assert.equal(
+        table.shouldShowRowReorderHandle({ data: { id: "a" }, rowPinned: null }),
+        true
+    );
+});
+
+test("resolveDropTarget rejects hover on canReorderRow=false", () => {
+    const data = [
+        { id: "p", rowType: "position" },
+        { id: "s", rowType: "section" },
+        { id: "l", rowType: "leave" }
+    ];
+    const options = { canReorderRow: ({ row }) => row.rowType === "position" };
+    const dragCtx = resolveReorderContext(data, "p");
+    assert.equal(resolveDropTarget({
+        sourceRows: data,
+        dragCtx,
+        hoverRowId: "s",
+        position: ROW_REORDER_POSITIONS.AFTER,
+        options
+    }), null);
+    assert.equal(resolveDropTarget({
+        sourceRows: data,
+        dragCtx,
+        hoverRowId: "l",
+        position: ROW_REORDER_POSITIONS.BEFORE,
+        options
+    }), null);
+});
+
+test("resolveDropTarget rejects drop onto locked tree child", () => {
+    const data = [
+        { id: "p", rowType: "position" },
+        { id: "leave", rowType: "leave", children: [{ id: "child" }] }
+    ];
+    const options = { canReorderRow: ({ row }) => row.rowType === "position" };
+    const dragCtx = resolveReorderContext(data, "p");
+    assert.equal(resolveDropTarget({
+        sourceRows: data,
+        dragCtx,
+        hoverRowId: "leave:child",
+        position: ROW_REORDER_POSITIONS.BEFORE,
+        allowTree: "reparent",
+        options
+    }), null);
+});
+
+test("resolveDropTarget rejects insert between two locked siblings", () => {
+    const data = [
+        { id: "p", rowType: "position" },
+        { id: "s", rowType: "section" },
+        { id: "l", rowType: "leave" }
+    ];
+    const options = { canReorderRow: ({ row }) => row.rowType === "position" };
+    const dragCtx = resolveReorderContext(data, "p");
+    assert.equal(resolveDropTarget({
+        sourceRows: data,
+        dragCtx,
+        hoverRowId: "s",
+        position: ROW_REORDER_POSITIONS.AFTER,
+        options
+    }), null);
+});
+
+test("canAcceptRowReorder fences drop past first locked row", () => {
+    const data = [
+        { id: "p1", rowType: "position" },
+        { id: "s", rowType: "section" },
+        { id: "p2", rowType: "position" },
+        { id: "l", rowType: "leave" }
+    ];
+    const options = {
+        canReorderRow: ({ row }) => row.rowType === "position",
+        canAcceptRowReorder: ({ dropTarget, sourceRows }) => {
+            const fence = sourceRows.findIndex((row) => row.rowType === "section");
+            return dropTarget.toIndex <= fence;
+        }
+    };
+    const dragCtx = resolveReorderContext(data, "p1");
+    assert.equal(resolveDropTarget({
+        sourceRows: data,
+        dragCtx,
+        hoverRowId: "p2",
+        position: ROW_REORDER_POSITIONS.AFTER,
+        options
+    }), null);
+    const beforeFence = resolveDropTarget({
+        sourceRows: data,
+        dragCtx,
+        hoverRowId: "p1",
+        position: ROW_REORDER_POSITIONS.AFTER,
+        options
+    });
+    assert.equal(beforeFence?.noop, true);
+});
+
+test("resolveDropTarget allows after last position before locked block", () => {
+    const data = [
+        { id: "p1", rowType: "position" },
+        { id: "p2", rowType: "position" },
+        { id: "s", rowType: "section" },
+        { id: "l", rowType: "leave" }
+    ];
+    const options = { canReorderRow: ({ row }) => row.rowType === "position" };
+    const dragCtx = resolveReorderContext(data, "p1");
+    const drop = resolveDropTarget({
+        sourceRows: data,
+        dragCtx,
+        hoverRowId: "p2",
+        position: ROW_REORDER_POSITIONS.AFTER,
+        options
+    });
+    assert.equal(drop?.toIndex, 2);
+    assert.equal(drop?.sameParent, true);
+});
+
+test("shouldShowRowReorderHandle honors canReorderRow", () => {
+    class FakeBase {
+        initFeatures() {}
+        destroyFeatures() {}
+        afterGridCreated() {}
+        buildColumnDefs() {
+            return [];
+        }
+        handleSetOption() {
+            return false;
+        }
+    }
+    const Table = RowReorderMixin(FakeBase);
+    const table = new Table();
+    table.options = {
+        rowReorder: { enabled: true },
+        canReorderRow: ({ row }) => row.rowType === "position"
+    };
+    assert.equal(
+        table.shouldShowRowReorderHandle({ data: { id: "s", rowType: "section" } }),
+        false
+    );
+    assert.equal(
+        table.shouldShowRowReorderHandle({ data: { id: "p", rowType: "position" } }),
+        true
+    );
 });

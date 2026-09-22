@@ -1,7 +1,10 @@
 const original_method = frappe.breadcrumbs.update;
 let stored_workspace;
-let stored_view_path;
-let stored_view_title;
+const stored_views = {};
+
+function view_title(doc_type, doc_view) {
+    return doc_view === "Tree" ? __("Tree") : __(doc_type);
+}
 
 frappe.breadcrumbs.update = function() {
     const active_route = frappe.get_route();
@@ -26,16 +29,19 @@ frappe.breadcrumbs.update = function() {
             if (active_route[0] === "Form") {    
                 const doc_name = active_route[2];
                 let document_title;
-                
-                if ( !stored_view_path ) {
-                    stored_view_path = `/app/${frappe.router.slug(doc_type)}`;
-                    stored_view_title = __(doc_type);
-                }
-                
-                this.append_breadcrumb_element(
-                    stored_view_path ,
-                    stored_view_title
+                const stored = stored_views[doc_type];
+                const is_single = !!(
+                    frappe.get_meta?.(doc_type)?.issingle ||
+                    frappe.get_doc?.("DocType", doc_type)?.issingle
                 );
+
+                // Single has no list view — stock Frappe skips this crumb.
+                if (!is_single) {
+                    this.append_breadcrumb_element(
+                        stored?.path || `/app/${frappe.router.slug(doc_type)}`,
+                        stored?.title || __(doc_type)
+                    );
+                }
                
                 if (doc_name.startsWith("new-" + doc_type.toLowerCase().replace(/ /g, "-"))) {
                     document_title = __("New {0}", [__(doc_type)]);
@@ -67,12 +73,14 @@ frappe.breadcrumbs.update = function() {
                     + ( doc_view ? "/view/" + doc_view : "" ) 
                     + ( doc_view_variant ? "/" + frappe.router.slug(doc_view_variant) : "" )
                 
-                stored_view_path = view_path;
-                stored_view_title = __(doc_type);
+                stored_views[doc_type] = {
+                    path: view_path,
+                    title: view_title(doc_type, doc_view),
+                };
                 
                 this.append_breadcrumb_element(
-                    stored_view_path,
-                    stored_view_title
+                    stored_views[doc_type].path,
+                    stored_views[doc_type].title
                 );
             }
             

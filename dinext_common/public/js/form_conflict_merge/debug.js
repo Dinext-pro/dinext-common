@@ -10,14 +10,14 @@ export const FCM_LOG_LEVELS = {
 	warn: "warn",
 };
 
-export function is_fcm_debug_enabled(state) {
+export function is_fcm_debug_enabled(_state) {
 	if (window.__dinext_fcm_debug) return true;
 	try {
 		if (window.localStorage && window.localStorage.getItem("dinext_fcm_debug") === "1") return true;
 	} catch (e) {
 		// ignore private mode / blocked storage
 	}
-	return Boolean(state && state.cfg && state.cfg.debug_log);
+	return false;
 }
 
 export function fcm_doc_label(frm) {
