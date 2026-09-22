@@ -166,9 +166,113 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 		self.assertEqual(first.custom_parallel_approval_policy, "Any")
 
 		duplicate = SimpleNamespace(**vars(first))
+		duplicate.custom_transition_uuid = "transition-2"
+		duplicate.allowed = "Other"
 		workflow.transitions.append(duplicate)
+		metadata.validate_workflow_configuration(workflow)
+		self.assertEqual(len(workflow.transitions), 2)
+
+		duplicate.custom_transition_uuid = first.custom_transition_uuid
 		with self.assertRaises(ValueError):
 			metadata.validate_workflow_configuration(workflow)
+
+	def test_empty_policy_with_all_users_flag_becomes_all_and_uuid_is_stable(self):
+		metadata = self.metadata()
+		transition = SimpleNamespace(
+			state="Pending",
+			action="Approve",
+			next_state="Approved",
+			allowed="Manager",
+			custom_transition_uuid="",
+			custom_parallel_approval_policy="",
+			custom_all_users_with_role=1,
+			custom_minimum_approvals=None,
+		)
+		workflow = SimpleNamespace(
+			transitions=[transition],
+			send_email_alert=0,
+			custom_group_workflow_action_emails=0,
+			custom_approval_monitor_roles=[],
+		)
+
+		metadata.validate_workflow_configuration(workflow)
+		self.assertEqual(transition.custom_parallel_approval_policy, "All")
+		assigned = transition.custom_transition_uuid
+		self.assertTrue(assigned)
+		metadata.validate_workflow_configuration(workflow)
+		self.assertEqual(transition.custom_transition_uuid, assigned)
+
+	def test_timesheet_fixtures_and_desk_hooks_keep_transition_identity(self):
+		from dinext_common import hooks
+
+		fixture = (
+			Path(__file__).resolve().parents[3]
+			/ "dinext_timesheets"
+			/ "dinext_timesheets"
+			/ "fixtures"
+			/ "workflow.json"
+		)
+		workflows = json.loads(fixture.read_text())
+		for workflow in workflows:
+			for transition in workflow["transitions"]:
+				self.assertTrue(transition["custom_transition_uuid"])
+				self.assertIn(transition["custom_parallel_approval_policy"], {"Any", "All", "Minimum"})
+				if transition["action"] == "Согласовано":
+					self.assertEqual(transition["custom_parallel_approval_policy"], "All")
+		patch = (
+			APP_ROOT / "patches" / "v1_0" / "generalize_parallel_workflow_approvals.py"
+		).read_text()
+		self.assertNotIn("generate_hash", patch)
+		self.assertIn(
+			"dinext_common.workflow_approval.metadata.ensure_transition_identity",
+			hooks.after_migrate,
+		)
+		self.assertIn(
+			"dinext_common.workflow_approval.metadata.ensure_workflow_approval_desk_records",
+			hooks.after_migrate,
+		)
+		metadata_source = (APP_ROOT / "workflow_approval" / "metadata.py").read_text()
+		self.assertIn('{"label": card_name, "number_card_name": card_name}', metadata_source)
+		self.assertIn('"label": "My Approvals Dashboard"', metadata_source)
+		self.assertNotIn('"Требуют решения"', metadata_source)
+		form_script = (
+			Path(__file__).resolve().parents[3]
+			/ "dinext_timesheets"
+			/ "dinext_timesheets"
+			/ "public"
+			/ "js"
+			/ "user_timesheet_form.js"
+		).read_text()
+		self.assertIn('frappe.model.can_read("Holiday List")', form_script)
+		banner = (APP_ROOT / "public" / "js" / "workflow_approval.js").read_text()
+		self.assertIn("get_form_approval_banner", banner)
+		self.assertNotIn(".catch(() => [])", banner)
+		project_perm = json.loads(
+			(
+				Path(__file__).resolve().parents[3]
+				/ "dinext_projects"
+				/ "dinext_projects"
+				/ "fixtures"
+				/ "custom_docperm.json"
+			).read_text()
+		)
+		approver_project = [
+			row
+			for row in project_perm
+			if row.get("parent") == "Project" and row.get("role") == "Dinext_UTP_Appoval"
+		]
+		self.assertEqual(len(approver_project), 1)
+		self.assertEqual(approver_project[0]["read"], 1)
+		self.assertEqual(approver_project[0]["write"], 0)
+		for parent in ("Number Card", "Custom HTML Block"):
+			widget = [
+				row
+				for row in project_perm
+				if row.get("parent") == parent and row.get("role") == "Dinext_UTP_Appoval"
+			]
+			self.assertEqual(len(widget), 1)
+			self.assertEqual(widget[0]["read"], 1)
+			self.assertEqual(widget[0]["write"], 0)
 
 	def test_workflow_validation_requires_minimum_and_daily_schedule(self):
 		metadata = self.metadata()

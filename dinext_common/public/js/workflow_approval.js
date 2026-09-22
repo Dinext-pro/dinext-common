@@ -3,6 +3,15 @@
 	const requestId = () =>
 		window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+	const transitionLabel = (transition, transitions) => {
+		const sameAction = (transitions || []).filter((row) => row.action === transition.action);
+		if (sameAction.length < 2) return __(transition.action);
+		const role = transition.allowed || transition.allowed_role || "";
+		const next = transition.next_state || "";
+		const suffix = [role, next].filter(Boolean).map((value) => __(value)).join(" → ");
+		return suffix ? `${__(transition.action)} (${suffix})` : __(transition.action);
+	};
+
 	const applyAction = async (frm, transition, comment = "") => {
 		frappe.dom.freeze(__("Applying workflow action…"));
 		frm.selected_workflow_action = transition.action;
@@ -12,6 +21,7 @@
 			await frappe.xcall("frappe.model.workflow.apply_workflow", {
 				doc: frm.doc,
 				action: transition.action,
+				transition_uuid: transition.custom_transition_uuid,
 				comment,
 				request_id: requestId(),
 			});
@@ -55,7 +65,7 @@
 			frappe.workflow.get_transitions(this.frm.doc).then((transitions) => {
 				this.frm.page.clear_actions_menu();
 				transitions.forEach((transition) => {
-					this.frm.page.add_action_item(__(transition.action), () =>
+					this.frm.page.add_action_item(transitionLabel(transition, transitions), () =>
 						promptForAction(this.frm, transition)
 					);
 				});
@@ -92,12 +102,14 @@
 			if (!enabled() || !frappe.model.has_workflow(this.doctype)) {
 				return original.call(this);
 			}
-			return frappe.workflow.get_all_transition_actions(this.doctype).map((action) => ({
-				label: __(action),
-				name: action,
+			const transitions = frappe.workflow.get_all_transitions(this.doctype) || [];
+			return transitions.map((transition) => ({
+				label: transitionLabel(transition, transitions),
+				name: transition.custom_transition_uuid || transition.action,
 				is_workflow_action: true,
 				action: () => {
 					const selected = this.get_checked_items(true);
+					const action = transition.action;
 					frappe.prompt(
 						[
 							{
@@ -115,6 +127,7 @@
 										docnames: selected,
 										doctype: this.doctype,
 										action,
+										transition_uuid: transition.custom_transition_uuid,
 										comment: values.comment,
 										request_id: requestId(),
 									}
@@ -142,6 +155,78 @@
 	};
 
 	const pendingRegistered = new Set();
+	const paintApprovalBanner = async (frm) => {
+		if (!frm || frm.is_new() || !frm.dashboard?.parent) return;
+		const requested = frm.doc.name;
+		frm.dashboard.parent.find(".dinext-pending-approvers").remove();
+		let banner;
+		try {
+			banner = await frappe.xcall(
+				"dinext_common.workflow_approval.api.get_form_approval_banner",
+				{ doctype: frm.doctype, name: requested }
+			);
+		} catch (error) {
+			console.error(error);
+			frappe.show_alert({
+				message: __("Could not load approval status"),
+				indicator: "red",
+			});
+			return;
+		}
+		if (!banner || frm.doc?.name !== requested) return;
+		const stalled = banner.round_status === "Conflicted" || banner.round_status === "Stalled";
+		const pending = banner.pending_approvers || [];
+		if (!stalled && !pending.length) return;
+		const title = stalled
+			? __("Approval round needs a rebuild")
+			: __("Pending approvers");
+		const names = [
+			...new Set(pending.map((row) => row.approver_name || row.approver)),
+		].sort();
+		const body = stalled
+			? banner.can_reset
+				? `<button type="button" class="btn btn-xs btn-default dinext-reset-round">${__(
+						"Reset round"
+				  )}</button>`
+				: ""
+			: names.map((user) => frappe.utils.escape_html(user)).join(", ");
+		const section = frm.dashboard.add_section(body, title, "dinext-pending-approvers");
+		frm.dashboard.show();
+		if (!banner.can_reset) return;
+		$(section)
+			.find(".dinext-reset-round")
+			.on("click", () => {
+				frappe.prompt(
+					[
+						{
+							fieldname: "reason",
+							fieldtype: "Small Text",
+							label: __("Reason"),
+							reqd: 1,
+						},
+					],
+					async (values) => {
+						await frappe.xcall("dinext_common.workflow_approval.api.reset_round", {
+							round_id: banner.round_id,
+							reason: values.reason,
+						});
+						frm.reload_doc();
+					},
+					__("Reset approval round"),
+					__("Reset")
+				);
+			});
+	};
+	const scheduleBanner = (frm, attempt = 0) => {
+		if (!frm || frm.is_new()) return;
+		if (!frm.dashboard?.parent) {
+			if (attempt < 20) {
+				setTimeout(() => scheduleBanner(frm, attempt + 1), 50);
+			}
+			return;
+		}
+		paintApprovalBanner(frm);
+	};
 	const registerPendingApprovers = () => {
 		if (!enabled()) return;
 		const doctypes = new Set([
@@ -153,38 +238,25 @@
 			if (pendingRegistered.has(doctype)) return;
 			pendingRegistered.add(doctype);
 			frappe.ui.form.on(doctype, {
-				async refresh(frm) {
-					if (frm.is_new()) return;
-					const selector = ".dinext-pending-approvers";
-					frm.dashboard.wrapper.find(selector).remove();
-					const rows = await frappe
-						.xcall("dinext_common.workflow_approval.api.get_pending_approvers", {
-							doctype: frm.doctype,
-							name: frm.doc.name,
-						})
-						.catch(() => []);
-					if (!rows.length) return;
-					const users = [
-						...new Set(rows.map((row) => row.approver_name || row.approver)),
-					].sort();
-					const content = users
-						.map((user) => frappe.utils.escape_html(user))
-						.join(", ");
-					frm.dashboard.wrapper.prepend(
-						`<div class="form-dashboard-section dinext-pending-approvers">
-							<div class="section-head">${__("Pending approvers")}</div>
-							<div class="section-body">${content}</div>
-						</div>`
-					);
+				refresh(frm) {
+					scheduleBanner(frm);
 				},
 			});
+			if (cur_frm && cur_frm.doctype === doctype && !cur_frm.is_new()) {
+				scheduleBanner(cur_frm);
+			}
 		});
 	};
 
-	frappe.ready(() => {
+	const start = () => {
 		patchFormActions();
 		patchBulkActions();
 		registerPendingApprovers();
 		frappe.router.on("change", registerPendingApprovers);
-	});
+	};
+	if (window.frappe?.router) {
+		start();
+	} else {
+		document.addEventListener("DOMContentLoaded", start);
+	}
 })();

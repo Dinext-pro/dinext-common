@@ -133,12 +133,44 @@ def manifest_matches_configuration(
 	manifest: dict[str, Any],
 	current_hashes: dict[str, str],
 ) -> bool:
-	rows = manifest.get("transitions") or []
-	snapshot_hashes = {
-		str(row.get("transition_uuid") or ""): str(row.get("transition_semantic_hash") or "")
-		for row in rows
-	}
-	return snapshot_hashes == current_hashes
+	"""Match snapshot rows to configuration by semantic hash and UUID.
+
+	An empty UUID on either side still matches the same semantic hash. A
+	non-empty UUID must be the same value, so a replaced identifier stays
+	fail-closed.
+	"""
+	snapshot = [
+		(str(row.get("transition_uuid") or ""), str(row.get("transition_semantic_hash") or ""))
+		for row in (manifest.get("transitions") or [])
+	]
+	configured = [
+		(str(uuid or ""), str(semantic or ""))
+		for uuid, semantic in current_hashes.items()
+	]
+	if len(snapshot) != len(configured):
+		return False
+	used: set[int] = set()
+	for snap_uuid, snap_hash in snapshot:
+		candidates = [
+			index
+			for index, (cfg_uuid, cfg_hash) in enumerate(configured)
+			if index not in used
+			and cfg_hash == snap_hash
+			and (not snap_uuid or not cfg_uuid or snap_uuid == cfg_uuid)
+		]
+		exact = [
+			index
+			for index in candidates
+			if snap_uuid and configured[index][0] == snap_uuid
+		]
+		if len(exact) == 1:
+			found = exact[0]
+		elif len(candidates) == 1:
+			found = candidates[0]
+		else:
+			return False
+		used.add(found)
+	return True
 
 
 def select_automatic_winner(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -289,12 +321,11 @@ def _current_transitions(doc: object, workflow: object, state: str) -> list[dict
 def _configured_transition_hashes(workflow: object, state: str) -> dict[str, str]:
 	"""Read configuration identity without recomputing snapshot eligibility/conditions."""
 	return {
-		str(_value(transition, "custom_transition_uuid")): _transition_dict(transition)[
+		str(_value(transition, "custom_transition_uuid") or ""): _transition_dict(transition)[
 			"transition_semantic_hash"
 		]
 		for transition in _value(workflow, "transitions", [])
 		if _value(transition, "state") == state
-		and _value(transition, "custom_transition_uuid")
 	}
 
 
@@ -818,6 +849,10 @@ def _task_transition(task: object, transition_uuid: str | None, action: str | No
 		if (transition_uuid and row.transition_uuid == transition_uuid)
 		or (not transition_uuid and action and row.action == action)
 	]
+	if len(candidates) > 1 and not transition_uuid:
+		raise WorkflowApprovalConflictError(
+			_("Specify the transition UUID. More than one workflow action matches.")
+		)
 	if len(candidates) != 1:
 		raise WorkflowApprovalConflictError(_("Workflow action is not available for this task"))
 	return candidates[0]
@@ -985,6 +1020,32 @@ def _vote_result(task: object, source: object, *, transitioned: bool) -> VoteRes
 	}
 
 
+def _apply_winning_transition(source: object, action: str) -> None:
+	"""Apply the winning transition without requiring write on the source.
+
+	Core ``Document.save`` checks ``doc.flags.ignore_permissions`` and reloads
+	the document, so the site flag alone does not cross that boundary. The
+	permission hook is limited to this call. The session user stays the voter.
+	"""
+	from frappe.model.document import Document
+
+	previous_ignore = bool(getattr(frappe.flags, "ignore_permissions", False))
+	original_has_permission = Document.has_permission
+
+	def has_permission(self, permtype="read", *, debug=False, user=None):
+		if getattr(frappe.flags, "ignore_permissions", False):
+			return True
+		return original_has_permission(self, permtype, debug=debug, user=user)
+
+	frappe.flags.ignore_permissions = True
+	Document.has_permission = has_permission
+	try:
+		core_apply_workflow(source, action)
+	finally:
+		Document.has_permission = original_has_permission
+		frappe.flags.ignore_permissions = previous_ignore
+
+
 def _finalization_actor(round_id: str, winner: dict[str, Any]) -> str:
 	actors = frappe.get_all(
 		"Workflow Task",
@@ -1067,7 +1128,7 @@ def _finalize_round(
 		frappe.flags.in_dinext_workflow_finalization = True
 		if actor != previous_user:
 			frappe.set_user(actor)
-		core_apply_workflow(source, winner["action"])
+		_apply_winning_transition(source, winner["action"])
 	except Exception:
 		frappe.db.rollback(save_point=savepoint)
 		frappe.db.release_savepoint(savepoint)

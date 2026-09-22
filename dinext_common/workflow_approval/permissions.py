@@ -155,3 +155,29 @@ def has_workflow_action_permission(
 	except frappe.DoesNotExistError:
 		return False
 	return has_workflow_task_permission(task, "read", user)
+
+
+PUBLIC_APPROVAL_NUMBER_CARDS = frozenset(
+	{
+		"My open approvals",
+		"Новые сегодня",
+		"My completed approvals",
+		"Автоматически выполнено за 30 дней",
+	}
+)
+
+
+def has_public_number_card_permission(doc, ptype="read", user=None, debug=False):
+	"""Allow read of the public approval cards.
+
+	Frappe's Number Card controller denies Custom cards that have no
+	document_type unless the user is a System Manager. These cards count
+	through whitelisted methods, so a read-only approver must still see them.
+	"""
+	if ptype not in READ_PERMISSION_TYPES:
+		return None
+	if _get(doc, "name") not in PUBLIC_APPROVAL_NUMBER_CARDS:
+		return None
+	if not _get(doc, "is_public"):
+		return None
+	return True
