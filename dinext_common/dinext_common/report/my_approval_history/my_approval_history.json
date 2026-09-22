@@ -8,21 +8,18 @@
  "filters": [
   {
    "fieldname": "workflow",
-   "fieldtype": "Link",
-   "label": "Workflow",
-   "options": "Workflow"
+   "fieldtype": "Data",
+   "label": "Workflow"
   },
   {
    "fieldname": "reference_doctype",
-   "fieldtype": "Link",
-   "label": "Document Type",
-   "options": "DocType"
+   "fieldtype": "Data",
+   "label": "Document Type"
   },
   {
    "fieldname": "action",
-   "fieldtype": "Link",
-   "label": "Action",
-   "options": "Workflow Action Master"
+   "fieldtype": "Data",
+   "label": "Action"
   },
   {
    "fieldname": "completion_source",

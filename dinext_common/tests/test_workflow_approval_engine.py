@@ -115,6 +115,28 @@ class TestWorkflowApprovalEngine(unittest.TestCase):
 			)
 		)
 
+	def test_empty_uuid_does_not_conflict_the_same_semantic_hash(self):
+		engine = self.engine()
+		empty_snapshot = {
+			"transitions": [
+				{"transition_uuid": "", "transition_semantic_hash": "same"}
+			]
+		}
+		self.assertTrue(engine.manifest_matches_configuration(empty_snapshot, {"": "same"}))
+		self.assertTrue(
+			engine.manifest_matches_configuration(empty_snapshot, {"filled-once": "same"})
+		)
+		self.assertFalse(
+			engine.manifest_matches_configuration(
+				{
+					"transitions": [
+						{"transition_uuid": "old", "transition_semantic_hash": "same"}
+					]
+				},
+				{"new": "same"},
+			)
+		)
+
 	def test_cycle_guard_is_keyed_by_workflow_state_and_fingerprint(self):
 		engine = self.engine()
 		guard = engine.AutomationCycleGuard(max_transitions=2)

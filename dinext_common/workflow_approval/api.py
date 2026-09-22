@@ -70,7 +70,13 @@ def _source_identity(doc: object) -> tuple[str, str]:
 	return str(getattr(doc, "doctype", "") or ""), str(getattr(doc, "name", "") or "")
 
 
-def _find_task_for_action(doctype: str, name: str, action: str, user: str) -> str:
+def _find_task_for_action(
+	doctype: str,
+	name: str,
+	action: str,
+	user: str,
+	transition_uuid: str | None = None,
+) -> str:
 	task_names = frappe.get_all(
 		"Workflow Task",
 		filters={
@@ -84,12 +90,17 @@ def _find_task_for_action(doctype: str, name: str, action: str, user: str) -> st
 		order_by="creation desc, name asc",
 		limit=2,
 	)
+	child_filters: dict[str, Any] = {"parent": None}
+	if transition_uuid:
+		child_filters = {"transition_uuid": transition_uuid}
+	elif action:
+		child_filters = {"action": action}
 	matches = [
 		task_name
 		for task_name in task_names
 		if frappe.db.exists(
 			"Available Workflow Transitions",
-			{"parent": task_name, "action": action},
+			{"parent": task_name, **child_filters},
 		)
 	]
 	if len(matches) != 1:
@@ -104,13 +115,21 @@ def _vote_source_action(
 	name: str,
 	action: str,
 	*,
+	transition_uuid: str | None = None,
 	comment: object = None,
 	request_id: str | None = None,
 	completion_source: str = "Manual",
 ) -> engine.VoteResult:
-	task_name = _find_task_for_action(doctype, name, action, frappe.session.user)
+	task_name = _find_task_for_action(
+		doctype,
+		name,
+		action,
+		frappe.session.user,
+		transition_uuid=transition_uuid,
+	)
 	return engine.cast_vote(
 		task_name,
+		transition_uuid=transition_uuid,
 		action=action,
 		comment=comment,
 		request_id=request_id,
@@ -143,6 +162,7 @@ def apply_workflow(
 	action: str,
 	comment: object = None,
 	request_id: str | None = None,
+	transition_uuid: str | None = None,
 ) -> engine.VoteResult:
 	"""Replace direct Frappe apply_workflow with one task vote."""
 	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
@@ -159,6 +179,7 @@ def apply_workflow(
 		doctype,
 		name,
 		action,
+		transition_uuid=transition_uuid,
 		comment=comment,
 		request_id=request_id,
 	)
@@ -171,6 +192,7 @@ def bulk_vote(
 	action: str,
 	comment: object = None,
 	request_id: str | None = None,
+	transition_uuid: str | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
 	"""Process each source under a savepoint and return itemized outcomes."""
 	_require_post()
@@ -187,6 +209,7 @@ def bulk_vote(
 				doctype,
 				name,
 				action,
+				transition_uuid=transition_uuid,
 				comment=comment,
 				request_id=f"{request_id}:{name}" if request_id else None,
 				completion_source="Bulk",
@@ -285,6 +308,7 @@ def bulk_workflow_approval(
 	action: str,
 	comment: object = None,
 	request_id: str | None = None,
+	transition_uuid: str | None = None,
 ) -> None:
 	"""Compatibility override for the standard Frappe bulk method."""
 	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
@@ -295,7 +319,14 @@ def bulk_workflow_approval(
 		return core_bulk_workflow_approval(docnames, doctype, action)
 	names = [str(name) for name in _as_list(docnames)]
 	if len(names) < 20:
-		bulk_vote(doctype, names, action, comment, request_id)
+		bulk_vote(
+			doctype,
+			names,
+			action,
+			comment,
+			request_id,
+			transition_uuid=transition_uuid,
+		)
 		return None
 	if len(names) <= 500:
 		frappe.msgprint(
@@ -309,6 +340,7 @@ def bulk_workflow_approval(
 			action=action,
 			comment=comment,
 			request_id=request_id,
+			transition_uuid=transition_uuid,
 			queue="short",
 			timeout=1000,
 		)
@@ -338,12 +370,13 @@ def _filtered_tasks(filters: dict[str, Any], *, limit: int = 500) -> list[dict[s
 	for row in rows:
 		task = frappe.get_doc("Workflow Task", row["name"])
 		if has_workflow_task_permission(task, "read", frappe.session.user):
-			payload = dict(row)
+			payload = frappe._dict(row)
 			payload["available_transitions"] = [
 				{
 					"transition_uuid": transition.transition_uuid,
 					"action": transition.action,
 					"next_state": transition.next_state,
+					"allowed": getattr(transition, "allowed_role", None),
 					"comment_is_required": bool(transition.comment_is_required),
 				}
 				for transition in getattr(task, "available_workflow_transitions", [])
@@ -441,6 +474,90 @@ def get_pending_approvers(doctype: str, name: str) -> list[dict[str, Any]]:
 	for row in rows:
 		row["approver_name"] = names.get(row.approver) or row.approver
 	return rows
+
+
+@frappe.whitelist()
+def get_form_approval_banner(doctype: str, name: str) -> dict[str, Any]:
+	"""Pending approvers, or a rebuild indicator for a stalled round."""
+	source = frappe.get_doc(doctype, name)
+	source.check_permission("read")
+	reference_doctype = doctype
+	reference_names = [name]
+	if doctype == "User Timesheet":
+		reference_doctype = "User Timesheet Position"
+		reference_names = frappe.get_all(
+			"User Timesheet Position",
+			filters={"user_timesheet": name},
+			pluck="name",
+		)
+	if not reference_names:
+		return {
+			"round_id": None,
+			"round_status": None,
+			"pending_approvers": [],
+			"can_reset": False,
+		}
+	rows = frappe.get_all(
+		"Workflow Task",
+		filters={
+			"reference_doctype": reference_doctype,
+			"reference_name": ("in", reference_names),
+			"round_status": ("in", ("Open", "Stalled", "Conflicted")),
+		},
+		fields=["approval_round_id", "round_status", "approver", "status", "creation"],
+		order_by="creation desc, name desc",
+		limit=100,
+	)
+	if not rows:
+		return {
+			"round_id": None,
+			"round_status": None,
+			"pending_approvers": [],
+			"can_reset": _caller_is_system_manager(),
+		}
+	stalled_rows = [
+		row for row in rows if row.round_status in {"Stalled", "Conflicted"}
+	]
+	if stalled_rows:
+		round_id = stalled_rows[0].approval_round_id
+		status = stalled_rows[0].round_status
+		approvers: list[str] = []
+	else:
+		round_id = rows[0].approval_round_id
+		status = "Open"
+		approvers = sorted(
+			{
+				row.approver
+				for row in rows
+				if row.status == "Working" and row.approver
+			}
+		)
+	pending: list[dict[str, str]] = []
+	if approvers:
+		names = dict(
+			frappe.get_all(
+				"User",
+				filters={"name": ("in", approvers)},
+				fields=["name", "full_name"],
+				as_list=True,
+			)
+		) if approvers else {}
+		pending = [
+			{"approver": approver, "approver_name": names.get(approver) or approver}
+			for approver in approvers
+		]
+	return {
+		"round_id": round_id,
+		"round_status": status,
+		"pending_approvers": pending,
+		"can_reset": status in {"Stalled", "Conflicted"} and _caller_is_system_manager(),
+	}
+
+
+def _caller_is_system_manager() -> bool:
+	if frappe.session.user == "Administrator":
+		return True
+	return "System Manager" in set(frappe.get_roles())
 
 
 @frappe.whitelist()
@@ -739,7 +856,9 @@ def get_monitoring_rows(
 	from frappe.utils import now_datetime, time_diff_in_hours
 
 	for row in grouped.values():
-		row["pending_approvers"] = ", ".join(sorted(set(row["pending_approvers"])))
+		row["pending_approvers"] = ", ".join(
+			sorted({approver for approver in row["pending_approvers"] if approver})
+		)
 		row["available_actions"] = ", ".join(
 			sorted(filter(None, row["available_actions"]))
 		)
@@ -751,7 +870,7 @@ def get_monitoring_rows(
 			time_diff_in_hours(now_datetime(), row["creation"]),
 		)
 		if _monitor_row_matches(row, values):
-			result.append(row)
+			result.append(frappe._dict(row))
 	return result
 
 
