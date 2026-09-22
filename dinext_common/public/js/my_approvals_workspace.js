@@ -1,7 +1,8 @@
 frappe.provide("dinext_common.my_approvals");
 
 dinext_common.my_approvals.mount = function (root) {
-	const $root = $(root);
+	const element = root?.querySelector?.(".dinext-my-approvals") || root;
+	const $root = $(element);
 	const escape = (value) => frappe.utils.escape_html(String(value ?? ""));
 
 	const routeLink = (row) =>

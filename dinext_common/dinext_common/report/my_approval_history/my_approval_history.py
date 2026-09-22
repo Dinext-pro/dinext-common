@@ -66,10 +66,10 @@ def _matches(row, filters, from_date, to_date):
 def get_columns():
 	return [
 		{"fieldname": "name", "label": _("Task"), "fieldtype": "Link", "options": "Workflow Task"},
-		{"fieldname": "reference_doctype", "label": _("Document Type"), "fieldtype": "Link", "options": "DocType"},
+		{"fieldname": "reference_doctype", "label": _("Document Type"), "fieldtype": "Data"},
 		{"fieldname": "reference_name", "label": _("Document"), "fieldtype": "Dynamic Link", "options": "reference_doctype"},
 		{"fieldname": "source_title", "label": _("Title"), "fieldtype": "Data"},
-		{"fieldname": "workflow", "label": _("Workflow"), "fieldtype": "Link", "options": "Workflow"},
+		{"fieldname": "workflow", "label": _("Workflow"), "fieldtype": "Data"},
 		{"fieldname": "action", "label": _("Action"), "fieldtype": "Data"},
 		{"fieldname": "status", "label": _("Status"), "fieldtype": "Data"},
 		{"fieldname": "completion_source", "label": _("Completion Source"), "fieldtype": "Data"},

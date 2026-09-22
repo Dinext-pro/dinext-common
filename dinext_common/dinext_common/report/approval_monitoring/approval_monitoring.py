@@ -12,10 +12,10 @@ def execute(filters=None):
 
 def get_columns():
 	return [
-		{"fieldname": "reference_doctype", "label": _("Document Type"), "fieldtype": "Link", "options": "DocType"},
+		{"fieldname": "reference_doctype", "label": _("Document Type"), "fieldtype": "Data"},
 		{"fieldname": "reference_name", "label": _("Document"), "fieldtype": "Dynamic Link", "options": "reference_doctype"},
 		{"fieldname": "source_title", "label": _("Title"), "fieldtype": "Data"},
-		{"fieldname": "workflow", "label": _("Workflow"), "fieldtype": "Link", "options": "Workflow"},
+		{"fieldname": "workflow", "label": _("Workflow"), "fieldtype": "Data"},
 		{"fieldname": "workflow_state", "label": _("State"), "fieldtype": "Data"},
 		{"fieldname": "available_actions", "label": _("Available Actions"), "fieldtype": "Data"},
 		{"fieldname": "pending_approvers", "label": _("Pending Approvers"), "fieldtype": "Data"},

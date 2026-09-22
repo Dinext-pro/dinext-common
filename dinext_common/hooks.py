@@ -114,7 +114,7 @@ app_include_js = [
     "/assets/dinext_common/js/dinext-desk.js",
     "/assets/dinext_common/js/dashboard_filters_fix.js",
     "/assets/dinext_common/js/workspace_sidebar_hover.js",
-    "/assets/dinext_common/js/workflow_approval.js",
+    "/assets/dinext_common/js/workflow_approval.js?v=20260922b",
 ]
 
 # Expose site_config flags to Desk bootinfo
@@ -182,6 +182,8 @@ after_migrate = [
 	"dinext_common.changelog_feed.on_after_migrate",
 	"dinext_common.setup.workspace.configure_workspace_menu",
 	"dinext_common.apps.ensure_default_apps",
+	"dinext_common.workflow_approval.metadata.ensure_transition_identity",
+	"dinext_common.workflow_approval.metadata.ensure_workflow_approval_desk_records",
 ]
 
 # Uninstallation
@@ -227,6 +229,7 @@ has_permission = {
 	),
 	"Workflow Task": "dinext_common.workflow_approval.permissions.has_workflow_task_permission",
 	"Workflow Action": "dinext_common.workflow_approval.permissions.has_workflow_action_permission",
+	"Number Card": "dinext_common.workflow_approval.permissions.has_public_number_card_permission",
 }
 
 permission_query_conditions = {

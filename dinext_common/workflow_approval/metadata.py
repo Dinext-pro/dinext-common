@@ -11,7 +11,7 @@ import frappe
 from frappe import _
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
-from dinext_common.workflow_approval.policy import normalize_policy
+from dinext_common.workflow_approval.policy import normalize_policy, policy_from_legacy_flag
 
 EMAIL_ENABLED_CONDITION = "eval:doc.send_email_alert"
 GROUPED_EMAIL_CONDITION = (
@@ -327,6 +327,7 @@ def ensure_workflow_approval_desk_records() -> None:
 			"method": method,
 			"color": color,
 			"type": "Custom",
+			"document_type": "User Timesheet Position",
 			"currency": "",
 			"show_percentage_stats": 0,
 			"show_full_number": 1,
@@ -402,42 +403,125 @@ def ensure_workflow_approval_desk_records() -> None:
 			ensure_ascii=False,
 		)
 		workspace.number_cards = []
-		for label, card_name in (
-			("Требуют решения", "My open approvals"),
-			("Новые сегодня", "Новые сегодня"),
-			("Решений за 30 дней", "My completed approvals"),
-			("Автоматически выполнено за 30 дней", "Автоматически выполнено за 30 дней"),
+		# EditorJS matches a block by child label against __(number_card_name).
+		for card_name in (
+			"My open approvals",
+			"Новые сегодня",
+			"My completed approvals",
+			"Автоматически выполнено за 30 дней",
 		):
 			workspace.append(
 				"number_cards",
-				{"label": label, "number_card_name": card_name},
+				{"label": card_name, "number_card_name": card_name},
 			)
 		workspace.custom_blocks = []
 		workspace.append(
 			"custom_blocks",
 			{
 				"custom_block_name": "My Approvals Dashboard",
-				"label": "Мои согласования",
+				"label": "My Approvals Dashboard",
 			},
 		)
 		workspace.save(ignore_permissions=True)
 
 	block_name = "My Approvals Dashboard"
-	if not frappe.db.exists("Custom HTML Block", block_name):
+	block_script = (
+		'frappe.require(["/assets/dinext_common/js/my_approvals_workspace.js"], () => {\n'
+		"\tdinext_common.my_approvals.mount(root_element);\n"
+		"});\n"
+	)
+	block_html = '<div class="dinext-my-approvals"></div>'
+	if frappe.db.exists("Custom HTML Block", block_name):
+		block = frappe.get_doc("Custom HTML Block", block_name)
+		block.html = block_html
+		block.script = block_script
+		block.private = 0
+		block.save(ignore_permissions=True)
+	else:
 		frappe.get_doc(
 			{
 				"doctype": "Custom HTML Block",
 				"name": block_name,
-				"html": '<div class="dinext-my-approvals"></div>',
-				"script": (
-					'frappe.require(["/assets/dinext_common/js/my_approvals_workspace.js"], () => {\n'
-					"\tdinext_common.my_approvals.mount(root_element);\n"
-					"});\n"
-				),
+				"html": block_html,
+				"script": block_script,
 				"style": "",
 				"private": 0,
 			}
 		).insert(ignore_permissions=True)
+	_ensure_public_widget_read()
+
+
+def _ensure_public_widget_read() -> None:
+	"""Let the approver role read standard cards when it has no Desk User perm."""
+	role = "Dinext_UTP_Appoval"
+	if not frappe.db.exists("Role", role):
+		return
+	for doctype in ("Number Card", "Custom HTML Block"):
+		if _role_can_read(doctype, role):
+			continue
+		frappe.get_doc(
+			{
+				"doctype": "Custom DocPerm",
+				"parent": doctype,
+				"role": role,
+				"permlevel": 0,
+				"read": 1,
+				"select": 1,
+				"write": 0,
+				"create": 0,
+				"delete": 0,
+				"submit": 0,
+				"cancel": 0,
+				"amend": 0,
+				"report": 0,
+				"export": 0,
+				"print": 0,
+				"email": 0,
+				"share": 0,
+				"if_owner": 0,
+			}
+		).insert(ignore_permissions=True)
+
+
+def _role_can_read(doctype: str, role: str) -> bool:
+	for table in ("DocPerm", "Custom DocPerm"):
+		if frappe.db.exists(
+			table,
+			{"parent": doctype, "role": role, "permlevel": 0, "read": 1},
+		):
+			return True
+	return False
+
+
+def ensure_transition_identity() -> None:
+	"""Fill an empty policy or UUID after fixture sync without replacing a UUID."""
+	if not frappe.db.table_exists("Workflow Transition"):
+		return
+	if not frappe.db.has_column("Workflow Transition", "custom_transition_uuid"):
+		return
+	for row in frappe.db.get_all(
+		"Workflow Transition",
+		fields=[
+			"name",
+			"custom_all_users_with_role",
+			"custom_parallel_approval_policy",
+			"custom_transition_uuid",
+		],
+	):
+		updates = {}
+		if not row.custom_parallel_approval_policy:
+			updates["custom_parallel_approval_policy"] = policy_from_legacy_flag(
+				row.custom_all_users_with_role
+			)
+		if not row.custom_transition_uuid:
+			updates["custom_transition_uuid"] = str(uuid4())
+		if updates:
+			frappe.db.set_value(
+				"Workflow Transition",
+				row.name,
+				updates,
+				update_modified=False,
+			)
 
 
 def _roles(rows: Iterable[object]) -> list[str]:
@@ -449,18 +533,18 @@ def _roles(rows: Iterable[object]) -> list[str]:
 
 def validate_workflow_configuration(workflow: object) -> None:
 	"""Validate and normalize parallel transition and notification settings."""
-	identities: set[tuple[str, str]] = set()
 	uuids: set[str] = set()
 	for transition in getattr(workflow, "transitions", []) or []:
-		policy = normalize_policy(getattr(transition, "custom_parallel_approval_policy", None))
+		raw_policy = getattr(transition, "custom_parallel_approval_policy", None)
+		if raw_policy is None or str(raw_policy).strip() == "":
+			policy = policy_from_legacy_flag(
+				getattr(transition, "custom_all_users_with_role", None)
+			)
+		else:
+			policy = normalize_policy(raw_policy)
 		setattr(transition, "custom_parallel_approval_policy", policy)
 		if not getattr(transition, "custom_transition_uuid", None):
 			setattr(transition, "custom_transition_uuid", str(uuid4()))
-
-		identity = (str(getattr(transition, "state", "")), str(getattr(transition, "action", "")))
-		if identity in identities:
-			raise ValueError("Workflow actions must be unique within each state")
-		identities.add(identity)
 
 		transition_uuid = str(getattr(transition, "custom_transition_uuid", ""))
 		if transition_uuid in uuids:

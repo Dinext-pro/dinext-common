@@ -6,8 +6,8 @@
  "docstatus": 0,
  "doctype": "Report",
  "filters": [
-  {"fieldname": "workflow", "fieldtype": "Link", "label": "Workflow", "options": "Workflow"},
-  {"fieldname": "reference_doctype", "fieldtype": "Link", "label": "Document Type", "options": "DocType"},
+  {"fieldname": "workflow", "fieldtype": "Data", "label": "Workflow"},
+  {"fieldname": "reference_doctype", "fieldtype": "Data", "label": "Document Type"},
   {"fieldname": "workflow_state", "fieldtype": "Data", "label": "State"},
   {"fieldname": "action", "fieldtype": "Link", "label": "Action", "options": "Workflow Action Master"},
   {"fieldname": "transition_uuid", "fieldtype": "Data", "label": "Transition UUID"},

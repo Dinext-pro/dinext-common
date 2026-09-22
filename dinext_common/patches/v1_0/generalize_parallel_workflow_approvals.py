@@ -43,8 +43,8 @@ def _migrate_transition_configuration() -> None:
 			updates["custom_parallel_approval_policy"] = policy_from_legacy_flag(
 				row.custom_all_users_with_role
 			)
-		if not row.custom_transition_uuid:
-			updates["custom_transition_uuid"] = frappe.generate_hash(length=32)
+		# UUID canon is the fixture value. A generated hash here is wiped or
+		# diverges from live manifests. after_migrate fills a still-empty UUID.
 		if updates:
 			frappe.db.set_value(
 				"Workflow Transition",
