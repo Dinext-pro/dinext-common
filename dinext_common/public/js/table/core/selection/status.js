@@ -233,10 +233,13 @@ export const SelectionStatusMixin = (Base) => class extends Base {
 
         this._selectionStatusEl.textContent = text;
         this._selectionStatusEl.classList.toggle("is-hidden", !visible || !text);
-        this.container?.classList.toggle(
-            "dinext-table--status-bar-visible",
-            !!(visible && text)
-        );
+        const nowVisible = !!(visible && text);
+        const wasVisible = !!this.container?.classList.contains("dinext-table--status-bar-visible");
+        this.container?.classList.toggle("dinext-table--status-bar-visible", nowVisible);
+        /* Timesheet fit listens: the bar is inside the height-capped container. */
+        if (wasVisible !== nowVisible) {
+            this.container?.dispatchEvent(new CustomEvent("dinext-table-status-bar"));
+        }
     }
 
     getSelectionStats() {
