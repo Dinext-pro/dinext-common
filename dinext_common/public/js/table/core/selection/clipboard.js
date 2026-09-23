@@ -64,6 +64,43 @@ function parseTsv(text) {
     return dropTrailingPhantomRow(rows, text);
 }
 
+/**
+ * Excel paste: a copied block repeats across the selection when both sides
+ * are exact multiples (a single cell fills any larger range). A 1×1 focus
+ * keeps the source matrix so it can extend past that cell. Disjoint
+ * multi-ranges are not tiled — caller checks `cellRanges.length === 1`.
+ */
+export function tileMatrixToSelection(matrix, bounds) {
+    if (!matrix?.length || !bounds) {
+        return matrix;
+    }
+
+    const selRows = bounds.maxRowIndex - bounds.minRowIndex + 1;
+    const selCols = bounds.maxColIndex - bounds.minColIndex + 1;
+    const srcRows = matrix.length;
+    const srcCols = matrix.reduce((max, row) => Math.max(max, row?.length || 0), 0);
+    if (srcRows < 1 || srcCols < 1 || selRows < 1 || selCols < 1) {
+        return matrix;
+    }
+    if (selRows <= srcRows && selCols <= srcCols) {
+        return matrix;
+    }
+    if (selRows % srcRows !== 0 || selCols % srcCols !== 0) {
+        return matrix;
+    }
+
+    const tiled = [];
+    for (let r = 0; r < selRows; r += 1) {
+        const srcRow = matrix[r % srcRows] || [];
+        const line = [];
+        for (let c = 0; c < selCols; c += 1) {
+            line.push(srcRow[c % srcCols] ?? "");
+        }
+        tiled.push(line);
+    }
+    return tiled;
+}
+
 /** Excel trailing \\r\\n after copy yields an extra [""] row — drop it only then. */
 function dropTrailingPhantomRow(rows, sourceText) {
     if (rows.length <= 1) {
@@ -470,9 +507,12 @@ export const ClipboardMixin = (Base) => class extends Base {
     }
 
     applyPasteText(text, bounds) {
-        const matrix = parseTsv(text);
+        let matrix = parseTsv(text);
         if (!matrix.length || !bounds) {
             return 0;
+        }
+        if (this.cellRanges?.length === 1) {
+            matrix = tileMatrixToSelection(matrix, bounds);
         }
 
         const changes = this.collectChangesForMatrix(
