@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createCommandStack, buildCellChangeCommand } from "../core/selection/clipboard.js";
+import { createCommandStack, buildCellChangeCommand, tileMatrixToSelection } from "../core/selection/clipboard.js";
 import { resolveToolbarItems } from "../core/toolbar/presets.js";
 import { CELL_CHANGE_SOURCES } from "../core/edit/changes.js";
 
@@ -69,6 +69,37 @@ test("buildCellChangeCommand undo/redo restores values in LIFO order", () => {
     assert.equal(stack.redo(), true);
     assert.equal(data.a, 10);
     assert.equal(commits.at(-1).source, CELL_CHANGE_SOURCES.REDO);
+});
+
+test("tileMatrixToSelection repeats a single value across the selection", () => {
+    const bounds = { minRowIndex: 0, maxRowIndex: 2, minColIndex: 1, maxColIndex: 3 };
+    assert.deepEqual(tileMatrixToSelection([["8"]], bounds), [
+        ["8", "8", "8"],
+        ["8", "8", "8"],
+        ["8", "8", "8"]
+    ]);
+});
+
+test("tileMatrixToSelection keeps a block pasted onto a single cell", () => {
+    const matrix = [["1", "2"], ["3", "4"]];
+    const bounds = { minRowIndex: 4, maxRowIndex: 4, minColIndex: 0, maxColIndex: 0 };
+    assert.equal(tileMatrixToSelection(matrix, bounds), matrix);
+});
+
+test("tileMatrixToSelection repeats a block when the selection is an exact multiple", () => {
+    const bounds = { minRowIndex: 0, maxRowIndex: 3, minColIndex: 0, maxColIndex: 1 };
+    assert.deepEqual(tileMatrixToSelection([["1", "2"], ["3", "4"]], bounds), [
+        ["1", "2"],
+        ["3", "4"],
+        ["1", "2"],
+        ["3", "4"]
+    ]);
+});
+
+test("tileMatrixToSelection does not stretch a block that does not divide the selection", () => {
+    const matrix = [["1", "2"], ["3", "4"]];
+    const bounds = { minRowIndex: 0, maxRowIndex: 2, minColIndex: 0, maxColIndex: 2 };
+    assert.equal(tileMatrixToSelection(matrix, bounds), matrix);
 });
 
 test("default toolbar exposes history, filter (auto), optional tree, and fullscreen", () => {
