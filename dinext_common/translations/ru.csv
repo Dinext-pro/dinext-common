@@ -120,7 +120,7 @@
 "Show Attention","Показывать требующие внимания",""
 "Attention Filter","Фильтр внимания",""
 "List Filter","Фильтр выборки",""
-"Standard Frappe filter JSON array, for example [[\"status\",\"=\",\"Open\"]]","Стандартный JSON-массив фильтров Frappe, например [[\"status\",\"=\",\"Open\"]]",""
+"Standard Frappe filter JSON array, for example [[""status"",""="",""Open""]]","Стандартный JSON-массив фильтров Frappe, например [[""status"",""="",""Open""]]",""
 "My Items","Мои элементы",""
 "Quick Create","Быстрое создание",""
 "Assigned to Me","Назначенные мне",""
