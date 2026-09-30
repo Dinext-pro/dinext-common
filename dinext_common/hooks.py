@@ -38,7 +38,6 @@ fixtures = [
         "doctype": "Server Script",
         "filters": [
             ["module", "=", "Dinext Common"],
-            ["disabled", "=", 0],
         ]
     },
     {
