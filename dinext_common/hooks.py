@@ -3,7 +3,7 @@ app_title = "Dinext Common"
 app_publisher = "Dinext"
 app_description = "Dinext Common"
 app_email = "info@dinext.ru"
-app_license = "mit"
+app_license = "GNU General Public License (v3)"
 app_logo_url  = "/assets/dinext_common/images/DI_SQ_NBG.png"
 app_icon = "/assets/dinext_common/images/DINEXT_FAVICON.ico"
 
@@ -38,7 +38,6 @@ fixtures = [
         "doctype": "Server Script",
         "filters": [
             ["module", "=", "Dinext Common"],
-            ["disabled", "=", 0],
         ]
     },
     {

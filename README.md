@@ -811,7 +811,7 @@ Python-тесты workspace, news feed, boot, CoA и Fixture Analysis лежат
 dinext_common/
 ├── AGENTS.md                         # Navigation stub → central dinext-docs
 ├── README.md                         # Этот документ
-├── license.txt                       # Лицензия MIT
+├── license.txt                       # Лицензия GPL-3
 ├── pyproject.toml                    # Метаданные пакета, Python и ruff
 ├── package.json                      # npm-скрипты тестов JS
 ├── .pre-commit-config.yaml           # Локальные проверки
@@ -959,4 +959,4 @@ flowchart LR
 
 ## 📜 Лицензия
 
-MIT. Текст — в [license.txt](license.txt).
+GNU GPL v3. Текст — в [license.txt](license.txt).
