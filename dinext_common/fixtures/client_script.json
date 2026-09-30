@@ -1,0 +1,35 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Contact",
+  "enabled": 1,
+  "modified": "2026-04-26 23:56:04.688853",
+  "module": "Dinext Common",
+  "name": "ContactDubbleEmail_2",
+  "script": "frappe.ui.form.on('Contact', {\r\n    refresh: function(frm) {\r\n        if (!frm.doc.__islocal) {\r\n            if (frm.doc.email_ids && frm.doc.email_ids.length > 0) {\r\n                frm.emailIdsOnLoad = frm.doc.email_ids.map(row => JSON.stringify(row));\r\n            }\r\n        }\r\n    },\r\n    before_save: function(frm) {\r\n        if (!frm.doc.__islocal) {\r\n            if (frm.doc.email_ids && frm.doc.email_ids.length > 0) {\r\n                frm.emailIdsOnLoad = frm.doc.email_ids.map(row => JSON.stringify(row));\r\n                checkForDuplicates(frm);\r\n            }\r\n        }\r\n    },\r\n    before_save: function(frm) {\r\n        if (frm.doc.email_ids && frm.doc.email_ids.length > 0) {\r\n            var currentEmailIds = frm.doc.email_ids.map(row => JSON.stringify(row));\r\n\r\n            if (frm.emailIdsOnLoad && JSON.stringify(frm.emailIdsOnLoad) !== JSON.stringify(currentEmailIds)) {\r\n                checkForDuplicates(frm);\r\n            }\r\n        }\r\n    }\r\n});\r\n\r\n\r\nfunction checkForDuplicates(frm) {\r\n    console.log('Проверка дублей по email');\r\n    var primaryEmailIds = frm.doc.email_ids.filter(function(row) {\r\n        return row.is_primary;\r\n    }).map(function(row) {\r\n        return row.email_id;\r\n    });\r\n\r\n    if (frm.doc.email_id && primaryEmailIds.includes(frm.doc.email_id)) {\r\n        primaryEmailIds.push(frm.doc.email_id);\r\n    }\r\n\r\n    frappe.call({\r\n        method: 'frappe.client.get_list',\r\n        args: {\r\n            doctype: 'Contact',\r\n            filters: {\r\n                email_id: ['in', primaryEmailIds]\r\n            },\r\n            fields: ['email_id', 'name'] // Добавлено поле name\r\n        },\r\n        callback: function(response) {\r\n            if (response.message && response.message.length > 0) {\r\n                var duplicates = response.message.filter(function(contact) {\r\n                    return primaryEmailIds.includes(contact.email_id);\r\n                });\r\n\r\n                if (duplicates.length > 0) {\r\n                    var messageParts = duplicates.map(function(contact) {\r\n                        return '<a href=\"/app/contact/' + contact.name + '\">' + contact.name + '</a> (электронный адрес: ' + contact.email_id + ')';\r\n                    });\r\n\r\n                    var message = __('Подтвердите создание дубля. Уже существуют данные: ') + messageParts.join(', ');\r\n                    \r\n                     frappe.confirm( message,\r\n                        () => {\r\n                            // action to perform if Yes is selected\r\n                            frm.save();\r\n                        }, () => {\r\n                            // action to perform if No is selected\r\n                        });\r\n                } else {\r\n                    frm.save();\r\n                }\r\n            }\r\n        }\r\n    });\r\n}\r\n",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Event",
+  "enabled": 1,
+  "modified": "2026-04-26 23:23:11.842370",
+  "module": "Dinext Common",
+  "name": "Event_Type",
+  "script": "frappe.ui.form.on('Event', {\n    event_type: function(frm) {\n        if (frm.doc.event_type == 'Public') {\n            frappe.confirm(__('Вы уверены, что хотите сохранить событие как общее? Общие события отображаются для всех пользователей системы.'),\n                () => {\n                    // action to perform if Yes is selected\n                }, () => {\n                    // action to perform if No is selected\n                    frm.set_value('event_type', 'Private');\n                });\n        }\n    }\n})",
+  "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Task",
+  "enabled": 1,
+  "modified": "2026-06-19 10:41:49.180056",
+  "module": "Dinext Common",
+  "name": "Utility-FormConflictMerge-Task",
+  "script": "// Managed By: ISS-2025-01286\n\nconst docType = \"Task\"\n\nfunction form_conflict_merge_install(frm) {\n\tif (!frm || frm.is_new() || frm.doctype !== docType) return;\n\n\tfrappe.require(\"/assets/dinext_common/js/form_conflict_merge.js\", () => {\n\t\tif (!window.dinext_common || !dinext_common.formConflictMerge) {\n\t\t\tconsole.error(\"FormConflictMerge: модуль не загружен\");\n\t\t\treturn;\n\t\t}\n\n\t\tdinext_common.formConflictMerge.install(frm, {\n\t\t\tfields: [],\n\t\t\tconflict_policy: \"server_wins\",\n\t\t\tapply_server_changes_on_realtime: true,\n\t\t\trefresh_docinfo_on_server_apply: true,\n\t\t\twatch_docinfo_keys: [\"assignments\", \"attachments\"],\n\t\t\tpoll_server_changes_interval_ms: 5000,\n\t\t\tdebug_log: true,\n\t\t\tstartup_warmup_ms: 0,\n\t\t});\n\t});\n}\n\nfrappe.ui.form.on(docType, {\n\tonload(frm) {\n\t\tform_conflict_merge_install(frm);\n\t},\n\trefresh(frm) {\n\t\tform_conflict_merge_install(frm);\n\t},\n});\n",
+  "view": "Form"
+ }
+]
