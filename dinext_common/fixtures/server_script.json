@@ -1,6 +1,25 @@
 [
  {
   "allow_guest": 0,
+  "api_method": null,
+  "cron_format": null,
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Server Script",
+  "doctype_event": "After Save",
+  "enable_rate_limit": 0,
+  "event_frequency": "All",
+  "modified": "2026-09-30 14:57:55.742050",
+  "module": "Dinext Common",
+  "name": "IssueAssignUserGroup",
+  "rate_limit_count": 5,
+  "rate_limit_seconds": 86400,
+  "reference_doctype": "ToDo",
+  "script": "if doc.reference_type == \"Issue\" and doc.status == 'Open':\r\n    user_groups = frappe.get_all(\"User Group\")\r\n\r\n    for user_group in user_groups:\r\n        group = frappe.get_doc(\"User Group\", user_group.name)\r\n        for user_group_member in group.user_group_members:\r\n            if user_group_member.user == doc.allocated_to:\r\n                issue = frappe.get_doc(\"Issue\", doc.reference_name)\r\n                \r\n                # Проверяем, есть ли уже такая группа в custom_z_user_group\r\n                group_exists = False\r\n                for custom_z_user_group_row in issue.custom_z_user_group:\r\n                    if custom_z_user_group_row.user_group == user_group.name:\r\n                        group_exists = True\r\n                        break\r\n\r\n                if not group_exists:\r\n                    custom_z_user_group_row = issue.append(\"custom_z_user_group\", {})\r\n                    custom_z_user_group_row.user_group = user_group.name\r\n                    issue.custom_is_new = False\r\n                    issue.save()\r\n                    issue.reload()\r\n                    \r\n                    # Отправляем сообщение о успешном обновлении\r\n                    #issue.notify_update()\r\n                    #frappe.publish_realtime('new_data', user=frappe.session.user)\r\n\r\n\r\n                    # Отправляем сообщение на клиентскую сторону\r\n                    #frappe.msgprint(\"Форма Issue была успешно обновлена\")\r\n\r\nif doc.reference_type == \"Issue\" and (doc.status == 'Cancelled' or doc.status == 'Closed'):\r\n    user_groups = frappe.get_all(\"User Group\")\r\n\r\n    # Получаем всех открытых ToDo, связанных с текущим Issue\r\n    open_todos = frappe.get_all(\"ToDo\", filters={\r\n        \"reference_type\": \"Issue\",\r\n        \"reference_name\": doc.reference_name,\r\n        \"status\": \"Open\"\r\n    }, fields=[\"name\", \"allocated_to\"])  # Указываем необходимые поля\r\n\r\n    # Отладочное сообщение для вывода списка open_todos\r\n    print(f\"Список открытых ToDo: {open_todos}\")  # Отладочное сообщение\r\n\r\n    # Сохраняем пользователей, у которых есть открытые ToDo\r\n    users_with_open_todos = {todo.get('allocated_to') for todo in open_todos if todo.get('allocated_to')}\r\n    print(f\"Пользователи с открытыми ToDo: {users_with_open_todos}\")\r\n\r\n    for user_group in user_groups:\r\n        group = frappe.get_doc(\"User Group\", user_group.name)\r\n\r\n        # Проверяем, есть ли в группе пользователи с открытыми ToDo\r\n        group_has_open_todo = False\r\n        for user_group_member in group.user_group_members:\r\n            if user_group_member.user in users_with_open_todos:\r\n                group_has_open_todo = True\r\n                break\r\n\r\n        # Если открытых ToDo нет, удаляем группу из custom_z_user_group\r\n        if not group_has_open_todo:\r\n            issue = frappe.get_doc(\"Issue\", doc.reference_name)\r\n\r\n            # Проверяем, есть ли уже такая группа в custom_z_user_group\r\n            group_exists = False\r\n            for custom_z_user_group_row in issue.custom_z_user_group:\r\n                if custom_z_user_group_row.user_group == user_group.name:\r\n                    group_exists = True\r\n                    issue.custom_z_user_group.remove(custom_z_user_group_row)\r\n                    break\r\n\r\n            if group_exists:\r\n                issue.save()\r\n                issue.reload()\r\n",
+  "script_type": "DocType Event"
+ },
+ {
+  "allow_guest": 0,
   "api_method": "Get_my_completed_WT",
   "cron_format": null,
   "disabled": 0,
