@@ -202,6 +202,7 @@ Domain: что видно в FS — через `shell` + CSS hide siblings, не
 | `toolbar.enabled` | `true` | Command toolbar |
 | `toolbar.defaultPinned` | `true` | Панель видна сразу (pin) |
 | `toolbar.persistKey` | `null` | localStorage UI per table: pin + filter (`dinext-table:toolbar:${key}`) |
+| `columnWidth.persist` | `true` | Ширина колонок между сессиями. Ключ сущности: `columnWidth.persistKey` или `toolbar.persistKey` до первого `:`. Storage `dinext-table:columns:${entity}`. Без ключа не пишется. `false` — домен сам считает ширину |
 | `toolbar.presets` | `history/tree/fullscreen` | Filter icon auto при `filter.enabled`; opt-in: `"rows"`, `"clipboard"` |
 | `toolbar.items` | `[]` | Domain zone (между presets и fullscreen): button / checkbox / separator / **custom** |
 

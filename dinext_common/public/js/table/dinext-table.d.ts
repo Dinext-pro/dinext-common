@@ -248,6 +248,23 @@ export interface DinextTableCoreOptions {
 }
 
 /**
+ * Column width snapshot. Default on when an entity key exists.
+ * Storage: `dinext-table:columns:${entity}` → `{ colId: px }`.
+ * Entity: `columnWidth.persistKey`, else `toolbar.persistKey` before the first `:`.
+ * Pin/filter stay on the document key. `rowCheck` / `rowReorder` are not stored.
+ * Saved px drop `flex` on that column.
+ * @layer columnWidth
+ */
+export interface DinextTableColumnWidthOptions {
+    columnWidth?: {
+        /** Default true. `false` — domain calculates widths (timesheet). */
+        persist?: boolean;
+        /** Entity id. Omit to derive from `toolbar.persistKey`. */
+        persistKey?: string;
+    };
+}
+
+/**
  * Runtime policy for declared `columns[].pinned: "right"`.
  * Does not mutate `options.columns[].pinned`.
  * @layer pinEnd
@@ -872,6 +889,7 @@ export interface DinextTableCreateOptions
         DinextTableSelectionStatusOptions,
         DinextTableToolbarOptions,
         DinextTableFullscreenOptions,
+        DinextTableColumnWidthOptions,
         DinextTablePinEndOptions,
         DinextTableLayoutOptions,
         DinextTableCallbackOptions,

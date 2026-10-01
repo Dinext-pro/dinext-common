@@ -16,6 +16,7 @@ import { RowCheckMixin } from "./row-check/mixin.js";
 import { ToolbarMixin } from "./toolbar/mixin.js";
 import { FullscreenMixin } from "./toolbar/fullscreen.js";
 import { PinEndMixin } from "./pin-end.js";
+import { ColumnWidthMixin } from "./column-width/mixin.js";
 import { ScrollMixin } from "./scroll/mixin.js";
 import { GridMixin } from "./grid.js";
 import { LayoutMixin } from "./layout.js";
@@ -126,6 +127,7 @@ class DinextTable extends composeMixins(
     FullscreenMixin,
     ToolbarMixin,
     PinEndMixin,
+    ColumnWidthMixin,
     ScrollMixin,
     GridMixin,
     LayoutMixin
