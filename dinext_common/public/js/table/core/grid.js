@@ -31,6 +31,7 @@ export const GridMixin = (Base) => class extends Base {
             this.buildRowReorderGridOptions?.(),
             this.buildRowCheckGridOptions?.(),
             this.buildPinEndGridOptions?.(),
+            this.buildColumnWidthGridOptions?.(),
             this.buildScrollGridOptions?.(),
             this.buildLayoutGridOptions?.(),
             this.buildChromeGridOptions()
