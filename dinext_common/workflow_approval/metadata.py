@@ -448,49 +448,6 @@ def ensure_workflow_approval_desk_records() -> None:
 				"private": 0,
 			}
 		).insert(ignore_permissions=True)
-	_ensure_public_widget_read()
-
-
-def _ensure_public_widget_read() -> None:
-	"""Let the approver role read standard cards when it has no Desk User perm."""
-	role = "Dinext_UTP_Appoval"
-	if not frappe.db.exists("Role", role):
-		return
-	for doctype in ("Number Card", "Custom HTML Block"):
-		if _role_can_read(doctype, role):
-			continue
-		frappe.get_doc(
-			{
-				"doctype": "Custom DocPerm",
-				"parent": doctype,
-				"role": role,
-				"permlevel": 0,
-				"read": 1,
-				"select": 1,
-				"write": 0,
-				"create": 0,
-				"delete": 0,
-				"submit": 0,
-				"cancel": 0,
-				"amend": 0,
-				"report": 0,
-				"export": 0,
-				"print": 0,
-				"email": 0,
-				"share": 0,
-				"if_owner": 0,
-			}
-		).insert(ignore_permissions=True)
-
-
-def _role_can_read(doctype: str, role: str) -> bool:
-	for table in ("DocPerm", "Custom DocPerm"):
-		if frappe.db.exists(
-			table,
-			{"parent": doctype, "role": role, "permlevel": 0, "read": 1},
-		):
-			return True
-	return False
 
 
 def ensure_transition_identity() -> None:
