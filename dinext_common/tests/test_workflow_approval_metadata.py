@@ -264,15 +264,12 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 		self.assertEqual(len(approver_project), 1)
 		self.assertEqual(approver_project[0]["read"], 1)
 		self.assertEqual(approver_project[0]["write"], 0)
-		for parent in ("Number Card", "Custom HTML Block"):
-			widget = [
-				row
-				for row in project_perm
-				if row.get("parent") == parent and row.get("role") == "Dinext_UTP_Appoval"
-			]
-			self.assertEqual(len(widget), 1)
-			self.assertEqual(widget[0]["read"], 1)
-			self.assertEqual(widget[0]["write"], 0)
+		# Any Custom DocPerm on a widget DocType replaces its standard Desk User read for everyone.
+		widget_perms = [
+			row for row in project_perm if row.get("parent") in ("Number Card", "Custom HTML Block")
+		]
+		self.assertEqual(widget_perms, [])
+		self.assertNotIn('"doctype": "Custom DocPerm"', metadata_source)
 
 	def test_workflow_validation_requires_minimum_and_daily_schedule(self):
 		metadata = self.metadata()
