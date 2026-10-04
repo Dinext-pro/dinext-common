@@ -1,0 +1,126 @@
+/* Public font files used by dinext.ru. */
+@font-face {
+  font-family: "Tilda Sans";
+  src: url("https://static.tildacdn.com/fonts/tildasans/TildaSans-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Tilda Sans";
+  src: url("https://static.tildacdn.com/fonts/tildasans/TildaSans-Semibold.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+}
+
+/* The existing Frappe login route keeps its form and handlers. */
+body[data-path="login"] > nav.navbar {
+	min-height: 84px;
+	padding: 0;
+	border-bottom: 1px solid #252b4915;
+	background: #f8f7fc !important;
+}
+
+body[data-path="login"] > nav.navbar > .container {
+	width: min(100% - 96px, 1220px);
+	max-width: none;
+	min-height: 84px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0;
+}
+
+body[data-path="login"] > nav.navbar .navbar-brand {
+	flex: none;
+	margin: 0;
+	padding: 0;
+}
+
+body[data-path="login"] > nav.navbar .navbar-brand img {
+	display: block;
+	width: 164px !important;
+	height: auto !important;
+	max-width: none !important;
+	max-height: none !important;
+}
+
+body[data-path="login"] > nav.navbar .navbar-collapse {
+	display: flex !important;
+	flex-basis: auto;
+	flex-grow: 0;
+}
+
+body[data-path="login"] > nav.navbar .navbar-nav {
+	flex-direction: row;
+	align-items: center;
+	gap: 28px;
+}
+
+body[data-path="login"] > nav.navbar .navbar-toggler {
+	display: none !important;
+}
+
+body[data-path="login"] > nav.navbar .nav-link {
+	padding: 12px 0;
+	color: #252b49 !important;
+	font-family: "Tilda Sans", "Segoe UI", Arial, sans-serif;
+	font-size: 15px;
+	font-weight: 650;
+}
+
+body[data-path="login"] > nav.navbar .nav-item:last-child .nav-link {
+	padding: 11px 20px;
+	border: 1px solid #252b4938;
+	border-radius: 999px;
+}
+
+body[data-path="login"] > nav.navbar .nav-link:hover {
+	color: #805795 !important;
+}
+
+body[data-path="login"] > nav.navbar .nav-item:last-child .nav-link:hover {
+	background: #ebe6f4;
+	border-color: #805795;
+}
+
+body[data-path="login"] > nav.navbar a:focus-visible {
+	outline: 3px solid #b1325c;
+	outline-offset: 5px;
+	border-radius: 5px;
+}
+
+@media (max-width: 560px) {
+	body[data-path="login"] > nav.navbar,
+	body[data-path="login"] > nav.navbar > .container {
+		min-height: 68px;
+	}
+
+	body[data-path="login"] > nav.navbar > .container {
+		width: calc(100% - 40px);
+	}
+
+	body[data-path="login"] > nav.navbar .navbar-brand img {
+		width: 135px !important;
+	}
+
+	body[data-path="login"] > nav.navbar .navbar-nav .nav-item:first-child {
+		display: none;
+	}
+
+	body[data-path="login"] > nav.navbar .nav-item:last-child .nav-link {
+		padding: 9px 14px;
+		font-size: 14px;
+	}
+}
+
+@media (max-width: 340px) {
+	body[data-path="login"] > nav.navbar > .container {
+		width: calc(100% - 32px);
+	}
+
+	body[data-path="login"] > nav.navbar .navbar-brand img {
+		width: 122px !important;
+	}
+}
