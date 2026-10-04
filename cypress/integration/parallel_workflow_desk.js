@@ -129,7 +129,16 @@ context("parallel workflow desk", () => {
 				expect(title.color).to.not.eq(box.backgroundColor);
 			});
 		});
-		cy.get(".dinext-my-approvals", { timeout: 60000 }).should("contain", "Cypress queue");
+		cy.get(".dashboard-widget-box .widget-title", { timeout: 120000 }).should(($title) => {
+			const text = ($title.text() || "").trim();
+			expect(text).to.match(
+				/Pending approvals by document type|Ожидающие согласования по типам документов/
+			);
+		});
+		cy.get(".shortcut-widget-box", { timeout: 60000 }).should("have.length", 3);
+		cy.contains(".shortcut-widget-box", /My Approvals|Моя очередь/).click();
+		cy.location("pathname", { timeout: 60000 }).should("include", "query-report");
+		cy.contains("Cypress queue", { timeout: 120000 }).should("be.visible");
 		cy.noPermissionDialog();
 	});
 
