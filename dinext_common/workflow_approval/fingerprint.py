@@ -89,6 +89,10 @@ def _decimal_text(value: Decimal) -> str:
 
 
 def _canonical_child(value: object) -> object:
+	if not isinstance(value, (dict, list, tuple)):
+		as_dict = getattr(value, "as_dict", None)
+		if callable(as_dict):
+			value = as_dict()
 	if isinstance(value, dict):
 		return {
 			str(key): _canonical_child(item)
