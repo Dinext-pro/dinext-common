@@ -1,0 +1,17 @@
+[
+ {
+  "chart_name": "Pending approvals by document type",
+  "chart_type": "Report",
+  "docstatus": 0,
+  "doctype": "Dashboard Chart",
+  "filters_json": "{}",
+  "is_public": 1,
+  "is_standard": 1,
+  "module": "Dinext Common",
+  "name": "Pending approvals by document type",
+  "report_name": "My Approvals",
+  "timeseries": 0,
+  "type": "Bar",
+  "use_report_chart": 1
+ }
+]

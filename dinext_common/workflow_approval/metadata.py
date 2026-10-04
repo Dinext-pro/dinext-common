@@ -297,8 +297,15 @@ def ensure_workflow_approval_email_templates() -> None:
 		).insert(ignore_permissions=True)
 
 
+CHART_NAME = "Pending approvals by document type"
+QUEUE_SHORTCUT = "My Approvals"
+HISTORY_SHORTCUT = "My Approval History"
+MONITORING_SHORTCUT = "Approval Monitoring"
+OBSOLETE_APPROVALS_BLOCK = "My Approvals Dashboard"
+
+
 def ensure_workflow_approval_desk_records() -> None:
-	"""Install standard cards and the source-aware Workspace dashboard block."""
+	"""Install personal cards, the queue chart, and report shortcuts."""
 	cards = {
 		"My open approvals": (
 			"Ожидают моего решения",
@@ -354,56 +361,14 @@ def ensure_workflow_approval_desk_records() -> None:
 		if frappe.db.exists("Number Card", obsolete):
 			frappe.delete_doc("Number Card", obsolete, ignore_permissions=True)
 
+	_ensure_pending_approvals_chart()
+
 	workspace_name = "Мои согласования"
 	if frappe.db.exists("Workspace", workspace_name):
 		workspace = frappe.get_doc("Workspace", workspace_name)
-		workspace.content = json.dumps(
-			[
-				{
-					"id": "approvals-header",
-					"type": "header",
-					"data": {
-						"text": '<span class="h4">Мои согласования</span>',
-						"col": 12,
-					},
-				},
-				{
-					"id": "approvals-open",
-					"type": "number_card",
-					"data": {"number_card_name": "My open approvals", "col": 3},
-				},
-				{
-					"id": "approvals-new",
-					"type": "number_card",
-					"data": {"number_card_name": "Новые сегодня", "col": 3},
-				},
-				{
-					"id": "approvals-completed",
-					"type": "number_card",
-					"data": {"number_card_name": "My completed approvals", "col": 3},
-				},
-				{
-					"id": "approvals-automatic",
-					"type": "number_card",
-					"data": {
-						"number_card_name": "Автоматически выполнено за 30 дней",
-						"col": 3,
-					},
-				},
-				{"id": "approvals-spacer", "type": "spacer", "data": {"col": 12}},
-				{
-					"id": "approvals-dashboard",
-					"type": "custom_block",
-					"data": {
-						"custom_block_name": "My Approvals Dashboard",
-						"col": 12,
-					},
-				},
-			],
-			ensure_ascii=False,
-		)
+		workspace.content = json.dumps(_approvals_workspace_content(), ensure_ascii=False)
 		workspace.number_cards = []
-		# EditorJS matches a block by child label against __(number_card_name).
+		# EditorJS matches a block by child label against __(name in content).
 		for card_name in (
 			"My open approvals",
 			"Новые сегодня",
@@ -414,40 +379,114 @@ def ensure_workflow_approval_desk_records() -> None:
 				"number_cards",
 				{"label": card_name, "number_card_name": card_name},
 			)
-		workspace.custom_blocks = []
+		workspace.charts = []
 		workspace.append(
-			"custom_blocks",
-			{
-				"custom_block_name": "My Approvals Dashboard",
-				"label": "My Approvals Dashboard",
-			},
+			"charts",
+			{"label": CHART_NAME, "chart_name": CHART_NAME},
 		)
+		workspace.shortcuts = []
+		for shortcut_name in (
+			QUEUE_SHORTCUT,
+			HISTORY_SHORTCUT,
+			MONITORING_SHORTCUT,
+		):
+			workspace.append(
+				"shortcuts",
+				{
+					"label": shortcut_name,
+					"link_to": shortcut_name,
+					"type": "Report",
+				},
+			)
+		workspace.custom_blocks = []
 		workspace.save(ignore_permissions=True)
 
-	block_name = "My Approvals Dashboard"
-	block_script = (
-		'frappe.require(["/assets/dinext_common/js/my_approvals_workspace.js"], () => {\n'
-		"\tdinext_common.my_approvals.mount(root_element);\n"
-		"});\n"
-	)
-	block_html = '<div class="dinext-my-approvals"></div>'
-	if frappe.db.exists("Custom HTML Block", block_name):
-		block = frappe.get_doc("Custom HTML Block", block_name)
-		block.html = block_html
-		block.script = block_script
-		block.private = 0
-		block.save(ignore_permissions=True)
-	else:
-		frappe.get_doc(
-			{
-				"doctype": "Custom HTML Block",
-				"name": block_name,
-				"html": block_html,
-				"script": block_script,
-				"style": "",
-				"private": 0,
-			}
-		).insert(ignore_permissions=True)
+	if frappe.db.exists("Custom HTML Block", OBSOLETE_APPROVALS_BLOCK):
+		frappe.delete_doc(
+			"Custom HTML Block",
+			OBSOLETE_APPROVALS_BLOCK,
+			ignore_permissions=True,
+			force=True,
+		)
+
+
+def _ensure_pending_approvals_chart() -> None:
+	values = {
+		"chart_name": CHART_NAME,
+		"chart_type": "Report",
+		"report_name": QUEUE_SHORTCUT,
+		"use_report_chart": 1,
+		"type": "Bar",
+		"filters_json": "{}",
+		"is_public": 1,
+		"is_standard": 1,
+		"module": "Dinext Common",
+		"timeseries": 0,
+	}
+	if frappe.db.exists("Dashboard Chart", CHART_NAME):
+		frappe.db.set_value("Dashboard Chart", CHART_NAME, values, update_modified=False)
+		return
+	chart = frappe.get_doc({"doctype": "Dashboard Chart", "name": CHART_NAME, **values})
+	chart.flags.ignore_validate = True
+	chart.insert(ignore_permissions=True)
+
+
+def _approvals_workspace_content() -> list[dict]:
+	return [
+		{
+			"id": "approvals-header",
+			"type": "header",
+			"data": {
+				"text": '<span class="h4">Мои согласования</span>',
+				"col": 12,
+			},
+		},
+		{
+			"id": "approvals-open",
+			"type": "number_card",
+			"data": {"number_card_name": "My open approvals", "col": 3},
+		},
+		{
+			"id": "approvals-new",
+			"type": "number_card",
+			"data": {"number_card_name": "Новые сегодня", "col": 3},
+		},
+		{
+			"id": "approvals-completed",
+			"type": "number_card",
+			"data": {"number_card_name": "My completed approvals", "col": 3},
+		},
+		{
+			"id": "approvals-automatic",
+			"type": "number_card",
+			"data": {
+				"number_card_name": "Автоматически выполнено за 30 дней",
+				"col": 3,
+			},
+		},
+		{"id": "approvals-spacer", "type": "spacer", "data": {"col": 12}},
+		{
+			"id": "approvals-by-doctype",
+			"type": "chart",
+			"data": {"chart_name": CHART_NAME, "col": 12},
+		},
+		{"id": "approvals-reports-spacer", "type": "spacer", "data": {"col": 12}},
+		{
+			"id": "approvals-queue",
+			"type": "shortcut",
+			"data": {"shortcut_name": QUEUE_SHORTCUT, "col": 4},
+		},
+		{
+			"id": "approvals-history",
+			"type": "shortcut",
+			"data": {"shortcut_name": HISTORY_SHORTCUT, "col": 4},
+		},
+		{
+			"id": "approvals-monitoring",
+			"type": "shortcut",
+			"data": {"shortcut_name": MONITORING_SHORTCUT, "col": 4},
+		},
+	]
 
 
 def ensure_transition_identity() -> None:

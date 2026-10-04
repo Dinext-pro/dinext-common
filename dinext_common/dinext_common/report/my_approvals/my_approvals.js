@@ -4,6 +4,7 @@ frappe.query_reports["My Approvals"] = {
 	},
 
 	onload(report) {
+		if (!report.page) return;
 		report.page.add_inner_button(__("Apply selected"), async () => {
 			const indexes = report.datatable.rowmanager.getCheckedRows();
 			const rows = indexes.map((index) => report.data[index]).filter(Boolean);

@@ -233,7 +233,11 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 		)
 		metadata_source = (APP_ROOT / "workflow_approval" / "metadata.py").read_text()
 		self.assertIn('{"label": card_name, "number_card_name": card_name}', metadata_source)
-		self.assertIn('"label": "My Approvals Dashboard"', metadata_source)
+		self.assertIn('{"label": CHART_NAME, "chart_name": CHART_NAME}', metadata_source)
+		self.assertIn('"type": "chart"', metadata_source)
+		self.assertIn('"shortcut_name": QUEUE_SHORTCUT', metadata_source)
+		self.assertNotIn("custom_block_name", metadata_source)
+		self.assertNotIn("my_approvals_workspace.js", metadata_source)
 		self.assertNotIn('"Требуют решения"', metadata_source)
 		form_script = (
 			Path(__file__).resolve().parents[3]

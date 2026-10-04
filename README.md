@@ -536,10 +536,11 @@ commit.
 
 Workspace **«Мои согласования»** (`/app/мои-согласования`) показывает карточки
 `My open approvals`, `Новые сегодня`, `My completed approvals`,
-`Автоматически выполнено за 30 дней` и блок `My Approvals Dashboard`.
-Desk-записи (карточки, блок, workspace, Email Template) создаёт патч
-`generalize_parallel_workflow_approvals`, а не `after_install`. Карточку хаба
-«Мои согласования» регистрирует `configure_workspace_menu`.
+`Автоматически выполнено за 30 дней`, график `Pending approvals by document type`
+по отчёту `My Approvals` и ярлыки на `My Approvals`, `My Approval History`,
+`Approval Monitoring`. Desk-записи (карточки, график, workspace, Email Template)
+создаёт `ensure_workflow_approval_desk_records` на migrate, а не `after_install`.
+Карточку хаба «Мои согласования» регистрирует `configure_workspace_menu`.
 
 Отчёты модуля Dinext Common:
 

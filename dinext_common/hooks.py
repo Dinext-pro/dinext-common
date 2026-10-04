@@ -69,12 +69,19 @@ fixtures = [
         ]
     },
     {
+        "doctype": "Dashboard Chart",
+        "filters": [
+            ["name", "in", [
+                "Pending approvals by document type",
+            ]]
+        ]
+    },
+    {
         "doctype": "Custom HTML Block",
         "filters": [
             ["name", "in", [
                 "Dinext Hub",
                 "Dinext Settings Hub",
-                "My Approvals Dashboard",
             ]]
         ]
     }
