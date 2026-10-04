@@ -94,7 +94,7 @@ boot_session = ["dinext_common.apps.configure_boot_app_filter"]
 update_website_context = ["dinext_common.apps.update_website_context"]
 
 # include js, css files in header of web template
-# web_include_css = "/assets/dinext_common/css/common.css"
+web_include_css = ["/assets/dinext_common/css/public_auth_header.css"]
 # web_include_js = "/assets/dinext_common/js/dinext_common.js"
 
 # include custom scss in every website theme (without file extension ".scss")
