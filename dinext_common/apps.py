@@ -58,9 +58,23 @@ def configure_boot_app_filter(bootinfo) -> None:
 
 
 def update_website_context(context: Any) -> None:
-	"""Filter the app launchers supplied to Frappe's server-rendered Apps page."""
+	"""Filter app launchers and present guest login navigation."""
 	if apps := context.get("apps"):
 		context["apps"] = filter_hidden_apps(apps)
+
+	request = getattr(frappe.local, "request", None)
+	if not request or request.path.rstrip("/") != "/login":
+		return
+
+	context["brand_html"] = '<img src="/assets/dinext_common/images/dinext.png" alt="Dinext">'
+	items = list(context.get("top_bar_items") or [])
+	for label, url in (
+		("Документация", "https://docs.dinext.ru"),
+		("На главную", "/homepage"),  # noqa: RUF001 -- Cyrillic navigation label
+	):
+		if not any(item.get("url") == url for item in items):
+			items.append(frappe._dict(label=label, url=url, right=1))
+	context["top_bar_items"] = items
 
 
 def needs_dinext_default_app(default_app: str | None) -> bool:
