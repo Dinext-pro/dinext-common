@@ -11,7 +11,7 @@
  "is_standard": 1,
  "label": "\u041e\u0436\u0438\u0434\u0430\u044e\u0442 \u043c\u043e\u0435\u0433\u043e \u0440\u0435\u0448\u0435\u043d\u0438\u044f",
  "method": "dinext_common.workflow_approval.api.open_approval_count",
- "modified": "2026-09-22 23:33:25.654853",
+ "modified": "2026-10-04 23:20:45.792829",
  "modified_by": "Administrator",
  "module": "Dinext Common",
  "name": "My open approvals",

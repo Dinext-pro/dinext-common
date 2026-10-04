@@ -144,6 +144,29 @@ class TestWorkflowApprovalFingerprint(unittest.TestCase):
 			fingerprint.fingerprint_document(edited, self.fields()).digest,
 		)
 
+	def test_child_documents_ignore_recreated_row_names(self):
+		class Row:
+			def __init__(self, payload):
+				self.payload = payload
+
+			def as_dict(self):
+				return self.payload
+
+		fingerprint = self.fingerprint()
+		base = fingerprint.fingerprint_document(self.document(), self.fields())
+		recreated = {
+			**self.document(),
+			"rows": [
+				Row({"name": "OTHER-1", "idx": 3, "description": "First", "hours": Decimal("1.5")}),
+				Row({"name": "OTHER-2", "idx": 4, "description": "Second", "hours": Decimal("2")}),
+			],
+		}
+
+		self.assertEqual(
+			base.digest,
+			fingerprint.fingerprint_document(recreated, self.fields()).digest,
+		)
+
 	def test_metadata_field_addition_is_fail_closed(self):
 		fingerprint = self.fingerprint()
 		base = fingerprint.fingerprint_document(self.document(), self.fields())
