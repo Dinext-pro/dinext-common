@@ -25,7 +25,7 @@ fixtures = [
     {
         "doctype": "Web Page",
         "filters": [
-            ["module", "in", ["Dinext Common"]],       
+            ["module", "in", ["Dinext Common"]],
         ]
     },
     {
@@ -203,6 +203,7 @@ has_permission = {
 # Override standard doctype classes
 
 override_doctype_class = {
+	"Scheduled Job Type": "dinext_common.overrides.scheduled_job_type.DinextScheduledJobType",
 	"Company": "dinext_common.setup.company.DinextCompany",
 }
 
