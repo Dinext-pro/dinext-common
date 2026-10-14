@@ -538,7 +538,13 @@ Workspace **«Мои согласования»** (`/app/мои-согласов
 `My open approvals`, `Новые сегодня`, `My completed approvals`,
 `Автоматически выполнено за 30 дней`, график `Pending approvals by document type`
 по отчёту `My Approvals` и ярлыки на `My Approvals`, `My Approval History`,
-`Approval Monitoring`. Desk-записи (карточки, график, workspace, Email Template)
+`Approval Monitoring`. Ниже зона **Контроль**: карточки открытых раундов, сбоев,
+самого долгого ожидания и ручных решений за 30 дней, графики
+`Open tasks by approver`, `Open task age by approver`,
+`Open rounds by document type`, `Approval duration by document type`
+и ярлыки `Approval Load`, `Approval Duration`. Цифры контроля видны только
+по Workflow, которые пользователь наблюдает, и по документам, которые он
+может читать. Desk-записи (карточки, график, workspace, Email Template)
 создаёт `ensure_workflow_approval_desk_records` на migrate, а не `after_install`.
 Карточку хаба «Мои согласования» регистрирует `configure_workspace_menu`.
 
@@ -546,7 +552,9 @@ Workspace **«Мои согласования»** (`/app/мои-согласов
 
 - `My Approvals` — персональная очередь;
 - `My Approval History` — история решений;
-- `Approval Monitoring` — контроль раундов для ролей мониторинга.
+- `Approval Monitoring` — контроль раундов для ролей мониторинга;
+- `Approval Load` — открытые задачи по согласующим;
+- `Approval Duration` — ручные сроки и открытые раунды по группе.
 
 Ключевые whitelist (`dinext_common.workflow_approval.api`):
 
@@ -556,7 +564,10 @@ Workspace **«Мои согласования»** (`/app/мои-согласов
   `get_pending_approvers`, `get_transitions`, `get_common_transition_actions`;
 - `open_approval_count`, `new_approval_count`, `completed_approval_count`,
   `automatic_approval_count`, `attention_approval_count`,
-  `get_approval_dashboard`, `get_legacy_number_card_result`;
+  `get_approval_dashboard`, `get_legacy_number_card_result`,
+  `open_control_round_count`, `attention_control_round_count`,
+  `longest_control_wait`, `control_decision_count`,
+  `get_monitored_tasks`;
 - `reset_round`, `retry_finalization` (System Manager).
 
 Email Template по умолчанию (если у Workflow нет своего):

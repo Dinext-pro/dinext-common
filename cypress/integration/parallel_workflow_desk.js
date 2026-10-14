@@ -118,9 +118,9 @@ context("parallel workflow desk", () => {
 		asApprover();
 		cy.visit(`/app/${encodeURIComponent("мои-согласования")}`);
 		cy.document().its("documentElement").invoke("attr", "data-theme").should("match", /dark/i);
-		cy.get(".number-widget-box", { timeout: 120000 }).should("have.length", 4);
+		cy.get(".number-widget-box", { timeout: 120000 }).should("have.length", 8);
 		cy.get(".number-widget-box .widget-title", { timeout: 120000 }).should(($titles) => {
-			expect($titles).to.have.length(4);
+			expect($titles).to.have.length(8);
 			$titles.each((_, el) => {
 				const view = el.ownerDocument.defaultView;
 				const title = view.getComputedStyle(el);
@@ -129,16 +129,38 @@ context("parallel workflow desk", () => {
 				expect(title.color).to.not.eq(box.backgroundColor);
 			});
 		});
-		cy.get(".dashboard-widget-box .widget-title", { timeout: 120000 }).should(($title) => {
-			const text = ($title.text() || "").trim();
+		cy.get(".dashboard-widget-box .widget-title", { timeout: 120000 }).should(($titles) => {
+			const text = $titles.text();
 			expect(text).to.match(
 				/Pending approvals by document type|Ожидающие согласования по типам документов/
 			);
+			expect(text).to.match(/Open tasks by approver|Открытые задачи по согласующим/);
+			expect(text).to.match(
+				/Approval duration by document type|Срок согласования по видам документов/
+			);
 		});
-		cy.get(".shortcut-widget-box", { timeout: 60000 }).should("have.length", 3);
+		cy.contains(".h4", "Контроль").should("be.visible");
+		cy.get(".shortcut-widget-box", { timeout: 60000 }).should("have.length", 5);
 		cy.contains(".shortcut-widget-box", /My Approvals|Моя очередь/).click();
 		cy.location("pathname", { timeout: 60000 }).should("include", "query-report");
 		cy.contains("Cypress queue", { timeout: 120000 }).should("be.visible");
+		cy.noPermissionDialog();
+	});
+
+	it("Control zone opens the approver load report", () => {
+		asApprover();
+		cy.visit(`/app/${encodeURIComponent("мои-согласования")}`);
+		cy.contains(".h4", "Контроль", { timeout: 120000 }).should("be.visible");
+		cy.contains(".number-widget-box", /Открытые раунды|Open approval rounds/).should(
+			"be.visible"
+		);
+		cy.contains(
+			".dashboard-widget-box",
+			/Open task age by approver|Возраст открытых задач по согласующим/
+		).should("be.visible");
+		cy.contains(".shortcut-widget-box", /Approval Load|Нагрузка согласующих/).click();
+		cy.location("pathname", { timeout: 60000 }).should("include", "query-report");
+		cy.contains(/Approval Load|Нагрузка согласующих/).should("be.visible");
 		cy.noPermissionDialog();
 	});
 
@@ -152,11 +174,17 @@ context("parallel workflow desk", () => {
 		cy.visit(`/app/application-for-leave/${encodeURIComponent(fixture.leave)}`);
 		cy.get(".dinext-pending-approvers", { timeout: 60000 }).should("contain", fixture.approver_name);
 		cy.visit(`/app/user-timesheet/${encodeURIComponent(fixture.timesheet)}`);
-		cy.get(".dinext-pending-approvers", { timeout: 60000 })
-			.should("contain", fixture.approver_name)
-			.and("contain", fixture.approver_b_name);
+		cy.get(".form-message.blue", { timeout: 60000 }).should(($el) => {
+			const text = $el.text();
+			expect(
+				text.includes("Action expected from") || text.includes("Ожидается действие от")
+			).to.eq(true);
+			expect(text).to.include(fixture.approver_b_name);
+			expect(text).to.not.include(fixture.approver_name);
+		});
+		cy.get(".dinext-pending-approvers").should("not.exist");
 		cy.reload();
-		cy.get(".dinext-pending-approvers", { timeout: 60000 }).should("contain", fixture.approver_name);
+		cy.get(".form-message.blue", { timeout: 60000 }).should("contain", fixture.approver_b_name);
 		cy.noPermissionDialog();
 	});
 
@@ -211,8 +239,9 @@ context("parallel workflow desk", () => {
 		const fixture = load();
 		asApprover();
 		cy.visit(`/app/user-timesheet/${encodeURIComponent(fixture.timesheet)}`);
-		cy.get(".dinext-pending-approvers", { timeout: 60000 }).should("contain", fixture.approver_name);
-		cy.get(".dinext-utp-action-select, .actions-btn-group, .dinext-pending-approvers").should("exist");
+		cy.get(".form-message.blue", { timeout: 60000 }).should("contain", fixture.approver_b_name);
+		cy.get(".dinext-pending-approvers").should("not.exist");
+		cy.get(".dinext-utp-action-select, .actions-btn-group").should("exist");
 		cy.noPermissionDialog();
 		cy.contains("Holiday List").should("not.exist");
 	});
@@ -256,7 +285,8 @@ context("parallel workflow desk", () => {
 		});
 		cy.get(".dinext-utp-action-select", { timeout: 60000 }).should("exist");
 		cy.visit(`/app/user-timesheet/${encodeURIComponent(fixture.timesheet)}`);
-		cy.get(".dinext-pending-approvers", { timeout: 60000 }).should("exist");
+		cy.get(".form-message.blue", { timeout: 60000 }).should("contain", fixture.approver_b_name);
+		cy.get(".dinext-pending-approvers").should("not.exist");
 		cy.noPermissionDialog();
 	});
 });

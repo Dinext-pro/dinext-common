@@ -65,6 +65,10 @@ fixtures = [
                 "Новые сегодня",
                 "My completed approvals",
                 "Автоматически выполнено за 30 дней",
+                "Открытые раунды",
+                "Сбои",
+                "Самое долгое ожидание",
+                "Решений за 30 дней",
             ]]
         ]
     },
@@ -73,6 +77,10 @@ fixtures = [
         "filters": [
             ["name", "in", [
                 "Pending approvals by document type",
+                "Open tasks by approver",
+                "Open task age by approver",
+                "Open rounds by document type",
+                "Approval duration by document type",
             ]]
         ]
     },
@@ -120,7 +128,7 @@ app_include_js = [
     "/assets/dinext_common/js/dinext-desk.js",
     "/assets/dinext_common/js/dashboard_filters_fix.js",
     "/assets/dinext_common/js/workspace_sidebar_hover.js",
-    "/assets/dinext_common/js/workflow_approval.js?v=20260922b",
+    "/assets/dinext_common/js/workflow_approval.js?v=20261015a",
 ]
 
 # Expose site_config flags to Desk bootinfo

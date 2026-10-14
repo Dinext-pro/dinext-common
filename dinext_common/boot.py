@@ -31,6 +31,27 @@ def as_bool(value: Any, default: bool = True) -> bool:
 	return bool(value)
 
 
+def workflow_action_icons() -> dict[str, str]:
+	"""Action name to Frappe icon. Empty icons are omitted. Missing column yields {}."""
+	try:
+		if not frappe.db.has_column("Workflow Action Master", "custom_icon"):
+			return {}
+		rows = frappe.get_all("Workflow Action Master", fields=["name", "custom_icon"])
+	except Exception:
+		return {}
+	if not isinstance(rows, list):
+		return {}
+	icons: dict[str, str] = {}
+	for row in rows:
+		if not isinstance(row, dict):
+			continue
+		icon = str(row.get("custom_icon") or "").strip()
+		name = row.get("name")
+		if icon and name:
+			icons[str(name)] = icon
+	return icons
+
+
 def extend_bootinfo(bootinfo) -> None:
 	"""Expose workspace sidebar hover-expand flag to Desk (default: enabled).
 
@@ -44,6 +65,7 @@ def extend_bootinfo(bootinfo) -> None:
 		frappe.conf.get("enable_parallel_workflow_approval", False),
 		default=False,
 	)
+	bootinfo.workflow_action_icons = workflow_action_icons()
 	pages = getattr(bootinfo, "allowed_workspaces", None)
 	if isinstance(pages, (list, tuple)):
 		bootinfo.allowed_workspaces = omit_replaced_workspaces(pages)

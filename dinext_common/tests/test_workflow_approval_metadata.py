@@ -116,6 +116,14 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 		workflow = {field["fieldname"]: field for field in by_doctype["Workflow"]}
 		action = {field["fieldname"]: field for field in by_doctype["Workflow Action"]}
 
+		action_master = {
+			field["fieldname"]: field for field in by_doctype["Workflow Action Master"]
+		}
+		icon = action_master["custom_icon"]
+		self.assertEqual(icon["fieldtype"], "Data")
+		self.assertEqual(icon["label"], "Icon")
+		self.assertEqual(icon["insert_after"], "workflow_action_name")
+		self.assertNotIn("reqd", icon)
 		self.assertEqual(
 			transition["custom_minimum_approvals"]["depends_on"],
 			"eval:doc.custom_parallel_approval_policy=='Minimum'",
@@ -236,6 +244,9 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 		self.assertIn('{"label": CHART_NAME, "chart_name": CHART_NAME}', metadata_source)
 		self.assertIn('"type": "chart"', metadata_source)
 		self.assertIn('"shortcut_name": QUEUE_SHORTCUT', metadata_source)
+		self.assertIn('"shortcut_name": LOAD_SHORTCUT', metadata_source)
+		self.assertIn('"number_card_name": OPEN_ROUNDS_CARD', metadata_source)
+		self.assertIn("open_control_round_count", metadata_source)
 		self.assertNotIn("custom_block_name", metadata_source)
 		self.assertNotIn("my_approvals_workspace.js", metadata_source)
 		self.assertNotIn('"Требуют решения"', metadata_source)
@@ -274,6 +285,38 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 		]
 		self.assertEqual(widget_perms, [])
 		self.assertNotIn('"doctype": "Custom DocPerm"', metadata_source)
+
+	def test_workflow_action_menus_use_one_icon_helper(self):
+		banner = (APP_ROOT / "public" / "js" / "workflow_approval.js").read_text()
+		self.assertIn("frappe.dinext.workflowActionLabel = workflowActionLabel", banner)
+		self.assertIn("document.getElementById", banner)
+		self.assertIn("workflowActionLabel(transition.action)", banner)
+		self.assertIn("workflowActionLabel(item.name, item.label)", banner)
+		self.assertIn('__("Comment required for {0}", [__(transition.action)])', banner)
+		timesheet = (
+			Path(__file__).resolve().parents[3]
+			/ "dinext_timesheets"
+			/ "dinext_timesheets"
+			/ "public"
+			/ "js"
+			/ "user_timesheet"
+			/ "workflow.js"
+		).read_text()
+		self.assertIn("frappe.dinext?.workflowActionLabel?.(transition.action)", timesheet)
+		self.assertIn("frm._ut_wf_button_labels.push(label)", timesheet)
+		fixtures = (
+			Path(__file__).resolve().parents[3]
+			/ "dinext_timesheets"
+			/ "dinext_timesheets"
+			/ "fixtures"
+			/ "workflow_action_master.json"
+		).read_text()
+		self.assertNotIn("custom_icon", fixtures)
+
+	def test_user_timesheet_form_does_not_use_the_common_approver_banner(self):
+		banner = (APP_ROOT / "public" / "js" / "workflow_approval.js").read_text()
+		self.assertIn('doctypes.delete("User Timesheet")', banner)
+		self.assertIn('"Application For Leave"', banner)
 
 	def test_workflow_validation_requires_minimum_and_daily_schedule(self):
 		metadata = self.metadata()

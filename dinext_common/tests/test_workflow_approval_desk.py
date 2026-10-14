@@ -24,6 +24,113 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 			result = api._filtered_tasks({"name": "TASK-1"})
 		self.assertEqual(result[0].completed_at, "2026-01-02 00:00:00")
 
+	def test_monitoring_attention_filter_keeps_stalled_and_conflicted(self):
+		def row(name, status):
+			return frappe._dict(
+				name=name,
+				approval_round_id=name,
+				status="Working",
+				approver="a@x",
+				creation=frappe.utils.now_datetime(),
+				round_manifest="{}",
+				round_status=status,
+				workflow="W",
+				reference_doctype="Issue",
+				reference_name=name,
+				workflow_state="Open",
+			)
+
+		with (
+			patch.object(
+				frappe,
+				"get_all",
+				return_value=[row("OPEN", "Open"), row("STALL", "Stalled"), row("CONF", "Conflicted")],
+			),
+			patch.object(frappe, "get_doc", return_value=SimpleNamespace()),
+			patch.object(api, "is_workflow_monitor", return_value=True),
+			patch.object(api, "has_workflow_task_permission", return_value=True),
+		):
+			rows = api.get_monitoring_rows({"round_status": "Attention"})
+		self.assertEqual({row.approval_round_id for row in rows}, {"STALL", "CONF"})
+
+	def test_load_report_counts_tasks_per_person(self):
+		from dinext_common.dinext_common.report.approval_load import approval_load
+
+		created = frappe.utils.add_to_date(frappe.utils.now_datetime(), hours=-5)
+		tasks = [
+			frappe._dict(
+				approver="a@x",
+				approval_round_id="R1",
+				creation=created,
+				source_title="Doc",
+				reference_name="D1",
+			),
+			frappe._dict(
+				approver="b@x",
+				approval_round_id="R1",
+				creation=created,
+				source_title="Doc",
+				reference_name="D1",
+			),
+		]
+		with (
+			patch.object(approval_load, "get_monitored_tasks", return_value=tasks),
+			patch.object(
+				approval_load,
+				"approver_display_names",
+				return_value={"a@x": "Анна", "b@x": "Борис"},
+			),
+		):
+			columns, rows, _message, chart = approval_load.execute({"chart": "Open age"})
+		self.assertIn("approver_name", {column["fieldname"] for column in columns})
+		self.assertEqual(sum(row["open_tasks"] for row in rows), 2)
+		self.assertEqual({row["open_rounds"] for row in rows}, {1})
+		self.assertEqual(len(chart["data"]["datasets"]), 2)
+
+	def test_duration_report_splits_manual_average_and_open_rounds(self):
+		from dinext_common.dinext_common.report.approval_duration import approval_duration
+
+		now = frappe.utils.now_datetime()
+		tasks = [
+			frappe._dict(
+				approver="a@x",
+				reference_doctype="Issue",
+				workflow="W",
+				status="Completed",
+				completion_source="Manual",
+				creation=frappe.utils.add_to_date(now, hours=-10),
+				completed_at=now,
+			),
+			frappe._dict(
+				approver="a@x",
+				reference_doctype="Issue",
+				workflow="W",
+				status="Completed",
+				completion_source="Automatic Unchanged",
+				creation=frappe.utils.add_to_date(now, hours=-1),
+				completed_at=now,
+			),
+		]
+		open_round = frappe._dict(
+			reference_doctype="Issue",
+			workflow="W",
+			pending_approvers="a@x",
+			round_status="Open",
+		)
+		with (
+			patch.object(approval_duration, "get_monitored_tasks", return_value=tasks),
+			patch.object(approval_duration, "get_monitoring_rows", return_value=[open_round]),
+			patch.object(approval_duration, "approver_display_names", return_value={}),
+		):
+			_columns, rows, _message, chart = approval_duration.execute(
+				{"chart": "Open rounds", "group_by": "Document Type"}
+			)
+		self.assertEqual(rows[0]["manual_count"], 1)
+		self.assertEqual(rows[0]["automatic_count"], 1)
+		self.assertEqual(rows[0]["avg_hours"], 10.0)
+		self.assertEqual(chart["data"]["labels"], ["Issue"])
+		self.assertEqual(chart["data"]["datasets"][0]["values"], [1])
+
 	def test_monitoring_join_skips_empty_approver(self):
 		row = frappe._dict(
 			name="TASK-1",

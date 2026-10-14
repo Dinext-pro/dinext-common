@@ -28,6 +28,8 @@ QUEUE_FIELDS = [
 	"approval_round_id",
 	"status",
 	"round_status",
+	"approver",
+	"user",
 	"completed_at",
 	"cancelled_at",
 	"cancellation_reason",
@@ -788,6 +790,59 @@ def attention_approval_count() -> dict[str, Any]:
 
 
 @frappe.whitelist()
+def open_control_round_count() -> dict[str, Any]:
+	rows = get_monitoring_rows({"round_status": "Open"})
+	return _number_card(len(rows), "Approval Monitoring", {"round_status": "Open"})
+
+
+@frappe.whitelist()
+def attention_control_round_count() -> dict[str, Any]:
+	rows = get_monitoring_rows({"round_status": "Attention"})
+	return _number_card(
+		len(rows),
+		"Approval Monitoring",
+		{"round_status": "Attention"},
+	)
+
+
+@frappe.whitelist()
+def longest_control_wait() -> dict[str, Any]:
+	from dinext_common.workflow_approval.control import longest_open_round_days
+
+	rows = get_monitoring_rows({"round_status": "Open"})
+	result = _number_card(
+		longest_open_round_days(row.age_hours for row in rows),
+		"Approval Monitoring",
+		{"round_status": "Open"},
+	)
+	result["fieldtype"] = "Float"
+	return result
+
+
+@frappe.whitelist()
+def control_decision_count() -> dict[str, Any]:
+	from frappe.utils import add_days, getdate, now_datetime
+
+	from dinext_common.workflow_approval.control import aggregate_duration, manual_total
+
+	since = add_days(now_datetime(), -30)
+	tasks = get_monitored_tasks(
+		{"status": "Completed", "completed_since": since},
+	)
+	rows = aggregate_duration(tasks, "Document Type", {})
+	return _number_card(
+		manual_total(rows),
+		"Approval Duration",
+		{
+			"from_date": str(getdate(since)),
+			"to_date": str(getdate(now_datetime())),
+			"group_by": "Document Type",
+			"chart": "Completed duration",
+		},
+	)
+
+
+@frappe.whitelist()
 def get_approval_dashboard() -> dict[str, Any]:
 	"""Return personal queue/history/chart and source-safe monitoring rows."""
 	queue = get_my_queue()
@@ -850,7 +905,7 @@ def get_monitoring_rows(
 						transition.get("transition_uuid")
 					)
 			if row.status == "Working":
-				payload["pending_approvers"].append(row.approver)
+				payload["pending_approvers"].append(row.approver or row.user)
 				payload["active_task_count"] += 1
 	result = []
 	from frappe.utils import now_datetime, time_diff_in_hours
@@ -882,6 +937,8 @@ def _monitor_row_matches(row: dict[str, Any], filters: dict[str, Any]) -> bool:
 			or row["reference_doctype"] == filters["reference_doctype"],
 			not filters.get("workflow_state")
 			or row["workflow_state"] == filters["workflow_state"],
+			not filters.get("round_status")
+			or _round_status_matches(row.get("round_status"), filters["round_status"]),
 			not filters.get("action")
 			or filters["action"] in row["available_actions"].split(", "),
 			not filters.get("transition_uuid")
@@ -892,6 +949,83 @@ def _monitor_row_matches(row: dict[str, Any], filters: dict[str, Any]) -> bool:
 			or row["age_hours"] >= float(filters["minimum_age_hours"]),
 		)
 	)
+
+
+def _round_status_matches(status: str | None, expected: str) -> bool:
+	choice = canonical_choice(
+		expected,
+		("Open", "Stalled", "Conflicted", "Attention"),
+	)
+	if choice == "Attention":
+		return status in {"Stalled", "Conflicted"}
+	return status == choice
+
+
+def canonical_choice(value: str | None, choices: tuple[str, ...]) -> str:
+	"""Match a filter value in the request language or in English."""
+	text = str(value or "").strip()
+	if not text:
+		return choices[0]
+	for choice in choices:
+		if text == choice or text == _(choice):
+			return choice
+	return text
+
+
+def approver_display_names(approvers: list[str]) -> dict[str, str]:
+	idents = sorted({approver for approver in approvers if approver})
+	if not idents:
+		return {}
+	rows = frappe.get_all(
+		"User",
+		filters={"name": ("in", idents)},
+		fields=["name", "full_name"],
+	)
+	return {
+		row.name: (row.full_name or row.name)
+		for row in rows
+	}
+
+
+def get_monitored_tasks(
+	filters: str | dict[str, Any] | None = None,
+	limit: int = 10000,
+) -> list[dict[str, Any]]:
+	"""Return source-readable tasks from workflows the user monitors."""
+	values = frappe.parse_json(filters) if isinstance(filters, str) else dict(filters or {})
+	task_filters: dict[str, Any] = {}
+	if values.get("status"):
+		task_filters["status"] = values["status"]
+	if values.get("round_status"):
+		choice = canonical_choice(
+			values["round_status"],
+			("Open", "Stalled", "Conflicted", "Attention"),
+		)
+		if choice == "Attention":
+			task_filters["round_status"] = ("in", ["Stalled", "Conflicted"])
+		else:
+			task_filters["round_status"] = choice
+	if values.get("completed_since"):
+		task_filters["completed_at"] = (">=", values["completed_since"])
+	if values.get("workflow"):
+		task_filters["workflow"] = values["workflow"]
+	if values.get("reference_doctype"):
+		task_filters["reference_doctype"] = values["reference_doctype"]
+	rows = frappe.get_all(
+		"Workflow Task",
+		filters=task_filters,
+		fields=QUEUE_FIELDS,
+		order_by="creation asc",
+		limit=int(limit),
+	)
+	permitted = []
+	for row in rows:
+		task = frappe.get_doc("Workflow Task", row.name)
+		if not is_workflow_monitor(task):
+			continue
+		if has_workflow_task_permission(task, "read", frappe.session.user):
+			permitted.append(row)
+	return permitted
 
 
 @frappe.whitelist()

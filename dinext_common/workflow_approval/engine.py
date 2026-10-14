@@ -1129,7 +1129,12 @@ def _finalize_round(
 		if actor != previous_user:
 			frappe.set_user(actor)
 		_apply_winning_transition(source, winner["action"])
-	except Exception:
+	except Exception as caught:
+		notes = getattr(frappe.flags, "workflow_finalization_errors", None)
+		if not isinstance(notes, list):
+			notes = []
+			frappe.flags.workflow_finalization_errors = notes
+		notes.append(str(caught))
 		frappe.db.rollback(save_point=savepoint)
 		frappe.db.release_savepoint(savepoint)
 		for manager, callbacks in callback_snapshots.items():

@@ -29,6 +29,15 @@ DAILY_SEND_TIME_CONDITION = (
 def get_workflow_approval_custom_fields() -> dict[str, list[dict[str, Any]]]:
 	"""Return source definitions for Custom Fields owned by this capability."""
 	custom_fields = {
+		"Workflow Action Master": [
+			{
+				"fieldname": "custom_icon",
+				"fieldtype": "Data",
+				"insert_after": "workflow_action_name",
+				"label": "Icon",
+				"description": "Frappe icon name, for example: check, close, edit",
+			},
+		],
 		"Workflow Transition": [
 			{
 				"fieldname": "custom_parallel_approval_section",
@@ -302,6 +311,56 @@ QUEUE_SHORTCUT = "My Approvals"
 HISTORY_SHORTCUT = "My Approval History"
 MONITORING_SHORTCUT = "Approval Monitoring"
 OBSOLETE_APPROVALS_BLOCK = "My Approvals Dashboard"
+OPEN_ROUNDS_CARD = "Открытые раунды"
+ATTENTION_CARD = "Сбои"
+LONGEST_WAIT_CARD = "Самое долгое ожидание"
+CONTROL_DECISIONS_CARD = "Решений за 30 дней"
+LOAD_COUNT_CHART = "Open tasks by approver"
+LOAD_AGE_CHART = "Open task age by approver"
+OPEN_ROUNDS_CHART = "Open rounds by document type"
+DURATION_CHART = "Approval duration by document type"
+LOAD_SHORTCUT = "Approval Load"
+DURATION_SHORTCUT = "Approval Duration"
+CONTROL_CARDS = (
+	(
+		OPEN_ROUNDS_CARD,
+		OPEN_ROUNDS_CARD,
+		"dinext_common.workflow_approval.api.open_control_round_count",
+		"#ECAD4B",
+	),
+	(
+		ATTENTION_CARD,
+		ATTENTION_CARD,
+		"dinext_common.workflow_approval.api.attention_control_round_count",
+		"#CB2929",
+	),
+	(
+		LONGEST_WAIT_CARD,
+		LONGEST_WAIT_CARD,
+		"dinext_common.workflow_approval.api.longest_control_wait",
+		"#ED6396",
+	),
+	(
+		CONTROL_DECISIONS_CARD,
+		CONTROL_DECISIONS_CARD,
+		"dinext_common.workflow_approval.api.control_decision_count",
+		"#449CF0",
+	),
+)
+CONTROL_CHARTS = (
+	(LOAD_COUNT_CHART, LOAD_SHORTCUT, '{"chart": "Open count"}'),
+	(LOAD_AGE_CHART, LOAD_SHORTCUT, '{"chart": "Open age"}'),
+	(
+		OPEN_ROUNDS_CHART,
+		DURATION_SHORTCUT,
+		'{"chart": "Open rounds", "group_by": "Document Type"}',
+	),
+	(
+		DURATION_CHART,
+		DURATION_SHORTCUT,
+		'{"chart": "Completed duration", "group_by": "Document Type"}',
+	),
+)
 
 
 def ensure_workflow_approval_desk_records() -> None:
@@ -361,7 +420,10 @@ def ensure_workflow_approval_desk_records() -> None:
 		if frappe.db.exists("Number Card", obsolete):
 			frappe.delete_doc("Number Card", obsolete, ignore_permissions=True)
 
+	for name, label, method, color in CONTROL_CARDS:
+		_ensure_number_card(name, label, method, color)
 	_ensure_pending_approvals_chart()
+	_ensure_control_charts()
 
 	workspace_name = "Мои согласования"
 	if frappe.db.exists("Workspace", workspace_name):
@@ -374,6 +436,7 @@ def ensure_workflow_approval_desk_records() -> None:
 			"Новые сегодня",
 			"My completed approvals",
 			"Автоматически выполнено за 30 дней",
+			*(name for name, _label, _method, _color in CONTROL_CARDS),
 		):
 			workspace.append(
 				"number_cards",
@@ -398,6 +461,20 @@ def ensure_workflow_approval_desk_records() -> None:
 					"type": "Report",
 				},
 			)
+		for chart_name, _report_name, _filters in CONTROL_CHARTS:
+			workspace.append(
+				"charts",
+				{"label": chart_name, "chart_name": chart_name},
+			)
+		for shortcut_name in (LOAD_SHORTCUT, DURATION_SHORTCUT):
+			workspace.append(
+				"shortcuts",
+				{
+					"label": shortcut_name,
+					"link_to": shortcut_name,
+					"type": "Report",
+				},
+			)
 		workspace.custom_blocks = []
 		workspace.save(ignore_permissions=True)
 
@@ -408,6 +485,60 @@ def ensure_workflow_approval_desk_records() -> None:
 			ignore_permissions=True,
 			force=True,
 		)
+
+
+def _ensure_number_card(name: str, label: str, method: str, color: str) -> None:
+	values = {
+		"label": label,
+		"method": method,
+		"color": color,
+		"type": "Custom",
+		"document_type": "User Timesheet Position",
+		"currency": "",
+		"show_percentage_stats": 0,
+		"show_full_number": 0 if name == LONGEST_WAIT_CARD else 1,
+	}
+	if frappe.db.exists("Number Card", name):
+		card = frappe.get_doc("Number Card", name)
+		card.update(values)
+		card.save(ignore_permissions=True)
+		return
+	card = frappe.get_doc(
+		{
+			"doctype": "Number Card",
+			"is_public": 1,
+			"is_standard": 1,
+			"module": "Dinext Common",
+			**values,
+		}
+	)
+	card.insert(ignore_permissions=True)
+
+
+def _ensure_control_charts() -> None:
+	for chart_name, report_name, filters_json in CONTROL_CHARTS:
+		_ensure_report_chart(chart_name, report_name, filters_json)
+
+
+def _ensure_report_chart(chart_name: str, report_name: str, filters_json: str) -> None:
+	values = {
+		"chart_name": chart_name,
+		"chart_type": "Report",
+		"report_name": report_name,
+		"use_report_chart": 1,
+		"type": "Bar",
+		"filters_json": filters_json,
+		"is_public": 1,
+		"is_standard": 1,
+		"module": "Dinext Common",
+		"timeseries": 0,
+	}
+	if frappe.db.exists("Dashboard Chart", chart_name):
+		frappe.db.set_value("Dashboard Chart", chart_name, values, update_modified=False)
+		return
+	chart = frappe.get_doc({"doctype": "Dashboard Chart", "name": chart_name, **values})
+	chart.flags.ignore_validate = True
+	chart.insert(ignore_permissions=True)
 
 
 def _ensure_pending_approvals_chart() -> None:
@@ -485,6 +616,68 @@ def _approvals_workspace_content() -> list[dict]:
 			"id": "approvals-monitoring",
 			"type": "shortcut",
 			"data": {"shortcut_name": MONITORING_SHORTCUT, "col": 4},
+		},
+		{"id": "control-spacer", "type": "spacer", "data": {"col": 12}},
+		{
+			"id": "control-header",
+			"type": "header",
+			"data": {
+				"text": '<span class="h4">Контроль</span>',
+				"col": 12,
+			},
+		},
+		{
+			"id": "control-open",
+			"type": "number_card",
+			"data": {"number_card_name": OPEN_ROUNDS_CARD, "col": 3},
+		},
+		{
+			"id": "control-attention",
+			"type": "number_card",
+			"data": {"number_card_name": ATTENTION_CARD, "col": 3},
+		},
+		{
+			"id": "control-longest",
+			"type": "number_card",
+			"data": {"number_card_name": LONGEST_WAIT_CARD, "col": 3},
+		},
+		{
+			"id": "control-decisions",
+			"type": "number_card",
+			"data": {"number_card_name": CONTROL_DECISIONS_CARD, "col": 3},
+		},
+		{"id": "control-charts-spacer", "type": "spacer", "data": {"col": 12}},
+		{
+			"id": "control-load-count",
+			"type": "chart",
+			"data": {"chart_name": LOAD_COUNT_CHART, "col": 6},
+		},
+		{
+			"id": "control-load-age",
+			"type": "chart",
+			"data": {"chart_name": LOAD_AGE_CHART, "col": 6},
+		},
+		{"id": "control-type-spacer", "type": "spacer", "data": {"col": 12}},
+		{
+			"id": "control-open-rounds",
+			"type": "chart",
+			"data": {"chart_name": OPEN_ROUNDS_CHART, "col": 6},
+		},
+		{
+			"id": "control-duration",
+			"type": "chart",
+			"data": {"chart_name": DURATION_CHART, "col": 6},
+		},
+		{"id": "control-links-spacer", "type": "spacer", "data": {"col": 12}},
+		{
+			"id": "control-load-link",
+			"type": "shortcut",
+			"data": {"shortcut_name": LOAD_SHORTCUT, "col": 4},
+		},
+		{
+			"id": "control-duration-link",
+			"type": "shortcut",
+			"data": {"shortcut_name": DURATION_SHORTCUT, "col": 4},
 		},
 	]
 

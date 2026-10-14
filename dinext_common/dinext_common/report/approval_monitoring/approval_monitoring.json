@@ -9,6 +9,7 @@
   {"fieldname": "workflow", "fieldtype": "Data", "label": "Workflow"},
   {"fieldname": "reference_doctype", "fieldtype": "Data", "label": "Document Type"},
   {"fieldname": "workflow_state", "fieldtype": "Data", "label": "State"},
+  {"fieldname": "round_status", "fieldtype": "Select", "label": "Round Status", "options": "\nOpen\nStalled\nConflicted\nAttention"},
   {"fieldname": "action", "fieldtype": "Link", "label": "Action", "options": "Workflow Action Master"},
   {"fieldname": "transition_uuid", "fieldtype": "Data", "label": "Transition UUID"},
   {"fieldname": "pending_approver", "fieldtype": "Link", "label": "Pending Approver", "options": "User"},
