@@ -86,6 +86,13 @@ jobs:
           DINEXT_DOCS_AGENT_ENABLED: '0'
           DINEXT_WIKI_PUBLISH_ENABLED: '0'
         run: python ci-support/.github/ci/bench_tests.py "$GITHUB_WORKSPACE"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: app-unit-results
+          path: ${{ runner.temp }}/*-unit.xml
+          if-no-files-found: ignore
+          retention-days: 14
   python-tests:
     name: Python unit tests
     if: inputs.mode == 'python-project'
@@ -100,7 +107,14 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -e '.[dev]'
-      - run: python -m pytest -q
+      - run: python -m pytest -q --junitxml=python-unit.xml
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: python-unit-results
+          path: python-unit.xml
+          if-no-files-found: ignore
+          retention-days: 14
   portable:
     name: Portable wheel
     if: inputs.mode == 'portable'
@@ -119,6 +133,11 @@ jobs:
           python scripts/check-portable-wheel.py
           python -m pip install --no-deps dist/*.whl
           python -I -c "from frappe_better_select_control import __version__; print(__version__)"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: portable-wheel
+          path: dist/*.whl
+          retention-days: 30
   frontend:
     name: Frontend unit tests
     if: inputs.frontend_tests
@@ -144,4 +163,11 @@ jobs:
       - working-directory: crm/frontend
         run: |
           yarn install --frozen-lockfile
-          yarn test:run
+          yarn test:run --reporter=default --reporter=junit --outputFile=frontend-unit.xml
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: frontend-unit-results
+          path: crm/frontend/frontend-unit.xml
+          if-no-files-found: ignore
+          retention-days: 14
