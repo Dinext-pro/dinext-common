@@ -88,6 +88,10 @@ jobs:
           sudo apt-get install -y -qq mariadb-client libmariadb-dev libmariadb-dev-compat libxml2-dev libxslt1-dev libffi-dev libjpeg-dev zlib1g-dev redis-tools
           python -m pip install frappe-bench==5.31.0
           npm install --global yarn@1.22.22
+          # Existing app logging uses the original container's absolute bench path.
+          # Preserve that path only inside the disposable hosted runner.
+          sudo install -d -o "$(id -un)" -g "$(id -gn)" /home/frappe
+          ln -s "$RUNNER_TEMP/dinext-test-bench" /home/frappe/frappe-bench
       - name: Install ephemeral bench and run tests
         env:
           CI: 'true'
