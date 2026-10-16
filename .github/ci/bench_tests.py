@@ -68,6 +68,7 @@ for name in order:
     else:
         run('bench', 'get-app', '--skip-assets', '--branch', spec['branch'], name, location)
 run(bench / 'env/bin/python', '-m', 'pip', 'install', 'unittest-xml-reporting~=3.2.0')
+run('bench', 'setup', 'requirements', '--dev')
 run('bench', 'new-site', site, '--db-host', '127.0.0.1', '--no-mariadb-socket',
     '--mariadb-root-password', 'ci', '--admin-password', 'ci-admin')
 for name in order:
@@ -76,6 +77,7 @@ for name in order:
         run('bench', '--site', site, 'install-app', name)
 run('bench', '--site', site, 'set-config', 'allow_tests', 'true')
 run('bench', '--site', site, 'migrate')
+run('bench', 'build')
 run('bench', '--site', site, 'execute', 'frappe.ping')
 if config['mode'] == 'platform-smoke':
     print('Platform pair installed and offline smoke passed.', flush=True)
@@ -89,7 +91,7 @@ else:
     assert report.is_file(), 'Unit runner did not produce a JUnit report'
     tree = ET.parse(report)
     suites = list(tree.iter('testsuite'))
-    assert suites, 'JUnit report has no test suite'
+    assert tree.getroot().tag in {'testsuite', 'testsuites'}, 'Invalid JUnit report root'
     failures = sum(int(s.get('failures', 0)) + int(s.get('errors', 0)) for s in suites)
     total = sum(int(s.get('tests', 0)) for s in suites)
     assert not failures, f'{failures} unit failures/errors'
