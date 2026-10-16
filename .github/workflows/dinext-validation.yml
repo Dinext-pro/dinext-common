@@ -1,0 +1,23 @@
+name: Dinext validation
+'on':
+  push:
+    branches:
+    - main
+    - develop
+    - main/**
+    - release/**
+  pull_request: {}
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: dinext-validation-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validation:
+    name: Validation
+    uses: ./.github/workflows/dinext-reusable.yml
+    with:
+      support_ref: ${{ github.sha }}
+      mode: frappe-app
+      frontend_tests: false
