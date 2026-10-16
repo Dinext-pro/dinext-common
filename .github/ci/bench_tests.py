@@ -29,7 +29,7 @@ def dependency_order(name, active=None, done=None):
     if name in active:
         raise RuntimeError('Dependency cycle: ' + name)
     active.add(name)
-    for dependency in catalog[name].get('dependencies', []):
+    for dependency in catalog[name].get('dependencies', []) + catalog[name].get('test_dependencies', []):
         dependency_order(dependency, active, done)
     active.remove(name)
     done.append(name)
@@ -40,14 +40,21 @@ for post in config.get('post_install', []):
     dependency_order(post, done=order)
 if config['mode'] == 'platform-smoke':
     dependency_order('erpnext', done=order)
-framework = catalog['frappe']
-framework_source = source if app == 'frappe' else framework['repository']
-framework_branch = framework['branch']
-if app == 'frappe':
-    run('git', 'update-ref', 'refs/heads/dinext-ci-input', 'HEAD', cwd=source)
-    framework_branch = 'dinext-ci-input'
+def pinned_checkout(name):
+    spec = catalog[name]
+    destination = Path(os.environ['RUNNER_TEMP']) / 'dinext-ci-inputs' / name
+    destination.mkdir(parents=True)
+    run('git', 'init', str(destination), cwd=destination.parent)
+    revision = spec.get('ci_sha') or spec['branch']
+    run('git', 'fetch', '--no-tags', '--depth=1', spec['repository'], revision, cwd=destination)
+    run('git', 'checkout', '--detach', 'FETCH_HEAD', cwd=destination)
+    run('git', 'update-ref', 'refs/heads/dinext-ci-pinned', 'HEAD', cwd=destination)
+    return destination
+
+framework_source = source if app == 'frappe' else pinned_checkout('frappe')
+run('git', 'update-ref', 'refs/heads/dinext-ci-input', 'HEAD', cwd=framework_source)
 arguments = ['bench', 'init', str(bench), '--frappe-path', str(framework_source),
-    '--frappe-branch', framework_branch,
+    '--frappe-branch', 'dinext-ci-input',
     '--skip-assets', '--skip-redis-config-generation', '--python', sys.executable]
 run(*arguments, cwd=bench.parent)
 common = bench / 'sites/common_site_config.json'
@@ -60,13 +67,10 @@ common.write_text(json.dumps(settings))
 for name in order:
     if name == 'frappe':
         continue
-    spec = catalog[name]
-    location = str(source) if name == app else spec['repository']
-    # A local checkout preserves the exact PR merge commit, not a moving branch.
-    if name == app:
-        run('bench', 'get-app', '--skip-assets', name, location)
-    else:
-        run('bench', 'get-app', '--skip-assets', '--branch', spec['branch'], name, location)
+    # Keep the tested app at its exact PR merge commit. Dependencies use the
+    # original GitLab CI's pinned revisions, translated through sanitized SHA maps.
+    location = source if name == app else pinned_checkout(name)
+    run('bench', 'get-app', '--skip-assets', name, str(location))
 run(bench / 'env/bin/python', '-m', 'pip', 'install', 'unittest-xml-reporting~=3.2.0')
 run('bench', 'setup', 'requirements', '--dev')
 run('bench', 'new-site', site, '--db-host', '127.0.0.1', '--no-mariadb-socket',
