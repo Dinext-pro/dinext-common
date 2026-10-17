@@ -2,6 +2,10 @@ name: Dinext validation support
 on:
   workflow_call:
     inputs:
+      privacy_baselines:
+        type: string
+        required: false
+        default: '{}'
       support_ref:
         type: string
         required: true
@@ -11,6 +15,9 @@ on:
       frontend_tests:
         type: boolean
         default: false
+    secrets:
+      DINEXT_PRIVACY_DENYLIST:
+        required: false
 permissions:
   contents: read
 jobs:
@@ -22,6 +29,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+          fetch-depth: 2
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: Dinext-pro/dinext-common
@@ -32,6 +40,12 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
+      - name: Check privacy of new Dinext data
+        env:
+          DINEXT_PRIVACY_DENYLIST: ${{ secrets.DINEXT_PRIVACY_DENYLIST }}
+          DINEXT_PRIVACY_BASELINES: ${{ inputs.privacy_baselines }}
+          GH_TOKEN: ${{ github.token }}
+        run: python ci-support/.github/ci/privacy_guard.py "$GITHUB_WORKSPACE"
       - name: Check repository and branch policy
         run: python ci-support/.github/ci/check_repository.py "$GITHUB_WORKSPACE"
   unit:
