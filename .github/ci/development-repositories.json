@@ -1,0 +1,396 @@
+{
+  "dinext-common": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext-project-tasks-gantt": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext-project-stage-gate": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext-projects-pl": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext-project-scope": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext-risk-management": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext-git": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext-project-evaluation": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext-timesheets": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext-projects": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext_kanban": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext-project-workload-assignment": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext-deputies": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext-raven": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext-goals": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "frappe-app",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "doctype_permission": {
+    "own": false,
+    "branches": [
+      "main/main",
+      "main/*"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  },
+  "frappe_better_select_control": {
+    "own": false,
+    "branches": [
+      "main/main",
+      "main/*"
+    ],
+    "mode": "portable",
+    "frontend_tests": false,
+    "executed_checks": [
+      "Portable wheel"
+    ]
+  },
+  "frappe_assistant_core": {
+    "own": false,
+    "branches": [
+      "main/main",
+      "main/*"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  },
+  "frappe_comment_xt": {
+    "own": false,
+    "branches": [
+      "main/main",
+      "main/*"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  },
+  "frappe_notifier": {
+    "own": false,
+    "branches": [
+      "main/develop",
+      "main/*"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  },
+  "print_designer": {
+    "own": false,
+    "branches": [
+      "main/main",
+      "main/*"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  },
+  "raven_cloud": {
+    "own": false,
+    "branches": [
+      "main/develop",
+      "main/*"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  },
+  "raven_integration": {
+    "own": false,
+    "branches": [
+      "main/main",
+      "main/*"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  },
+  "builder": {
+    "own": false,
+    "branches": [
+      "main/main",
+      "main/*"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  },
+  "dinext_crm": {
+    "own": false,
+    "branches": [
+      "main/v15",
+      "main/*"
+    ],
+    "mode": "repository",
+    "frontend_tests": true,
+    "executed_checks": [
+      "Frontend unit tests"
+    ]
+  },
+  "dinext_wiki": {
+    "own": false,
+    "branches": [
+      "main/v15",
+      "main/*"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  },
+  "insights": {
+    "own": false,
+    "branches": [
+      "main/main",
+      "main/*"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  },
+  "raven": {
+    "own": false,
+    "branches": [
+      "main/*",
+      "main/v3"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  },
+  "dinext_erp": {
+    "own": false,
+    "branches": [
+      "main/v15",
+      "main/*"
+    ],
+    "mode": "platform-smoke",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "dinext_platform": {
+    "own": false,
+    "branches": [
+      "main/v15",
+      "main/*"
+    ],
+    "mode": "platform-smoke",
+    "frontend_tests": false,
+    "executed_checks": [
+      "App unit tests"
+    ]
+  },
+  "hrms": {
+    "own": false,
+    "branches": [
+      "main/*",
+      "main/version-15"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  },
+  "preview_attachment": {
+    "own": false,
+    "branches": [
+      "main/main",
+      "main/*"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  },
+  "huf": {
+    "own": false,
+    "branches": [
+      "main/develop",
+      "main/*"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  },
+  "dinext_huf_raven": {
+    "own": true,
+    "branches": [
+      "main",
+      "develop",
+      "release/*"
+    ],
+    "mode": "repository",
+    "frontend_tests": false,
+    "executed_checks": []
+  }
+}

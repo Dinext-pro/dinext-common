@@ -1,0 +1,265 @@
+{
+  "dinext_common": {
+    "repository": "https://github.com/Dinext-pro/dinext-common.git",
+    "branch": "main",
+    "dependencies": [
+      "erpnext"
+    ],
+    "ci_sha": "581bfa8fc07a00bb80bd7b8891b53d1d14cb6cb3"
+  },
+  "dinext_deputies": {
+    "repository": "https://github.com/Dinext-pro/dinext-deputies.git",
+    "branch": "main",
+    "dependencies": [
+      "doctype_permission",
+      "dinext_projects",
+      "dinext_common"
+    ],
+    "ci_sha": "bc5cef1b127b6e8b61c3b70402ce4bffeab4fadb"
+  },
+  "dinext_git": {
+    "repository": "https://github.com/Dinext-pro/dinext-git.git",
+    "branch": "main",
+    "dependencies": [
+      "erpnext",
+      "dinext_common",
+      "dinext_projects"
+    ],
+    "ci_sha": "fb5538401d040ff60a4993798a41da3584274f0f"
+  },
+  "dinext_project_evaluation": {
+    "repository": "https://github.com/Dinext-pro/dinext-project-evaluation.git",
+    "branch": "main",
+    "dependencies": [
+      "erpnext",
+      "dinext_project_stage_gate",
+      "dinext_common",
+      "dinext_projects"
+    ],
+    "ci_sha": "cf11466d5c72964af0c90a0ae6e901a80e1a4454"
+  },
+  "dinext_project_scope": {
+    "repository": "https://github.com/Dinext-pro/dinext-project-scope.git",
+    "branch": "main",
+    "dependencies": [
+      "erpnext",
+      "dinext_common",
+      "dinext_projects"
+    ]
+  },
+  "dinext_project_stage_gate": {
+    "repository": "https://github.com/Dinext-pro/dinext-project-stage-gate.git",
+    "branch": "main",
+    "dependencies": [
+      "dinext_common",
+      "dinext_projects"
+    ],
+    "ci_sha": "c182059565aca00353d5b5f3fa58a871ed39d085"
+  },
+  "dinext_project_tasks_gantt": {
+    "repository": "https://github.com/Dinext-pro/dinext-project-tasks-gantt.git",
+    "branch": "main",
+    "dependencies": [
+      "dinext_common",
+      "doctype_permission",
+      "dinext_projects",
+      "project_workload_assignment"
+    ],
+    "ci_sha": "3aceebb17d2ea327e1957af4dbdbd202682319e0"
+  },
+  "dinext_projects": {
+    "repository": "https://github.com/Dinext-pro/dinext-projects.git",
+    "branch": "main",
+    "dependencies": [
+      "dinext_common",
+      "doctype_permission",
+      "erpnext"
+    ],
+    "ci_sha": "233939d1088ede6d7f86f0ec0f7c94c5c2cbf9e4"
+  },
+  "dinext_projects_pl": {
+    "repository": "https://github.com/Dinext-pro/dinext-projects-pl.git",
+    "branch": "main",
+    "dependencies": [
+      "dinext_common",
+      "doctype_permission",
+      "dinext_projects"
+    ],
+    "ci_sha": "996ac70ae1c1470d722d4b6ce2f578453587a0d6",
+    "test_dependencies": [
+      "hrms"
+    ]
+  },
+  "dinext_risk_management": {
+    "repository": "https://github.com/Dinext-pro/dinext-risk-management.git",
+    "branch": "main",
+    "dependencies": [
+      "dinext_common",
+      "doctype_permission",
+      "dinext_projects"
+    ],
+    "ci_sha": "6f52c9c6661644e54d3bbd5f5f5f6c13e1d33ffe"
+  },
+  "project_workload_assignment": {
+    "repository": "https://github.com/Dinext-pro/dinext-project-workload-assignment.git",
+    "branch": "main",
+    "dependencies": [
+      "dinext_common",
+      "dinext_projects",
+      "dinext_projects_pl",
+      "dinext_timesheets",
+      "doctype_permission"
+    ],
+    "ci_sha": "42513bfc718d7bbbd2bc08a61ee09bbfb72b1f8c"
+  },
+  "wiki": {
+    "repository": "https://github.com/Dinext-pro/dinext_wiki.git",
+    "branch": "main/v15",
+    "dependencies": [],
+    "ci_sha": "e0a7d832e71152d724caf7fb87168b90c0ff881b"
+  },
+  "dinext_kanban": {
+    "repository": "https://github.com/Dinext-pro/dinext_kanban.git",
+    "branch": "main",
+    "dependencies": [
+      "dinext_common",
+      "erpnext"
+    ],
+    "ci_sha": "d15a9546a8e85d7abce41c023339a627408166c8"
+  },
+  "frappe": {
+    "repository": "https://github.com/Dinext-pro/dinext_platform.git",
+    "branch": "main/v15",
+    "dependencies": [],
+    "ci_sha": "8c05aa33a2aa988ab7088809a1969e8ed84f5cb7"
+  },
+  "dinext_timesheets": {
+    "repository": "https://github.com/Dinext-pro/dinext-timesheets.git",
+    "branch": "main",
+    "dependencies": [
+      "dinext_common",
+      "dinext_projects",
+      "dinext_projects_pl",
+      "doctype_permission"
+    ],
+    "ci_sha": "9e03b3d4b1b1b6fbe56302dfcdca0bda27415539"
+  },
+  "erpnext": {
+    "repository": "https://github.com/Dinext-pro/dinext_erp.git",
+    "branch": "main/v15",
+    "dependencies": [],
+    "ci_sha": "bf4e2cac9fc015965b32bf49ad9e607da41d2229"
+  },
+  "hrms": {
+    "repository": "https://github.com/Dinext-pro/hrms.git",
+    "branch": "main/version-15",
+    "dependencies": [
+      "erpnext"
+    ],
+    "ci_sha": "1b2060cc91bce2edb20be3f4e3fb08f4188f84a3"
+  },
+  "builder": {
+    "repository": "https://github.com/Dinext-pro/builder.git",
+    "branch": "main/main",
+    "dependencies": [],
+    "ci_sha": "883265b6ea33aeeb5e5b2e2314a9767219711389"
+  },
+  "insights": {
+    "repository": "https://github.com/Dinext-pro/insights.git",
+    "branch": "main/main",
+    "dependencies": [
+      "erpnext"
+    ],
+    "ci_sha": "b3c657bb463549a2b5798a53f7e3f55a6edc8fb3"
+  },
+  "doctype_permission": {
+    "repository": "https://github.com/Dinext-pro/doctype_permission.git",
+    "branch": "main/main",
+    "dependencies": [],
+    "ci_sha": "27d443d913b05ce029ce00fba0bf0951bf8fb3f1"
+  },
+  "frappe_assistant_core": {
+    "repository": "https://github.com/Dinext-pro/frappe_assistant_core.git",
+    "branch": "main/main",
+    "dependencies": [],
+    "ci_sha": "59d9c6fa32c8e6b74a45dd00b72fe06808bfad41"
+  },
+  "frappe_better_select_control": {
+    "repository": "https://github.com/Dinext-pro/frappe_better_select_control.git",
+    "branch": "main/main",
+    "dependencies": [],
+    "ci_sha": "6c224c6b18f30ca459c7c1dceff47385e2b95aad"
+  },
+  "frappe_comment_xt": {
+    "repository": "https://github.com/Dinext-pro/frappe_comment_xt.git",
+    "branch": "main/main",
+    "dependencies": [],
+    "ci_sha": "9b2e6b44a291f1cbdcf0808ffa34f250dbd0dfc6"
+  },
+  "print_designer": {
+    "repository": "https://github.com/Dinext-pro/print_designer.git",
+    "branch": "main/main",
+    "dependencies": [],
+    "ci_sha": "7b31ac8fc9e922fe4f126e414bcb910eb634f82d"
+  },
+  "preview_attachment": {
+    "repository": "https://github.com/Dinext-pro/preview_attachment.git",
+    "branch": "main/main",
+    "dependencies": [
+      "frappe"
+    ],
+    "ci_sha": "21a7faaec5f400dcf6b42bbc3fb40072b247d111"
+  },
+  "crm": {
+    "repository": "https://github.com/Dinext-pro/dinext_crm.git",
+    "branch": "main/v15",
+    "dependencies": [
+      "erpnext"
+    ]
+  },
+  "raven": {
+    "repository": "https://github.com/Dinext-pro/raven.git",
+    "branch": "main/v2",
+    "dependencies": [],
+    "ci_sha": "f1f9db1c806c1e993cb465a9ef2d19e6b40663f6"
+  },
+  "raven_integration": {
+    "repository": "https://github.com/Dinext-pro/raven_integration.git",
+    "branch": "main/main",
+    "dependencies": [
+      "raven"
+    ],
+    "ci_sha": "14f0c5dc5851037080fb4abd478ccac35ce6fa5f"
+  },
+  "frappe_notifier": {
+    "repository": "https://github.com/Dinext-pro/frappe_notifier.git",
+    "branch": "main/develop",
+    "dependencies": []
+  },
+  "dinext_raven": {
+    "repository": "https://github.com/Dinext-pro/dinext-raven.git",
+    "branch": "develop",
+    "dependencies": [
+      "dinext_common",
+      "raven"
+    ],
+    "ci_sha": "771f021212243d7d0208bbf9b0827e371a0dbf8e"
+  },
+  "raven_cloud": {
+    "repository": "https://github.com/Dinext-pro/raven_cloud.git",
+    "branch": "main/develop",
+    "dependencies": []
+  },
+  "dinext_goals": {
+    "repository": "https://github.com/Dinext-pro/dinext-goals.git",
+    "branch": "main",
+    "dependencies": [
+      "dinext_common",
+      "erpnext"
+    ],
+    "test_dependencies": [
+      "dinext_projects_pl",
+      "dinext_timesheets"
+    ]
+  }
+}
