@@ -20,11 +20,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        if: github.repository != 'Dinext-pro/dinext_wiki'
+        if: github.repository != 'Dinext-pro/dinext_wiki' && github.repository != 'Dinext-pro/dinext_wiki-native-stage'
         with:
           persist-credentials: false
       - name: Checkout preserved legacy Wiki tree
-        if: github.repository == 'Dinext-pro/dinext_wiki'
+        if: github.repository == 'Dinext-pro/dinext_wiki' || github.repository == 'Dinext-pro/dinext_wiki-native-stage'
         # The preserved source contains an unregistered worktrees gitlink.
         # Fetch the public tree without submodule traversal or credentials.
         run: |
