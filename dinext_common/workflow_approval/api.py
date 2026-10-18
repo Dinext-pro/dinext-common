@@ -1028,6 +1028,18 @@ def get_monitored_tasks(
 	return permitted
 
 
+def _card_state_values(state: str) -> list[str]:
+	"""English workflow states and the Russian values stored before the timesheet migration."""
+	groups = (
+		("Approved", "Согласовано", "Согласован"),
+		("Pending Approval", "На согласовании"),
+	)
+	for group in groups:
+		if state in group:
+			return list(group)
+	return [state]
+
+
 @frappe.whitelist()
 def get_legacy_number_card_result(filters: str | dict[str, Any]) -> dict[str, Any]:
 	"""Preserve four timesheet card DTOs while using source-aware task fields."""
@@ -1043,7 +1055,10 @@ def get_legacy_number_card_result(filters: str | dict[str, Any]) -> dict[str, An
 		"reference_doctype": doctype,
 		"status": "Completed" if completed else "Working",
 	}
-	task_filters["next_state" if completed else "workflow_state"] = state
+	task_filters["next_state" if completed else "workflow_state"] = [
+		"in",
+		_card_state_values(state),
+	]
 	rows = _filtered_tasks(task_filters, limit=10000)
 	if not completed:
 		rows = [row for row in rows if row.source_owner != frappe.session.user]

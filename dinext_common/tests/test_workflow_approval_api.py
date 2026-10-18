@@ -115,3 +115,29 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 		self.assertEqual(len(result["succeeded"]), 1)
 		cast_vote.assert_called_once()
 		commit.assert_called_once()
+
+	def test_legacy_card_state_matches_english_and_russian_position_tasks(self):
+		api = self.api()
+		seen = {}
+
+		def capture(filters, limit=500):
+			seen["filters"] = filters
+			seen["limit"] = limit
+			return []
+
+		with (
+			patch.object(api, "_filtered_tasks", side_effect=capture),
+			patch.object(api.frappe, "session", SimpleNamespace(user="approver@example.com")),
+		):
+			api.get_legacy_number_card_result(
+				{
+					"doc": "User Timesheet Position",
+					"state": "Согласовано",
+					"route": "user-timesheet-position",
+				}
+			)
+
+		self.assertEqual(seen["filters"]["status"], "Completed")
+		self.assertEqual(seen["filters"]["next_state"][0], "in")
+		self.assertIn("Approved", seen["filters"]["next_state"][1])
+		self.assertIn("Согласовано", seen["filters"]["next_state"][1])
