@@ -304,14 +304,23 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 		).read_text()
 		self.assertIn("frappe.dinext?.workflowActionLabel?.(transition.action)", timesheet)
 		self.assertIn("frm._ut_wf_button_labels.push(label)", timesheet)
-		fixtures = (
-			Path(__file__).resolve().parents[3]
-			/ "dinext_timesheets"
-			/ "dinext_timesheets"
-			/ "fixtures"
-			/ "workflow_action_master.json"
-		).read_text()
-		self.assertNotIn("custom_icon", fixtures)
+		icons = {"Согласовано": "check", "Не согласовано": "close"}
+		for app in ("dinext_timesheets", "dinext_projects", "dinext_projects_pl"):
+			rows = json.loads(
+				(
+					Path(__file__).resolve().parents[3]
+					/ app
+					/ app
+					/ "fixtures"
+					/ "workflow_action_master.json"
+				).read_text()
+			)
+			filled = {
+				row["name"]: row.get("custom_icon")
+				for row in rows
+				if row.get("custom_icon")
+			}
+			self.assertEqual(filled, icons)
 
 	def test_user_timesheet_form_does_not_use_the_common_approver_banner(self):
 		banner = (APP_ROOT / "public" / "js" / "workflow_approval.js").read_text()
