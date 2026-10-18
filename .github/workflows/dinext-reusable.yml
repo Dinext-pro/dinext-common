@@ -1,5 +1,5 @@
 name: Dinext validation support
-true:
+'on':
   workflow_call:
     inputs:
       support_ref:
