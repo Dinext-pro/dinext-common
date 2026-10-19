@@ -224,7 +224,8 @@
     "ci_sha": "81bb29eccbfa3e025f8e8493f371e5095d814903",
     "previous_lines": {
       "dinext/main/v2": {
-        "ci_sha": "f1f9db1c806c1e993cb465a9ef2d19e6b40663f6"
+        "ci_sha": "e638963cf89426963208f223a60d7c1e7441246d",
+        "version": "2.8.11"
       }
     }
   },
