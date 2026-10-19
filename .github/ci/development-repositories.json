@@ -197,190 +197,230 @@
   "doctype_permission": {
     "own": false,
     "branches": [
-      "main/main",
-      "main/*"
+      "dinext/main/main"
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": []
+    "executed_checks": [],
+    "legacy_branches": [
+      "main/main"
+    ]
   },
   "frappe_better_select_control": {
     "own": false,
     "branches": [
-      "main/main",
-      "main/*"
+      "dinext/main/main"
     ],
     "mode": "portable",
     "frontend_tests": false,
     "executed_checks": [
       "Portable wheel"
+    ],
+    "legacy_branches": [
+      "main/main"
     ]
   },
   "frappe_assistant_core": {
     "own": false,
     "branches": [
-      "main/main",
-      "main/*"
+      "dinext/main/main"
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": []
+    "executed_checks": [],
+    "legacy_branches": [
+      "main/main"
+    ]
   },
   "frappe_comment_xt": {
     "own": false,
     "branches": [
-      "main/main",
-      "main/*"
+      "dinext/main/main"
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": []
+    "executed_checks": [],
+    "legacy_branches": [
+      "main/main"
+    ]
   },
   "frappe_notifier": {
     "own": false,
     "branches": [
-      "main/develop",
-      "main/*"
+      "dinext/main/develop"
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": []
+    "executed_checks": [],
+    "legacy_branches": [
+      "main/develop"
+    ]
   },
   "print_designer": {
     "own": false,
     "branches": [
-      "main/main",
-      "main/*"
+      "dinext/main/main"
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": []
+    "executed_checks": [],
+    "legacy_branches": [
+      "main/main"
+    ]
   },
   "raven_cloud": {
     "own": false,
     "branches": [
-      "main/develop",
-      "main/*"
+      "dinext/main/develop"
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": []
+    "executed_checks": [],
+    "legacy_branches": [
+      "main/develop"
+    ]
   },
   "raven_integration": {
     "own": false,
     "branches": [
-      "main/main",
-      "main/*"
+      "dinext/main/main"
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": []
+    "executed_checks": [],
+    "legacy_branches": [
+      "main/main"
+    ]
   },
   "builder": {
     "own": false,
     "branches": [
-      "main/main",
-      "main/*"
+      "dinext/main/main"
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": []
+    "executed_checks": [],
+    "legacy_branches": [
+      "main/main"
+    ]
   },
   "dinext_crm": {
     "own": false,
     "branches": [
-      "main/v15",
-      "main/*"
+      "dinext/main/v15"
     ],
     "mode": "repository",
     "frontend_tests": true,
     "executed_checks": [
       "Frontend unit tests"
+    ],
+    "legacy_branches": [
+      "main/v15"
     ]
   },
   "dinext_wiki": {
     "own": false,
     "branches": [
-      "main/v15",
-      "main/*"
+      "dinext/main/v15"
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": []
+    "executed_checks": [],
+    "legacy_branches": [
+      "main/v15"
+    ]
   },
   "insights": {
     "own": false,
     "branches": [
-      "main/main",
-      "main/*"
+      "dinext/main/main"
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": []
+    "executed_checks": [],
+    "legacy_branches": [
+      "main/main"
+    ]
   },
   "raven": {
     "own": false,
     "branches": [
-      "main/*",
-      "main/v3"
+      "dinext/main/v2",
+      "dinext/main/v3"
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": []
+    "executed_checks": [],
+    "legacy_branches": [
+      "main/v2",
+      "main/v3"
+    ]
   },
   "dinext_erp": {
     "own": false,
     "branches": [
-      "main/v15",
-      "main/*"
+      "dinext/main/v15"
     ],
     "mode": "platform-smoke",
     "frontend_tests": false,
     "executed_checks": [
       "App unit tests"
+    ],
+    "legacy_branches": [
+      "main/v15"
     ]
   },
   "dinext_platform": {
     "own": false,
     "branches": [
-      "main/v15",
-      "main/*"
+      "dinext/main/v15",
+      "dinext/main/v16"
     ],
     "mode": "platform-smoke",
     "frontend_tests": false,
     "executed_checks": [
       "App unit tests"
+    ],
+    "legacy_branches": [
+      "main/v15",
+      "main/v16"
     ]
   },
   "hrms": {
     "own": false,
     "branches": [
-      "main/*",
-      "main/version-15"
+      "dinext/main/version-15"
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": []
+    "executed_checks": [],
+    "legacy_branches": [
+      "main/version-15"
+    ]
   },
   "preview_attachment": {
     "own": false,
     "branches": [
-      "main/main",
-      "main/*"
+      "dinext/main/main"
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": []
+    "executed_checks": [],
+    "legacy_branches": [
+      "main/main"
+    ]
   },
   "huf": {
     "own": false,
     "branches": [
-      "main/develop",
-      "main/*"
+      "dinext/main/develop"
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": []
+    "executed_checks": [],
+    "legacy_branches": [
+      "main/develop"
+    ]
   },
   "dinext_huf_raven": {
     "own": true,

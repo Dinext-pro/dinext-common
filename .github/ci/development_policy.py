@@ -32,11 +32,21 @@ def branch_class(target, own):
 
 def validate_route(pr, policy, accepted_in_develop):
     source, target = pr['head']['ref'], pr['base']['ref']
-    if source in FROZEN or target in FROZEN:
+    if source.removeprefix('dinext/') in FROZEN or target.removeprefix('dinext/') in FROZEN:
         raise Rejected('Legacy branch is frozen')
     if not policy['own']:
-        if not any(fnmatch.fnmatchcase(target, p) for p in policy['branches']):
+        # Registry entries are exact integration lines, never vendor or an arbitrary major.
+        allowed = list(policy['branches'])
+        # The temporary old-name allowance ends for this repository at default rename.
+        # base.repo comes from GitHub's trusted PR API, not proposed repository code.
+        default = pr['base']['repo'].get('default_branch', '')
+        if default and not default.startswith('dinext/'):
+            allowed += policy.get('legacy_branches', [])
+        if target not in allowed:
             raise Rejected('Target is not a maintained integration line')
+        same_repository = pr['head']['repo']['full_name'] == pr['base']['repo']['full_name']
+        if same_repository and (not source.startswith('dinext/') or source.startswith('dinext/dinext/')):
+            raise Rejected('Company fork branches require exactly one dinext/ prefix')
         return
     kind = branch_class(target, True)
     if kind == 'develop':

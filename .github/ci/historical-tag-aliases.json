@@ -1,0 +1,122 @@
+[
+  {
+    "repository": "Dinext-pro/builder",
+    "old_tag": "v1.0.0-dev-dinext.1",
+    "alias": "dinext/v1.0.0-dev-dinext.1",
+    "object_sha": "0aa7d8436be1ca7f1d12ff6934d65148f2b21546"
+  },
+  {
+    "repository": "Dinext-pro/builder",
+    "old_tag": "v1.32.0",
+    "alias": "dinext/v1.32.0",
+    "object_sha": "5be3be43a046b1990e8dfcbdd93ab6ab44030db2"
+  },
+  {
+    "repository": "Dinext-pro/dinext_crm",
+    "old_tag": "v1.81.0",
+    "alias": "dinext/v1.81.0",
+    "object_sha": "f34ce8df687b3136796b4e55275130e51ad6e279"
+  },
+  {
+    "repository": "Dinext-pro/dinext_wiki",
+    "old_tag": "v3.0.0-dinext.1",
+    "alias": "dinext/v3.0.0-dinext.1",
+    "object_sha": "14a7e8c3517245a62c6c7ca463d33de0a379ea91"
+  },
+  {
+    "repository": "Dinext-pro/dinext_wiki",
+    "old_tag": "v3.3.0-dinext.1",
+    "alias": "dinext/v3.3.0-dinext.1",
+    "object_sha": "ada0beebeb9b3b7c4f07bd00ec2b8188a5cb4727"
+  },
+  {
+    "repository": "Dinext-pro/doctype_permission",
+    "old_tag": "v0.0.1",
+    "alias": "dinext/v0.0.1",
+    "object_sha": "a4cd0cf99d9c41f4d2113644bf629fe35577cda9"
+  },
+  {
+    "repository": "Dinext-pro/frappe_assistant_core",
+    "old_tag": "v.2.2.2-dinext.1",
+    "alias": "dinext/v.2.2.2-dinext.1",
+    "object_sha": "3a578b4a2f99bb7a229c45638df902a9a3c70b6e"
+  },
+  {
+    "repository": "Dinext-pro/frappe_assistant_core",
+    "old_tag": "v2.5.0",
+    "alias": "dinext/v2.5.0",
+    "object_sha": "2f2990e1ecef6864d091197e23729717793ba2c1"
+  },
+  {
+    "repository": "Dinext-pro/frappe_better_select_control",
+    "old_tag": "v.1.2.1-dinext.1",
+    "alias": "dinext/v.1.2.1-dinext.1",
+    "object_sha": "d840fdcef26f156189b63ae743f5c2d5e9d0e9e0"
+  },
+  {
+    "repository": "Dinext-pro/frappe_better_select_control",
+    "old_tag": "v1.2.2-dinext.1",
+    "alias": "dinext/v1.2.2-dinext.1",
+    "object_sha": "a6d5d2d5ac45f320eb409eaa49aada937938acb6"
+  },
+  {
+    "repository": "Dinext-pro/frappe_comment_xt",
+    "old_tag": "v.1.0.0",
+    "alias": "dinext/v.1.0.0",
+    "object_sha": "9b2e6b44a291f1cbdcf0808ffa34f250dbd0dfc6"
+  },
+  {
+    "repository": "Dinext-pro/frappe_notifier",
+    "old_tag": "v0.0.1",
+    "alias": "dinext/v0.0.1",
+    "object_sha": "e2241721b56e0dc840e032228e7e445bcaaa00de"
+  },
+  {
+    "repository": "Dinext-pro/hrms",
+    "old_tag": "v15.60.1-dinext.1",
+    "alias": "dinext/v15.60.1-dinext.1",
+    "object_sha": "7b3a96c3b4d0589f9cdc1ff1bdd75680938fd298"
+  },
+  {
+    "repository": "Dinext-pro/insights",
+    "old_tag": "v3.0.0-dinext.1",
+    "alias": "dinext/v3.0.0-dinext.1",
+    "object_sha": "e0ae671421b15d739d9cc0ca125e594e86973bb2"
+  },
+  {
+    "repository": "Dinext-pro/preview_attachment",
+    "old_tag": "v0.0.1",
+    "alias": "dinext/v0.0.1",
+    "object_sha": "e14e57e40ff7ddef5fdaf798fd02444e84b26029"
+  },
+  {
+    "repository": "Dinext-pro/print_designer",
+    "old_tag": "v1.0.0-dev",
+    "alias": "dinext/v1.0.0-dev",
+    "object_sha": "520f0c48d149d133783b58f2b18e2dc3f83ce07f"
+  },
+  {
+    "repository": "Dinext-pro/raven",
+    "old_tag": "v2.8.11",
+    "alias": "dinext/v2.8.11",
+    "object_sha": "43ac2aa0e7463f88352e1e82efb56db2f97db26b"
+  },
+  {
+    "repository": "Dinext-pro/raven_cloud",
+    "old_tag": "0.0.1",
+    "alias": "dinext/0.0.1",
+    "object_sha": "afbaf7b8ab4899bc92b15416403d5fe1b1bf9be4"
+  },
+  {
+    "repository": "Dinext-pro/raven_integration",
+    "old_tag": "v0.0.1",
+    "alias": "dinext/v0.0.1",
+    "object_sha": "c5408d53df7e584d224d7ed68a09b013ecf2ce95"
+  },
+  {
+    "repository": "Dinext-pro/raven_integration",
+    "old_tag": "v0.0.1-dinext.1",
+    "alias": "dinext/v0.0.1-dinext.1",
+    "object_sha": "134af1b61f1d1b45c378918a83d9030e891f7782"
+  }
+]
