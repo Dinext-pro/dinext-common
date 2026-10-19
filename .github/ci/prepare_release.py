@@ -5,15 +5,25 @@ import json
 import os
 from pathlib import Path
 import re
+from urllib.parse import quote
 from development_policy import GitHub, evidence_present
 
 
 def validate_tag(tag, own):
-    pattern = r'v\d{2}\.\d{2}\.\d{2}-\d{2}' if own else r'v?\d+(?:\.\d+){1,3}(?:[-.][A-Za-z0-9.]+)?'
+    pattern = r'v\d{2}\.\d{2}\.\d{2}-\d{2}' if own else r'dinext/v?\d+(?:\.\d+){1,3}(?:[-.][A-Za-z0-9.]+)?'
     if not re.fullmatch(pattern, tag):
         raise ValueError('Version does not match the repository release convention')
     if own:
         datetime.strptime(tag[1:9], '%y.%m.%d')
+
+
+def historical_alias(repository, old_tag, object_sha):
+    """Validate an approved historical alias without publishing or relaxing new tags."""
+    aliases = json.loads(Path(__file__).with_name('historical-tag-aliases.json').read_text())
+    record = next((x for x in aliases if x['repository'] == repository and x['old_tag'] == old_tag), None)
+    if record is None or record['object_sha'] != object_sha:
+        raise ValueError('Historical alias is outside the exact approved object map')
+    return record['alias']
 
 
 def main():
@@ -32,14 +42,14 @@ def main():
     validate_tag(args.tag, policy['own'])
     if not re.fullmatch('[0-9a-f]{40}', args.sha):
         raise ValueError('An immutable full commit SHA is required')
-    if policy['own'] and args.branch != 'main' or not policy['own'] and not args.branch.startswith('main/'):
+    if policy['own'] and args.branch != 'main' or not policy['own'] and args.branch not in policy['branches']:
         raise ValueError('Release must identify the stable Dinext line')
     api = GitHub(os.environ['GH_TOKEN'])
     root = '/repos/' + args.repository
-    commit = api.request('GET', root + '/commits/' + args.branch)
+    commit = api.request('GET', root + '/commits/' + quote(args.branch, safe=''))
     if commit['sha'] != args.sha:
         raise ValueError('Stable branch changed; review the new SHA')
-    existing = api.request('GET', root + '/git/matching-refs/tags/' + args.tag)
+    existing = api.request('GET', root + '/git/matching-refs/tags/' + quote(args.tag, safe='/'))
     if any(x['ref'] == 'refs/tags/' + args.tag for x in existing):
         raise ValueError('Tag already exists and must remain immutable')
     checks = api.pages(root + '/commits/' + args.sha + '/check-runs', 'check_runs')
