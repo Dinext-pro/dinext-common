@@ -201,10 +201,7 @@
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": [],
-    "legacy_branches": [
-      "main/main"
-    ]
+    "executed_checks": []
   },
   "frappe_better_select_control": {
     "own": false,
@@ -215,9 +212,6 @@
     "frontend_tests": false,
     "executed_checks": [
       "Portable wheel"
-    ],
-    "legacy_branches": [
-      "main/main"
     ]
   },
   "frappe_assistant_core": {
@@ -227,10 +221,7 @@
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": [],
-    "legacy_branches": [
-      "main/main"
-    ]
+    "executed_checks": []
   },
   "frappe_comment_xt": {
     "own": false,
@@ -239,10 +230,7 @@
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": [],
-    "legacy_branches": [
-      "main/main"
-    ]
+    "executed_checks": []
   },
   "frappe_notifier": {
     "own": false,
@@ -251,10 +239,7 @@
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": [],
-    "legacy_branches": [
-      "main/develop"
-    ]
+    "executed_checks": []
   },
   "print_designer": {
     "own": false,
@@ -263,10 +248,7 @@
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": [],
-    "legacy_branches": [
-      "main/main"
-    ]
+    "executed_checks": []
   },
   "raven_cloud": {
     "own": false,
@@ -275,10 +257,7 @@
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": [],
-    "legacy_branches": [
-      "main/develop"
-    ]
+    "executed_checks": []
   },
   "raven_integration": {
     "own": false,
@@ -287,10 +266,7 @@
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": [],
-    "legacy_branches": [
-      "main/main"
-    ]
+    "executed_checks": []
   },
   "builder": {
     "own": false,
@@ -299,10 +275,7 @@
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": [],
-    "legacy_branches": [
-      "main/main"
-    ]
+    "executed_checks": []
   },
   "dinext_crm": {
     "own": false,
@@ -313,9 +286,6 @@
     "frontend_tests": true,
     "executed_checks": [
       "Frontend unit tests"
-    ],
-    "legacy_branches": [
-      "main/v15"
     ]
   },
   "dinext_wiki": {
@@ -325,10 +295,7 @@
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": [],
-    "legacy_branches": [
-      "main/v15"
-    ]
+    "executed_checks": []
   },
   "insights": {
     "own": false,
@@ -337,10 +304,7 @@
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": [],
-    "legacy_branches": [
-      "main/main"
-    ]
+    "executed_checks": []
   },
   "raven": {
     "own": false,
@@ -350,11 +314,7 @@
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": [],
-    "legacy_branches": [
-      "main/v2",
-      "main/v3"
-    ]
+    "executed_checks": []
   },
   "dinext_erp": {
     "own": false,
@@ -365,25 +325,17 @@
     "frontend_tests": false,
     "executed_checks": [
       "App unit tests"
-    ],
-    "legacy_branches": [
-      "main/v15"
     ]
   },
   "dinext_platform": {
     "own": false,
     "branches": [
-      "dinext/main/v15",
-      "dinext/main/v16"
+      "dinext/main/v15"
     ],
     "mode": "platform-smoke",
     "frontend_tests": false,
     "executed_checks": [
       "App unit tests"
-    ],
-    "legacy_branches": [
-      "main/v15",
-      "main/v16"
     ]
   },
   "hrms": {
@@ -393,10 +345,7 @@
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": [],
-    "legacy_branches": [
-      "main/version-15"
-    ]
+    "executed_checks": []
   },
   "preview_attachment": {
     "own": false,
@@ -405,10 +354,7 @@
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": [],
-    "legacy_branches": [
-      "main/main"
-    ]
+    "executed_checks": []
   },
   "huf": {
     "own": false,
@@ -417,10 +363,7 @@
     ],
     "mode": "repository",
     "frontend_tests": false,
-    "executed_checks": [],
-    "legacy_branches": [
-      "main/develop"
-    ]
+    "executed_checks": []
   },
   "dinext_huf_raven": {
     "own": true,
