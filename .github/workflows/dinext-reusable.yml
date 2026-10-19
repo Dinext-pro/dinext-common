@@ -184,7 +184,7 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
         repository: Dinext-pro/dinext_platform
-        ref: main/v15
+        ref: 24a4886ecb07df43fcdc546d437cf98ef4ff097f
         path: frappe
         sparse-checkout: ui
         persist-credentials: false
