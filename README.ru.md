@@ -1,5 +1,25 @@
 [English](README.md)
 
+<!-- dinext-presentation:start -->
+<p align="center">
+  <a href="https://dinext.ru"><img src="docs/assets/readme/dinext-logo.png" alt="Dinext" width="128"></a>
+</p>
+<h1 align="center">Dinext Common</h1>
+
+<hr>
+
+<p align="center">Общее оформление, навигация, настройки и переиспользуемые компоненты интерфейса приложений Dinext.</p>
+
+<p align="center">
+  <img src="docs/assets/readme/overview.png" alt="Общая навигация Dinext и карточки рабочих пространств." width="960">
+</p>
+<p align="center"><sub>Общая навигация Dinext и карточки рабочих пространств.</sub></p>
+
+<p align="center">
+  <a href="https://dinext.ru">Сайт</a> · <a href="https://docs.dinext.ru">Документация</a>
+</p>
+<!-- dinext-presentation:end -->
+
 # Dinext Common
 
 `dinext_common` — общее Frappe-приложение платформы Dinext. Оно устанавливается
