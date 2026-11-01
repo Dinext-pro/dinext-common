@@ -104,6 +104,126 @@ def transition_semantic_hash(transition: Mapping[str, object]) -> str:
 	return hashlib.sha256(serialized.encode()).hexdigest()
 
 
+def _transition_identity(row: Mapping[str, object]) -> tuple[str, str, str]:
+	return (
+		str(row.get("transition_uuid") or ""),
+		str(row.get("transition_semantic_hash") or ""),
+		str(row.get("action") or ""),
+	)
+
+
+def classify_round_configuration(
+	snapshot: Iterable[Mapping[str, object]],
+	current: Iterable[Mapping[str, object]],
+	completed_votes: Iterable[Mapping[str, object]],
+) -> dict[str, list[dict[str, object]]]:
+	"""Split a round snapshot against the live transitions of the same state.
+
+	A stable row has the same UUID and semantic hash. An empty snapshot UUID
+	matches one current row with the same hash and does not become a conflict.
+	A different non-empty UUID is not the same transition. Completed votes on
+	a removed or changed row are void; the same row with no votes is dropped.
+	"""
+	snapshot_rows = [dict(row) for row in snapshot]
+	current_rows = [dict(row) for row in current]
+	votes_by_uuid: dict[str, list[str]] = {}
+	for vote in completed_votes:
+		uuid = str(vote.get("transition_uuid") or "")
+		approver = str(vote.get("approver") or "")
+		if approver and approver not in votes_by_uuid.setdefault(uuid, []):
+			votes_by_uuid[uuid].append(approver)
+	for approvers in votes_by_uuid.values():
+		approvers.sort()
+
+	used: set[int] = set()
+	keep: list[dict[str, object]] = []
+	void: list[dict[str, object]] = []
+	dropped: list[dict[str, object]] = []
+	stable_votes: list[dict[str, object]] = []
+
+	def describe(uuid: str, action: str, change: str) -> dict[str, object]:
+		return {
+			"transition_uuid": uuid,
+			"action": action,
+			"change": change,
+			"approvers": list(votes_by_uuid.get(uuid, [])),
+		}
+
+	for snapshot_row in snapshot_rows:
+		uuid, snap_hash, action = _transition_identity(snapshot_row)
+		match: int | None = None
+		if uuid:
+			for index, current_row in enumerate(current_rows):
+				current_uuid, current_hash, _current_action = _transition_identity(current_row)
+				if index not in used and current_uuid == uuid and current_hash == snap_hash:
+					match = index
+					break
+		else:
+			candidates = [
+				index
+				for index, current_row in enumerate(current_rows)
+				if index not in used and _transition_identity(current_row)[1] == snap_hash
+			]
+			if len(candidates) == 1:
+				match = candidates[0]
+		if match is not None:
+			used.add(match)
+			keep.append(snapshot_row)
+			approvers = votes_by_uuid.get(uuid, [])
+			if approvers:
+				stable_votes.append(
+					{
+						"transition_uuid": uuid,
+						"action": action,
+						"approvers": approvers,
+					}
+				)
+			continue
+		current_match = next(
+			(
+				current_row
+				for current_row in current_rows
+				if _transition_identity(current_row)[0] == uuid and uuid
+			),
+			None,
+		)
+		change = "semantic" if current_match is not None else "removed"
+		described = describe(uuid, action, change)
+		if described["approvers"]:
+			void.append(described)
+		else:
+			dropped.append(described)
+
+	add: list[dict[str, object]] = []
+	added: list[dict[str, object]] = []
+	for index, current_row in enumerate(current_rows):
+		if index in used:
+			continue
+		uuid, _current_hash, action = _transition_identity(current_row)
+		add.append(dict(current_row))
+		added.append({"transition_uuid": uuid, "action": action})
+	return {
+		"keep": keep,
+		"add": add,
+		"void": void,
+		"dropped": dropped,
+		"stable": stable_votes,
+		"added": added,
+	}
+
+
+def configuration_change_metadata(
+	classification: Mapping[str, list[dict[str, object]]],
+) -> dict[str, object]:
+	"""JSON stored on a round conflicted by a workflow configuration change."""
+	return {
+		"reason": "configuration_changed",
+		"stable": list(classification.get("stable") or []),
+		"void": list(classification.get("void") or []),
+		"added": list(classification.get("added") or []),
+	}
+
+
 def normalize_comment(
 	value: object,
 	*,

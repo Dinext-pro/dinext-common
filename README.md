@@ -580,7 +580,7 @@ Email Template по умолчанию (если у Workflow нет своего
 Domain-приложения подключаются hooks `workflow_approval_lock_dependencies`,
 `workflow_approval_pending_approvers`, `workflow_approval_vote_completed`,
 `workflow_approval_digest_item`. AFL UX — в `dinext_projects`; оркестрация
-User Timesheet — `dinext_timesheets.workflow_approval.orchestrate_timesheet`.
+User Timesheet — действия workflow позиций в `dinext_timesheets.workflow_approval`.
 
 Патч `cutover_parallel_workflow_approvals` — no-op, пока в `site_config` нет
 `run_parallel_workflow_cutover`. После успешного cutover флаг

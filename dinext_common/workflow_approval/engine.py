@@ -25,7 +25,10 @@ from dinext_common.workflow_approval.fingerprint import (
 )
 from dinext_common.workflow_approval.policy import (
 	ZeroEligibleApproversError,
+	classify_round_configuration,
+	configuration_change_metadata,
 	is_threshold_reachable,
+	make_task_name,
 	normalize_comment,
 	normalize_policy,
 	required_approvals,
@@ -412,12 +415,16 @@ def _cancel_round(round_id: str, reason: str, *, round_status: str = "Cancelled"
 	close_round_projections(round_id)
 
 
-def _mark_conflicted(round_id: str, reason: str) -> None:
+def _mark_conflicted(
+	round_id: str,
+	reason: str,
+	metadata: dict[str, Any] | None = None,
+) -> None:
 	_set_round_values(
 		round_id,
 		{
 			"round_status": "Conflicted",
-			"failure_metadata": serialize_manifest({"reason": reason}),
+			"failure_metadata": serialize_manifest(metadata or {"reason": reason}),
 		},
 	)
 	from dinext_common.workflow_approval.projections import close_round_projections
@@ -635,6 +642,7 @@ def reconcile_source(
 	doc: object,
 	*,
 	cycle_guard: AutomationCycleGuard | None = None,
+	apply_automatic: bool = True,
 ) -> list[str]:
 	"""Create or reconcile the immutable active round for a source document."""
 	if _value(doc, "is_new", lambda: False)():
@@ -660,10 +668,17 @@ def reconcile_source(
 			_cancel_round(round_id, _("Source workflow state changed"))
 		else:
 			active_manifest = _parse_manifest(active)
-			current_hashes = _configured_transition_hashes(workflow, state)
-			if not manifest_matches_configuration(active_manifest, current_hashes):
-				_mark_conflicted(round_id, _("Workflow transition configuration changed"))
+			classification = _classify_round(active_manifest, workflow, state, round_id)
+			if classification["void"]:
+				_mark_conflicted(
+					round_id,
+					_("Workflow transition configuration changed"),
+					metadata=configuration_change_metadata(classification),
+				)
 				return active_names
+			if classification["dropped"] or classification["add"]:
+				_amend_open_round(doc, active, workflow, state, classification)
+				return _round_task_names(round_id)
 			if active.entry_fingerprint != fingerprint.digest and any(
 				row.get("reset_on_change")
 				for row in active_manifest.get("transitions", [])
@@ -692,7 +707,11 @@ def reconcile_source(
 		task_transitions,
 		fingerprint,
 	)
-	winner = _apply_automatic_votes(doc, tasks, manifest, fingerprint)
+	winner = (
+		_apply_automatic_votes(doc, tasks, manifest, fingerprint)
+		if apply_automatic
+		else None
+	)
 	from dinext_common.workflow_approval.projections import create_round_projections
 
 	if not winner:
@@ -766,6 +785,8 @@ def _apply_automatic_votes(
 ) -> dict[str, Any] | None:
 	reused_times: dict[str, list[str]] = {}
 	for task in tasks:
+		if frappe.db.get_value("Workflow Task", task.name, "status") == "Completed":
+			continue
 		candidates = []
 		for transition in task.available_workflow_transitions:
 			reused = _latest_reuse_for_transition(task, transition, fingerprint)
@@ -938,12 +959,32 @@ def cast_vote(
 		raise WorkflowApprovalConflictError(_("The source workflow state has changed"))
 
 	manifest = _parse_manifest(task)
-	current_hashes = _configured_transition_hashes(workflow, state)
-	if not manifest_matches_configuration(manifest, current_hashes):
-		_mark_conflicted(task.approval_round_id, _("Workflow transition configuration changed"))
+	classification = _classify_round(manifest, workflow, state, task.approval_round_id)
+	if classification["void"]:
+		_mark_conflicted(
+			task.approval_round_id,
+			_("Workflow transition configuration changed"),
+			metadata=configuration_change_metadata(classification),
+		)
 		raise WorkflowApprovalConflictError(_("Workflow transition configuration changed"))
-
-	transition = _task_transition(task, transition_uuid, action)
+	if classification["dropped"] or classification["add"]:
+		finalized = _amend_open_round(source, task, workflow, state, classification)
+		task.reload()
+		source.reload()
+		if finalized or task.status != "Working" or task.round_status != "Open":
+			return _vote_result(
+				task,
+				source,
+				transitioned=task.round_status == "Transitioned",
+			)
+		try:
+			transition = _task_transition(task, transition_uuid, action)
+		except WorkflowApprovalConflictError:
+			if not frappe.flags.in_test:
+				frappe.db.commit()
+			raise
+	else:
+		transition = _task_transition(task, transition_uuid, action)
 	normalized_comment = normalize_comment(
 		comment,
 		required=bool(transition.comment_is_required),

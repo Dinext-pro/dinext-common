@@ -1,0 +1,76 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:service_name",
+ "creation": "2026-10-28 02:42:16.332423",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "service_name",
+  "coordinator",
+  "base_rate",
+  "zone"
+ ],
+ "fields": [
+  {
+   "fieldname": "service_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0443\u0441\u043b\u0443\u0433\u0438",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "coordinator",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "\u041a\u043e\u043e\u0440\u0434\u0438\u043d\u0430\u0442\u043e\u0440"
+  },
+  {
+   "fieldname": "base_rate",
+   "fieldtype": "Currency",
+   "label": "\u0421\u0442\u0430\u0432\u043a\u0430"
+  },
+  {
+   "fieldname": "zone",
+   "fieldtype": "Data",
+   "label": "\u0417\u043e\u043d\u0430 \u043e\u0431\u0441\u043b\u0443\u0436\u0438\u0432\u0430\u043d\u0438\u044f"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-10-28 02:42:16.332423",
+ "modified_by": "Administrator",
+ "module": "Dinext Common",
+ "name": "DN Lowcode Service",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "select": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "\u0423\u0447\u0430\u0441\u0442\u043d\u0438\u043a \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u0444\u043e\u0440\u043c",
+   "select": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "service_name",
+ "track_changes": 1
+}

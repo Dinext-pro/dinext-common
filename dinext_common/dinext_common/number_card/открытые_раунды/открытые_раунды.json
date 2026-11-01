@@ -11,7 +11,7 @@
  "is_standard": 1,
  "label": "\u041e\u0442\u043a\u0440\u044b\u0442\u044b\u0435 \u0440\u0430\u0443\u043d\u0434\u044b",
  "method": "dinext_common.workflow_approval.api.open_control_round_count",
- "modified": "2026-10-05 03:06:25.062363",
+ "modified": "2026-10-30 05:35:32.372348",
  "modified_by": "Administrator",
  "module": "Dinext Common",
  "name": "\u041e\u0442\u043a\u0440\u044b\u0442\u044b\u0435 \u0440\u0430\u0443\u043d\u0434\u044b",
