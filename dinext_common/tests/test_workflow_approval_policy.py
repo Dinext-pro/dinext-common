@@ -105,3 +105,37 @@ class TestWorkflowApprovalPolicy(unittest.TestCase):
 			policy.missing_task_names("round-001", approvers, {alice}),
 			{bob},
 		)
+
+	def test_configuration_change_keeps_stable_votes_and_voids_the_rest(self):
+		policy = self.policy()
+		snapshot = [
+			{"transition_uuid": "keep", "transition_semantic_hash": "same", "action": "Keep"},
+			{"transition_uuid": "drop", "transition_semantic_hash": "old", "action": "Drop"},
+			{"transition_uuid": "gone", "transition_semantic_hash": "gone", "action": "Gone"},
+			{"transition_uuid": "", "transition_semantic_hash": "filled", "action": "Fill"},
+		]
+		current = [
+			{"transition_uuid": "keep", "transition_semantic_hash": "same", "action": "Keep"},
+			{"transition_uuid": "drop", "transition_semantic_hash": "new", "action": "Drop"},
+			{"transition_uuid": "added", "transition_semantic_hash": "added", "action": "Add"},
+			{"transition_uuid": "filled-once", "transition_semantic_hash": "filled", "action": "Fill"},
+		]
+		votes = [
+			{"transition_uuid": "keep", "approver": "a@example.com"},
+			{"transition_uuid": "drop", "approver": "b@example.com"},
+		]
+		result = policy.classify_round_configuration(snapshot, current, votes)
+		self.assertEqual(result["stable"][0]["approvers"], ["a@example.com"])
+		self.assertEqual(result["void"][0]["change"], "semantic")
+		self.assertEqual(result["void"][0]["approvers"], ["b@example.com"])
+		self.assertEqual([row["transition_uuid"] for row in result["dropped"]], ["gone"])
+		self.assertEqual(result["added"][0]["transition_uuid"], "added")
+		self.assertEqual(
+			[row["transition_uuid"] for row in result["add"]],
+			["drop", "added"],
+		)
+		self.assertIn(
+			"keep",
+			{row["transition_uuid"] for row in result["keep"]},
+		)
+		self.assertTrue(any(not row.get("transition_uuid") for row in result["keep"]))

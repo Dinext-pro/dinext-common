@@ -254,12 +254,41 @@
 		const names = [
 			...new Set(pending.map((row) => row.approver_name || row.approver)),
 		].sort();
+		const voteLines = (rows) =>
+			(rows || [])
+				.map((row) => {
+					const action = frappe.utils.escape_html(row.action || row.transition_uuid || "");
+					const people = (row.approvers || [])
+						.map((user) => frappe.utils.escape_html(user))
+						.join(", ");
+					return people ? `${action} — ${people}` : action;
+				})
+				.filter(Boolean)
+				.join("<br>");
+		const change = banner.configuration_change;
+		const breakdown = change
+			? [
+					voteLines(change.stable)
+						? `<div><strong>${__("Votes that will be carried")}</strong><br>${voteLines(
+								change.stable
+						  )}</div>`
+						: "",
+					voteLines(change.void)
+						? `<div><strong>${__("Votes that will be dropped")}</strong><br>${voteLines(
+								change.void
+						  )}</div>`
+						: "",
+			  ]
+					.filter(Boolean)
+					.join("")
+			: "";
+		const resetButton = banner.can_reset
+			? `<button type="button" class="btn btn-xs btn-default dinext-reset-round">${__(
+					"Reset round"
+			  )}</button>`
+			: "";
 		const body = stalled
-			? banner.can_reset
-				? `<button type="button" class="btn btn-xs btn-default dinext-reset-round">${__(
-						"Reset round"
-				  )}</button>`
-				: ""
+			? `${breakdown}${resetButton}`
 			: names.map((user) => frappe.utils.escape_html(user)).join(", ");
 		const section = frm.dashboard.add_section(body, title, "dinext-pending-approvers");
 		frm.dashboard.show();

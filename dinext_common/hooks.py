@@ -128,7 +128,7 @@ app_include_js = [
     "/assets/dinext_common/js/dinext-desk.js",
     "/assets/dinext_common/js/dashboard_filters_fix.js",
     "/assets/dinext_common/js/workspace_sidebar_hover.js",
-    "/assets/dinext_common/js/workflow_approval.js?v=20261015a",
+    "/assets/dinext_common/js/workflow_approval.js?v=20261101a",
 ]
 
 # Expose site_config flags to Desk bootinfo
@@ -151,8 +151,13 @@ web_include_css = ["/assets/dinext_common/css/public_auth_header.css"]
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-doctype_js = {"Project" : "public/js/sticky-datatable.js"}
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
+doctype_js = {
+	"Project": "public/js/sticky-datatable.js",
+	"Workflow Action": "public/js/workflow_action_desk.js",
+}
+doctype_list_js = {
+	"Workflow Action": "public/js/workflow_action_list.js",
+}
 # doctype_tree_js = {"Task" : "public/js/frappe-gantt.umd.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
@@ -394,6 +399,12 @@ ignore_links_on_delete = ["Workflow Task"]
 # 		"doctype": "{doctype_4}"
 # 	}
 # ]
+
+# Frappe also registers a Workflow Action list filter. It is combined with ours,
+# so the stock filter is cleared while the approval engine is enabled.
+from dinext_common.workflow_approval.permissions import relax_core_workflow_action_query
+
+relax_core_workflow_action_query()
 
 # Authentication and authorization
 # --------------------------------

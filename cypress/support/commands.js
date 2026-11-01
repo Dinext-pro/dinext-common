@@ -23,20 +23,22 @@ Cypress.Commands.add("login", (email, password) => {
 	);
 });
 
-Cypress.Commands.add("call", (method, args, { failOnStatusCode = true } = {}) => {
+Cypress.Commands.add("call", (method, args, { failOnStatusCode = true, timeout } = {}) => {
 	return cy.window().its("frappe.csrf_token").then((csrf_token) => {
+		const request = {
+			url: `/api/method/${method}`,
+			method: "POST",
+			body: args || {},
+			failOnStatusCode,
+			headers: {
+				Accept: "application/json",
+				"Content-Type": "application/json",
+				"X-Frappe-CSRF-Token": csrf_token,
+			},
+		};
+		if (timeout) request.timeout = timeout;
 		return cy
-			.request({
-				url: `/api/method/${method}`,
-				method: "POST",
-				body: args || {},
-				failOnStatusCode,
-				headers: {
-					Accept: "application/json",
-					"Content-Type": "application/json",
-					"X-Frappe-CSRF-Token": csrf_token,
-				},
-			})
+			.request(request)
 			.then((res) => {
 				if (failOnStatusCode) {
 					expect(res.status).to.eq(200);

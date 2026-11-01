@@ -194,6 +194,9 @@ def classify_round_configuration(
 		else:
 			dropped.append(described)
 
+	snapshot_uuids = {
+		_transition_identity(row)[0] for row in snapshot_rows if _transition_identity(row)[0]
+	}
 	add: list[dict[str, object]] = []
 	added: list[dict[str, object]] = []
 	for index, current_row in enumerate(current_rows):
@@ -201,6 +204,8 @@ def classify_round_configuration(
 			continue
 		uuid, _current_hash, action = _transition_identity(current_row)
 		add.append(dict(current_row))
+		if uuid and uuid in snapshot_uuids:
+			continue
 		added.append({"transition_uuid": uuid, "action": action})
 	return {
 		"keep": keep,

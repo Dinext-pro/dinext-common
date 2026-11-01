@@ -147,6 +147,12 @@ def _ensure_user(email: str, first_name: str, roles: list[str], *, dark: bool = 
 			).db_insert()
 	if dark:
 		frappe.db.set_value("User", email, "desk_theme", "Dark", update_modified=False)
+	if not frappe.db.exists("Notification Settings", email):
+		from frappe.desk.doctype.notification_settings.notification_settings import (
+			create_notification_settings,
+		)
+
+		create_notification_settings(email)
 	frappe.clear_cache(user=email)
 
 
@@ -517,7 +523,7 @@ def _seed_timesheet(workflow_name: str) -> dict:
 				"timesheet_from_name": "Cypress Timesheet",
 				"ts_valid_from": TIMESHEET_FROM,
 				"ts_valid_for": TIMESHEET_TO,
-				"ut_status": "На согласовании",
+				"ut_status": "Pending Approval",
 			}
 		).insert(ignore_permissions=True)
 		position = frappe.get_doc(
@@ -525,7 +531,7 @@ def _seed_timesheet(workflow_name: str) -> dict:
 				"doctype": "User Timesheet Position",
 				"user_timesheet": timesheet.name,
 				"user": AUTHOR,
-				"status": "На согласовании",
+				"status": "Pending Approval",
 				"period": "Cypress parallel workflow",
 			}
 		).insert(ignore_permissions=True)
@@ -546,13 +552,13 @@ def _seed_timesheet(workflow_name: str) -> dict:
 		doctype="User Timesheet Position",
 		name=position.name,
 		workflow=workflow_name,
-		state="На согласовании",
+		state="Pending Approval",
 		approver=APPROVER,
 		round_status="Open",
 		status="Working",
 		round_id=round_id,
 		action="Cypress Position",
-		next_state="Согласовано",
+		next_state="Approved",
 		transition_uuid="cypress-position",
 		allowed_role=ROLE,
 	)
@@ -560,13 +566,13 @@ def _seed_timesheet(workflow_name: str) -> dict:
 		doctype="User Timesheet Position",
 		name=position.name,
 		workflow=workflow_name,
-		state="На согласовании",
+		state="Pending Approval",
 		approver=APPROVER_B,
 		round_status="Open",
 		status="Working",
 		round_id=round_id,
 		action="Cypress Position",
-		next_state="Согласовано",
+		next_state="Approved",
 		transition_uuid="cypress-position",
 		allowed_role=ROLE,
 	)
@@ -608,7 +614,8 @@ def _seed_timesheet(workflow_name: str) -> dict:
 
 
 def _seed_conflicted(issue_name: str, workflow_name: str) -> str:
-	return _manual_task(
+	round_id = frappe.generate_hash(length=40)
+	task_name = _manual_task(
 		doctype="Issue",
 		name=issue_name,
 		workflow=workflow_name,
@@ -616,8 +623,37 @@ def _seed_conflicted(issue_name: str, workflow_name: str) -> str:
 		approver=APPROVER,
 		round_status="Conflicted",
 		status="Working",
-		round_id=frappe.generate_hash(length=40),
+		round_id=round_id,
 	)
+	frappe.db.set_value(
+		"Workflow Task",
+		task_name,
+		"failure_metadata",
+		json.dumps(
+			{
+				"reason": "configuration_changed",
+				"stable": [
+					{
+						"transition_uuid": "cypress-keep",
+						"action": "Cypress Kept",
+						"approvers": [APPROVER_B],
+					}
+				],
+				"void": [
+					{
+						"transition_uuid": "cypress-drop",
+						"action": "Cypress Dropped",
+						"change": "semantic",
+						"approvers": [APPROVER],
+					}
+				],
+				"added": [],
+			},
+			ensure_ascii=False,
+		),
+		update_modified=False,
+	)
+	return task_name
 
 
 @whitelist_for_tests
@@ -888,4 +924,162 @@ def task_snapshot(task_name: str) -> dict:
 		"status": task.status,
 		"vote_comment": task.vote_comment,
 		"action": task.action,
+	}
+
+
+WA_APPROVER = "cy.wa.approver@example.com"
+WA_MANAGER = "cy.wa.manager@example.com"
+WA_ROLE = "_Cypress WA Desk"
+WA_SUBJECT = "Workflow Action desk source"
+WA_USERS = (WA_APPROVER, WA_MANAGER)
+
+
+def _workflow_action_desk_issues() -> list[str]:
+	return frappe.get_all("Issue", filters={"subject": WA_SUBJECT}, pluck="name")
+
+
+def _delete_workflow_action_desk_docs() -> None:
+	issues = _workflow_action_desk_issues()
+	names = set(issues)
+	task_names = []
+	if names:
+		task_names = frappe.get_all(
+			"Workflow Task",
+			filters={"reference_doctype": "Issue", "reference_name": ["in", list(names)]},
+			pluck="name",
+		)
+		frappe.db.delete(
+			"Workflow Action",
+			{"reference_doctype": "Issue", "reference_name": ["in", list(names)]},
+		)
+	task_names.extend(
+		frappe.get_all(
+			"Workflow Task",
+			filters={"approval_round_id": ["in", ["cy-wa-desk-open", "cy-wa-desk-blank"]]},
+			pluck="name",
+		)
+	)
+	if task_names:
+		frappe.db.delete("Workflow Action", {"custom_workflow_task": ["in", task_names]})
+	frappe.flags.in_workflow_task_retention = True
+	try:
+		for task_name in set(task_names):
+			if frappe.db.exists("Workflow Task", task_name):
+				frappe.delete_doc("Workflow Task", task_name, force=True, ignore_permissions=True)
+	finally:
+		frappe.flags.in_workflow_task_retention = False
+	with _engine_paused():
+		previous_import = frappe.flags.in_import
+		frappe.flags.in_import = True
+		try:
+			for issue in issues:
+				if frappe.db.exists("Issue", issue):
+					frappe.delete_doc("Issue", issue, force=True, ignore_permissions=True)
+		finally:
+			frappe.flags.in_import = previous_import
+
+
+@whitelist_for_tests
+def cleanup_workflow_action_desk() -> dict:
+	"""Delete the Workflow Action desk fixture and its users."""
+	_assert_flag()
+	_delete_workflow_action_desk_docs()
+	frappe.db.delete(
+		"DocType Permission Condition",
+		{"parent": "Issue_Permissions", "role": WA_ROLE},
+	)
+	frappe.cache.delete_value("doctype_permission_map")
+	for perm in frappe.get_all("Custom DocPerm", filters={"role": WA_ROLE}, pluck="name"):
+		frappe.delete_doc("Custom DocPerm", perm, force=True, ignore_permissions=True)
+	for email in WA_USERS:
+		if not frappe.db.exists("User", email):
+			continue
+		frappe.db.delete("Has Role", {"parent": email, "parenttype": "User"})
+		try:
+			frappe.delete_doc("User", email, force=True, ignore_permissions=True)
+		except Exception:
+			frappe.db.set_value("User", email, "enabled", 0, update_modified=False)
+	if frappe.db.exists("Role", WA_ROLE):
+		try:
+			frappe.delete_doc("Role", WA_ROLE, force=True, ignore_permissions=True)
+		except Exception:
+			pass
+	frappe.clear_cache()
+	return {"cleaned": True}
+
+
+def _desk_task(name: str, issue: str, approver: str, *, deleted: bool) -> str:
+	if frappe.db.exists("Workflow Task", name):
+		return name
+	task = frappe.get_doc(
+		{
+			"doctype": "Workflow Task",
+			"name": name,
+			"doc": "Issue",
+			"wt_docname": issue,
+			"reference_doctype": "Issue",
+			"reference_name": issue,
+			"status": "Working",
+			"round_status": "Open",
+			"finalization_status": "Not Required",
+			"approval_round_id": "cy-wa-desk-blank" if deleted else "cy-wa-desk-open",
+			"approver": approver,
+			"user": approver,
+			"source_title": WA_SUBJECT,
+			"source_owner": approver,
+			"source_created_at": now_datetime(),
+			"source_deleted_at": now_datetime() if deleted else None,
+			"round_manifest": json.dumps({"transitions": []}),
+		}
+	)
+	task.insert(ignore_permissions=True)
+	return task.name
+
+
+@whitelist_for_tests
+def seed_workflow_action_desk() -> dict:
+	"""Create one readable Workflow Action and one action without a source document."""
+	_assert_flag()
+	cleanup_workflow_action_desk()
+	_ensure_role(WA_ROLE)
+	_ensure_user(WA_APPROVER, "Workflow Action Approver", [WA_ROLE, "Desk User"])
+	_ensure_user(WA_MANAGER, "Workflow Action Manager", ["System Manager", "Desk User"])
+	_ensure_issue_perm(WA_ROLE)
+	_ensure_permission_condition("Issue_Permissions", WA_ROLE)
+	with _engine_paused():
+		issue = _issue(WA_SUBJECT)
+	open_task = _desk_task("CY-WA-DESK-OPEN", issue.name, WA_APPROVER, deleted=False)
+	blank_task = _desk_task("CY-WA-DESK-BLANK", issue.name, WA_APPROVER, deleted=True)
+	open_action = frappe.get_doc(
+		{
+			"doctype": "Workflow Action",
+			"reference_doctype": "Issue",
+			"reference_name": issue.name,
+			"status": "Open",
+			"user": WA_APPROVER,
+			"custom_workflow_task": open_task,
+		}
+	).insert(ignore_permissions=True)
+	blank_action = frappe.get_doc(
+		{
+			"doctype": "Workflow Action",
+			"status": "Completed",
+			"user": WA_APPROVER,
+			"custom_workflow_task": blank_task,
+		}
+	).insert(ignore_permissions=True)
+	if not _permission_as(WA_APPROVER, "Workflow Action", "read", open_action.name):
+		frappe.throw("Approver cannot read the linked Workflow Action")
+	if not _permission_as(WA_APPROVER, "Workflow Action", "read", blank_action.name):
+		frappe.throw("Approver cannot read the Workflow Action without a source")
+	if not _permission_as(WA_APPROVER, "Issue", "read", issue.name):
+		frappe.throw("Approver cannot read the source Issue")
+	frappe.clear_cache()
+	return {
+		"password": PASSWORD,
+		"approver": WA_APPROVER,
+		"manager": WA_MANAGER,
+		"issue": issue.name,
+		"action": open_action.name,
+		"blank_action": blank_action.name,
 	}

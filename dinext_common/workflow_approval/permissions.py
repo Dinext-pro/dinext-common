@@ -88,8 +88,28 @@ def get_workflow_task_query_conditions(user: str | None = None) -> str:
 	return "" if _is_system_manager(user) else "1=0"
 
 
+def relax_core_workflow_action_query() -> None:
+	"""Drop the stock list filter while the approval engine supplies its own."""
+	import frappe.workflow.doctype.workflow_action.workflow_action as core_action
+
+	current = core_action.get_permission_query_conditions
+	if getattr(current, "_dinext_relaxed", False):
+		return
+	original = current
+
+	def get_permission_query_conditions(user=None, **_kwargs):
+		from dinext_common.workflow_approval.lifecycle import is_engine_enabled
+
+		if is_engine_enabled():
+			return ""
+		return original(user)
+
+	get_permission_query_conditions._dinext_relaxed = True
+	core_action.get_permission_query_conditions = get_permission_query_conditions
+
+
 def get_workflow_action_query_conditions(user: str | None = None) -> str:
-	"""Use custom source-aware APIs instead of leaking Dynamic Link rows in lists."""
+	"""Keep each user's own actions readable. Desk hides the standard list separately."""
 	user = user or frappe.session.user
 	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
 
@@ -99,7 +119,9 @@ def get_workflow_action_query_conditions(user: str | None = None) -> str:
 		)
 
 		return core_conditions(user)
-	return "" if _is_system_manager(user) else "1=0"
+	if _is_system_manager(user):
+		return ""
+	return f"`tabWorkflow Action`.`user`={frappe.db.escape(user)}"
 
 
 def has_workflow_task_permission(

@@ -97,6 +97,60 @@ class TestWorkflowApprovalPermissions(unittest.TestCase):
 				permissions.has_workflow_task_permission(task, "read", "monitor@example.com")
 			)
 
+	def test_workflow_action_query_keeps_own_rows_when_engine_enabled(self):
+		permissions = self.permissions()
+
+		with (
+			patch(
+				"dinext_common.workflow_approval.lifecycle.is_engine_enabled",
+				return_value=True,
+			),
+			patch.object(permissions.frappe, "get_roles", return_value=["Desk User"]),
+			patch.object(permissions.frappe.db, "escape", side_effect=lambda value: f"'{value}'"),
+		):
+			condition = permissions.get_workflow_action_query_conditions("alice@example.com")
+
+		self.assertNotEqual(condition, "1=0")
+		self.assertEqual(condition, "`tabWorkflow Action`.`user`='alice@example.com'")
+		self.assertNotIn("Open", condition)
+
+	def test_workflow_action_query_is_unrestricted_for_system_manager(self):
+		permissions = self.permissions()
+
+		with patch(
+			"dinext_common.workflow_approval.lifecycle.is_engine_enabled",
+			return_value=True,
+		):
+			with patch.object(permissions.frappe, "get_roles", return_value=["System Manager"]):
+				self.assertEqual(
+					permissions.get_workflow_action_query_conditions("manager@example.com"),
+					"",
+				)
+			self.assertEqual(
+				permissions.get_workflow_action_query_conditions("Administrator"),
+				"",
+			)
+
+	def test_workflow_action_query_uses_core_when_engine_disabled(self):
+		permissions = self.permissions()
+
+		with (
+			patch(
+				"dinext_common.workflow_approval.lifecycle.is_engine_enabled",
+				return_value=False,
+			),
+			patch(
+				"frappe.workflow.doctype.workflow_action.workflow_action.get_permission_query_conditions",
+				return_value="core-filter",
+			) as core,
+		):
+			self.assertEqual(
+				permissions.get_workflow_action_query_conditions("alice@example.com"),
+				"core-filter",
+			)
+
+		core.assert_called_once_with("alice@example.com")
+
 	def test_workflow_action_requires_core_access_and_linked_task_access(self):
 		permissions = self.permissions()
 		action = SimpleNamespace(

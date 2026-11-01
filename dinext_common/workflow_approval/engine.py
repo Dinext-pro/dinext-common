@@ -638,6 +638,309 @@ def _add_stalled_diagnostic(doc: object, message: str) -> None:
 	)
 
 
+def _completed_vote_rows(round_id: str) -> list[dict[str, Any]]:
+	return frappe.get_all(
+		"Workflow Task",
+		filters={"approval_round_id": round_id, "status": "Completed"},
+		fields=[
+			"name",
+			"approver",
+			"action",
+			"transition_uuid",
+			"transition_semantic_hash",
+			"vote_comment",
+		],
+		order_by="name asc",
+	)
+
+
+def _classify_round(
+	manifest: dict[str, Any],
+	workflow: object,
+	state: str,
+	round_id: str,
+) -> dict[str, list[dict[str, Any]]]:
+	current = [
+		_transition_dict(transition)
+		for transition in _value(workflow, "transitions", [])
+		if _value(transition, "state") == state
+	]
+	return classify_round_configuration(
+		manifest.get("transitions") or [],
+		current,
+		_completed_vote_rows(round_id),
+	)
+
+
+def configuration_metadata(task: object) -> dict[str, Any] | None:
+	"""Return the configuration-change breakdown stored on a conflicted round."""
+	value = _value(task, "failure_metadata")
+	if not value:
+		return None
+	try:
+		parsed = json.loads(value) if isinstance(value, str) else dict(value)
+	except (TypeError, ValueError):
+		return None
+	if not isinstance(parsed, dict) or parsed.get("reason") != "configuration_changed":
+		return None
+	return parsed
+
+
+def _replace_available_transitions(task_name: str, transitions: list[dict[str, Any]]) -> None:
+	frappe.db.delete(
+		"Available Workflow Transitions",
+		{"parent": task_name, "parenttype": "Workflow Task"},
+	)
+	for transition in transitions:
+		frappe.get_doc(
+			{
+				"doctype": "Available Workflow Transitions",
+				"parent": task_name,
+				"parenttype": "Workflow Task",
+				"parentfield": "available_workflow_transitions",
+				"idx": int(transition.get("idx") or 0),
+				"state": transition.get("state") or "",
+				"action": transition.get("action") or "",
+				"next_state": transition.get("next_state") or "",
+				"transition_uuid": transition.get("transition_uuid") or "",
+				"transition_semantic_hash": transition.get("transition_semantic_hash") or "",
+				"transition_idx": int(transition.get("idx") or 0),
+				"allowed_role": transition.get("allowed") or "",
+				"policy": transition.get("policy") or "",
+				"threshold": transition.get("threshold") or 0,
+				"comment_is_required": bool(transition.get("comment_is_required")),
+				"send_email_to_creator": bool(transition.get("send_email_to_creator")),
+				"auto_complete_unchanged": bool(transition.get("auto_complete_unchanged")),
+				"email_template": transition.get("email_template"),
+				"attach_document_pdf": bool(transition.get("attach_document_pdf")),
+				"eligible_approvers": json.dumps(
+					transition.get("eligible_approvers") or [],
+					ensure_ascii=False,
+				),
+			}
+		).insert(ignore_permissions=True)
+
+
+def _retire_working_task(task_name: str, reason: str) -> None:
+	_set_task_values(
+		task_name,
+		{
+			"status": "Cancelled",
+			"cancelled_at": now_datetime(),
+			"cancellation_reason": reason,
+		},
+	)
+	from dinext_common.workflow_approval.projections import close_task_projection
+
+	close_task_projection(frappe.get_doc("Workflow Task", task_name))
+
+
+def _amend_open_round(
+	doc: object,
+	active: object,
+	workflow: object,
+	state: str,
+	classification: dict[str, list[dict[str, Any]]],
+) -> bool:
+	"""Update an open manifest. Returns whether the round then finalized."""
+	current_full = _current_transitions(doc, workflow, state)
+	full_by_uuid = {str(row.get("transition_uuid") or ""): row for row in current_full}
+	added: list[dict[str, Any]] = []
+	for row in classification["add"]:
+		uuid = str(row.get("transition_uuid") or "")
+		full = full_by_uuid.get(uuid)
+		if full is None and not uuid:
+			snap_hash = str(row.get("transition_semantic_hash") or "")
+			full = next(
+				(
+					item
+					for item in current_full
+					if str(item.get("transition_semantic_hash") or "") == snap_hash
+				),
+				None,
+			)
+		if full is not None:
+			added.append(full)
+	try:
+		manifest, task_transitions = build_round_manifest([*classification["keep"], *added])
+	except ZeroEligibleApproversError:
+		raise WorkflowApprovalConflictError(
+			_("Workflow transition has no eligible approvers")
+		)
+	round_id = active.approval_round_id
+	_set_round_values(round_id, {"round_manifest": serialize_manifest(manifest)})
+	for task in frappe.get_all(
+		"Workflow Task",
+		filters={"approval_round_id": round_id},
+		fields=["name", "status", "approver"],
+		order_by="name asc",
+	):
+		if task.status != "Working":
+			continue
+		desired = task_transitions.get(task.approver, [])
+		if not desired:
+			_retire_working_task(task.name, _("Workflow transition configuration changed"))
+			continue
+		_replace_available_transitions(task.name, desired)
+	_repair_open_round_tasks(doc, active, manifest)
+	counts = _round_vote_counts(round_id, manifest)
+	reached = [row for row in counts if int(row["votes"]) >= int(row["threshold"])]
+	if not reached:
+		return False
+	winner = min(reached, key=lambda row: (int(row["idx"]), row["transition_uuid"]))
+	return _finalize_round(doc, round_id, winner)
+
+
+def _copy_carried_vote(
+	doc: object,
+	round_task: object,
+	round_id: str,
+	manifest: dict[str, Any],
+	fingerprint: ContentFingerprint,
+	vote: object,
+	transition: dict[str, Any],
+) -> None:
+	approver = str(_value(vote, "approver") or "")
+	task_name = make_task_name(round_id, approver)
+	if not frappe.db.exists("Workflow Task", task_name):
+		_insert_round_tasks(
+			doc,
+			_value(round_task, "workflow"),
+			_value(round_task, "workflow_state"),
+			manifest,
+			{approver: [transition]},
+			fingerprint,
+			round_id=round_id,
+			approvers={approver},
+		)
+	task = frappe.get_doc("Workflow Task", task_name)
+	if task.status != "Working":
+		return
+	uuid = str(transition.get("transition_uuid") or "")
+	if not any(row.transition_uuid == uuid for row in task.available_workflow_transitions):
+		_replace_available_transitions(
+			task.name,
+			[
+				*[
+					{
+						"state": row.state,
+						"action": row.action,
+						"next_state": row.next_state,
+						"transition_uuid": row.transition_uuid,
+						"transition_semantic_hash": row.transition_semantic_hash,
+						"idx": row.transition_idx,
+						"allowed": row.allowed_role,
+						"policy": row.policy,
+						"threshold": row.threshold,
+						"comment_is_required": row.comment_is_required,
+						"send_email_to_creator": row.send_email_to_creator,
+						"auto_complete_unchanged": row.auto_complete_unchanged,
+						"email_template": row.email_template,
+						"attach_document_pdf": row.attach_document_pdf,
+						"eligible_approvers": json.loads(row.eligible_approvers or "[]"),
+					}
+					for row in task.available_workflow_transitions
+				],
+				transition,
+			],
+		)
+		task.reload()
+	complete_task(
+		task,
+		_task_transition(task, uuid, None),
+		comment=str(_value(vote, "vote_comment") or ""),
+		completion_source="Carried",
+		content_fingerprint=fingerprint,
+	)
+	from dinext_common.workflow_approval.projections import close_task_projection
+
+	close_task_projection(frappe.get_doc("Workflow Task", task.name))
+
+
+def carry_stable_votes(
+	doc: object,
+	round_id: str,
+	votes: list[object],
+) -> tuple[list[object], list[object]]:
+	"""Copy completed votes whose UUID and semantic hash still exist."""
+	names = _round_task_names(round_id)
+	if not names:
+		return [], list(votes)
+	round_task = frappe.get_doc("Workflow Task", names[0])
+	manifest = _parse_manifest(round_task)
+	by_identity = {
+		(
+			str(row.get("transition_uuid") or ""),
+			str(row.get("transition_semantic_hash") or ""),
+		): row
+		for row in manifest.get("transitions") or []
+	}
+	fingerprint = ContentFingerprint(
+		version=str(_value(round_task, "entry_fingerprint_version") or "1"),
+		digest=str(_value(round_task, "entry_fingerprint") or ""),
+		canonical_json="",
+	)
+	carried: list[object] = []
+	dropped: list[object] = []
+	for vote in votes:
+		key = (
+			str(_value(vote, "transition_uuid") or ""),
+			str(_value(vote, "transition_semantic_hash") or ""),
+		)
+		transition = by_identity.get(key)
+		if transition is None or not _value(vote, "approver"):
+			dropped.append(vote)
+			continue
+		_copy_carried_vote(doc, round_task, round_id, manifest, fingerprint, vote, transition)
+		carried.append(vote)
+	return carried, dropped
+
+
+def _reached_winner(round_id: str, manifest: dict[str, Any]) -> dict[str, Any] | None:
+	counts = _round_vote_counts(round_id, manifest)
+	reached = [row for row in counts if int(row["votes"]) >= int(row["threshold"])]
+	if not reached:
+		return None
+	return min(reached, key=lambda row: (int(row["idx"]), row["transition_uuid"]))
+
+
+def rebuild_configuration_conflict(
+	doc: object,
+	round_id: str,
+	reason: str,
+) -> dict[str, Any]:
+	"""Cancel a configuration conflict and open a round that keeps stable votes."""
+	votes = _completed_vote_rows(round_id)
+	_cancel_round(round_id, reason)
+	names = reconcile_source(doc, apply_automatic=False)
+	if not names:
+		return {"carried": [], "dropped": votes, "new_tasks": []}
+	new_round_id = frappe.db.get_value("Workflow Task", names[0], "approval_round_id")
+	carried, dropped = carry_stable_votes(doc, new_round_id, votes)
+	working = [
+		frappe.get_doc("Workflow Task", name)
+		for name in _round_task_names(new_round_id)
+		if frappe.db.get_value("Workflow Task", name, "status") == "Working"
+	]
+	sample = frappe.get_doc("Workflow Task", names[0])
+	manifest = _parse_manifest(sample)
+	if working:
+		fingerprint = ContentFingerprint(
+			version=str(sample.entry_fingerprint_version or "1"),
+			digest=str(sample.entry_fingerprint or ""),
+			canonical_json="",
+		)
+		_apply_automatic_votes(doc, working, manifest, fingerprint)
+	winner = _reached_winner(new_round_id, manifest)
+	if winner:
+		_finalize_round(doc, new_round_id, winner)
+	return {
+		"carried": carried,
+		"dropped": dropped,
+		"new_tasks": _round_task_names(new_round_id),
+	}
+
+
 def reconcile_source(
 	doc: object,
 	*,
@@ -977,6 +1280,7 @@ def cast_vote(
 				source,
 				transitioned=task.round_status == "Transitioned",
 			)
+		manifest = _parse_manifest(task)
 		try:
 			transition = _task_transition(task, transition_uuid, action)
 		except WorkflowApprovalConflictError:

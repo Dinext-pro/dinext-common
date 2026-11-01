@@ -14,7 +14,7 @@ context("parallel workflow role split", () => {
 	before(() => {
 		cy.login("wf.approver2@example.com", "Wf-Test-2026!");
 		cy.openDesk("/app");
-		cy.call(`${method}.seed_parallel_workflow_cypress`).then((res) => {
+		cy.call(`${method}.seed_parallel_workflow_cypress`, {}, { timeout: 120000 }).then((res) => {
 			Cypress.env("wf", res.body.message);
 		});
 	});
@@ -22,7 +22,7 @@ context("parallel workflow role split", () => {
 	after(() => {
 		cy.login("wf.approver2@example.com", "Wf-Test-2026!");
 		cy.openDesk("/app");
-		cy.call(`${method}.cleanup_parallel_workflow_cypress`);
+		cy.call(`${method}.cleanup_parallel_workflow_cypress`, {}, { timeout: 120000 });
 	});
 
 	it("Two reject actions in one state", () => {

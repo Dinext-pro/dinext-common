@@ -506,7 +506,14 @@ def get_form_approval_banner(doctype: str, name: str) -> dict[str, Any]:
 			"reference_name": ("in", reference_names),
 			"round_status": ("in", ("Open", "Stalled", "Conflicted")),
 		},
-		fields=["approval_round_id", "round_status", "approver", "status", "creation"],
+		fields=[
+			"approval_round_id",
+			"round_status",
+			"approver",
+			"status",
+			"creation",
+			"failure_metadata",
+		],
 		order_by="creation desc, name desc",
 		limit=100,
 	)
@@ -520,9 +527,11 @@ def get_form_approval_banner(doctype: str, name: str) -> dict[str, Any]:
 	stalled_rows = [
 		row for row in rows if row.round_status in {"Stalled", "Conflicted"}
 	]
+	configuration_change = None
 	if stalled_rows:
 		round_id = stalled_rows[0].approval_round_id
 		status = stalled_rows[0].round_status
+		configuration_change = engine.configuration_metadata(stalled_rows[0])
 		approvers: list[str] = []
 	else:
 		round_id = rows[0].approval_round_id
@@ -553,6 +562,7 @@ def get_form_approval_banner(doctype: str, name: str) -> dict[str, Any]:
 		"round_status": status,
 		"pending_approvers": pending,
 		"can_reset": status in {"Stalled", "Conflicted"} and _caller_is_system_manager(),
+		"configuration_change": configuration_change,
 	}
 
 
@@ -651,14 +661,24 @@ def reset_round(round_id: str, reason: object) -> dict[str, Any]:
 	)
 	if task.round_status not in {"Stalled", "Conflicted", "Open"}:
 		raise engine.WorkflowApprovalConflictError(_("Approval round cannot be reset"))
-	engine._cancel_round(
-		round_id,
-		_("{0} Reset by {1}: {2}").format(
-			"System Manager",
-			frappe.session.user,
-			normalized_reason,
-		),
+	reset_reason = _("{0} Reset by {1}: {2}").format(
+		"System Manager",
+		frappe.session.user,
+		normalized_reason,
 	)
+	if engine.configuration_metadata(task):
+		rebuilt = engine.rebuild_configuration_conflict(source, round_id, reset_reason)
+		source.add_comment(
+			"Workflow",
+			_("Approval round reset by {0}: {1}. Carried: {2}. Dropped: {3}.").format(
+				frappe.bold(frappe.session.user),
+				frappe.utils.escape_html(normalized_reason),
+				_vote_audit(rebuilt["carried"]),
+				_vote_audit(rebuilt["dropped"]),
+			),
+		)
+		return {"round_id": round_id, "new_tasks": rebuilt["new_tasks"]}
+	engine._cancel_round(round_id, reset_reason)
 	source.add_comment(
 		"Workflow",
 		_("Approval round reset by {0}: {1}").format(
@@ -670,6 +690,17 @@ def reset_round(round_id: str, reason: object) -> dict[str, Any]:
 		"round_id": round_id,
 		"new_tasks": engine.reconcile_source(source),
 	}
+
+
+def _vote_audit(votes: list[object]) -> str:
+	labels = [
+		_("{0} voted {1}").format(
+			getattr(vote, "approver", None) or vote.get("approver"),
+			getattr(vote, "action", None) or vote.get("action"),
+		)
+		for vote in votes
+	]
+	return ", ".join(labels) if labels else _("none")
 
 
 @frappe.whitelist(methods=["POST"])

@@ -394,6 +394,209 @@ class TestWorkflowApprovalDesk(FrappeTestCase):
 		self.assertTrue(result["transitioned"])
 		self.assertNotEqual(result["round_status"], "Conflicted")
 
+	def test_new_transition_keeps_an_open_round_and_its_vote(self):
+		first = self._user("desk-amend-a@example.com")
+		self._user("desk-amend-b@example.com")
+		self._workflow(
+			"_Test Desk Amend",
+			[self._transition("_Test Desk Keep", "Closed", policy="All", uuid="_test-amend-keep")],
+		)
+		source = self._issue("Amend add transition")
+		task = next(row for row in self._tasks(source.name) if row.approver == first)
+		frappe.set_user(first)
+		engine.cast_vote(task.name, transition_uuid="_test-amend-keep", request_id="amend-keep")
+		frappe.set_user("Administrator")
+		workflow = frappe.get_doc("Workflow", "_Test Desk Amend")
+		workflow.append(
+			"transitions",
+			self._transition("_Test Desk Extra", "Closed", policy="Any", uuid="_test-amend-extra"),
+		)
+		workflow.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Issue")
+		engine.reconcile_source(source)
+		tasks = self._tasks(source.name)
+		self.assertTrue(all(row.round_status == "Open" for row in tasks))
+		kept = frappe.get_doc("Workflow Task", task.name)
+		self.assertEqual(kept.status, "Completed")
+		self.assertEqual(kept.transition_uuid, "_test-amend-keep")
+		manifest = json.loads(kept.round_manifest)
+		self.assertIn("_test-amend-extra", {row["transition_uuid"] for row in manifest["transitions"]})
+
+	def test_removed_unvoted_action_rejects_the_vote_and_stays_open(self):
+		first = self._user("desk-drop-a@example.com")
+		self._user("desk-drop-b@example.com")
+		self._workflow(
+			"_Test Desk Drop Action",
+			[
+				self._transition("_Test Desk Keep", "Closed", policy="All", uuid="_test-drop-keep"),
+				self._transition("_Test Desk Drop", "Closed", policy="All", uuid="_test-drop-action"),
+			],
+		)
+		source = self._issue("Drop unvoted action")
+		task = next(row for row in self._tasks(source.name) if row.approver == first)
+		workflow = frappe.get_doc("Workflow", "_Test Desk Drop Action")
+		for row in list(workflow.transitions):
+			if row.custom_transition_uuid == "_test-drop-action":
+				workflow.remove(row)
+		workflow.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Issue")
+		frappe.set_user(first)
+		with self.assertRaises(engine.WorkflowApprovalConflictError):
+			engine.cast_vote(
+				task.name,
+				transition_uuid="_test-drop-action",
+				request_id="drop-action",
+			)
+		manifest = json.loads(
+			frappe.db.get_value("Workflow Task", task.name, "round_manifest")
+		)
+		self.assertNotIn(
+			"_test-drop-action",
+			{row["transition_uuid"] for row in manifest["transitions"]},
+		)
+		self.assertEqual(
+			frappe.db.get_value("Workflow Task", task.name, "round_status"),
+			"Open",
+		)
+
+	def test_changed_vote_conflicts_and_rebuild_carries_the_stable_vote(self):
+		first = self._user("desk-carry-a@example.com")
+		second = self._user("desk-carry-b@example.com")
+		self._ensure_master("Workflow State", "Replied", {"workflow_state_name": "Replied"})
+		self._workflow(
+			"_Test Desk Carry",
+			[
+				self._transition("_Test Desk Keep", "Closed", policy="All", uuid="_test-carry-keep"),
+				self._transition("_Test Desk Drop", "Closed", policy="All", uuid="_test-carry-drop"),
+			],
+			states=["Open", "Closed", "Replied"],
+		)
+		source = self._issue("Carry stable vote")
+		tasks = {row.approver: row for row in self._tasks(source.name)}
+		frappe.set_user(first)
+		engine.cast_vote(tasks[first].name, transition_uuid="_test-carry-keep", request_id="carry-keep")
+		frappe.set_user(second)
+		engine.cast_vote(tasks[second].name, transition_uuid="_test-carry-drop", request_id="carry-drop")
+		frappe.set_user("Administrator")
+		workflow = frappe.get_doc("Workflow", "_Test Desk Carry")
+		for row in workflow.transitions:
+			if row.custom_transition_uuid == "_test-carry-drop":
+				row.next_state = "Replied"
+		workflow.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Issue")
+		engine.reconcile_source(source)
+		self.assertEqual(
+			frappe.db.get_value("Workflow Task", tasks[first].name, "round_status"),
+			"Conflicted",
+		)
+		self.assertEqual(frappe.db.get_value("Issue", source.name, "status"), "Open")
+		banner = api.get_form_approval_banner("Issue", source.name)
+		self.assertEqual(banner["configuration_change"]["reason"], "configuration_changed")
+		self.assertEqual(banner["configuration_change"]["stable"][0]["action"], "_Test Desk Keep")
+		self.assertEqual(banner["configuration_change"]["void"][0]["change"], "semantic")
+		self.assertEqual(banner["configuration_change"]["void"][0]["action"], "_Test Desk Drop")
+		self.assertTrue(banner["can_reset"])
+		frappe.db.delete("Has Role", {"parent": second, "role": self.role, "parenttype": "User"})
+		frappe.clear_cache()
+		api.reset_round(tasks[first].approval_round_id, "workflow changed")
+		self.assertEqual(frappe.db.get_value("Issue", source.name, "status"), "Closed")
+		timeline = " ".join(
+			frappe.get_all(
+				"Comment",
+				filters={
+					"reference_doctype": "Issue",
+					"reference_name": source.name,
+					"comment_type": "Workflow",
+				},
+				pluck="content",
+			)
+		)
+		self.assertIn(first, timeline)
+		self.assertIn("_Test Desk Keep", timeline)
+		self.assertIn("_Test Desk Drop", timeline)
+		carried = frappe.get_all(
+			"Workflow Task",
+			filters={
+				"reference_name": source.name,
+				"completion_source": "Carried",
+				"transition_uuid": "_test-carry-keep",
+				"approver": first,
+			},
+		)
+		self.assertEqual(len(carried), 1)
+		dropped = frappe.get_all(
+			"Workflow Task",
+			filters={
+				"reference_name": source.name,
+				"round_status": ("!=", "Cancelled"),
+				"transition_uuid": "_test-carry-drop",
+				"status": "Completed",
+			},
+		)
+		self.assertEqual(dropped, [])
+
+	def test_replaced_transition_uuid_is_not_carried(self):
+		first = self._user("desk-uuid-a@example.com")
+		self._user("desk-uuid-b@example.com")
+		self._workflow(
+			"_Test Desk Uuid",
+			[self._transition("_Test Desk Keep", "Closed", policy="All", uuid="_test-uuid-old")],
+		)
+		source = self._issue("Replace uuid")
+		task = next(row for row in self._tasks(source.name) if row.approver == first)
+		frappe.set_user(first)
+		engine.cast_vote(task.name, transition_uuid="_test-uuid-old", request_id="uuid-old")
+		frappe.set_user("Administrator")
+		workflow = frappe.get_doc("Workflow", "_Test Desk Uuid")
+		workflow.transitions[0].custom_transition_uuid = "_test-uuid-new"
+		workflow.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Issue")
+		engine.reconcile_source(source)
+		self.assertEqual(frappe.db.get_value("Workflow Task", task.name, "round_status"), "Conflicted")
+		api.reset_round(task.approval_round_id, "uuid replaced")
+		self.assertEqual(frappe.db.get_value("Issue", source.name, "status"), "Open")
+		carried = frappe.get_all(
+			"Workflow Task",
+			filters={"reference_name": source.name, "completion_source": "Carried"},
+		)
+		self.assertEqual(carried, [])
+
+	def test_deleted_voted_transition_is_not_in_the_new_round(self):
+		first = self._user("desk-delete-a@example.com")
+		self._user("desk-delete-b@example.com")
+		self._workflow(
+			"_Test Desk Delete",
+			[
+				self._transition("_Test Desk Keep", "Closed", policy="All", uuid="_test-delete-keep"),
+				self._transition("_Test Desk Drop", "Closed", policy="All", uuid="_test-delete-drop"),
+			],
+		)
+		source = self._issue("Delete voted transition")
+		task = next(row for row in self._tasks(source.name) if row.approver == first)
+		frappe.set_user(first)
+		engine.cast_vote(task.name, transition_uuid="_test-delete-keep", request_id="delete-keep")
+		frappe.set_user("Administrator")
+		workflow = frappe.get_doc("Workflow", "_Test Desk Delete")
+		for row in list(workflow.transitions):
+			if row.custom_transition_uuid == "_test-delete-keep":
+				workflow.remove(row)
+		workflow.save(ignore_permissions=True)
+		frappe.clear_cache(doctype="Issue")
+		engine.reconcile_source(source)
+		self.assertEqual(frappe.db.get_value("Workflow Task", task.name, "round_status"), "Conflicted")
+		api.reset_round(task.approval_round_id, "transition removed")
+		self.assertEqual(frappe.db.get_value("Issue", source.name, "status"), "Open")
+		kept = frappe.get_all(
+			"Workflow Task",
+			filters={
+				"reference_name": source.name,
+				"round_status": "Open",
+				"transition_uuid": "_test-delete-keep",
+				"status": "Completed",
+			},
+		)
+		self.assertEqual(kept, [])
+
 	def test_duplicate_action_follows_role_or_uuid(self):
 		role_b = "_Test WF Desk Approver B"
 		if not frappe.db.exists("Role", role_b):

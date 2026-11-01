@@ -42,7 +42,7 @@ context("parallel workflow desk", () => {
 	before(() => {
 		cy.login("wf.approver2@example.com", "Wf-Test-2026!");
 		cy.openDesk("/app");
-		cy.call(`${method}.seed_parallel_workflow_cypress`).then((res) => {
+		cy.call(`${method}.seed_parallel_workflow_cypress`, {}, { timeout: 120000 }).then((res) => {
 			Cypress.env("wf", res.body.message);
 		});
 	});
@@ -50,7 +50,7 @@ context("parallel workflow desk", () => {
 	after(() => {
 		cy.login("wf.approver2@example.com", "Wf-Test-2026!");
 		cy.openDesk("/app");
-		cy.call(`${method}.cleanup_parallel_workflow_cypress`);
+		cy.call(`${method}.cleanup_parallel_workflow_cypress`, {}, { timeout: 120000 });
 	});
 
 	it("Existing approver is untouched", () => {
@@ -196,6 +196,8 @@ context("parallel workflow desk", () => {
 			const text = $el.text();
 			expect(text.includes("Раунд согласования требует пересборки") || text.includes("Approval round needs a rebuild"))
 				.to.eq(true);
+			expect(text.includes("Cypress Kept")).to.eq(true);
+			expect(text.includes("Cypress Dropped")).to.eq(true);
 		});
 		cy.get(".dinext-reset-round").should("not.exist");
 		cy.intercept("**/api/method/dinext_common.workflow_approval.api.get_form_approval_banner").as("quietBanner");
@@ -204,6 +206,7 @@ context("parallel workflow desk", () => {
 		cy.get(".dinext-pending-approvers").should("not.exist");
 		asApprover(fixture.manager);
 		openIssue(fixture.conflicted_issue);
+		cy.get(".dinext-pending-approvers", { timeout: 60000 }).should("contain", "Cypress Dropped");
 		cy.get(".dinext-reset-round", { timeout: 60000 }).should("exist");
 	});
 

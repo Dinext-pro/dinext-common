@@ -283,7 +283,7 @@
    "fieldname": "completion_source",
    "fieldtype": "Select",
    "label": "Completion Source",
-   "options": "Manual\nSigned Link\nBulk\nAutomatic Unchanged",
+   "options": "Manual\nSigned Link\nBulk\nAutomatic Unchanged\nCarried",
    "read_only": 1
   },
   {
