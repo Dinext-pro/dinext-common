@@ -80,8 +80,8 @@ def on_source_cancel(doc: Any, method: str | None = None) -> None:
 
 
 def on_source_trash(doc: Any, method: str | None = None) -> None:
-	"""Archive source identity and close active rounds before deletion."""
-	if not _should_handle(doc):
+	"""Close saved approvals even after the engine or Workflow was disabled."""
+	if not getattr(doc, "doctype", None) or doc.doctype in SERVICE_DOCTYPES:
 		return
 	from dinext_common.workflow_approval.engine import archive_source
 

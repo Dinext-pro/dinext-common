@@ -10,6 +10,8 @@ import frappe
 from frappe import _
 from frappe.model.workflow import (
 	apply_workflow as core_apply_workflow,
+)
+from frappe.model.workflow import (
 	get_workflow,
 	get_workflow_name,
 	has_approval_access,
@@ -1611,34 +1613,52 @@ def validate_source_change(doc: object) -> None:
 
 def archive_source(doc: object) -> None:
 	"""Keep task history while severing links and cancelling active work."""
-	task_names = frappe.get_all(
+	from frappe.workflow.doctype.workflow_action.workflow_action import clear_workflow_actions
+
+	from dinext_common.workflow_approval.projections import close_round_projections, close_task_projection
+
+	doctype, name = _value(doc, "doctype"), _value(doc, "name")
+	tasks = frappe.get_all(
 		"Workflow Task",
-		filters={
-			"reference_doctype": _value(doc, "doctype"),
-			"reference_name": _value(doc, "name"),
-		},
-		pluck="name",
+		filters={"reference_doctype": doctype, "reference_name": name},
+		fields=["name", "approval_round_id", "round_status", "status", "finalization_status"],
+		order_by="name asc",
 	)
 	deleted_at = now_datetime()
-	rounds = set()
-	for task_name in task_names:
-		task = frappe.get_doc("Workflow Task", task_name)
-		rounds.add(task.approval_round_id)
+	reason = _("Source document deleted")
+	rounds = {task.approval_round_id for task in tasks if task.approval_round_id}
+	active_rounds = {
+		task.approval_round_id
+		for task in tasks
+		if task.approval_round_id and task.round_status in ACTIVE_ROUND_STATUSES
+	}
+	for round_id in sorted(active_rounds):
+		_cancel_round(round_id, reason)
+	for task in tasks:
 		values: dict[str, Any] = {"source_deleted_at": deleted_at}
-		if task.status == "Working":
+		if task.finalization_status == "Queued":
+			values["finalization_status"] = "Failed"
+		if task.status == "Working" and task.approval_round_id not in active_rounds:
 			values.update(
 				{
 					"status": "Cancelled",
 					"round_status": "Cancelled",
 					"cancelled_at": deleted_at,
-					"cancellation_reason": _("Source document deleted"),
+					"cancellation_reason": reason,
 				}
 			)
-		_set_task_values(task_name, values)
-	from dinext_common.workflow_approval.projections import close_round_projections
-
-	for round_id in filter(None, rounds):
+		_set_task_values(task.name, values)
+		if not task.approval_round_id and task.status == "Working":
+			close_task_projection(frappe.get_doc("Workflow Task", task.name))
+	for round_id in sorted(rounds - active_rounds):
 		close_round_projections(round_id)
+	clear_workflow_actions(doctype, name)
+	frappe.db.set_value(
+		"Submission Queue",
+		{"ref_doctype": doctype, "ref_docname": name, "status": "Queued"},
+		{"status": "Failed", "ended_at": deleted_at, "exception": reason},
+		update_modified=False,
+	)
 
 
 def apply_domain_transition(
