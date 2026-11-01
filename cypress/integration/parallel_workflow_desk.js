@@ -175,11 +175,12 @@ context("parallel workflow desk", () => {
 		cy.get(".dinext-pending-approvers", { timeout: 60000 }).should("contain", fixture.approver_name);
 		cy.visit(`/app/user-timesheet/${encodeURIComponent(fixture.timesheet)}`);
 		cy.get(".form-message.blue", { timeout: 60000 }).should(($el) => {
-			const text = $el.text();
+			const text = $el.text().replaceAll(fixture.approver_b_name, "");
 			expect(
-				text.includes("Action expected from") || text.includes("Ожидается действие от")
+				$el.text().includes("Action expected from") ||
+					$el.text().includes("Ожидается действие от")
 			).to.eq(true);
-			expect(text).to.include(fixture.approver_b_name);
+			expect($el.text()).to.include(fixture.approver_b_name);
 			expect(text).to.not.include(fixture.approver_name);
 		});
 		cy.get(".dinext-pending-approvers").should("not.exist");
@@ -206,6 +207,34 @@ context("parallel workflow desk", () => {
 		cy.get(".dinext-pending-approvers").should("not.exist");
 		asApprover(fixture.manager);
 		openIssue(fixture.conflicted_issue);
+		cy.get(".dinext-pending-approvers", { timeout: 60000 }).should("contain", "Cypress Dropped");
+		cy.get(".dinext-reset-round", { timeout: 60000 }).should("exist");
+	});
+
+	it.only("Conflicted timesheet round is visible on the timesheet", () => {
+		const fixture = load();
+		expect(fixture.conflicted_timesheet).to.include("2026-12-21");
+		const openTimesheet = (email) => {
+			cy.login(email || fixture.approver, fixture.password);
+			cy.visit(
+				`/app/user-timesheet/${encodeURIComponent(fixture.conflicted_timesheet)}`
+			);
+			cy.window().its("frappe.session.user").should("not.eq", "Guest");
+			cy.get("body").then(($body) => {
+				const close = $body.find(".modal:visible .btn-modal-close");
+				if (close.length) cy.wrap(close).click({ multiple: true, force: true });
+			});
+		};
+		openTimesheet();
+		cy.get(".dinext-pending-approvers", { timeout: 120000 }).should(($el) => {
+			const text = $el.text();
+			expect(text.includes("Раунд согласования требует пересборки") || text.includes("Approval round needs a rebuild"))
+				.to.eq(true);
+			expect(text.includes("Cypress Dropped")).to.eq(true);
+			expect(text.includes("Cypress Project")).to.eq(true);
+		});
+		cy.get(".dinext-reset-round").should("not.exist");
+		openTimesheet(fixture.manager);
 		cy.get(".dinext-pending-approvers", { timeout: 60000 }).should("contain", "Cypress Dropped");
 		cy.get(".dinext-reset-round", { timeout: 60000 }).should("exist");
 	});

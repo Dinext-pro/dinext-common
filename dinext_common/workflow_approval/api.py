@@ -478,6 +478,131 @@ def get_pending_approvers(doctype: str, name: str) -> list[dict[str, Any]]:
 	return rows
 
 
+def describe_rebuild_rounds(
+	reference_doctype: str,
+	reference_names: list[str],
+) -> list[dict[str, Any]]:
+	"""Describe every stalled or conflicted round for the given documents.
+
+	The caller decides which documents belong together. This function does not
+	know about a particular DocType.
+	"""
+	if not reference_doctype or not reference_names:
+		return []
+	rows = frappe.get_all(
+		"Workflow Task",
+		filters={
+			"reference_doctype": reference_doctype,
+			"reference_name": ("in", list(reference_names)),
+			"round_status": ("in", ("Stalled", "Conflicted")),
+		},
+		fields=[
+			"approval_round_id",
+			"round_status",
+			"reference_name",
+			"source_title",
+			"failure_metadata",
+			"creation",
+		],
+		order_by="creation desc, name desc",
+		limit=100,
+	)
+	can_reset = _caller_is_system_manager()
+	seen: set[str] = set()
+	rounds: list[dict[str, Any]] = []
+	for row in rows:
+		round_id = row.approval_round_id
+		if not round_id or round_id in seen:
+			continue
+		seen.add(round_id)
+		rounds.append(
+			{
+				"round_id": round_id,
+				"round_status": row.round_status,
+				"reference_name": row.reference_name,
+				"source_title": row.source_title or row.reference_name,
+				"configuration_change": engine.configuration_metadata(row),
+				"can_reset": can_reset,
+			}
+		)
+	return rounds
+
+
+def _banner_from_rows(
+	rows: list[object],
+	*,
+	rounds: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+	if not rows and not rounds:
+		return {
+			"round_id": None,
+			"round_status": None,
+			"pending_approvers": [],
+			"can_reset": _caller_is_system_manager(),
+			"configuration_change": None,
+			"rounds": rounds or [],
+		}
+	stalled = rounds or []
+	if stalled:
+		first = stalled[0]
+		return {
+			"round_id": first["round_id"],
+			"round_status": first["round_status"],
+			"pending_approvers": [],
+			"can_reset": first["can_reset"],
+			"configuration_change": first["configuration_change"],
+			"rounds": stalled,
+		}
+	round_id = rows[0].approval_round_id
+	approvers = sorted({row.approver for row in rows if row.status == "Working" and row.approver})
+	names = (
+		dict(
+			frappe.get_all(
+				"User",
+				filters={"name": ("in", approvers)},
+				fields=["name", "full_name"],
+				as_list=True,
+			)
+		)
+		if approvers
+		else {}
+	)
+	return {
+		"round_id": round_id,
+		"round_status": "Open",
+		"pending_approvers": [
+			{"approver": approver, "approver_name": names.get(approver) or approver}
+			for approver in approvers
+		],
+		"can_reset": False,
+		"configuration_change": None,
+		"rounds": [],
+	}
+
+
+def _active_round_rows(reference_doctype: str, reference_names: list[str]) -> list[object]:
+	if not reference_names:
+		return []
+	return frappe.get_all(
+		"Workflow Task",
+		filters={
+			"reference_doctype": reference_doctype,
+			"reference_name": ("in", reference_names),
+			"round_status": ("in", ("Open", "Stalled", "Conflicted")),
+		},
+		fields=[
+			"approval_round_id",
+			"round_status",
+			"approver",
+			"status",
+			"creation",
+			"failure_metadata",
+		],
+		order_by="creation desc, name desc",
+		limit=100,
+	)
+
+
 @frappe.whitelist()
 def get_form_approval_banner(doctype: str, name: str) -> dict[str, Any]:
 	"""Pending approvers, or a rebuild indicator for a stalled round."""
@@ -498,72 +623,12 @@ def get_form_approval_banner(doctype: str, name: str) -> dict[str, Any]:
 			"round_status": None,
 			"pending_approvers": [],
 			"can_reset": False,
+			"configuration_change": None,
+			"rounds": [],
 		}
-	rows = frappe.get_all(
-		"Workflow Task",
-		filters={
-			"reference_doctype": reference_doctype,
-			"reference_name": ("in", reference_names),
-			"round_status": ("in", ("Open", "Stalled", "Conflicted")),
-		},
-		fields=[
-			"approval_round_id",
-			"round_status",
-			"approver",
-			"status",
-			"creation",
-			"failure_metadata",
-		],
-		order_by="creation desc, name desc",
-		limit=100,
-	)
-	if not rows:
-		return {
-			"round_id": None,
-			"round_status": None,
-			"pending_approvers": [],
-			"can_reset": _caller_is_system_manager(),
-		}
-	stalled_rows = [
-		row for row in rows if row.round_status in {"Stalled", "Conflicted"}
-	]
-	configuration_change = None
-	if stalled_rows:
-		round_id = stalled_rows[0].approval_round_id
-		status = stalled_rows[0].round_status
-		configuration_change = engine.configuration_metadata(stalled_rows[0])
-		approvers: list[str] = []
-	else:
-		round_id = rows[0].approval_round_id
-		status = "Open"
-		approvers = sorted(
-			{
-				row.approver
-				for row in rows
-				if row.status == "Working" and row.approver
-			}
-		)
-	pending: list[dict[str, str]] = []
-	if approvers:
-		names = dict(
-			frappe.get_all(
-				"User",
-				filters={"name": ("in", approvers)},
-				fields=["name", "full_name"],
-				as_list=True,
-			)
-		) if approvers else {}
-		pending = [
-			{"approver": approver, "approver_name": names.get(approver) or approver}
-			for approver in approvers
-		]
-	return {
-		"round_id": round_id,
-		"round_status": status,
-		"pending_approvers": pending,
-		"can_reset": status in {"Stalled", "Conflicted"} and _caller_is_system_manager(),
-		"configuration_change": configuration_change,
-	}
+	rows = _active_round_rows(reference_doctype, reference_names)
+	rounds = describe_rebuild_rounds(reference_doctype, reference_names)
+	return _banner_from_rows(rows, rounds=rounds)
 
 
 def _caller_is_system_manager() -> bool:

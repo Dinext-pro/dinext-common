@@ -21,6 +21,84 @@
 	frappe.dinext = frappe.dinext || {};
 	frappe.dinext.workflowActionLabel = workflowActionLabel;
 
+	const voteLines = (rows) =>
+		(rows || [])
+			.map((row) => {
+				const action = frappe.utils.escape_html(row.action || row.transition_uuid || "");
+				const people = (row.approvers || [])
+					.map((user) => frappe.utils.escape_html(user))
+					.join(", ");
+				return people ? `${action} — ${people}` : action;
+			})
+			.filter(Boolean)
+			.join("<br>");
+
+	const rebuildBreakdown = (change) =>
+		change
+			? [
+					voteLines(change.stable)
+						? `<div><strong>${__("Votes that will be carried")}</strong><br>${voteLines(
+								change.stable
+						  )}</div>`
+						: "",
+					voteLines(change.void)
+						? `<div><strong>${__("Votes that will be dropped")}</strong><br>${voteLines(
+								change.void
+						  )}</div>`
+						: "",
+			  ]
+					.filter(Boolean)
+					.join("")
+			: "";
+
+	const promptResetRound = (roundId, reload) => {
+		frappe.prompt(
+			[
+				{
+					fieldname: "reason",
+					fieldtype: "Small Text",
+					label: __("Reason"),
+					reqd: 1,
+				},
+			],
+			async (values) => {
+				await frappe.xcall("dinext_common.workflow_approval.api.reset_round", {
+					round_id: roundId,
+					reason: values.reason,
+				});
+				if (reload) reload();
+			},
+			__("Reset approval round"),
+			__("Reset")
+		);
+	};
+
+	frappe.dinext.paintRebuildRounds = (dashboard, rounds, options = {}) => {
+		const parent = dashboard?.parent || dashboard?.wrapper;
+		parent?.find?.(".dinext-rebuild-round")?.remove?.();
+		(rounds || []).forEach((round) => {
+			const caption = round.label || round.source_title || "";
+			const resetButton = round.can_reset
+				? `<button type="button" class="btn btn-xs btn-default dinext-reset-round">${__(
+						"Reset round"
+				  )}</button>`
+				: "";
+			const body = `${
+				caption ? `<div>${frappe.utils.escape_html(caption)}</div>` : ""
+			}${rebuildBreakdown(round.configuration_change)}${resetButton}`;
+			const section = dashboard.add_section(
+				body,
+				__("Approval round needs a rebuild"),
+				"dinext-pending-approvers dinext-rebuild-round"
+			);
+			if (!round.can_reset) return;
+			$(section)
+				.find(".dinext-reset-round")
+				.on("click", () => promptResetRound(round.round_id, options.reload));
+		});
+		if ((rounds || []).length) dashboard.show?.();
+	};
+
 	const transitionLabel = (transition, transitions) => {
 		const sameAction = (transitions || []).filter((row) => row.action === transition.action);
 		let text = __(transition.action);
@@ -245,77 +323,21 @@
 			return;
 		}
 		if (!banner || frm.doc?.name !== requested) return;
-		const stalled = banner.round_status === "Conflicted" || banner.round_status === "Stalled";
+		const rounds = banner.rounds || [];
+		if (rounds.length) {
+			frappe.dinext.paintRebuildRounds(frm.dashboard, rounds, {
+				reload: () => frm.reload_doc(),
+			});
+			return;
+		}
 		const pending = banner.pending_approvers || [];
-		if (!stalled && !pending.length) return;
-		const title = stalled
-			? __("Approval round needs a rebuild")
-			: __("Pending approvers");
+		if (!pending.length) return;
 		const names = [
 			...new Set(pending.map((row) => row.approver_name || row.approver)),
 		].sort();
-		const voteLines = (rows) =>
-			(rows || [])
-				.map((row) => {
-					const action = frappe.utils.escape_html(row.action || row.transition_uuid || "");
-					const people = (row.approvers || [])
-						.map((user) => frappe.utils.escape_html(user))
-						.join(", ");
-					return people ? `${action} — ${people}` : action;
-				})
-				.filter(Boolean)
-				.join("<br>");
-		const change = banner.configuration_change;
-		const breakdown = change
-			? [
-					voteLines(change.stable)
-						? `<div><strong>${__("Votes that will be carried")}</strong><br>${voteLines(
-								change.stable
-						  )}</div>`
-						: "",
-					voteLines(change.void)
-						? `<div><strong>${__("Votes that will be dropped")}</strong><br>${voteLines(
-								change.void
-						  )}</div>`
-						: "",
-			  ]
-					.filter(Boolean)
-					.join("")
-			: "";
-		const resetButton = banner.can_reset
-			? `<button type="button" class="btn btn-xs btn-default dinext-reset-round">${__(
-					"Reset round"
-			  )}</button>`
-			: "";
-		const body = stalled
-			? `${breakdown}${resetButton}`
-			: names.map((user) => frappe.utils.escape_html(user)).join(", ");
-		const section = frm.dashboard.add_section(body, title, "dinext-pending-approvers");
+		const body = names.map((user) => frappe.utils.escape_html(user)).join(", ");
+		frm.dashboard.add_section(body, __("Pending approvers"), "dinext-pending-approvers");
 		frm.dashboard.show();
-		if (!banner.can_reset) return;
-		$(section)
-			.find(".dinext-reset-round")
-			.on("click", () => {
-				frappe.prompt(
-					[
-						{
-							fieldname: "reason",
-							fieldtype: "Small Text",
-							label: __("Reason"),
-							reqd: 1,
-						},
-					],
-					async (values) => {
-						await frappe.xcall("dinext_common.workflow_approval.api.reset_round", {
-							round_id: banner.round_id,
-							reason: values.reason,
-						});
-						frm.reload_doc();
-					},
-					__("Reset approval round"),
-					__("Reset")
-				);
-			});
 	};
 	const scheduleBanner = (frm, attempt = 0) => {
 		if (!frm || frm.is_new()) return;

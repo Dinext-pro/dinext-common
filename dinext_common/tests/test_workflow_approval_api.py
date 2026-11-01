@@ -141,3 +141,48 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 		self.assertEqual(seen["filters"]["next_state"][0], "in")
 		self.assertIn("Approved", seen["filters"]["next_state"][1])
 		self.assertIn("Согласовано", seen["filters"]["next_state"][1])
+
+	def test_describe_rebuild_rounds_returns_every_stalled_document(self):
+		api = self.api()
+		rows = [
+			SimpleNamespace(
+				approval_round_id="ROUND-2",
+				round_status="Conflicted",
+				reference_name="DOC-2",
+				source_title="Second",
+				failure_metadata={
+					"reason": "configuration_changed",
+					"stable": [],
+					"void": [{"action": "Drop"}],
+					"added": [],
+				},
+			),
+			SimpleNamespace(
+				approval_round_id="ROUND-2",
+				round_status="Conflicted",
+				reference_name="DOC-2",
+				source_title="Second",
+				failure_metadata=None,
+			),
+			SimpleNamespace(
+				approval_round_id="ROUND-1",
+				round_status="Stalled",
+				reference_name="DOC-1",
+				source_title="",
+				failure_metadata=None,
+			),
+		]
+		with (
+			patch.object(api.frappe, "get_all", return_value=rows) as get_all,
+			patch.object(api, "_caller_is_system_manager", return_value=False),
+		):
+			result = api.describe_rebuild_rounds("ToDo", ["DOC-1", "DOC-2"])
+
+		self.assertEqual([row["round_id"] for row in result], ["ROUND-2", "ROUND-1"])
+		self.assertEqual(result[0]["reference_name"], "DOC-2")
+		self.assertEqual(result[0]["configuration_change"]["void"][0]["action"], "Drop")
+		self.assertIsNone(result[1]["configuration_change"])
+		self.assertEqual(result[1]["source_title"], "DOC-1")
+		self.assertFalse(any(row["can_reset"] for row in result))
+		self.assertEqual(get_all.call_args.kwargs["filters"]["reference_doctype"], "ToDo")
+		self.assertNotIn("User Timesheet", str(get_all.call_args))

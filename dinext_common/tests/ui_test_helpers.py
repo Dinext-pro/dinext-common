@@ -41,6 +41,8 @@ LEAVE_FROM = "2026-12-14"
 LEAVE_TO = "2026-12-18"
 TIMESHEET_FROM = "2026-12-14"
 TIMESHEET_TO = "2026-12-20"
+CONFLICTED_TIMESHEET_FROM = "2026-12-21"
+CONFLICTED_TIMESHEET_TO = "2026-12-27"
 
 WORKFLOWS = (
 	"_Cypress WF All",
@@ -410,11 +412,23 @@ def _our_issues() -> list[str]:
 
 
 def _our_timesheets() -> list[str]:
-	return frappe.get_all(
-		"User Timesheet",
-		filters={"ts_valid_from": TIMESHEET_FROM, "ts_valid_for": TIMESHEET_TO, "timesheet_from": AUTHOR},
-		pluck="name",
-	)
+	names: list[str] = []
+	for start, end in (
+		(TIMESHEET_FROM, TIMESHEET_TO),
+		(CONFLICTED_TIMESHEET_FROM, CONFLICTED_TIMESHEET_TO),
+	):
+		names.extend(
+			frappe.get_all(
+				"User Timesheet",
+				filters={
+					"ts_valid_from": start,
+					"ts_valid_for": end,
+					"timesheet_from": AUTHOR,
+				},
+				pluck="name",
+			)
+		)
+	return names
 
 
 def _our_leaves() -> list[str]:
@@ -611,6 +625,74 @@ def _seed_timesheet(workflow_name: str) -> dict:
 		"leave": leave.name,
 		"pending_names": ["Cypress Approver", "Cypress Approver B"],
 	}
+
+
+def _seed_conflicted_timesheet(workflow_name: str) -> dict:
+	with _engine_paused():
+		timesheet = frappe.get_doc(
+			{
+				"doctype": "User Timesheet",
+				"timesheet_from": AUTHOR,
+				"timesheet_from_name": "Cypress conflicted timesheet",
+				"ts_valid_from": CONFLICTED_TIMESHEET_FROM,
+				"ts_valid_for": CONFLICTED_TIMESHEET_TO,
+				"ut_status": "Pending Approval",
+			}
+		).insert(ignore_permissions=True)
+		position = frappe.get_doc(
+			{
+				"doctype": "User Timesheet Position",
+				"user_timesheet": timesheet.name,
+				"user": AUTHOR,
+				"status": "Pending Approval",
+				"period": "Cypress conflicted timesheet",
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.set_value(
+			"User Timesheet Position",
+			position.name,
+			{"project": "Cypress Project", "project_role": "Cypress Role"},
+			update_modified=False,
+		)
+	task_name = _manual_task(
+		doctype="User Timesheet Position",
+		name=position.name,
+		workflow=workflow_name,
+		state="Pending Approval",
+		approver=APPROVER,
+		round_status="Conflicted",
+		status="Working",
+		round_id=frappe.generate_hash(length=40),
+	)
+	frappe.db.set_value(
+		"Workflow Task",
+		task_name,
+		"failure_metadata",
+		json.dumps(
+			{
+				"reason": "configuration_changed",
+				"stable": [
+					{
+						"transition_uuid": "cypress-keep",
+						"action": "Cypress Kept",
+						"approvers": [APPROVER_B],
+					}
+				],
+				"void": [
+					{
+						"transition_uuid": "cypress-drop",
+						"action": "Cypress Dropped",
+						"change": "semantic",
+						"approvers": [APPROVER],
+					}
+				],
+				"added": [],
+			},
+			ensure_ascii=False,
+		),
+		update_modified=False,
+	)
+	return {"conflicted_timesheet": timesheet.name}
 
 
 def _seed_conflicted(issue_name: str, workflow_name: str) -> str:
@@ -831,6 +913,7 @@ def seed_parallel_workflow_cypress() -> dict:
 		or all_workflow.name
 	)
 	timesheet = _seed_timesheet(utp_workflow)
+	timesheet.update(_seed_conflicted_timesheet(utp_workflow))
 	holiday_read = _permission_as(APPROVER, "Holiday List", "read")
 	project_write = _permission_as(APPROVER, "Project", "write")
 	ikhmel_after = frappe.db.get_value("User", PROTECTED_USER, "modified")

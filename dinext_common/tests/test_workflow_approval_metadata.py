@@ -326,6 +326,8 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 		banner = (APP_ROOT / "public" / "js" / "workflow_approval.js").read_text()
 		self.assertIn('doctypes.delete("User Timesheet")', banner)
 		self.assertIn('"Application For Leave"', banner)
+		self.assertIn("frappe.dinext.paintRebuildRounds", banner)
+		self.assertIn("banner.rounds", banner)
 
 	def test_workflow_validation_requires_minimum_and_daily_schedule(self):
 		metadata = self.metadata()
