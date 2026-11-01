@@ -246,16 +246,7 @@ has_permission = {
 		"dinext_common.dinext_common.doctype.dinext_workspace_settings"
 		".dinext_workspace_settings.has_permission"
 	),
-	"Workflow Task": "dinext_common.workflow_approval.permissions.has_workflow_task_permission",
-	"Workflow Action": "dinext_common.workflow_approval.permissions.has_workflow_action_permission",
 	"Number Card": "dinext_common.workflow_approval.permissions.has_public_number_card_permission",
-}
-
-permission_query_conditions = {
-	"Workflow Task": "dinext_common.workflow_approval.permissions.get_workflow_task_query_conditions",
-	"Workflow Action": (
-		"dinext_common.workflow_approval.permissions.get_workflow_action_query_conditions"
-	),
 }
 
 # DocType Class
@@ -399,12 +390,6 @@ ignore_links_on_delete = ["Workflow Task"]
 # 		"doctype": "{doctype_4}"
 # 	}
 # ]
-
-# Frappe also registers a Workflow Action list filter. It is combined with ours,
-# so the stock filter is cleared while the approval engine is enabled.
-from dinext_common.workflow_approval.permissions import relax_core_workflow_action_query
-
-relax_core_workflow_action_query()
 
 # Authentication and authorization
 # --------------------------------

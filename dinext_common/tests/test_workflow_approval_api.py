@@ -56,6 +56,7 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 			SimpleNamespace(name="WT-2"),
 		]
 		mock_frappe = MagicMock()
+		mock_frappe._dict.side_effect = dict
 		mock_frappe.session.user = "alice@example.com"
 		mock_frappe.get_all.return_value = [{"name": "WT-1"}, {"name": "WT-2"}]
 		mock_frappe.get_doc.side_effect = rows

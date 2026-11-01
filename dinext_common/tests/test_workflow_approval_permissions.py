@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 
 class TestWorkflowApprovalPermissions(unittest.TestCase):
@@ -24,20 +24,39 @@ class TestWorkflowApprovalPermissions(unittest.TestCase):
 		values.update(overrides)
 		return SimpleNamespace(**values)
 
-	def test_standard_list_is_denied_except_system_manager(self):
-		permissions = self.permissions()
+	def test_workflow_documents_use_standard_permission_hooks(self):
+		from dinext_common import hooks
 
-		with patch.object(permissions.frappe, "get_roles", return_value=["Desk User"]):
-			self.assertEqual(
-				permissions.get_workflow_task_query_conditions("alice@example.com"),
-				"1=0",
-			)
-		with patch.object(permissions.frappe, "get_roles", return_value=["System Manager"]):
-			self.assertEqual(
-				permissions.get_workflow_task_query_conditions("manager@example.com"),
-				"",
-			)
-		self.assertEqual(permissions.get_workflow_task_query_conditions("Administrator"), "")
+		for doctype in ("Workflow Action", "Workflow Task"):
+			self.assertNotIn(doctype, hooks.has_permission)
+			self.assertNotIn(doctype, getattr(hooks, "permission_query_conditions", {}))
+
+	def test_loading_app_hooks_preserves_core_workflow_action_filter(self):
+		from importlib import reload
+
+		from frappe.workflow.doctype.workflow_action import workflow_action
+
+		from dinext_common import hooks
+
+		core_filter = workflow_action.get_permission_query_conditions
+		reload(hooks)
+		self.assertIs(workflow_action.get_permission_query_conditions, core_filter)
+		self.assertFalse(getattr(core_filter, "_dinext_relaxed", False))
+
+	def test_core_workflow_action_filter_keeps_open_role_or_user_rules(self):
+		from frappe.workflow.doctype.workflow_action import workflow_action
+
+		with (
+			patch.object(workflow_action.frappe, "get_roles", return_value=["Desk User"]),
+			patch.object(workflow_action.frappe.db, "escape", return_value="'alice@example.com'"),
+		):
+			condition = workflow_action.get_permission_query_conditions("alice@example.com")
+
+		self.assertIn("Workflow Action Permitted Role", condition)
+		self.assertIn("Desk User", condition)
+		self.assertIn("`tabWorkflow Action`.`user`='alice@example.com'", condition)
+		self.assertIn("`tabWorkflow Action`.`status`='Open'", condition)
+		self.assertEqual(workflow_action.get_permission_query_conditions("Administrator"), "")
 
 	def test_approver_can_read_task_only_with_source_permission(self):
 		permissions = self.permissions()
@@ -95,97 +114,4 @@ class TestWorkflowApprovalPermissions(unittest.TestCase):
 		):
 			self.assertFalse(
 				permissions.has_workflow_task_permission(task, "read", "monitor@example.com")
-			)
-
-	def test_workflow_action_query_keeps_own_rows_when_engine_enabled(self):
-		permissions = self.permissions()
-
-		with (
-			patch(
-				"dinext_common.workflow_approval.lifecycle.is_engine_enabled",
-				return_value=True,
-			),
-			patch.object(permissions.frappe, "get_roles", return_value=["Desk User"]),
-			patch.object(permissions.frappe.db, "escape", side_effect=lambda value: f"'{value}'"),
-		):
-			condition = permissions.get_workflow_action_query_conditions("alice@example.com")
-
-		self.assertNotEqual(condition, "1=0")
-		self.assertEqual(condition, "`tabWorkflow Action`.`user`='alice@example.com'")
-		self.assertNotIn("Open", condition)
-
-	def test_workflow_action_query_is_unrestricted_for_system_manager(self):
-		permissions = self.permissions()
-
-		with patch(
-			"dinext_common.workflow_approval.lifecycle.is_engine_enabled",
-			return_value=True,
-		):
-			with patch.object(permissions.frappe, "get_roles", return_value=["System Manager"]):
-				self.assertEqual(
-					permissions.get_workflow_action_query_conditions("manager@example.com"),
-					"",
-				)
-			self.assertEqual(
-				permissions.get_workflow_action_query_conditions("Administrator"),
-				"",
-			)
-
-	def test_workflow_action_query_uses_core_when_engine_disabled(self):
-		permissions = self.permissions()
-
-		with (
-			patch(
-				"dinext_common.workflow_approval.lifecycle.is_engine_enabled",
-				return_value=False,
-			),
-			patch(
-				"frappe.workflow.doctype.workflow_action.workflow_action.get_permission_query_conditions",
-				return_value="core-filter",
-			) as core,
-		):
-			self.assertEqual(
-				permissions.get_workflow_action_query_conditions("alice@example.com"),
-				"core-filter",
-			)
-
-		core.assert_called_once_with("alice@example.com")
-
-	def test_workflow_action_requires_core_access_and_linked_task_access(self):
-		permissions = self.permissions()
-		action = SimpleNamespace(
-			user="alice@example.com",
-			permitted_roles=[],
-			custom_workflow_task="WT-001",
-		)
-		linked_task = self.task()
-		mock_frappe = MagicMock()
-		mock_frappe.get_doc.return_value = linked_task
-		mock_frappe.get_roles.return_value = ["Desk User"]
-
-		with (
-			patch.object(permissions, "frappe", mock_frappe),
-			patch.object(permissions, "has_workflow_task_permission", return_value=True),
-		):
-			self.assertTrue(
-				permissions.has_workflow_action_permission(action, "read", "alice@example.com")
-			)
-
-	def test_role_holder_without_task_is_denied_when_engine_enabled(self):
-		permissions = self.permissions()
-		action = SimpleNamespace(
-			user=None,
-			permitted_roles=[SimpleNamespace(role="Manager")],
-			custom_workflow_task=None,
-		)
-
-		with (
-			patch.object(permissions.frappe, "get_roles", return_value=["Manager"]),
-			patch(
-				"dinext_common.workflow_approval.lifecycle.is_engine_enabled",
-				return_value=True,
-			),
-		):
-			self.assertFalse(
-				permissions.has_workflow_action_permission(action, "read", "manager@example.com")
 			)

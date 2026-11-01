@@ -1067,6 +1067,11 @@ def cleanup_workflow_action_desk() -> dict:
 	"""Delete the Workflow Action desk fixture and its users."""
 	_assert_flag()
 	_delete_workflow_action_desk_docs()
+	for parent in set(
+		frappe.get_all("Workflow Action Permitted Role", filters={"role": WA_ROLE}, pluck="parent")
+	):
+		if not frappe.db.exists("Workflow Action", parent):
+			frappe.db.delete("Workflow Action Permitted Role", {"parent": parent})
 	frappe.db.delete(
 		"DocType Permission Condition",
 		{"parent": "Issue_Permissions", "role": WA_ROLE},
@@ -1121,18 +1126,27 @@ def _desk_task(name: str, issue: str, approver: str, *, deleted: bool) -> str:
 
 @whitelist_for_tests
 def seed_workflow_action_desk() -> dict:
-	"""Create one readable Workflow Action and one action without a source document."""
+	"""Create role-permitted actions and tasks with live, deleted and missing sources."""
 	_assert_flag()
 	cleanup_workflow_action_desk()
 	_ensure_role(WA_ROLE)
 	_ensure_user(WA_APPROVER, "Workflow Action Approver", [WA_ROLE, "Desk User"])
-	_ensure_user(WA_MANAGER, "Workflow Action Manager", ["System Manager", "Desk User"])
+	_ensure_user(WA_MANAGER, "Workflow Action Manager", [WA_ROLE, "System Manager", "Desk User"])
 	_ensure_issue_perm(WA_ROLE)
+	_ensure_read_perm("Kanban Board", WA_ROLE)
 	_ensure_permission_condition("Issue_Permissions", WA_ROLE)
 	with _engine_paused():
 		issue = _issue(WA_SUBJECT)
 	open_task = _desk_task("CY-WA-DESK-OPEN", issue.name, WA_APPROVER, deleted=False)
 	blank_task = _desk_task("CY-WA-DESK-BLANK", issue.name, WA_APPROVER, deleted=True)
+	missing_task = _desk_task("CY-WA-DESK-MISSING", issue.name, WA_APPROVER, deleted=False)
+	frappe.db.set_value(
+		"Workflow Task",
+		missing_task,
+		{"reference_doctype": None, "reference_name": None},
+		update_modified=False,
+	)
+	permitted_roles = [{"role": WA_ROLE}, {"role": "System Manager"}]
 	open_action = frappe.get_doc(
 		{
 			"doctype": "Workflow Action",
@@ -1141,6 +1155,7 @@ def seed_workflow_action_desk() -> dict:
 			"status": "Open",
 			"user": WA_APPROVER,
 			"custom_workflow_task": open_task,
+			"permitted_roles": permitted_roles,
 		}
 	).insert(ignore_permissions=True)
 	blank_action = frappe.get_doc(
@@ -1149,6 +1164,7 @@ def seed_workflow_action_desk() -> dict:
 			"status": "Completed",
 			"user": WA_APPROVER,
 			"custom_workflow_task": blank_task,
+			"permitted_roles": permitted_roles,
 		}
 	).insert(ignore_permissions=True)
 	if not _permission_as(WA_APPROVER, "Workflow Action", "read", open_action.name):
@@ -1165,4 +1181,7 @@ def seed_workflow_action_desk() -> dict:
 		"issue": issue.name,
 		"action": open_action.name,
 		"blank_action": blank_action.name,
+		"task": open_task,
+		"deleted_task": blank_task,
+		"missing_task": missing_task,
 	}

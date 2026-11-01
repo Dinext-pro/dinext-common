@@ -1,4 +1,4 @@
-"""Source-aware permissions for Workflow Task and Workflow Action."""
+"""Source-aware task authorization for approval APIs and public number cards."""
 
 from __future__ import annotations
 
@@ -82,48 +82,6 @@ def get_monitorable_workflows(user: str | None = None) -> list[str]:
 	)
 
 
-def get_workflow_task_query_conditions(user: str | None = None) -> str:
-	"""Deny the standard list because Dynamic Link source access is not SQL-expressible."""
-	user = user or frappe.session.user
-	return "" if _is_system_manager(user) else "1=0"
-
-
-def relax_core_workflow_action_query() -> None:
-	"""Drop the stock list filter while the approval engine supplies its own."""
-	import frappe.workflow.doctype.workflow_action.workflow_action as core_action
-
-	current = core_action.get_permission_query_conditions
-	if getattr(current, "_dinext_relaxed", False):
-		return
-	original = current
-
-	def get_permission_query_conditions(user=None, **_kwargs):
-		from dinext_common.workflow_approval.lifecycle import is_engine_enabled
-
-		if is_engine_enabled():
-			return ""
-		return original(user)
-
-	get_permission_query_conditions._dinext_relaxed = True
-	core_action.get_permission_query_conditions = get_permission_query_conditions
-
-
-def get_workflow_action_query_conditions(user: str | None = None) -> str:
-	"""Keep each user's own actions readable. Desk hides the standard list separately."""
-	user = user or frappe.session.user
-	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
-
-	if not is_engine_enabled():
-		from frappe.workflow.doctype.workflow_action.workflow_action import (
-			get_permission_query_conditions as core_conditions,
-		)
-
-		return core_conditions(user)
-	if _is_system_manager(user):
-		return ""
-	return f"`tabWorkflow Action`.`user`={frappe.db.escape(user)}"
-
-
 def has_workflow_task_permission(
 	doc: object,
 	ptype: str = "read",
@@ -142,41 +100,6 @@ def has_workflow_task_permission(
 	if approver != user and not _is_workflow_monitor(doc, user):
 		return False
 	return _has_source_read_permission(doc, user)
-
-
-def _has_core_action_access(doc: object, user: str) -> bool:
-	if _is_system_manager(user) or _get(doc, "user") == user:
-		return True
-	permitted_roles = {
-		_get(row, "role")
-		for row in (_get(doc, "permitted_roles", []) or [])
-		if _get(row, "role")
-	}
-	return not permitted_roles.isdisjoint(frappe.get_roles(user))
-
-
-def has_workflow_action_permission(
-	doc: object,
-	ptype: str = "read",
-	user: str | None = None,
-) -> bool:
-	"""Compose core action access with its active source-aware Workflow Task."""
-	user = user or frappe.session.user
-	if not _has_core_action_access(doc, user):
-		return False
-
-	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
-
-	task_name = _get(doc, "custom_workflow_task")
-	if not task_name:
-		return not is_engine_enabled()
-	if ptype in MUTATING_PERMISSION_TYPES or ptype not in READ_PERMISSION_TYPES:
-		return False
-	try:
-		task = frappe.get_doc("Workflow Task", task_name)
-	except frappe.DoesNotExistError:
-		return False
-	return has_workflow_task_permission(task, "read", user)
 
 
 PUBLIC_APPROVAL_NUMBER_CARDS = frozenset(

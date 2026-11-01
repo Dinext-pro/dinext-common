@@ -1,8 +1,29 @@
 // Copyright (c) 2026, Dinext and contributors
 // For license information, please see license.txt
 
+function can_view_workflow_task_desk() {
+	return frappe.session.user === "Administrator" || frappe.user.has_role("System Manager");
+}
+
+function conceal_workflow_task(frm) {
+	if (can_view_workflow_task_desk()) {
+		return false;
+	}
+	if (frm.layout && frm.layout.wrapper) {
+		frm.layout.wrapper.hide();
+	}
+	if (frm.doc.reference_doctype && frm.doc.reference_name && !frm.doc.source_deleted_at) {
+		frappe.set_route("Form", frm.doc.reference_doctype, frm.doc.reference_name);
+	}
+	return true;
+}
+
 frappe.ui.form.on("Workflow Task", {
+	onload: conceal_workflow_task,
 	refresh(frm) {
+		if (conceal_workflow_task(frm)) {
+			return;
+		}
 		if (frm.doc.reference_doctype && frm.doc.reference_name && !frm.doc.source_deleted_at) {
 			frm.add_custom_button(__("Open source document"), () => {
 				frappe.set_route("Form", frm.doc.reference_doctype, frm.doc.reference_name);
