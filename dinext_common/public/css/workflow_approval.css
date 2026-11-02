@@ -1,3 +1,64 @@
 .dinext-pending-approvers .section-body {
 	padding: var(--padding-sm) 0;
 }
+
+.dinext-rebuild-summary {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 48px;
+	margin: 0 0 12px;
+	padding: 8px 16px;
+	border: 1px solid #d97706;
+	border-radius: var(--border-radius);
+	background: #fbb040;
+	color: #422006;
+	font-size: var(--text-sm);
+	font-weight: 500;
+}
+
+.dinext-rebuild-summary-wide {
+	border-inline: 0;
+	border-radius: 0;
+}
+
+.dinext-rebuild-summary-icon {
+	display: inline-flex;
+	flex: 0 0 18px;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	border: 1.5px solid currentColor;
+	border-radius: 50%;
+	font-size: 12px;
+	font-weight: 700;
+}
+
+.dinext-rebuild-summary-message {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dinext-rebuild-summary .dinext-reset-rounds {
+	flex: 0 0 auto;
+	border: 0;
+	background: #422006;
+	color: #fff;
+	white-space: nowrap;
+}
+
+.dinext-rebuild-summary .dinext-reset-rounds:hover {
+	background: #63320b;
+	color: #fff;
+}
+
+.dinext-rebuild-summary .dinext-reset-rounds:focus-visible {
+	outline: 2px solid #422006;
+	outline-offset: 3px;
+}

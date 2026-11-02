@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, TypedDict
 
 import frappe
 from frappe import _
@@ -494,9 +494,10 @@ def describe_rebuild_rounds(
 		filters={
 			"reference_doctype": reference_doctype,
 			"reference_name": ("in", list(reference_names)),
-			"round_status": ("in", ("Stalled", "Conflicted")),
+			"round_status": ("in", ("Open", "Stalled", "Conflicted")),
 		},
 		fields=[
+			"name",
 			"approval_round_id",
 			"round_status",
 			"reference_name",
@@ -505,7 +506,6 @@ def describe_rebuild_rounds(
 			"creation",
 		],
 		order_by="creation desc, name desc",
-		limit=100,
 	)
 	can_reset = _caller_is_system_manager()
 	seen: set[str] = set()
@@ -515,13 +515,20 @@ def describe_rebuild_rounds(
 		if not round_id or round_id in seen:
 			continue
 		seen.add(round_id)
+		metadata = engine.configuration_metadata(row)
+		round_status = row.round_status
+		if round_status == "Open":
+			metadata = engine.preview_configuration_conflict(frappe.get_doc("Workflow Task", row.name))
+			if not metadata:
+				continue
+			round_status = "Conflicted"
 		rounds.append(
 			{
 				"round_id": round_id,
-				"round_status": row.round_status,
+				"round_status": round_status,
 				"reference_name": row.reference_name,
 				"source_title": row.source_title or row.reference_name,
-				"configuration_change": engine.configuration_metadata(row),
+				"configuration_change": metadata,
 				"can_reset": can_reset,
 			}
 		)
@@ -719,11 +726,13 @@ def reset_round(round_id: str, reason: object) -> dict[str, Any]:
 	if not task_names:
 		raise frappe.DoesNotExistError(_("Approval round does not exist"))
 	task = frappe.get_doc("Workflow Task", task_names[0])
+	engine._lock_domain_dependencies(task.reference_doctype, task.reference_name)
 	source = frappe.get_doc(
 		task.reference_doctype,
 		task.reference_name,
 		for_update=True,
 	)
+	task = frappe.get_doc("Workflow Task", task_names[0], for_update=True)
 	if task.round_status not in {"Stalled", "Conflicted", "Open"}:
 		raise engine.WorkflowApprovalConflictError(_("Approval round cannot be reset"))
 	reset_reason = _("{0} Reset by {1}: {2}").format(
@@ -731,7 +740,7 @@ def reset_round(round_id: str, reason: object) -> dict[str, Any]:
 		frappe.session.user,
 		normalized_reason,
 	)
-	if engine.configuration_metadata(task):
+	if engine.configuration_metadata(task) or engine.preview_configuration_conflict(task, source=source):
 		rebuilt = engine.rebuild_configuration_conflict(source, round_id, reset_reason)
 		source.add_comment(
 			"Workflow",
@@ -755,6 +764,37 @@ def reset_round(round_id: str, reason: object) -> dict[str, Any]:
 		"round_id": round_id,
 		"new_tasks": engine.reconcile_source(source),
 	}
+
+
+class RebuildRoundFailure(TypedDict):
+	round_id: str
+	error: str
+
+
+class RebuildRoundsResult(TypedDict):
+	succeeded: list[str]
+	failed: list[RebuildRoundFailure]
+
+
+@frappe.whitelist(methods=["POST"])
+def reset_rounds(round_ids: str | list[str], reason: object) -> RebuildRoundsResult:
+	"""Rebuild a group with one reason and independent results for each round."""
+	_require_post()
+	_require_system_manager()
+	normalized_reason = engine.normalize_comment(reason, required=True)
+	identifiers = list(dict.fromkeys(str(value) for value in _as_list(round_ids)))
+	if not identifiers or len(identifiers) > 500:
+		frappe.throw(_("Select between 1 and 500 approval rounds to rebuild"))
+	result: RebuildRoundsResult = {"succeeded": [], "failed": []}
+	for round_id in identifiers:
+		try:
+			reset_round(round_id, normalized_reason)
+			frappe.db.commit()
+			result["succeeded"].append(round_id)
+		except Exception as exc:
+			frappe.db.rollback()
+			result["failed"].append({"round_id": round_id, "error": str(exc)})
+	return result
 
 
 def _vote_audit(votes: list[object]) -> str:

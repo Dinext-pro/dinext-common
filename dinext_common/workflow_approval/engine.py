@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any, TypedDict
 
 import frappe
@@ -688,6 +689,59 @@ def configuration_metadata(task: object) -> dict[str, Any] | None:
 	return parsed
 
 
+def preview_configuration_conflict(
+	task: object,
+	*,
+	source: object | None = None,
+) -> dict[str, Any] | None:
+	"""Describe live drift before a failed request or source save persists it."""
+	if _value(task, "round_status") != "Open":
+		return None
+	if source is None:
+		try:
+			source = frappe.get_doc(task.reference_doctype, task.reference_name)
+		except frappe.DoesNotExistError:
+			return None
+	context = _workflow_context(source)
+	if not context:
+		return None
+	workflow_name, workflow, _state_field, state = context
+	if workflow_name != task.workflow or state != task.workflow_state:
+		return None
+	classification = _classify_round(_parse_manifest(task), workflow, state, task.approval_round_id)
+	return configuration_change_metadata(classification) if classification["void"] else None
+
+
+def _persist_configuration_conflict(round_id: str) -> None:
+	"""Persist only conflict reconciliation after the rejected vote rolls back."""
+	# A separate connection keeps this commit from clearing the request's other
+	# rollback callbacks or committing any of its rejected business changes.
+	previous_db = frappe.local.db
+	frappe.connect(set_admin_as_user=False)
+	try:
+		pointer = frappe.db.get_value(
+			"Workflow Task",
+			{"approval_round_id": round_id},
+			["name", "reference_doctype", "reference_name"],
+			as_dict=True,
+		)
+		if not pointer:
+			return
+		_lock_domain_dependencies(pointer.reference_doctype, pointer.reference_name)
+		try:
+			source = frappe.get_doc(pointer.reference_doctype, pointer.reference_name, for_update=True)
+		except frappe.DoesNotExistError:
+			return
+		task = frappe.get_doc("Workflow Task", pointer.name, for_update=True)
+		metadata = preview_configuration_conflict(task, source=source)
+		if metadata:
+			_mark_conflicted(round_id, _("Workflow transition configuration changed"), metadata=metadata)
+			frappe.db.commit()
+	finally:
+		frappe.db.close()
+		frappe.local.db = previous_db
+
+
 def _replace_available_transitions(task_name: str, transitions: list[dict[str, Any]]) -> None:
 	frappe.db.delete(
 		"Available Workflow Transitions",
@@ -1271,6 +1325,7 @@ def cast_vote(
 			_("Workflow transition configuration changed"),
 			metadata=configuration_change_metadata(classification),
 		)
+		frappe.db.after_rollback.add(partial(_persist_configuration_conflict, task.approval_round_id))
 		raise WorkflowApprovalConflictError(_("Workflow transition configuration changed"))
 	if classification["dropped"] or classification["add"]:
 		finalized = _amend_open_round(source, task, workflow, state, classification)

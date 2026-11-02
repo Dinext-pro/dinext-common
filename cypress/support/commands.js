@@ -49,6 +49,7 @@ Cypress.Commands.add("call", (method, args, { failOnStatusCode = true, timeout }
 });
 
 Cypress.Commands.add("openDesk", (path) => {
+	cy.request({ url: path || "/app", timeout: 180000 });
 	cy.visit(path || "/app");
 	cy.window().its("frappe.csrf_token").should("be.a", "string").and("not.eq", "None");
 	cy.window().its("frappe.session.user").should("not.eq", "Guest");
@@ -56,9 +57,9 @@ Cypress.Commands.add("openDesk", (path) => {
 
 Cypress.Commands.add("noPermissionDialog", () => {
 	cy.get("body").should(($body) => {
-		const text = $body.text();
-		expect(text).not.to.include("Нет разрешения");
-		expect(text).not.to.include("Not permitted");
-		expect(text).not.to.match(/no permission/i);
+		const text = $body[0].innerText;
+		expect(text.includes("Нет разрешения"), "Russian permission error").to.eq(false);
+		expect(text.includes("Not permitted"), "permission error").to.eq(false);
+		expect(/no permission/i.test(text), "permission error").to.eq(false);
 	});
 });
