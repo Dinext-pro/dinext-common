@@ -9,6 +9,7 @@ import frappe
 from frappe import _
 
 from dinext_common.workflow_approval import engine
+from dinext_common.workflow_approval.pending import PendingApproverTask, get_required_state_pending_tasks
 from dinext_common.workflow_approval.permissions import (
 	get_monitorable_workflows,
 	has_workflow_task_permission,
@@ -454,27 +455,21 @@ def get_pending_approvers(doctype: str, name: str) -> list[dict[str, Any]]:
 			rows = result
 			break
 	if rows is None:
-		rows = frappe.get_all(
-			"Workflow Task",
-			filters={
-				"reference_doctype": doctype,
-				"reference_name": name,
-				"status": "Working",
-				"round_status": "Open",
-			},
-			fields=["approver", "approval_round_id", "workflow_state"],
-			order_by="approver asc",
-		)
+		rows = [
+			{key: row[key] for key in ("approver", "approval_round_id", "workflow_state")}
+			for row in get_required_state_pending_tasks(doctype, [name])
+		]
+
 	names = dict(
 		frappe.get_all(
 			"User",
-			filters={"name": ("in", sorted({row.approver for row in rows}))},
+			filters={"name": ("in", sorted({row["approver"] for row in rows}))},
 			fields=["name", "full_name"],
 			as_list=True,
 		)
 	) if rows else {}
 	for row in rows:
-		row["approver_name"] = names.get(row.approver) or row.approver
+		row["approver_name"] = names.get(row["approver"]) or row["approver"]
 	return rows
 
 
@@ -539,6 +534,7 @@ def _banner_from_rows(
 	rows: list[object],
 	*,
 	rounds: list[dict[str, Any]] | None = None,
+	pending: list[PendingApproverTask] | None = None,
 ) -> dict[str, Any]:
 	if not rows and not rounds:
 		return {
@@ -561,7 +557,7 @@ def _banner_from_rows(
 			"rounds": stalled,
 		}
 	round_id = rows[0].approval_round_id
-	approvers = sorted({row.approver for row in rows if row.status == "Working" and row.approver})
+	approvers = sorted({row["approver"] for row in pending or []})
 	names = (
 		dict(
 			frappe.get_all(
@@ -635,7 +631,8 @@ def get_form_approval_banner(doctype: str, name: str) -> dict[str, Any]:
 		}
 	rows = _active_round_rows(reference_doctype, reference_names)
 	rounds = describe_rebuild_rounds(reference_doctype, reference_names)
-	return _banner_from_rows(rows, rounds=rounds)
+	pending = [] if rounds else get_required_state_pending_tasks(reference_doctype, reference_names)
+	return _banner_from_rows(rows, rounds=rounds, pending=pending)
 
 
 def _caller_is_system_manager() -> bool:

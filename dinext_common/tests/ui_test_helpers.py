@@ -529,6 +529,10 @@ def _duplicate_uuid_result() -> dict:
 
 
 def _seed_timesheet(workflow_name: str) -> dict:
+	from frappe.model.workflow import get_workflow_name
+
+	position_workflow = get_workflow_name("User Timesheet Position")
+	leave_workflow = get_workflow_name("Application For Leave")
 	worker = frappe.db.get_value("Worker", {"wuser": AUTHOR}, "name")
 	leave_type = frappe.db.get_value("Type Of Leave", {}, "name")
 	if not worker or not leave_type:
@@ -576,7 +580,7 @@ def _seed_timesheet(workflow_name: str) -> dict:
 	_manual_task(
 		doctype="User Timesheet Position",
 		name=position.name,
-		workflow=workflow_name,
+		workflow=position_workflow,
 		state="Pending Approval",
 		approver=APPROVER,
 		round_status="Open",
@@ -590,7 +594,7 @@ def _seed_timesheet(workflow_name: str) -> dict:
 	_manual_task(
 		doctype="User Timesheet Position",
 		name=position.name,
-		workflow=workflow_name,
+		workflow=position_workflow,
 		state="Pending Approval",
 		approver=APPROVER_B,
 		round_status="Open",
@@ -605,7 +609,7 @@ def _seed_timesheet(workflow_name: str) -> dict:
 	_manual_task(
 		doctype="Application For Leave",
 		name=leave.name,
-		workflow=workflow_name,
+		workflow=leave_workflow,
 		state="На согласовании",
 		approver=APPROVER,
 		round_status="Open",
@@ -619,7 +623,7 @@ def _seed_timesheet(workflow_name: str) -> dict:
 	_manual_task(
 		doctype="Application For Leave",
 		name=leave.name,
-		workflow=workflow_name,
+		workflow=leave_workflow,
 		state="На согласовании",
 		approver=APPROVER_B,
 		round_status="Open",
