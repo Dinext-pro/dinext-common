@@ -52,6 +52,15 @@ def workflow_action_icons() -> dict[str, str]:
 	return icons
 
 
+def workflow_state_styles() -> dict[str, str]:
+	"""Destination styles for controls without their own source workflow metadata."""
+	return {
+		row["name"]: row["style"]
+		for row in frappe.get_all("Workflow State", fields=["name", "style"])
+		if row.get("style")
+	}
+
+
 def extend_bootinfo(bootinfo) -> None:
 	"""Expose workspace sidebar hover-expand flag to Desk (default: enabled).
 
@@ -66,6 +75,7 @@ def extend_bootinfo(bootinfo) -> None:
 		default=False,
 	)
 	bootinfo.workflow_action_icons = workflow_action_icons()
+	bootinfo.workflow_state_styles = workflow_state_styles()
 	pages = getattr(bootinfo, "allowed_workspaces", None)
 	if isinstance(pages, (list, tuple)):
 		bootinfo.allowed_workspaces = omit_replaced_workspaces(pages)

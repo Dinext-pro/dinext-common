@@ -38,7 +38,7 @@ frappe.ui.form.on("Workflow Task", {
 		}
 		(frm.doc.available_workflow_transitions || []).forEach((transition) => {
 			frm.add_custom_button(
-				__(transition.action),
+				frappe.dinext?.workflowTransitionLabel?.(transition) || __(transition.action),
 				() => vote(frm, transition),
 				__("Workflow")
 			);

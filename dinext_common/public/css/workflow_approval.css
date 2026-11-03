@@ -1,3 +1,66 @@
 .dinext-pending-approvers .section-body {
 	padding: var(--padding-sm) 0;
 }
+.dinext-workflow-transition {
+	color: var(--dinext-workflow-action-color, inherit);
+	--icon-stroke: currentColor;
+}
+
+.dinext-workflow-transition .icon {
+	color: inherit;
+	--icon-stroke: currentColor;
+}
+
+.dinext-workflow-transition use {
+	fill: currentColor;
+}
+
+.dinext-workflow-transition[data-workflow-style="primary"] {
+	--dinext-workflow-action-color: var(--text-on-blue);
+}
+
+.dinext-workflow-transition[data-workflow-style="info"] {
+	--dinext-workflow-action-color: var(--text-on-light-blue);
+}
+
+.dinext-workflow-transition[data-workflow-style="success"] {
+	--dinext-workflow-action-color: var(--text-on-green);
+}
+
+.dinext-workflow-transition[data-workflow-style="warning"] {
+	--dinext-workflow-action-color: var(--text-on-orange);
+}
+
+.dinext-workflow-transition[data-workflow-style="danger"] {
+	--dinext-workflow-action-color: var(--text-on-red);
+}
+
+.dinext-workflow-transition[data-workflow-style="inverse"] {
+	--dinext-workflow-action-color: var(--text-color);
+}
+
+[data-theme="dark"] .dinext-workflow-transition[data-workflow-style="primary"],
+[data-theme="dark"] .dinext-workflow-transition[data-workflow-style="info"] {
+	--dinext-workflow-action-color: var(--blue-300);
+}
+
+[data-theme="dark"] .dinext-workflow-transition[data-workflow-style="success"] {
+	--dinext-workflow-action-color: var(--green-300);
+}
+
+[data-theme="dark"] .dinext-workflow-transition[data-workflow-style="warning"] {
+	--dinext-workflow-action-color: var(--orange-300);
+}
+
+[data-theme="dark"] .dinext-workflow-transition[data-workflow-style="danger"] {
+	--dinext-workflow-action-color: var(--red-300);
+}
+
+option.dinext-workflow-transition {
+	background-color: var(--fg-color);
+}
+
+.disabled .dinext-workflow-transition[data-workflow-style],
+[disabled] .dinext-workflow-transition[data-workflow-style] {
+	--dinext-workflow-action-color: var(--disabled-text-color);
+}
