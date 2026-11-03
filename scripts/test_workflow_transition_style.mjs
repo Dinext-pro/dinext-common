@@ -46,7 +46,7 @@ const element = () => ({
 const frappe = {
   boot: {
     enable_parallel_workflow_approval: false,
-    workflow_action_icons: { Approve: "check" },
+    workflow_action_icons: { Approve: "check", Reject: "close" },
     workflow_state_styles: {},
   },
   get_doc: (_doctype, name) => localStates[name],
@@ -57,7 +57,7 @@ const frappe = {
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;"),
-    icon: (name) => `<svg data-icon="${name}"></svg>`,
+    icon: (name) => `<svg data-icon="${name}"><use href="#icon-${name}"></use></svg>`,
   },
   session: { user: "reviewer@example.com" },
   user_roles: ["Manager"],
@@ -72,7 +72,7 @@ const frappe = {
   },
 };
 const document = {
-  getElementById: (id) => id === "icon-check",
+  getElementById: (id) => ["icon-check", "icon-close", "icon-close-alt"].includes(id),
   addEventListener() {},
 };
 const context = {
@@ -118,6 +118,8 @@ frappe.boot.workflow_state_styles = {
 };
 assert.equal(style({ action: "Approve", next_state: "Red" }), "danger");
 assert.equal(style({ action: "Reject", next_state: "Green" }), "success");
+assert.match(label({ action: "Reject", next_state: "Red" }), /href="#icon-close-alt"/);
+assert.match(frappe.dinext.workflowActionLabel("Reject"), /href="#icon-close"/);
 assert.equal(style({ action: "Approve", next_state: "Unknown" }), "");
 assert.equal(style({ action: "Approve", next_state: "Missing" }), "");
 assert.equal(

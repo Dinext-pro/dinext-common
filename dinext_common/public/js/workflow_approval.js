@@ -43,10 +43,16 @@
 		});
 		return styles.length && styles.every((style) => style === styles[0]) ? styles[0] : "";
 	};
-	const workflowTransitionLabel = (transition, text) =>
-		`<span class="dinext-workflow-transition" data-workflow-style="${workflowTransitionStyle(
+	const workflowTransitionLabel = (transition, text) => {
+		let label = workflowActionLabel(transition.action, text);
+		// Frappe's filled close glyph has a fixed fill; its themed equivalent uses --icon-stroke.
+		if (typeof document !== "undefined" && document.getElementById("icon-close-alt")) {
+			label = label.replace('href="#icon-close"', 'href="#icon-close-alt"');
+		}
+		return `<span class="dinext-workflow-transition" data-workflow-style="${workflowTransitionStyle(
 			transition
-		)}">${workflowActionLabel(transition.action, text)}</span>`;
+		)}">${label}</span>`;
+	};
 	const decorateWorkflowTransition = (element, transition) =>
 		$(element)
 			.addClass("dinext-workflow-transition")
