@@ -152,6 +152,7 @@ web_include_css = ["/assets/dinext_common/css/public_auth_header.css"]
 
 # include js in doctype views
 doctype_js = {
+	"Workflow": "public/js/workflow_fingerprint_settings.js",
 	"Project": "public/js/sticky-datatable.js",
 	"Workflow Action": "public/js/workflow_action_desk.js",
 }
@@ -198,6 +199,7 @@ doctype_list_js = {
 # before_install = "dinext_common.install.before_install"
 after_install = "dinext_common.install.after_install"
 after_migrate = [
+	"dinext_common.workflow_approval.metadata.ensure_workflow_fingerprint_fields",
 	"dinext_common.changelog_feed.on_after_migrate",
 	"dinext_common.setup.workspace.configure_workspace_menu",
 	"dinext_common.apps.ensure_default_apps",
@@ -270,6 +272,9 @@ doc_events = {
 		],
 	},
 	"Workflow": {
+		"before_import": [
+			"dinext_common.workflow_approval.exclusions.preserve_fixture_exclusions",
+		],
 		"validate": [
 			"dinext_common.workflow_approval.metadata.validate_workflow_doc",
 		],
