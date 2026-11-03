@@ -271,7 +271,7 @@ context("parallel workflow desk", () => {
 		});
 		cy.get(".dinext-utp-action-select", { timeout: 60000 }).should("exist");
 		cy.contains("button", /Apply workflow action|Применить действие согласования/).should(
-			"exist"
+			"not.exist"
 		);
 		cy.noPermissionDialog();
 	});
