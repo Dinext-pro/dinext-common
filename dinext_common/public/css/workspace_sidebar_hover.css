@@ -232,6 +232,9 @@
 		.sidebar-item-control .drag-handle,
 	body.dinext-ws-sidebar-collapsed:not([data-route^="Workspaces"])
 		.desk-sidebar
+		.sidebar-item-control .duplicate-page,
+	body.dinext-ws-sidebar-collapsed:not([data-route^="Workspaces"])
+		.desk-sidebar
 		.sidebar-item-control .setting-btn.dropdown-btn {
 		display: none !important;
 	}

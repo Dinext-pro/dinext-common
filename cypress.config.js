@@ -1,8 +1,6 @@
-const { defineConfig } = require(
-	process.env.DINEXT_CYPRESS_MODULE || "../frappe/node_modules/cypress"
-);
+const sidebarTests = require("./cypress.sidebar.config.cjs");
 
-module.exports = defineConfig({
+module.exports = {
 	includeShadowDom: true,
 	defaultCommandTimeout: 10000,
 	pageLoadTimeout: 30000,
@@ -10,9 +8,10 @@ module.exports = defineConfig({
 	viewportHeight: 900,
 	video: false,
 	e2e: {
+		setupNodeEvents: sidebarTests.e2e.setupNodeEvents,
 		baseUrl: "http://localhost:8000",
 		specPattern: "cypress/integration/**/*.js",
 		supportFile: "cypress/support/e2e.js",
 		testIsolation: true,
 	},
-});
+};
