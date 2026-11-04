@@ -5,6 +5,7 @@ on:
       - dinext_common/public/css/workspace_sidebar_hover.css
       - dinext_common/public/js/workspace_sidebar_hover.js
       - cypress/integration/workspace_sidebar_controls.js
+      - cypress.config.js
       - cypress.sidebar.config.cjs
       - .github/workflows/dinext-acceptance.yml
       - .github/ci/public-apps.json

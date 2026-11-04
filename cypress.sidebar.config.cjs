@@ -3,7 +3,7 @@ const path = require("node:path");
 const { createRequire } = require("node:module");
 
 // Render the real platform sidebar without a database or a signed-in session.
-const frappePath = path.resolve(process.env.DINEXT_FRAPPE_PATH || "../frappe");
+const frappePath = path.resolve(__dirname, process.env.DINEXT_FRAPPE_PATH || "../frappe");
 const platformRequire = createRequire(path.join(frappePath, "package.json"));
 
 function assets() {
@@ -50,8 +50,8 @@ module.exports = {
 		specPattern: "cypress/integration/workspace_sidebar_controls.js",
 		supportFile: false,
 		setupNodeEvents(on) {
-			const platformAssets = assets();
-			on("task", { sidebarAssets: () => platformAssets });
+			let platformAssets;
+			on("task", { sidebarAssets: () => (platformAssets ||= assets()) });
 		},
 	},
 };
