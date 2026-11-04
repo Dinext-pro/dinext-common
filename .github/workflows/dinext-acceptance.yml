@@ -1,0 +1,79 @@
+name: Dinext acceptance
+on:
+  pull_request:
+    paths:
+      - dinext_common/public/css/workspace_sidebar_hover.css
+      - dinext_common/public/js/workspace_sidebar_hover.js
+      - cypress/integration/workspace_sidebar_controls.js
+      - cypress.sidebar.config.cjs
+      - .github/workflows/dinext-acceptance.yml
+      - .github/ci/public-apps.json
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: sidebar-acceptance-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  sidebar:
+    name: Cypress acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: common
+          persist-credentials: false
+      - name: Select the pinned platform from the CI catalog
+        id: platform
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          platform = json.loads(Path('common/.github/ci/public-apps.json').read_text())['frappe']
+          assert platform['repository'] == 'https://github.com/Dinext-pro/dinext_platform.git'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('ref=' + platform['ci_sha'] + '\n')
+          PY
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: Dinext-pro/dinext_platform
+          ref: ${{ steps.platform.outputs.ref }}
+          path: frappe
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install platform rendering dependencies and Cypress
+        run: |
+          npm install --global yarn@1.22.22
+          yarn --cwd frappe install --frozen-lockfile
+          npm install --prefix "$RUNNER_TEMP/sidebar-tools" --no-save cypress@13.17.0
+      - name: Run the sidebar rendering scenarios
+        run: |
+          python3 -m http.server 8000 --bind 127.0.0.1 --directory "$RUNNER_TEMP" > "$RUNNER_TEMP/sidebar-http.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:8000/ > /dev/null; then break; fi
+            sleep 1
+          done
+          "$RUNNER_TEMP/sidebar-tools/node_modules/.bin/cypress" run --browser electron --project common --config-file cypress.sidebar.config.cjs
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          files = list(Path('common/cypress/results').glob('workspace-sidebar-*.xml'))
+          assert files, 'Missing Cypress JUnit report'
+          cases = [case for file in files for case in ET.parse(file).iter('testcase')]
+          assert len(cases) == 4, f'Expected four sidebar scenarios, found {len(cases)}'
+          assert all(not list(case) for case in cases), 'A sidebar scenario failed or was skipped'
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sidebar-cypress-results
+          path: |
+            common/cypress/results/
+            common/cypress/screenshots/
+          if-no-files-found: error
+          retention-days: 14
