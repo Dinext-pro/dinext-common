@@ -1192,6 +1192,18 @@ def get_legacy_number_card_result(filters: str | dict[str, Any]) -> dict[str, An
 		}
 		if state_field != "workflow_state" and frappe.get_meta(doctype).has_field("workflow_state"):
 			filters["workflow_state"] = ["in", _card_state_values(state)]
+		if not completed:
+			# The requester can differ from the record creator, including delegated entry.
+			user = frappe.session.user
+			requester_field = {"User Timesheet Position": "user", "Application For Leave": "lauser"}.get(
+				doctype
+			)
+			if requester_field:
+				filters[requester_field] = ["!=", user]
+			elif doctype == "Expense Claim":
+				employees = frappe.get_all("Employee", filters={"user_id": user}, pluck="name")
+				if employees:
+					filters["employee"] = ["not in", employees]
 		previous_cmd = frappe.form_dict.get("cmd")
 		try:
 			# Include the destination list's display rules without bypassing source permissions.
