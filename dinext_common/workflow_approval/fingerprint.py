@@ -42,17 +42,11 @@ NON_VALUE_FIELDTYPES = {
 	"Tab Break",
 }
 
-CHILD_IDENTITY_FIELDS = {
-	"creation",
-	"docstatus",
-	"idx",
-	"modified",
-	"modified_by",
-	"name",
-	"owner",
-	"parent",
-	"parentfield",
-	"parenttype",
+CHILD_IDENTITY_FIELDS = FRAMEWORK_FIELDS | {
+	"__islocal",
+	"__onload",
+	"__run_link_triggers",
+	"__unsaved",
 }
 
 REUSE_IDENTITY_FIELDS = (
@@ -88,19 +82,23 @@ def _decimal_text(value: Decimal) -> str:
 	return normalized or "0"
 
 
-def _canonical_child(value: object) -> object:
+def _canonical_child(value: object, *, excluded_fields: set[str], field_path: str) -> object:
 	if not isinstance(value, (dict, list, tuple)):
 		as_dict = getattr(value, "as_dict", None)
 		if callable(as_dict):
 			value = as_dict()
 	if isinstance(value, dict):
 		return {
-			str(key): _canonical_child(item)
+			str(key): _canonical_child(
+				item, excluded_fields=excluded_fields, field_path=f"{field_path}.{key}"
+			)
 			for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
-			if str(key) not in CHILD_IDENTITY_FIELDS
+			if str(key) not in CHILD_IDENTITY_FIELDS and f"{field_path}.{key}" not in excluded_fields
 		}
 	if isinstance(value, (list, tuple)):
-		return [_canonical_child(item) for item in value]
+		return [
+			_canonical_child(item, excluded_fields=excluded_fields, field_path=field_path) for item in value
+		]
 	return _canonical_scalar(value)
 
 
@@ -143,7 +141,7 @@ def fingerprint_document(
 	excluded_fields: set[str] | None = None,
 	version: str = FINGERPRINT_VERSION,
 ) -> ContentFingerprint:
-	"""Return a fail-closed fingerprint over persisted business fields."""
+	"""Fingerprint persisted business fields; child exclusions use table.field paths."""
 	excluded = set(excluded_fields or ())
 	excluded.update(FRAMEWORK_FIELDS)
 	excluded.update(filter(None, (workflow_state_field, workflow_update_field)))
@@ -176,7 +174,7 @@ def fingerprint_document(
 		else:
 			value = getattr(document, fieldname, None)
 		if fieldtype in {"Table", "Table MultiSelect"}:
-			values[fieldname] = _canonical_child(value or [])
+			values[fieldname] = _canonical_child(value or [], excluded_fields=excluded, field_path=fieldname)
 		else:
 			values[fieldname] = _canonical_scalar(value, fieldtype)
 

@@ -296,3 +296,11 @@
 "Transition UUID","UUID перехода",""
 "Workflow operation accepted","Операция согласования принята",""
 "Source document deleted","Исходный документ удалён",""
+Approval Content Snapshot,Снимок данных для согласования
+Fields Excluded from Snapshot,"Поля, исключаемые из снимка"
+Field Path,Поле
+"These fields are excluded for all transitions of this Workflow, in addition to application hooks and system fields.",Поля исключаются для всех переходов этого Workflow в дополнение к исключениям из hooks и системным полям.
+{0} — entire table ({1}),{0} — вся таблица ({1})
+Row {0}: select a field to exclude from the snapshot.,"Строка {0}: выберите поле, исключаемое из снимка."
+Row {0}: field path {1} is not available for {2}.,Строка {0}: поле {1} недоступно для типа документа {2}.
+Row {0}: field path {1} is duplicated.,Строка {0}: поле {1} указано повторно.

@@ -239,8 +239,10 @@ def _workflow_context(doc: object) -> tuple[str, object, str, str] | None:
 	return workflow_name, workflow, state_field, str(_value(doc, state_field) or "")
 
 
-def _fingerprint_exclusions(doctype: str) -> set[str]:
-	exclusions: set[str] = set()
+def _fingerprint_exclusions(doctype: str, workflow: object | None = None) -> set[str]:
+	from dinext_common.workflow_approval.exclusions import configured_exclusions
+
+	exclusions = configured_exclusions(workflow)
 	for hook in frappe.get_hooks("workflow_approval_fingerprint_excluded_fields") or []:
 		if isinstance(hook, dict):
 			exclusions.update(hook.get(doctype, []) or [])
@@ -263,7 +265,7 @@ def get_content_fingerprint(doc: object, workflow: object) -> ContentFingerprint
 		list(_value(_value(doc, "meta"), "fields", []) or []),
 		workflow_state_field=state_field,
 		workflow_update_field=update_field,
-		excluded_fields=_fingerprint_exclusions(str(_value(doc, "doctype") or "")),
+		excluded_fields=_fingerprint_exclusions(str(_value(doc, "doctype") or ""), workflow),
 	)
 
 

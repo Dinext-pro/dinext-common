@@ -1,5 +1,6 @@
 import json
 import unittest
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -245,3 +246,75 @@ class TestWorkflowApprovalFingerprint(unittest.TestCase):
 		):
 			candidate = {**task, field: value}
 			self.assertIsNone(fingerprint.find_latest_reusable_task([candidate], **criteria))
+
+	def test_child_exclusion_is_scoped_to_its_table_and_keeps_business_fields(self):
+		fingerprint = self.fingerprint()
+		fields = [
+			{"fieldname": "rows", "fieldtype": "Table"},
+			{"fieldname": "other_rows", "fieldtype": "Table"},
+			{"fieldname": "payload", "fieldtype": "JSON"},
+		]
+		document = {
+			"rows": [{"date": "2026-10-12", "hours": 8.0, "description": "Work", "utilized_hours": 8.0}],
+			"other_rows": [{"utilized_hours": 8.0}],
+			"payload": {"utilized_hours": 8.0},
+		}
+		options = {"excluded_fields": {"rows.utilized_hours"}}
+		base = fingerprint.fingerprint_document(document, fields, **options).digest
+		changed = deepcopy(document)
+		changed["rows"][0]["utilized_hours"] = 0.0
+		self.assertEqual(base, fingerprint.fingerprint_document(changed, fields, **options).digest)
+		for field, value in (("date", "2026-10-13"), ("hours", 7.0), ("description", "Other work")):
+			with self.subTest(field=field):
+				changed = deepcopy(document)
+				changed["rows"][0][field] = value
+				self.assertNotEqual(base, fingerprint.fingerprint_document(changed, fields, **options).digest)
+		for field in ("other_rows", "payload"):
+			with self.subTest(field=field):
+				changed = deepcopy(document)
+				row = changed[field][0] if field == "other_rows" else changed[field]
+				row["utilized_hours"] = 0.0
+				self.assertNotEqual(base, fingerprint.fingerprint_document(changed, fields, **options).digest)
+
+	def test_document_like_children_apply_nested_exclusions_without_reordering(self):
+		class Row:
+			def __init__(self, hours, utilized):
+				self.hours, self.utilized = hours, utilized
+
+			def as_dict(self):
+				return {"hours": self.hours, "utilized_hours": self.utilized}
+
+		fingerprint = self.fingerprint()
+		fields = [{"fieldname": "rows", "fieldtype": "Table"}]
+		options = {"excluded_fields": {"rows.utilized_hours"}}
+		first = [Row(8.0, 8.0), Row(4.0, 4.0)]
+		second = [Row(8.0, 0.0), Row(4.0, 0.0)]
+		base = fingerprint.fingerprint_document({"rows": first}, fields, **options).digest
+		self.assertEqual(base, fingerprint.fingerprint_document({"rows": second}, fields, **options).digest)
+		self.assertNotEqual(
+			base, fingerprint.fingerprint_document({"rows": list(reversed(second))}, fields, **options).digest
+		)
+
+	def test_child_bookkeeping_is_ignored_but_unknown_private_business_values_remain(self):
+		fingerprint = self.fingerprint()
+		fields = [{"fieldname": "rows", "fieldtype": "Table"}]
+		row = {"hours": 8.0, "_business_code": "A"}
+		base = fingerprint.fingerprint_document({"rows": [row]}, fields).digest
+		for key in (
+			"__islocal",
+			"__unsaved",
+			"__onload",
+			"__run_link_triggers",
+			"_assign",
+			"_comments",
+			"_liked_by",
+			"_seen",
+			"_user_tags",
+		):
+			with self.subTest(key=key):
+				changed = {"rows": [{**row, key: "transient"}]}
+				self.assertEqual(base, fingerprint.fingerprint_document(changed, fields).digest)
+		self.assertNotEqual(
+			base,
+			fingerprint.fingerprint_document({"rows": [{**row, "_business_code": "B"}]}, fields).digest,
+		)
