@@ -21,6 +21,48 @@
 	frappe.dinext = frappe.dinext || {};
 	frappe.dinext.workflowActionLabel = workflowActionLabel;
 
+	const supportedStyles = new Set([
+		"primary",
+		"info",
+		"success",
+		"warning",
+		"danger",
+		"inverse",
+	]);
+	const workflowTransitionStyle = (transition) => {
+		const targets = transition.next_state
+			? [transition.next_state]
+			: (transition.positions || []).map((row) => row.next_state);
+		const styles = targets.map((state) => {
+			const local = frappe.get_doc("Workflow State", state);
+			const value = local ? local.style : frappe.boot?.workflow_state_styles?.[state];
+			const style = String(value || "")
+				.trim()
+				.toLowerCase();
+			return supportedStyles.has(style) ? style : "";
+		});
+		return styles.length && styles.every((style) => style === styles[0]) ? styles[0] : "";
+	};
+	const workflowTransitionLabel = (transition, text) => {
+		let label = workflowActionLabel(transition.action, text);
+		// Frappe's filled close glyph has a fixed fill; its themed equivalent uses --icon-stroke.
+		if (typeof document !== "undefined" && document.getElementById("icon-close-alt")) {
+			label = label.replace('href="#icon-close"', 'href="#icon-close-alt"');
+		}
+		return `<span class="dinext-workflow-transition" data-workflow-style="${workflowTransitionStyle(
+			transition
+		)}">${label}</span>`;
+	};
+	const decorateWorkflowTransition = (element, transition) =>
+		$(element)
+			.addClass("dinext-workflow-transition")
+			.attr("data-workflow-style", workflowTransitionStyle(transition));
+	Object.assign(frappe.dinext, {
+		workflowTransitionStyle,
+		workflowTransitionLabel,
+		decorateWorkflowTransition,
+	});
+
 	const voteLines = (rows) =>
 		(rows || [])
 			.map((row) => {
@@ -108,7 +150,7 @@
 			const suffix = [role, next].filter(Boolean).map((value) => __(value)).join(" → ");
 			if (suffix) text = `${__(transition.action)} (${suffix})`;
 		}
-		return workflowActionLabel(transition.action, text);
+		return workflowTransitionLabel(transition, text);
 	};
 
 	const applyAction = async (frm, transition, comment = "") => {
@@ -174,7 +216,7 @@
 					return;
 				}
 				added = true;
-				me.frm.page.add_action_item(workflowActionLabel(transition.action), () => {
+				me.frm.page.add_action_item(workflowTransitionLabel(transition), () => {
 					frappe.dom.freeze();
 					me.frm.selected_workflow_action = transition.action;
 					if (!frappe.ui.form.check_mandatory(me.frm)) return frappe.dom.unfreeze();
@@ -240,15 +282,53 @@
 	const patchBulkActions = () => {
 		const ListView = frappe.views?.ListView;
 		if (!ListView || ListView.__dinext_approval_patched) return;
+		const originalToggle = ListView.prototype.toggle_workflow_actions;
+		ListView.prototype.toggle_workflow_actions = async function () {
+			if (!enabled()) return originalToggle.call(this);
+			if (!frappe.model.has_workflow(this.doctype)) return;
+			const generation = (this._dinext_workflow_menu_generation || 0) + 1;
+			this._dinext_workflow_menu_generation = generation;
+			const items = Object.entries(this.workflow_action_items || {});
+			items.forEach(([_key, link]) => link.addClass("disabled"));
+			const selected = this.get_checked_items(true);
+			const queue = await frappe
+				.xcall("dinext_common.workflow_approval.api.get_my_queue", { limit: 1000 })
+				.catch(() => []);
+			if (this._dinext_workflow_menu_generation !== generation) return;
+			let common = null;
+			selected.forEach((name) => {
+				const tasks = queue.filter(
+					(task) => task.reference_doctype === this.doctype && task.reference_name === name
+				);
+				const ids = new Set(
+					tasks.length === 1
+						? tasks[0].available_transitions.map((row) => row.transition_uuid)
+						: []
+				);
+				common = common === null ? ids : new Set([...common].filter((id) => ids.has(id)));
+			});
+			items.forEach(([key, link]) => {
+				const visible = common?.has(key) || false;
+				link.removeClass("disabled").toggle(visible);
+				link.closest("li").toggle(visible);
+			});
+		};
 		const original = ListView.prototype.get_workflow_action_menu_items;
 		ListView.prototype.get_workflow_action_menu_items = function () {
 			if (!frappe.model.has_workflow(this.doctype)) {
 				return original.call(this);
 			}
 			if (!enabled()) {
+				const transitions = frappe.workflow.get_all_transitions(this.doctype) || [];
 				return (original.call(this) || []).map((item) => ({
 					...item,
-					label: workflowActionLabel(item.name, item.label),
+					label: workflowTransitionLabel(
+						{
+							action: item.name,
+							positions: transitions.filter((row) => row.action === item.name),
+						},
+						item.label
+					),
 				}));
 			}
 			const transitions = frappe.workflow.get_all_transitions(this.doctype) || [];
