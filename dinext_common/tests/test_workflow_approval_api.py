@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 
 class TestWorkflowApprovalAPI(unittest.TestCase):
@@ -49,28 +49,59 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 			completion_source="Manual",
 		)
 
-	def test_queue_filters_each_task_through_source_aware_permission(self):
-		api = self.api()
-		rows = [
-			SimpleNamespace(name="WT-1"),
-			SimpleNamespace(name="WT-2"),
-		]
-		mock_frappe = MagicMock()
-		mock_frappe._dict.side_effect = dict
-		mock_frappe.session.user = "alice@example.com"
-		mock_frappe.get_all.return_value = [{"name": "WT-1"}, {"name": "WT-2"}]
-		mock_frappe.get_doc.side_effect = rows
+	def test_queue_loads_transitions_in_order_only_for_readable_tasks(self):
+		from dinext_common.workflow_approval import permissions
 
+		api = self.api()
+		frappe = api.frappe
+		user = "alice@example.com"
+		tasks = [
+			frappe._dict(name=name, approver=user, reference_doctype="Issue", reference_name=name)
+			for name in ("READABLE", "HIDDEN")
+		]
+		transitions = [
+			frappe._dict(
+				parent="READABLE",
+				transition_uuid=uuid,
+				action="Approve",
+				next_state="Approved",
+				allowed_role="Approver",
+				comment_is_required=required,
+			)
+			for uuid, required in (("first", 1), ("second", 0))
+		]
 		with (
-			patch.object(api, "frappe", mock_frappe),
+			patch.object(frappe, "session", frappe._dict(user=user)),
+			patch.object(frappe, "get_roles", return_value=[]),
+			patch.object(frappe, "get_all", side_effect=[tasks, transitions]) as get_all,
+			patch.object(frappe, "get_doc") as get_doc,
 			patch.object(
-				api,
-				"has_workflow_task_permission",
-				side_effect=[True, False],
+				permissions,
+				"_has_source_read_permission",
+				side_effect=lambda row, _: row["reference_name"] == "READABLE",
 			),
 		):
 			result = api.get_my_queue()
-		self.assertEqual([row["name"] for row in result], ["WT-1"])
+
+		self.assertEqual([row.name for row in result], ["READABLE"])
+		self.assertEqual(
+			result[0].available_transitions,
+			[
+				{
+					"transition_uuid": uuid,
+					"action": "Approve",
+					"next_state": "Approved",
+					"allowed": "Approver",
+					"comment_is_required": required,
+				}
+				for uuid, required in (("first", True), ("second", False))
+			],
+		)
+		self.assertEqual(get_all.call_count, 2)
+		self.assertEqual(get_all.call_args.args, ("Available Workflow Transitions",))
+		self.assertEqual(get_all.call_args.kwargs["filters"]["parent"], ("in", ["READABLE"]))
+		self.assertEqual(get_all.call_args.kwargs["order_by"], "idx asc")
+		get_doc.assert_not_called()
 
 	def test_bulk_returns_itemized_success_and_failure(self):
 		api = self.api()

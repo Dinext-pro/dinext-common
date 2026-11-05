@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import cache
 from typing import Any
 
 import frappe
@@ -27,9 +28,15 @@ def _is_system_manager(user: str) -> bool:
 		return False
 
 
+def _source_reference(task: object) -> tuple[str | None, str | None]:
+	return (
+		_get(task, "reference_doctype") or _get(task, "doc"),
+		_get(task, "reference_name") or _get(task, "wt_docname"),
+	)
+
+
 def _has_source_read_permission(task: object, user: str) -> bool:
-	doctype = _get(task, "reference_doctype") or _get(task, "doc")
-	name = _get(task, "reference_name") or _get(task, "wt_docname")
+	doctype, name = _source_reference(task)
 	if not doctype or not name:
 		return False
 	if not frappe.get_meta(doctype).is_virtual and not frappe.db.exists(doctype, name):
@@ -93,15 +100,55 @@ def has_workflow_task_permission(
 	user = user or frappe.session.user
 	if ptype in MUTATING_PERMISSION_TYPES or ptype not in READ_PERMISSION_TYPES:
 		return False
-	if _is_system_manager(user):
+	return _can_read_task(
+		doc,
+		user,
+		_is_system_manager(user),
+		lambda task: _is_workflow_monitor(task, user),
+		lambda task: _has_source_read_permission(task, user),
+	)
+
+
+def _can_read_task(doc, user, is_manager, can_monitor, can_read_source) -> bool:
+	if is_manager:
 		return True
 
 	approver = _get(doc, "approver") or _get(doc, "user")
 	if _get(doc, "source_deleted_at"):
 		return approver == user
-	if approver != user and not _is_workflow_monitor(doc, user):
+	if approver != user and not can_monitor(doc):
 		return False
-	return _has_source_read_permission(doc, user)
+	return can_read_source(doc)
+
+
+def filter_readable_tasks(
+	rows: list[dict[str, Any]], user: str, *, monitored_only: bool = False
+) -> list[dict[str, Any]]:
+	"""Check each workflow and source once for this read and this user."""
+	if not rows:
+		return []
+
+	@cache
+	def workflow_allowed(workflow):
+		return _is_workflow_monitor({"workflow": workflow}, user)
+
+	@cache
+	def source_allowed(doctype, name):
+		return _has_source_read_permission({"reference_doctype": doctype, "reference_name": name}, user)
+
+	def can_monitor(row):
+		return workflow_allowed(_get(row, "workflow"))
+
+	def can_read_source(row):
+		return source_allowed(*_source_reference(row))
+
+	is_manager = _is_system_manager(user)
+	return [
+		row
+		for row in rows
+		if (not monitored_only or can_monitor(row))
+		and _can_read_task(row, user, is_manager, can_monitor, can_read_source)
+	]
 
 
 PUBLIC_APPROVAL_NUMBER_CARDS = frozenset(

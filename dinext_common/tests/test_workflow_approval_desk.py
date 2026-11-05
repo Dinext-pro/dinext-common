@@ -1,6 +1,6 @@
 import json
 import unittest
-from types import SimpleNamespace
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import frappe
@@ -10,16 +10,105 @@ from dinext_common.workflow_approval import api, engine
 
 
 class TestWorkflowApprovalReportRows(unittest.TestCase):
+	def test_open_card_reads_task_rows_without_loading_transitions(self):
+		row = frappe._dict(name="TASK-1", approver="Administrator", available_workflow_transitions=[])
+		with (
+			patch.object(frappe, "session", frappe._dict(user="Administrator")),
+			patch.object(frappe, "get_all", return_value=[row]) as get_all,
+			patch.object(frappe, "get_doc", return_value=row) as get_doc,
+		):
+			result = api.open_approval_count()
+
+		self.assertEqual(result, {"value": 1, "fieldtype": "Int", "route": ["query-report", "My Approvals"]})
+		get_doc.assert_not_called()
+		self.assertEqual(get_all.call_count, 1)
+		self.assertNotIn("round_manifest", get_all.call_args.kwargs["fields"])
+
+	def test_new_card_checks_access_only_for_tasks_created_today(self):
+		from dinext_common.workflow_approval import notifications, permissions
+
+		now = datetime(2026, 1, 2, 0, 30, tzinfo=timezone.utc)
+		user = "approver@example.com"
+		rows = {
+			name: frappe._dict(
+				name=name,
+				creation=created,
+				approver=user,
+				available_workflow_transitions=[],
+				reference_doctype="Issue",
+				reference_name=name,
+			)
+			for name, created in (
+				("TODAY", datetime(2026, 1, 1, 22, tzinfo=timezone.utc)),
+				("YESTERDAY", datetime(2026, 1, 1, 10, tzinfo=timezone.utc)),
+			)
+		}
+		with (
+			patch.object(frappe, "session", frappe._dict(user=user)),
+			patch.object(frappe, "get_roles", return_value=[]),
+			patch.object(frappe.utils, "now_datetime", return_value=now),
+			patch.object(notifications, "_recipient_timezone", return_value="Europe/Moscow"),
+			patch.object(frappe, "get_all", return_value=list(rows.values())) as get_all,
+			patch.object(frappe, "get_doc", side_effect=lambda _doctype, name: rows[name]),
+			patch.object(permissions, "_has_source_read_permission", return_value=True) as can_read,
+		):
+			result = api.new_approval_count()
+
+		self.assertEqual(result["value"], 1)
+		self.assertEqual(result["route_options"], {"created_today": 1})
+		self.assertEqual(get_all.call_args.kwargs["limit"], 10000)
+		can_read.assert_called_once()
+
+	def test_monitoring_checks_each_workflow_and_source_once_per_call(self):
+		from dinext_common.workflow_approval import permissions
+
+		rows = {
+			name: frappe._dict(
+				name=name,
+				workflow="W",
+				reference_doctype="Issue",
+				reference_name=source,
+				approval_round_id=source,
+				status="Working",
+				round_status="Open",
+				approver="approver@example.com",
+				creation=datetime(2026, 1, 1),
+				round_manifest="{}",
+				source_deleted_at=None,
+			)
+			for name, source in (("A", "VISIBLE"), ("B", "VISIBLE"), ("C", "HIDDEN"))
+		}
+		with (
+			patch.object(frappe, "session", frappe._dict(user="monitor@example.com")),
+			patch.object(frappe, "get_roles", return_value=["Monitor"]),
+			patch.object(
+				frappe,
+				"get_all",
+				side_effect=lambda dt, **_: list(rows.values()) if dt == "Workflow Task" else ["Monitor"],
+			) as get_all,
+			patch.object(frappe, "get_doc", side_effect=lambda _doctype, name: rows[name]) as get_doc,
+			patch.object(
+				permissions,
+				"_has_source_read_permission",
+				side_effect=lambda row, _user: row.get("reference_name") == "VISIBLE",
+			) as can_read,
+		):
+			result = api.get_monitoring_rows()
+			self.assertEqual(len(result), 1)
+			self.assertEqual(result[0].active_task_count, 2)
+			get_doc.assert_not_called()
+			self.assertNotIn("source_deleted_at", result[0])
+			self.assertEqual(get_all.call_count, 2)
+			self.assertEqual(can_read.call_count, 2)
+			can_read.side_effect = None
+			can_read.return_value = False
+			self.assertEqual(api.get_monitoring_rows(), [])
+
 	def test_queue_rows_keep_attribute_access(self):
 		row = {"name": "TASK-1", "completed_at": "2026-01-02 00:00:00"}
 		with (
-			patch.object(frappe, "get_all", return_value=[row]),
-			patch.object(
-				frappe,
-				"get_doc",
-				return_value=SimpleNamespace(available_workflow_transitions=[]),
-			),
-			patch.object(api, "has_workflow_task_permission", return_value=True),
+			patch.object(frappe, "get_all", side_effect=[[row], []]),
+			patch.object(api, "filter_readable_tasks", return_value=[row]),
 		):
 			result = api._filtered_tasks({"name": "TASK-1"})
 		self.assertEqual(result[0].completed_at, "2026-01-02 00:00:00")
@@ -40,15 +129,10 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 				workflow_state="Open",
 			)
 
-		with (
-			patch.object(
-				frappe,
-				"get_all",
-				return_value=[row("OPEN", "Open"), row("STALL", "Stalled"), row("CONF", "Conflicted")],
-			),
-			patch.object(frappe, "get_doc", return_value=SimpleNamespace()),
-			patch.object(api, "is_workflow_monitor", return_value=True),
-			patch.object(api, "has_workflow_task_permission", return_value=True),
+		with patch.object(
+			api,
+			"_monitoring_candidates",
+			return_value=[row("OPEN", "Open"), row("STALL", "Stalled"), row("CONF", "Conflicted")],
 		):
 			rows = api.get_monitoring_rows({"round_status": "Attention"})
 		self.assertEqual({row.approval_round_id for row in rows}, {"STALL", "CONF"})
@@ -146,12 +230,7 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 			reference_name="ISS-1",
 			workflow_state="Open",
 		)
-		with (
-			patch.object(frappe, "get_all", return_value=[row]),
-			patch.object(frappe, "get_doc", return_value=SimpleNamespace()),
-			patch.object(api, "is_workflow_monitor", return_value=True),
-			patch.object(api, "has_workflow_task_permission", return_value=True),
-		):
+		with patch.object(api, "_monitoring_candidates", return_value=[row]):
 			rows = api.get_monitoring_rows()
 		self.assertEqual(rows[0].pending_approvers, "")
 		self.assertIn("Reject", rows[0].available_actions)
