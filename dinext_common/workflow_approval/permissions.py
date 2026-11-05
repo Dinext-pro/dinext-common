@@ -32,6 +32,8 @@ def _has_source_read_permission(task: object, user: str) -> bool:
 	name = _get(task, "reference_name") or _get(task, "wt_docname")
 	if not doctype or not name:
 		return False
+	if not frappe.get_meta(doctype).is_virtual and not frappe.db.exists(doctype, name):
+		return False
 	return bool(
 		frappe.has_permission(
 			doctype,

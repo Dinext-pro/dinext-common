@@ -1138,7 +1138,7 @@ def _card_state_values(state: str) -> list[str]:
 
 @frappe.whitelist()
 def get_legacy_number_card_result(filters: str | dict[str, Any]) -> dict[str, Any]:
-	"""Preserve four timesheet card DTOs while using source-aware task fields."""
+	"""Return current, readable source populations for the six approval cards."""
 	values = frappe.parse_json(filters) if isinstance(filters, str) else dict(filters)
 	doctype = values.get("doc")
 	state = values.get("state")
@@ -1150,18 +1150,62 @@ def get_legacy_number_card_result(filters: str | dict[str, Any]) -> dict[str, An
 		"approver": frappe.session.user,
 		"reference_doctype": doctype,
 		"status": "Completed" if completed else "Working",
+		"round_status": "Transitioned" if completed else "Open",
+		"source_deleted_at": ["is", "not set"],
+		"next_state" if completed else "workflow_state": ["in", _card_state_values(state)],
 	}
-	task_filters["next_state" if completed else "workflow_state"] = [
-		"in",
-		_card_state_values(state),
+	# Counts do not need task documents or child transition payloads.
+	rows = frappe.get_all(
+		"Workflow Task",
+		filters=task_filters,
+		fields=["reference_name", "reference_doctype", "approver", "approval_round_id", "source_deleted_at"],
+		limit_page_length=0,
+	)
+	if completed and rows:
+		latest_round = {}
+		# Round metadata is an internal authorization input, never returned to the caller.
+		for task in frappe.get_all(
+			"Workflow Task",
+			filters={
+				"reference_doctype": doctype,
+				"reference_name": ["in", list({row.reference_name for row in rows})],
+				"source_deleted_at": ["is", "not set"],
+			},
+			fields=["reference_name", "approval_round_id"],
+			order_by="creation desc, name desc",
+			limit_page_length=0,
+		):
+			latest_round.setdefault(task.reference_name, task.approval_round_id)
+		rows = [row for row in rows if row.approval_round_id == latest_round.get(row.reference_name)]
+	unique = {row.reference_name: row for row in rows}
+	names = [
+		name for name, row in unique.items() if has_workflow_task_permission(row, "read", frappe.session.user)
 	]
-	rows = _filtered_tasks(task_filters, limit=10000)
-	if not completed:
-		rows = [row for row in rows if row.source_owner != frappe.session.user]
-	names = sorted({row.reference_name for row in rows})
+	if names:
+		state_field = {"User Timesheet Position": "status", "Application For Leave": "status"}.get(
+			doctype, "workflow_state"
+		)
+		filters = {
+			"name": ["in", names],
+			"docstatus": ["!=", 2],
+			state_field: ["in", _card_state_values(state)],
+		}
+		if state_field != "workflow_state" and frappe.get_meta(doctype).has_field("workflow_state"):
+			filters["workflow_state"] = ["in", _card_state_values(state)]
+		previous_cmd = frappe.form_dict.get("cmd")
+		try:
+			# Include the destination list's display rules without bypassing source permissions.
+			frappe.form_dict.cmd = "frappe.desk.reportview.get"
+			names = frappe.get_list(doctype, filters=filters, pluck="name", limit_page_length=0)
+		finally:
+			if previous_cmd is None:
+				frappe.form_dict.pop("cmd", None)
+			else:
+				frappe.form_dict.cmd = previous_cmd
+	names = sorted(set(names))
 	return {
 		"value": len(names),
 		"fieldtype": "Data",
-		"route_options": {"name": ["in", names]},
+		"route_options": {"name": ["in", names]} if names else {"name": ["is", "not set"]},
 		"route": ["list", route],
 	}

@@ -121,13 +121,13 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 		api = self.api()
 		seen = {}
 
-		def capture(filters, limit=500):
+		def capture(doctype, filters=None, **kwargs):
 			seen["filters"] = filters
-			seen["limit"] = limit
+			seen["limit"] = kwargs.get("limit_page_length")
 			return []
 
 		with (
-			patch.object(api, "_filtered_tasks", side_effect=capture),
+			patch.object(api.frappe, "get_all", side_effect=capture),
 			patch.object(api.frappe, "session", SimpleNamespace(user="approver@example.com")),
 		):
 			api.get_legacy_number_card_result(
