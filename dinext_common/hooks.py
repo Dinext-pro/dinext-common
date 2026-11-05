@@ -263,6 +263,7 @@ override_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
+	"Workspace": {"before_save": "dinext_common.setup.workspace.preserve_approval_control_blocks"},
 	"User": {
 		"after_insert": [
 			"dinext_common.setup.workspace.set_default_workspace_for_new_user",

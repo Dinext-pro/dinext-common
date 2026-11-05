@@ -8,8 +8,10 @@ from typing import Any
 
 import frappe
 from frappe import _
+from frappe.utils import add_days, get_datetime, getdate, now_datetime
 
 from dinext_common.workflow_approval import engine
+from dinext_common.workflow_approval.pending import required_target_task_names
 from dinext_common.workflow_approval.permissions import (
 	filter_readable_tasks,
 	get_monitorable_workflows,
@@ -34,6 +36,7 @@ QUEUE_FIELDS = [
 	"completed_at",
 	"cancelled_at",
 	"cancellation_reason",
+	"source_deleted_at",
 	"action",
 	"next_state",
 	"completion_source",
@@ -376,21 +379,43 @@ def bulk_workflow_approval(
 	)
 
 
-def _select_task_rows(filters, *, fields, order_by, limit):
-	return frappe.get_all(
-		"Workflow Task",
-		filters=filters,
-		fields=list(dict.fromkeys((*fields, *TASK_ACCESS_FIELDS))),
-		order_by=order_by,
-		limit=limit,
-	)
+def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monitored_only=False):
+	fields = list(dict.fromkeys((*fields, *TASK_ACCESS_FIELDS)))
+	user = frappe.session.user
+	if monitored_only and user != "Administrator" and "System Manager" not in frappe.get_roles(user):
+		workflows = get_monitorable_workflows(user)
+		if filters.get("workflow"):
+			workflows = [workflow for workflow in workflows if workflow == filters["workflow"]]
+		if not workflows:
+			return []
+		filters = {**filters, "workflow": ("in", workflows)}
+	page_size = 500
+	start = 0
+	result = []
+	while True:
+		rows = frappe.get_all(
+			"Workflow Task",
+			filters=filters,
+			fields=fields,
+			order_by=order_by,
+			limit_start=start,
+			limit_page_length=page_size,
+		)
+		selected = [row for row in rows if predicate(row)] if predicate else rows
+		result.extend(filter_readable_tasks(selected, user, monitored_only=monitored_only, require_source=True))
+		if limit and len(result) >= limit:
+			return result[:limit]
+		if len(rows) < page_size:
+			return result
+		start += page_size
 
 
-def _filtered_tasks(filters: dict[str, Any], *, limit: int = 500) -> list[dict[str, Any]]:
-	rows = filter_readable_tasks(
-		_select_task_rows(filters, fields=QUEUE_FIELDS, order_by=PERSONAL_TASK_ORDER, limit=limit),
-		frappe.session.user,
+def _filtered_tasks(filters, *, limit=None, include_transitions=False, predicate=None, fields=QUEUE_FIELDS):
+	rows = _select_task_rows(
+		filters, fields=fields, order_by=PERSONAL_TASK_ORDER, limit=limit, predicate=predicate
 	)
+	if not include_transitions:
+		return [frappe._dict({field: row.get(field) for field in fields}) for row in rows]
 	if not rows:
 		return []
 	transitions = defaultdict(list)
@@ -423,28 +448,59 @@ def _filtered_tasks(filters: dict[str, Any], *, limit: int = 500) -> list[dict[s
 	]
 
 
-def _open_personal_filters():
-	return {"approver": frappe.session.user, "status": "Working", "round_status": "Open"}
+def _queue_day_filter(created_on=None):
+	from dinext_common.workflow_approval.notifications import (
+		_aware_utc,
+		_recipient_timezone,
+		get_timezone,
+	)
+
+	zone = get_timezone(_recipient_timezone(frappe.session.user))
+	day = getdate(created_on) if created_on else _aware_utc(now_datetime()).astimezone(zone).date()
+	return day, lambda row: _aware_utc(row.creation).astimezone(zone).date() == day
 
 
-def _personal_card_tasks(filters, *, fields=()):
-	return _select_task_rows(filters, fields=fields, order_by=PERSONAL_TASK_ORDER, limit=10000)
+def get_personal_queue(filters=None, *, limit=None, include_transitions=False, fields=QUEUE_FIELDS):
+	values = frappe._dict(filters or {})
+	task_filters = {
+		"approver": frappe.session.user,
+		"status": "Working",
+		"round_status": "Open",
+		"source_deleted_at": ("is", "not set"),
+	}
+	for field in ("workflow", "reference_doctype", "workflow_state"):
+		if values.get(field):
+			task_filters[field] = values[field]
+	predicate = None
+	if values.get("created_on") or values.get("created_today"):
+		_, predicate = _queue_day_filter(values.get("created_on"))
+	return _filtered_tasks(
+		task_filters, limit=limit, include_transitions=include_transitions, predicate=predicate, fields=fields
+	)
 
 
 @frappe.whitelist()
 def get_my_queue(limit: int = 500) -> list[dict[str, Any]]:
-	return _filtered_tasks(_open_personal_filters(), limit=int(limit))
+	return get_personal_queue(limit=int(limit), include_transitions=True)
+
+
+def get_personal_history(filters=None, *, limit=None, include_transitions=False, fields=QUEUE_FIELDS):
+	values = frappe._dict(filters or {})
+	task_filters = {
+		"approver": frappe.session.user,
+		"status": "Completed" if values.completed_since else ("in", ("Completed", "Cancelled")),
+	}
+	if values.completed_since:
+		task_filters["completed_at"] = (">=", get_datetime(values.completed_since))
+	for field in ("workflow", "reference_doctype", "action", "completion_source"):
+		if values.get(field):
+			task_filters[field] = values[field]
+	return _filtered_tasks(task_filters, limit=limit, include_transitions=include_transitions, fields=fields)
 
 
 @frappe.whitelist()
 def get_my_history(limit: int = 500) -> list[dict[str, Any]]:
-	return _filtered_tasks(
-		{
-			"approver": frappe.session.user,
-			"status": ("in", ("Completed", "Cancelled")),
-		},
-		limit=int(limit),
-	)
+	return get_personal_history(limit=int(limit), include_transitions=True)
 
 
 @frappe.whitelist()
@@ -855,63 +911,60 @@ def _number_card(
 
 @frappe.whitelist()
 def open_approval_count() -> dict[str, Any]:
-	rows = _personal_card_tasks(_open_personal_filters())
-	return _number_card(len(filter_readable_tasks(rows, frappe.session.user)), "My Approvals")
+	return _queue_card({})
 
 
 @frappe.whitelist()
 def new_approval_count() -> dict[str, Any]:
-	from dinext_common.workflow_approval.notifications import (
-		_aware_utc,
-		_recipient_timezone,
-		get_timezone,
+	day, _ = _queue_day_filter()
+	filters = {"created_on": str(day)}
+	return _queue_card(filters)
+
+
+def _queue_card(filters):
+	route_options = dict.fromkeys(
+		("created_today", "created_on", "workflow", "reference_doctype", "workflow_state", "action", "minimum_age"),
+		"",
+	)
+	fields = ("creation",) if filters else ()
+	return _number_card(
+		len(get_personal_queue(filters, fields=fields)),
+		"My Approvals",
+		{**route_options, **filters, "ignore_prepared_report": True},
 	)
 
-	zone = get_timezone(_recipient_timezone(frappe.session.user))
-	today = _aware_utc(frappe.utils.now_datetime()).astimezone(zone).date()
-	rows = _personal_card_tasks(_open_personal_filters(), fields=("creation",))
-	today_rows = [row for row in rows if _aware_utc(row.creation).astimezone(zone).date() == today]
-	value = len(filter_readable_tasks(today_rows, frappe.session.user))
-	return _number_card(value, "My Approvals", {"created_today": 1})
 
-
-def _recent_completed_tasks(*, automatic_only: bool = False) -> list[dict[str, Any]]:
-	from frappe.utils import add_days, now_datetime
-
-	filters: dict[str, Any] = {
-		"approver": frappe.session.user,
-		"status": "Completed",
-		"completed_at": (">=", add_days(now_datetime(), -30)),
-	}
+def _completed_approval_card(*, automatic_only=False):
+	filters = {"completed_since": str(add_days(now_datetime(), -30))}
 	if automatic_only:
 		filters["completion_source"] = "Automatic Unchanged"
-	return filter_readable_tasks(_personal_card_tasks(filters), frappe.session.user)
+	route_options = dict.fromkeys(
+		("workflow", "reference_doctype", "action", "completion_source", "from_date", "to_date"), ""
+	)
+	return _number_card(
+		len(get_personal_history(filters, fields=())),
+		"My Approval History",
+		{**route_options, **filters, "ignore_prepared_report": True},
+	)
 
 
 @frappe.whitelist()
 def completed_approval_count() -> dict[str, Any]:
-	rows = _recent_completed_tasks()
-	return _number_card(len(rows), "My Approval History")
+	return _completed_approval_card()
 
 
 @frappe.whitelist()
 def automatic_approval_count() -> dict[str, Any]:
-	rows = _recent_completed_tasks(automatic_only=True)
-	return _number_card(
-		len(rows),
-		"My Approval History",
-		{
-			"completion_source": "Automatic Unchanged",
-		},
-	)
+	return _completed_approval_card(automatic_only=True)
 
 
 @frappe.whitelist()
 def attention_approval_count() -> dict[str, Any]:
-	rows = _personal_card_tasks(
-		{"approver": frappe.session.user, "round_status": ("in", ("Stalled", "Conflicted"))}
+	rows = _filtered_tasks(
+		{"approver": frappe.session.user, "round_status": ("in", ("Stalled", "Conflicted"))},
+		limit=10000,
 	)
-	return _number_card(len(filter_readable_tasks(rows, frappe.session.user)), "My Approvals")
+	return _number_card(len(rows), "My Approvals")
 
 
 def _control_rounds(round_status):
@@ -956,8 +1009,6 @@ def longest_control_wait() -> dict[str, Any]:
 
 @frappe.whitelist()
 def control_decision_count() -> dict[str, Any]:
-	from frappe.utils import add_days, getdate, now_datetime
-
 	from dinext_common.workflow_approval.control import aggregate_duration, manual_total
 
 	since = add_days(now_datetime(), -30)
@@ -1001,13 +1052,13 @@ def get_approval_dashboard() -> dict[str, Any]:
 
 
 def _monitoring_candidates(fields, limit):
-	rows = _select_task_rows(
-		{"round_status": ("in", MONITORING_STATUSES)},
+	return _select_task_rows(
+		{"round_status": ("in", MONITORING_STATUSES), "source_deleted_at": ("is", "not set")},
 		fields=fields,
-		order_by="creation asc",
+		order_by="creation asc, name asc",
 		limit=int(limit),
+		monitored_only=True,
 	)
-	return filter_readable_tasks(rows, frappe.session.user, monitored_only=True)
 
 
 @frappe.whitelist()
@@ -1021,7 +1072,7 @@ def get_monitoring_rows(
 		payload = grouped.setdefault(
 			row.approval_round_id,
 			{
-				**{field: row.get(field) for field in QUEUE_FIELDS},
+				**{field: row.get(field) for field in QUEUE_FIELDS if field != "source_deleted_at"},
 				"pending_approvers": [],
 				"active_task_count": 0,
 				"available_actions": [],
@@ -1141,13 +1192,14 @@ def get_monitored_tasks(
 		task_filters["workflow"] = values["workflow"]
 	if values.get("reference_doctype"):
 		task_filters["reference_doctype"] = values["reference_doctype"]
-	rows = _select_task_rows(
+	task_filters["source_deleted_at"] = ("is", "not set")
+	return _select_task_rows(
 		task_filters,
 		fields=MONITORED_TASK_FIELDS,
-		order_by="creation asc",
+		order_by="creation asc, name asc",
 		limit=int(limit),
+		monitored_only=True,
 	)
-	return filter_readable_tasks(rows, frappe.session.user, monitored_only=True)
 
 
 def _card_state_values(state: str) -> list[str]:
@@ -1180,11 +1232,14 @@ def get_legacy_number_card_result(filters: str | dict[str, Any]) -> dict[str, An
 		"source_deleted_at": ["is", "not set"],
 		"next_state" if completed else "workflow_state": ["in", _card_state_values(state)],
 	}
-	# Counts do not need task documents or child transition payloads.
+	# Read only the fields needed for source authorization and pending target selection.
 	rows = frappe.get_all(
 		"Workflow Task",
 		filters=task_filters,
-		fields=["reference_name", "reference_doctype", "approver", "approval_round_id", "source_deleted_at"],
+		fields=[
+			"name", "workflow", "reference_name", "reference_doctype", "approver",
+			"approval_round_id", "source_deleted_at",
+		],
 		limit_page_length=0,
 	)
 	if completed and rows:
@@ -1203,6 +1258,9 @@ def get_legacy_number_card_result(filters: str | dict[str, Any]) -> dict[str, An
 		):
 			latest_round.setdefault(task.reference_name, task.approval_round_id)
 		rows = [row for row in rows if row.approval_round_id == latest_round.get(row.reference_name)]
+	if not completed:
+		required = required_target_task_names(rows)
+		rows = [row for row in rows if row.name in required]
 	unique = {row.reference_name: row for row in rows}
 	names = [
 		name for name, row in unique.items() if has_workflow_task_permission(row, "read", frappe.session.user)
@@ -1218,18 +1276,6 @@ def get_legacy_number_card_result(filters: str | dict[str, Any]) -> dict[str, An
 		}
 		if state_field != "workflow_state" and frappe.get_meta(doctype).has_field("workflow_state"):
 			filters["workflow_state"] = ["in", _card_state_values(state)]
-		if not completed:
-			# The requester can differ from the record creator, including delegated entry.
-			user = frappe.session.user
-			requester_field = {"User Timesheet Position": "user", "Application For Leave": "lauser"}.get(
-				doctype
-			)
-			if requester_field:
-				filters[requester_field] = ["!=", user]
-			elif doctype == "Expense Claim":
-				employees = frappe.get_all("Employee", filters={"user_id": user}, pluck="name")
-				if employees:
-					filters["employee"] = ["not in", employees]
 		previous_cmd = frappe.form_dict.get("cmd")
 		try:
 			# Include the destination list's display rules without bypassing source permissions.

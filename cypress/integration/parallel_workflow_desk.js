@@ -118,9 +118,9 @@ context("parallel workflow desk", () => {
 		asApprover();
 		cy.visit(`/app/${encodeURIComponent("мои-согласования")}`);
 		cy.document().its("documentElement").invoke("attr", "data-theme").should("match", /dark/i);
-		cy.get(".number-widget-box", { timeout: 120000 }).should("have.length", 8);
+		cy.get(".number-widget-box", { timeout: 120000 }).should("have.length", 4);
 		cy.get(".number-widget-box .widget-title", { timeout: 120000 }).should(($titles) => {
-			expect($titles).to.have.length(8);
+			expect($titles).to.have.length(4);
 			$titles.each((_, el) => {
 				const view = el.ownerDocument.defaultView;
 				const title = view.getComputedStyle(el);
@@ -134,23 +134,23 @@ context("parallel workflow desk", () => {
 			expect(text).to.match(
 				/Pending approvals by document type|Ожидающие согласования по типам документов/
 			);
-			expect(text).to.match(/Open tasks by approver|Открытые задачи по согласующим/);
-			expect(text).to.match(
+			expect(text).not.to.match(/Open tasks by approver|Открытые задачи по согласующим/);
+			expect(text).not.to.match(
 				/Approval duration by document type|Срок согласования по видам документов/
 			);
 		});
-		cy.contains(".h4", "Контроль").should("be.visible");
-		cy.get(".shortcut-widget-box", { timeout: 60000 }).should("have.length", 5);
-		cy.contains(".shortcut-widget-box", /My Approvals|Моя очередь/).click();
+		cy.contains(".h4", /Approval Control|Контроль/).should("not.exist");
+		cy.get(".shortcut-widget-box", { timeout: 60000 }).should("have.length", 3);
+		cy.contains(".shortcut-widget-box", /My Approval Queue|Моя очередь/).click();
 		cy.location("pathname", { timeout: 60000 }).should("include", "query-report");
 		cy.contains("Cypress queue", { timeout: 120000 }).should("be.visible");
 		cy.noPermissionDialog();
 	});
 
-	it("Control zone opens the approver load report", () => {
-		asApprover();
-		cy.visit(`/app/${encodeURIComponent("мои-согласования")}`);
-		cy.contains(".h4", "Контроль", { timeout: 120000 }).should("be.visible");
+	it("Control zone opens the approver load report for a monitor", () => {
+		asApprover(load().monitor);
+		cy.visit("/app/my-approvals");
+		cy.contains(".h4", /Approval Control|Контроль/, { timeout: 120000 }).should("be.visible");
 		cy.contains(".number-widget-box", /Открытые раунды|Open approval rounds/).should(
 			"be.visible"
 		);

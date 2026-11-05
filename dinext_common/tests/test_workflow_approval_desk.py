@@ -11,15 +11,17 @@ from dinext_common.workflow_approval import api, engine
 
 class TestWorkflowApprovalReportRows(unittest.TestCase):
 	def test_open_card_reads_task_rows_without_loading_transitions(self):
-		row = frappe._dict(name="TASK-1", approver="Administrator", available_workflow_transitions=[])
+		row = frappe._dict(name="TASK-1", approver="Administrator", reference_doctype="Issue", reference_name="ISS-1")
 		with (
 			patch.object(frappe, "session", frappe._dict(user="Administrator")),
 			patch.object(frappe, "get_all", return_value=[row]) as get_all,
 			patch.object(frappe, "get_doc", return_value=row) as get_doc,
+			patch("dinext_common.workflow_approval.permissions._has_source_read_permission", return_value=True),
 		):
 			result = api.open_approval_count()
 
-		self.assertEqual(result, {"value": 1, "fieldtype": "Int", "route": ["query-report", "My Approvals"]})
+		self.assertEqual(result["value"], 1)
+		self.assertEqual(result["route"], ["query-report", "My Approvals"])
 		get_doc.assert_not_called()
 		self.assertEqual(get_all.call_count, 1)
 		self.assertNotIn("round_manifest", get_all.call_args.kwargs["fields"])
@@ -46,7 +48,7 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 		with (
 			patch.object(frappe, "session", frappe._dict(user=user)),
 			patch.object(frappe, "get_roles", return_value=[]),
-			patch.object(frappe.utils, "now_datetime", return_value=now),
+			patch.object(api, "now_datetime", return_value=now),
 			patch.object(notifications, "_recipient_timezone", return_value="Europe/Moscow"),
 			patch.object(frappe, "get_all", return_value=list(rows.values())) as get_all,
 			patch.object(frappe, "get_doc", side_effect=lambda _doctype, name: rows[name]),
@@ -55,9 +57,35 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 			result = api.new_approval_count()
 
 		self.assertEqual(result["value"], 1)
-		self.assertEqual(result["route_options"], {"created_today": 1})
-		self.assertEqual(get_all.call_args.kwargs["limit"], 10000)
+		self.assertEqual(result["route_options"]["created_on"], "2026-01-02")
+		self.assertEqual(get_all.call_args.kwargs["limit_page_length"], 500)
 		can_read.assert_called_once()
+
+	def test_decision_card_passes_exact_cutoff_and_completion_filter_to_report(self):
+		from dinext_common.dinext_common.report.my_approval_history import my_approval_history
+
+		now = datetime(2026, 1, 31, 13, 15, 42, 123456)
+		cutoff = datetime(2026, 1, 1, 13, 15, 42, 123456)
+		query_filters = []
+
+		def candidates(doctype, *, filters, **options):
+			self.assertEqual(doctype, "Workflow Task")
+			query_filters.append(filters)
+			return []
+
+		with (
+			patch.object(api, "now_datetime", return_value=now),
+			patch.object(frappe, "get_all", side_effect=candidates),
+		):
+			card = api.automatic_approval_count()
+			my_approval_history.execute(card["route_options"])
+
+		self.assertEqual(card["route_options"]["completed_since"], "2026-01-01 13:15:42.123456")
+		self.assertTrue(card["route_options"]["ignore_prepared_report"])
+		self.assertEqual(query_filters[0], query_filters[1])
+		self.assertEqual(query_filters[1]["completed_at"], (">=", cutoff))
+		self.assertEqual(query_filters[1]["status"], "Completed")
+		self.assertEqual(query_filters[1]["completion_source"], "Automatic Unchanged")
 
 	def test_monitoring_checks_each_workflow_and_source_once_per_call(self):
 		from dinext_common.workflow_approval import permissions
@@ -81,6 +109,7 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 		with (
 			patch.object(frappe, "session", frappe._dict(user="monitor@example.com")),
 			patch.object(frappe, "get_roles", return_value=["Monitor"]),
+			patch.object(api, "get_monitorable_workflows", return_value=["W"]),
 			patch.object(
 				frappe,
 				"get_all",
@@ -255,7 +284,7 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 			reused_from_workflow_task=None,
 		)
 		with patch(
-			"dinext_common.dinext_common.report.my_approval_history.my_approval_history.get_my_history",
+			"dinext_common.dinext_common.report.my_approval_history.my_approval_history.get_personal_history",
 			return_value=[row],
 		):
 			_columns, rows, _message, _chart = execute({})
@@ -281,7 +310,7 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 		)
 		with (
 			patch(
-				"dinext_common.dinext_common.report.my_approvals.my_approvals.get_my_queue",
+				"dinext_common.dinext_common.report.my_approvals.my_approvals.get_personal_queue",
 				return_value=[row],
 			),
 			patch(

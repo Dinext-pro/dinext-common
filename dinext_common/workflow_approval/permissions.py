@@ -122,7 +122,7 @@ def _can_read_task(doc, user, is_manager, can_monitor, can_read_source) -> bool:
 
 
 def filter_readable_tasks(
-	rows: list[dict[str, Any]], user: str, *, monitored_only: bool = False
+	rows: list[dict[str, Any]], user: str, *, monitored_only: bool = False, require_source: bool = False
 ) -> list[dict[str, Any]]:
 	"""Check each workflow and source once for this read and this user."""
 	if not rows:
@@ -143,12 +143,14 @@ def filter_readable_tasks(
 		return source_allowed(*_source_reference(row))
 
 	is_manager = _is_system_manager(user)
-	return [
-		row
-		for row in rows
-		if (not monitored_only or can_monitor(row))
-		and _can_read_task(row, user, is_manager, can_monitor, can_read_source)
-	]
+	if monitored_only:
+		return [row for row in rows if (is_manager or can_monitor(row)) and can_read_source(row)]
+	if require_source and is_manager:
+		return [
+			row for row in rows
+			if (_get(row, "source_deleted_at") and _get(row, "approver") == user) or can_read_source(row)
+		]
+	return [row for row in rows if _can_read_task(row, user, is_manager, can_monitor, can_read_source)]
 
 
 PUBLIC_APPROVAL_NUMBER_CARDS = frozenset(
@@ -157,6 +159,16 @@ PUBLIC_APPROVAL_NUMBER_CARDS = frozenset(
 		"Новые сегодня",
 		"My completed approvals",
 		"Автоматически выполнено за 30 дней",
+	}
+)
+
+
+MONITORING_APPROVAL_NUMBER_CARDS = frozenset(
+	{
+		"Открытые раунды",
+		"Сбои",
+		"Самое долгое ожидание",
+		"Решений за 30 дней",
 	}
 )
 
@@ -170,8 +182,12 @@ def has_public_number_card_permission(doc, ptype="read", user=None, debug=False)
 	"""
 	if ptype not in READ_PERMISSION_TYPES:
 		return None
-	if _get(doc, "name") not in PUBLIC_APPROVAL_NUMBER_CARDS:
-		return None
 	if not _get(doc, "is_public"):
 		return None
-	return True
+	name = _get(doc, "name")
+	if name in PUBLIC_APPROVAL_NUMBER_CARDS:
+		return True
+	if name in MONITORING_APPROVAL_NUMBER_CARDS:
+		user = user or frappe.session.user
+		return _is_system_manager(user) or bool(get_monitorable_workflows(user))
+	return None

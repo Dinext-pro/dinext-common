@@ -240,12 +240,15 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 			hooks.after_migrate,
 		)
 		metadata_source = (APP_ROOT / "workflow_approval" / "metadata.py").read_text()
-		self.assertIn('{"label": card_name, "number_card_name": card_name}', metadata_source)
-		self.assertIn('{"label": CHART_NAME, "chart_name": CHART_NAME}', metadata_source)
-		self.assertIn('"type": "chart"', metadata_source)
-		self.assertIn('"shortcut_name": QUEUE_SHORTCUT', metadata_source)
-		self.assertIn('"shortcut_name": LOAD_SHORTCUT', metadata_source)
-		self.assertIn('"number_card_name": OPEN_ROUNDS_CARD', metadata_source)
+		workspace = json.loads(
+			(APP_ROOT / "dinext_common" / "workspace" / "my_approvals" / "my_approvals.json").read_text()
+		)
+		self.assertFalse(workspace["custom_blocks"])
+		self.assertEqual(len(workspace["number_cards"]), 8)
+		self.assertEqual(len(workspace["charts"]), 5)
+		shortcuts = {row["label"]: row["link_to"] for row in workspace["shortcuts"]}
+		self.assertEqual(shortcuts["My Approval Queue"], "My Approvals")
+		self.assertEqual(shortcuts["Approval Load"], "Approval Load")
 		self.assertIn("open_control_round_count", metadata_source)
 		self.assertNotIn("custom_block_name", metadata_source)
 		self.assertNotIn("my_approvals_workspace.js", metadata_source)

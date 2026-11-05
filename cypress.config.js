@@ -1,8 +1,4 @@
-const { defineConfig } = require(
-	process.env.DINEXT_CYPRESS_MODULE || "../frappe/node_modules/cypress"
-);
-
-module.exports = defineConfig({
+module.exports = {
 	includeShadowDom: true,
 	defaultCommandTimeout: 120000,
 	pageLoadTimeout: 120000,
@@ -18,9 +14,32 @@ module.exports = defineConfig({
 		adminPassword: "admin",
 	},
 	e2e: {
+		setupNodeEvents(on, config) {
+			const { execFileSync } = require("node:child_process");
+			const path = require("node:path");
+			const site = process.env.FRAPPE_SITE || "localhost";
+			const run = (method, args = []) => {
+				const output = execFileSync("bench", ["--site", site, "execute", method, ...args], {
+					cwd: path.resolve(__dirname, "../.."), encoding: "utf8", timeout: 120000,
+				});
+				return JSON.parse(output.trim().split("\n").at(-1));
+			};
+			const runFixture = (method) => {
+				const url = run("frappe.utils.get_site_url", ["--args", JSON.stringify([site])]);
+				if (new URL(url).origin !== new URL(config.baseUrl).origin) {
+					throw new Error("The Cypress base URL must match the local fixture site.");
+				}
+				return run(`dinext_common.tests.approval_workspace_ui.${method}`);
+			};
+			on("task", {
+				approvalWorkspaceSeed: () => runFixture("seed"),
+				approvalWorkspaceCleanup: () => runFixture("cleanup"),
+			});
+			return config;
+		},
 		baseUrl: "http://localhost:8000",
 		specPattern: "cypress/integration/**/*.js",
 		supportFile: "cypress/support/e2e.js",
 		testIsolation: true,
 	},
-});
+};

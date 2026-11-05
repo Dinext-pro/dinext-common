@@ -9,20 +9,12 @@ import frappe
 from frappe import _
 from frappe.utils import date_diff, now_datetime
 
-from dinext_common.workflow_approval.api import get_my_queue
-from dinext_common.workflow_approval.notifications import (
-	_aware_utc,
-	_recipient_timezone,
-	get_timezone,
-)
-
+from dinext_common.workflow_approval.api import get_personal_queue
 
 def execute(filters=None):
 	filters = frappe._dict(filters or {})
-	rows = get_my_queue()
+	rows = get_personal_queue(filters, include_transitions=True)
 	completed = _completed_votes({row.approval_round_id for row in rows})
-	zone = get_timezone(_recipient_timezone(frappe.session.user))
-	today = _aware_utc(now_datetime()).astimezone(zone).date()
 	for row in rows:
 		manifest = json.loads(row.round_manifest)
 		row.available_actions = ", ".join(
@@ -30,14 +22,11 @@ def execute(filters=None):
 		)
 		row.progress = _progress(manifest, completed[row.approval_round_id])
 		row.age_days = max(0, date_diff(now_datetime(), row.creation))
-		row.created_today = (
-			_aware_utc(row.creation).astimezone(zone).date() == today
-		)
 	rows = [row for row in rows if _matches(row, filters)]
 	counts = Counter(row.reference_doctype for row in rows)
 	chart = {
 		"data": {
-			"labels": list(counts),
+			"labels": [_(label) for label in counts],
 			"datasets": [{"name": _("Pending"), "values": list(counts.values())}],
 		},
 		"type": "bar",
@@ -77,7 +66,6 @@ def _matches(row, filters) -> bool:
 			not filters.workflow_state or row.workflow_state == filters.workflow_state,
 			not filters.action or filters.action in row.available_actions.split(", "),
 			not filters.minimum_age or row.age_days >= int(filters.minimum_age),
-			not filters.created_today or row.created_today,
 		)
 	)
 

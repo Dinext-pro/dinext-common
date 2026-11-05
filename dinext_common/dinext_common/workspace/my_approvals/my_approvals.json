@@ -1,0 +1,119 @@
+{
+ "charts": [
+  {
+   "chart_name": "Pending approvals by document type",
+   "label": "Pending approvals by document type"
+  },
+  {
+   "chart_name": "Open tasks by approver",
+   "label": "Open tasks by approver"
+  },
+  {
+   "chart_name": "Open task age by approver",
+   "label": "Open task age by approver"
+  },
+  {
+   "chart_name": "Open rounds by document type",
+   "label": "Open rounds by document type"
+  },
+  {
+   "chart_name": "Approval duration by document type",
+   "label": "Approval duration by document type"
+  }
+ ],
+ "content": "[{\"id\":\"approvals-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">My Approvals</span>\",\"col\":12}},{\"id\":\"approvals-open\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Awaiting My Decision\",\"col\":3}},{\"id\":\"approvals-new\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"New Approvals Today\",\"col\":3}},{\"id\":\"approvals-completed\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"My Decisions in the Last 30 Days\",\"col\":3}},{\"id\":\"approvals-automatic\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Automatic Decisions in the Last 30 Days\",\"col\":3}},{\"id\":\"approvals-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"approvals-by-doctype\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Pending approvals by document type\",\"col\":12}},{\"id\":\"approvals-reports-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"approvals-queue\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"My Approval Queue\",\"col\":4}},{\"id\":\"approvals-history\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"My Approval History\",\"col\":4}},{\"id\":\"approvals-monitoring\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Approval Monitoring\",\"col\":4}},{\"id\":\"control-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"control-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Approval Control</span>\",\"col\":12}},{\"id\":\"control-open\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Open Approval Rounds\",\"col\":3}},{\"id\":\"control-attention\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Approval Issues\",\"col\":3}},{\"id\":\"control-longest\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Longest Approval Wait\",\"col\":3}},{\"id\":\"control-decisions\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Decisions in the Last 30 Days\",\"col\":3}},{\"id\":\"control-charts-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"control-load-count\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Open tasks by approver\",\"col\":6}},{\"id\":\"control-load-age\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Open task age by approver\",\"col\":6}},{\"id\":\"control-type-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"control-open-rounds\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Open rounds by document type\",\"col\":6}},{\"id\":\"control-duration\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Approval duration by document type\",\"col\":6}},{\"id\":\"control-links-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"control-load-link\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Approval Load\",\"col\":4}},{\"id\":\"control-duration-link\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Approval Duration\",\"col\":4}}]",
+ "creation": "2026-09-10 00:00:00",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "icon": "task-checked",
+ "idx": 0,
+ "indicator_color": "blue",
+ "is_hidden": 0,
+ "label": "My Approvals",
+ "links": [],
+ "modified": "2026-10-05 02:22:24.287280",
+ "modified_by": "Administrator",
+ "module": "",
+ "name": "My Approvals",
+ "number_cards": [
+  {
+   "label": "Awaiting My Decision",
+   "number_card_name": "My open approvals"
+  },
+  {
+   "label": "New Approvals Today",
+   "number_card_name": "\u041d\u043e\u0432\u044b\u0435 \u0441\u0435\u0433\u043e\u0434\u043d\u044f"
+  },
+  {
+   "label": "My Decisions in the Last 30 Days",
+   "number_card_name": "My completed approvals"
+  },
+  {
+   "label": "Automatic Decisions in the Last 30 Days",
+   "number_card_name": "\u0410\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438 \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e \u0437\u0430 30 \u0434\u043d\u0435\u0439"
+  },
+  {
+   "label": "Open Approval Rounds",
+   "number_card_name": "\u041e\u0442\u043a\u0440\u044b\u0442\u044b\u0435 \u0440\u0430\u0443\u043d\u0434\u044b"
+  },
+  {
+   "label": "Approval Issues",
+   "number_card_name": "\u0421\u0431\u043e\u0438"
+  },
+  {
+   "label": "Longest Approval Wait",
+   "number_card_name": "\u0421\u0430\u043c\u043e\u0435 \u0434\u043e\u043b\u0433\u043e\u0435 \u043e\u0436\u0438\u0434\u0430\u043d\u0438\u0435"
+  },
+  {
+   "label": "Decisions in the Last 30 Days",
+   "number_card_name": "\u0420\u0435\u0448\u0435\u043d\u0438\u0439 \u0437\u0430 30 \u0434\u043d\u0435\u0439"
+  }
+ ],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 44.0,
+ "shortcuts": [
+  {
+   "doc_view": "",
+   "label": "My Approval Queue",
+   "link_to": "My Approvals",
+   "report_ref_doctype": "Workflow Task",
+   "type": "Report"
+  },
+  {
+   "doc_view": "",
+   "label": "My Approval History",
+   "link_to": "My Approval History",
+   "report_ref_doctype": "Workflow Task",
+   "type": "Report"
+  },
+  {
+   "doc_view": "",
+   "label": "Approval Monitoring",
+   "link_to": "Approval Monitoring",
+   "report_ref_doctype": "Workflow Task",
+   "type": "Report"
+  },
+  {
+   "doc_view": "",
+   "label": "Approval Load",
+   "link_to": "Approval Load",
+   "report_ref_doctype": "Workflow Task",
+   "type": "Report"
+  },
+  {
+   "doc_view": "",
+   "label": "Approval Duration",
+   "link_to": "Approval Duration",
+   "report_ref_doctype": "Workflow Task",
+   "type": "Report"
+  }
+ ],
+ "title": "My Approvals"
+}

@@ -115,3 +115,22 @@ class TestWorkflowApprovalPermissions(unittest.TestCase):
 			self.assertFalse(
 				permissions.has_workflow_task_permission(task, "read", "monitor@example.com")
 			)
+
+	def test_system_manager_controls_still_require_source_permission(self):
+		permissions = self.permissions()
+		visible = {"workflow": "Workflow A", "reference_doctype": "Issue", "reference_name": "VISIBLE"}
+		hidden = {"workflow": "Workflow B", "reference_doctype": "Issue", "reference_name": "HIDDEN"}
+		with (
+			patch.object(permissions.frappe, "get_roles", return_value=["System Manager"]),
+			patch.object(permissions, "_is_workflow_monitor", return_value=False),
+			patch.object(
+				permissions, "_has_source_read_permission",
+				side_effect=lambda task, _user: task["reference_name"] == "VISIBLE",
+			),
+		):
+			self.assertEqual(
+				permissions.filter_readable_tasks(
+					[visible, hidden], "manager@example.invalid", monitored_only=True,
+				),
+				[visible],
+			)

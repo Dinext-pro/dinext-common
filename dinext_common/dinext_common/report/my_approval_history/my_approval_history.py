@@ -8,14 +8,14 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, getdate, now_datetime
 
-from dinext_common.workflow_approval.api import get_my_history
+from dinext_common.workflow_approval.api import get_personal_history
 
 
 def execute(filters=None):
 	filters = frappe._dict(filters or {})
 	from_date = getdate(filters.from_date or add_days(now_datetime(), -30))
 	to_date = getdate(filters.to_date or now_datetime())
-	rows = get_my_history()
+	rows = get_personal_history(filters)
 	rows = [row for row in rows if _matches(row, filters, from_date, to_date)]
 	for row in rows:
 		row.event_at = row.completed_at or row.cancelled_at
@@ -37,7 +37,7 @@ def _chart(rows):
 			"labels": dates,
 			"datasets": [
 				{
-					"name": source,
+					"name": _(source),
 					"values": [counts[(date, source)] for date in dates],
 				}
 				for source in sources
@@ -58,7 +58,7 @@ def _matches(row, filters, from_date, to_date):
 			not filters.action or row.action == filters.action,
 			not filters.completion_source
 			or row.completion_source == filters.completion_source,
-			not completed_date or from_date <= completed_date <= to_date,
+			filters.completed_since or not completed_date or from_date <= completed_date <= to_date,
 		)
 	)
 

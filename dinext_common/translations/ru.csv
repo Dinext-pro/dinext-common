@@ -238,7 +238,6 @@
 "Monitoring","Мониторинг",""
 "My approval history","Моя история согласований",""
 "My approval queue","Моя очередь согласований",""
-"My Approvals","Моя очередь",""
 "My Approval History","История согласований",""
 "Approval Monitoring","Мониторинг согласований",""
 "Approval Load","Нагрузка согласующих",""
@@ -296,3 +295,29 @@
 "Transition UUID","UUID перехода",""
 "Workflow operation accepted","Операция согласования принята",""
 "Source document deleted","Исходный документ удалён",""
+My Approvals,Мои согласования,
+Approval Control,Контроль,
+Awaiting My Decision,Ожидают моего решения,
+New Approvals Today,Новые сегодня,
+My Decisions in the Last 30 Days,Мои решения за 30 дней,
+Automatic Decisions in the Last 30 Days,Автоматически выполнено за 30 дней,
+Open Approval Rounds,Открытые раунды,
+Approval Issues,Сбои,
+Longest Approval Wait,Самое долгое ожидание,
+Decisions in the Last 30 Days,Решений за 30 дней,
+My Approval Queue,Моя очередь,
+"Personal queue, history and approval monitoring.","Персональная очередь, история и контроль согласований.",
+Age (days),Возраст (дней),
+Age (hours),Возраст (часов),
+Active Tasks,Активные задачи,
+Completion Source,Способ завершения,
+Pending Approvers,Ожидаемые согласующие,
+Reused From,Повторно использовано из,
+Succeeded: {0}; failed: {1},Успешно: {0}. Ошибок: {1},
+From Date,Дата начала,
+To Date,Дата окончания,
+Workflow,Процесс согласования,
+Progress,Прогресс,
+Created On,Создано за дату,
+Completed Since,Завершено с,
+Minimum Age (days),Минимальный возраст (дней),

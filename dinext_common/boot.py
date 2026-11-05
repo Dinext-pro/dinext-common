@@ -6,7 +6,7 @@ from typing import Any
 
 import frappe
 
-from dinext_common.setup.workspace import omit_replaced_workspaces
+from dinext_common.setup.workspace import filter_workspace_navigation
 
 CONF_KEY = "dinext_workspace_sidebar_hover_expand"
 
@@ -68,4 +68,4 @@ def extend_bootinfo(bootinfo) -> None:
 	bootinfo.workflow_action_icons = workflow_action_icons()
 	pages = getattr(bootinfo, "allowed_workspaces", None)
 	if isinstance(pages, (list, tuple)):
-		bootinfo.allowed_workspaces = omit_replaced_workspaces(pages)
+		bootinfo.allowed_workspaces = filter_workspace_navigation(pages)

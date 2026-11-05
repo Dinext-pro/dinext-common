@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable
 from typing import Any
 from uuid import uuid4
@@ -324,25 +323,25 @@ DURATION_SHORTCUT = "Approval Duration"
 CONTROL_CARDS = (
 	(
 		OPEN_ROUNDS_CARD,
-		OPEN_ROUNDS_CARD,
+		"Open Approval Rounds",
 		"dinext_common.workflow_approval.api.open_control_round_count",
 		"#ECAD4B",
 	),
 	(
 		ATTENTION_CARD,
-		ATTENTION_CARD,
+		"Approval Issues",
 		"dinext_common.workflow_approval.api.attention_control_round_count",
 		"#CB2929",
 	),
 	(
 		LONGEST_WAIT_CARD,
-		LONGEST_WAIT_CARD,
+		"Longest Approval Wait",
 		"dinext_common.workflow_approval.api.longest_control_wait",
 		"#ED6396",
 	),
 	(
 		CONTROL_DECISIONS_CARD,
-		CONTROL_DECISIONS_CARD,
+		"Decisions in the Last 30 Days",
 		"dinext_common.workflow_approval.api.control_decision_count",
 		"#449CF0",
 	),
@@ -367,22 +366,22 @@ def ensure_workflow_approval_desk_records() -> None:
 	"""Install personal cards, the queue chart, and report shortcuts."""
 	cards = {
 		"My open approvals": (
-			"Ожидают моего решения",
+			"Awaiting My Decision",
 			"dinext_common.workflow_approval.api.open_approval_count",
 			"#2490EF",
 		),
 		"Новые сегодня": (
-			"Новые сегодня",
+			"New Approvals Today",
 			"dinext_common.workflow_approval.api.new_approval_count",
 			"#39E4A5",
 		),
 		"My completed approvals": (
-			"Решений за 30 дней",
+			"My Decisions in the Last 30 Days",
 			"dinext_common.workflow_approval.api.completed_approval_count",
 			"#29CD42",
 		),
 		"Автоматически выполнено за 30 дней": (
-			"Автоматически выполнено за 30 дней",
+			"Automatic Decisions in the Last 30 Days",
 			"dinext_common.workflow_approval.api.automatic_approval_count",
 			"#7C5CFC",
 		),
@@ -424,59 +423,7 @@ def ensure_workflow_approval_desk_records() -> None:
 		_ensure_number_card(name, label, method, color)
 	_ensure_pending_approvals_chart()
 	_ensure_control_charts()
-
-	workspace_name = "Мои согласования"
-	if frappe.db.exists("Workspace", workspace_name):
-		workspace = frappe.get_doc("Workspace", workspace_name)
-		workspace.content = json.dumps(_approvals_workspace_content(), ensure_ascii=False)
-		workspace.number_cards = []
-		# EditorJS matches a block by child label against __(name in content).
-		for card_name in (
-			"My open approvals",
-			"Новые сегодня",
-			"My completed approvals",
-			"Автоматически выполнено за 30 дней",
-			*(name for name, _label, _method, _color in CONTROL_CARDS),
-		):
-			workspace.append(
-				"number_cards",
-				{"label": card_name, "number_card_name": card_name},
-			)
-		workspace.charts = []
-		workspace.append(
-			"charts",
-			{"label": CHART_NAME, "chart_name": CHART_NAME},
-		)
-		workspace.shortcuts = []
-		for shortcut_name in (
-			QUEUE_SHORTCUT,
-			HISTORY_SHORTCUT,
-			MONITORING_SHORTCUT,
-		):
-			workspace.append(
-				"shortcuts",
-				{
-					"label": shortcut_name,
-					"link_to": shortcut_name,
-					"type": "Report",
-				},
-			)
-		for chart_name, _report_name, _filters in CONTROL_CHARTS:
-			workspace.append(
-				"charts",
-				{"label": chart_name, "chart_name": chart_name},
-			)
-		for shortcut_name in (LOAD_SHORTCUT, DURATION_SHORTCUT):
-			workspace.append(
-				"shortcuts",
-				{
-					"label": shortcut_name,
-					"link_to": shortcut_name,
-					"type": "Report",
-				},
-			)
-		workspace.custom_blocks = []
-		workspace.save(ignore_permissions=True)
+	_ensure_personal_report_filters()
 
 	if frappe.db.exists("Custom HTML Block", OBSOLETE_APPROVALS_BLOCK):
 		frappe.delete_doc(
@@ -485,6 +432,27 @@ def ensure_workflow_approval_desk_records() -> None:
 			ignore_permissions=True,
 			force=True,
 		)
+
+
+def _ensure_personal_report_filters() -> None:
+	"""Upgrade existing reports whose metadata is newer than the shipped export."""
+	for name, fieldname, label, fieldtype in (
+		(QUEUE_SHORTCUT, "created_on", "Created On", "Date"),
+		(HISTORY_SHORTCUT, "completed_since", "Completed Since", "Data"),
+	):
+		if not frappe.db.exists("Report", name):
+			continue
+		report = frappe.get_doc("Report", name)
+		if report.prepared_report or not report.disable_prepared_report_automation:
+			frappe.db.set_value(
+				"Report", name, {"prepared_report": 0, "disable_prepared_report_automation": 1}
+			)
+		if any(row.fieldname == fieldname for row in report.filters):
+			continue
+		report.append(
+			"filters", {"fieldname": fieldname, "label": label, "fieldtype": fieldtype}
+		).db_insert()
+		frappe.clear_document_cache("Report", name)
 
 
 def _ensure_number_card(name: str, label: str, method: str, color: str) -> None:
@@ -506,6 +474,7 @@ def _ensure_number_card(name: str, label: str, method: str, color: str) -> None:
 	card = frappe.get_doc(
 		{
 			"doctype": "Number Card",
+			"name": name,
 			"is_public": 1,
 			"is_standard": 1,
 			"module": "Dinext Common",
@@ -560,126 +529,6 @@ def _ensure_pending_approvals_chart() -> None:
 	chart = frappe.get_doc({"doctype": "Dashboard Chart", "name": CHART_NAME, **values})
 	chart.flags.ignore_validate = True
 	chart.insert(ignore_permissions=True)
-
-
-def _approvals_workspace_content() -> list[dict]:
-	return [
-		{
-			"id": "approvals-header",
-			"type": "header",
-			"data": {
-				"text": '<span class="h4">Мои согласования</span>',
-				"col": 12,
-			},
-		},
-		{
-			"id": "approvals-open",
-			"type": "number_card",
-			"data": {"number_card_name": "My open approvals", "col": 3},
-		},
-		{
-			"id": "approvals-new",
-			"type": "number_card",
-			"data": {"number_card_name": "Новые сегодня", "col": 3},
-		},
-		{
-			"id": "approvals-completed",
-			"type": "number_card",
-			"data": {"number_card_name": "My completed approvals", "col": 3},
-		},
-		{
-			"id": "approvals-automatic",
-			"type": "number_card",
-			"data": {
-				"number_card_name": "Автоматически выполнено за 30 дней",
-				"col": 3,
-			},
-		},
-		{"id": "approvals-spacer", "type": "spacer", "data": {"col": 12}},
-		{
-			"id": "approvals-by-doctype",
-			"type": "chart",
-			"data": {"chart_name": CHART_NAME, "col": 12},
-		},
-		{"id": "approvals-reports-spacer", "type": "spacer", "data": {"col": 12}},
-		{
-			"id": "approvals-queue",
-			"type": "shortcut",
-			"data": {"shortcut_name": QUEUE_SHORTCUT, "col": 4},
-		},
-		{
-			"id": "approvals-history",
-			"type": "shortcut",
-			"data": {"shortcut_name": HISTORY_SHORTCUT, "col": 4},
-		},
-		{
-			"id": "approvals-monitoring",
-			"type": "shortcut",
-			"data": {"shortcut_name": MONITORING_SHORTCUT, "col": 4},
-		},
-		{"id": "control-spacer", "type": "spacer", "data": {"col": 12}},
-		{
-			"id": "control-header",
-			"type": "header",
-			"data": {
-				"text": '<span class="h4">Контроль</span>',
-				"col": 12,
-			},
-		},
-		{
-			"id": "control-open",
-			"type": "number_card",
-			"data": {"number_card_name": OPEN_ROUNDS_CARD, "col": 3},
-		},
-		{
-			"id": "control-attention",
-			"type": "number_card",
-			"data": {"number_card_name": ATTENTION_CARD, "col": 3},
-		},
-		{
-			"id": "control-longest",
-			"type": "number_card",
-			"data": {"number_card_name": LONGEST_WAIT_CARD, "col": 3},
-		},
-		{
-			"id": "control-decisions",
-			"type": "number_card",
-			"data": {"number_card_name": CONTROL_DECISIONS_CARD, "col": 3},
-		},
-		{"id": "control-charts-spacer", "type": "spacer", "data": {"col": 12}},
-		{
-			"id": "control-load-count",
-			"type": "chart",
-			"data": {"chart_name": LOAD_COUNT_CHART, "col": 6},
-		},
-		{
-			"id": "control-load-age",
-			"type": "chart",
-			"data": {"chart_name": LOAD_AGE_CHART, "col": 6},
-		},
-		{"id": "control-type-spacer", "type": "spacer", "data": {"col": 12}},
-		{
-			"id": "control-open-rounds",
-			"type": "chart",
-			"data": {"chart_name": OPEN_ROUNDS_CHART, "col": 6},
-		},
-		{
-			"id": "control-duration",
-			"type": "chart",
-			"data": {"chart_name": DURATION_CHART, "col": 6},
-		},
-		{"id": "control-links-spacer", "type": "spacer", "data": {"col": 12}},
-		{
-			"id": "control-load-link",
-			"type": "shortcut",
-			"data": {"shortcut_name": LOAD_SHORTCUT, "col": 4},
-		},
-		{
-			"id": "control-duration-link",
-			"type": "shortcut",
-			"data": {"shortcut_name": DURATION_SHORTCUT, "col": 4},
-		},
-	]
 
 
 def ensure_transition_identity() -> None:

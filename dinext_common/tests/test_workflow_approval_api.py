@@ -218,3 +218,24 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 		self.assertFalse(any(row["can_reset"] for row in result))
 		self.assertEqual(get_all.call_args.kwargs["filters"]["reference_doctype"], "ToDo")
 		self.assertNotIn("User Timesheet", str(get_all.call_args))
+
+
+	def test_queue_limit_applies_after_authorization(self):
+		api = self.api()
+		frappe = api.frappe
+		rows = [frappe._dict(name=f"WT-{index}") for index in range(501)]
+
+		def fetch(doctype, **options):
+			if doctype == "Available Workflow Transitions":
+				return []
+			start = options["limit_start"]
+			return rows[start : start + options["limit_page_length"]]
+
+		with (
+			patch.object(frappe, "get_all", side_effect=fetch),
+			patch.object(
+				api, "filter_readable_tasks",
+				side_effect=lambda batch, *_args, **_kwargs: [row for row in batch if row.name == "WT-500"],
+			),
+		):
+			self.assertEqual([row.name for row in api.get_my_queue(limit=1)], ["WT-500"])
