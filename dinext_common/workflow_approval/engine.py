@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, TypedDict
@@ -23,7 +24,6 @@ from frappe.utils.user import get_users_with_role
 
 from dinext_common.workflow_approval.fingerprint import (
 	ContentFingerprint,
-	find_latest_reusable_task,
 	fingerprint_document,
 )
 from dinext_common.workflow_approval.policy import (
@@ -1091,51 +1091,38 @@ def reconcile_source(
 	return _round_task_names(round_id)
 
 
-def _latest_reuse_for_transition(
-	task: object,
-	transition: object,
-	fingerprint: ContentFingerprint,
-) -> object | None:
-	if not bool(_value(transition, "auto_complete_unchanged")):
-		return None
+def _latest_personal_decisions(tasks: list[object]) -> dict[str, Any]:
+	"""Select one personal decision per approver before checking reuse eligibility."""
+	if not tasks or not tasks[0].source_created_at:
+		return {}
+	sample = tasks[0]
 	rows = frappe.get_all(
 		"Workflow Task",
 		filters={
 			"status": "Completed",
-			"approver": task.approver,
-			"reference_doctype": task.reference_doctype,
-			"reference_name": task.reference_name,
-			"workflow": task.workflow,
-			"transition_uuid": _value(transition, "transition_uuid"),
-			"transition_semantic_hash": _value(transition, "transition_semantic_hash"),
+			"completion_source": ("in", ("Manual", "Bulk", "Signed Link")),
+			"approver": ("in", [task.approver for task in tasks]),
+			"reference_doctype": sample.reference_doctype,
+			"reference_name": sample.reference_name,
+			"source_created_at": sample.source_created_at,
+			"workflow": sample.workflow,
+			"workflow_state": sample.workflow_state,
 		},
 		fields=[
 			"name",
-			"status",
 			"approver",
-			"reference_doctype",
-			"reference_name",
-			"source_created_at",
-			"workflow",
 			"transition_uuid",
 			"transition_semantic_hash",
 			"content_fingerprint",
 			"content_fingerprint_version",
 			"completed_at",
 		],
+		order_by="completed_at desc, name asc",
 	)
-	return find_latest_reusable_task(
-		rows,
-		approver=task.approver,
-		reference_doctype=task.reference_doctype,
-		reference_name=task.reference_name,
-		source_created_at=task.source_created_at,
-		workflow=task.workflow,
-		transition_uuid=_value(transition, "transition_uuid"),
-		transition_semantic_hash=_value(transition, "transition_semantic_hash"),
-		content_fingerprint=fingerprint.digest,
-		content_fingerprint_version=fingerprint.version,
-	)
+	latest = {}
+	for row in rows:
+		latest.setdefault(row.approver, row)
+	return latest
 
 
 def _apply_automatic_votes(
@@ -1144,25 +1131,47 @@ def _apply_automatic_votes(
 	manifest: dict[str, Any],
 	fingerprint: ContentFingerprint,
 ) -> dict[str, Any] | None:
+	latest = _latest_personal_decisions(tasks)
+	saved_flags = defaultdict(list)
+	if latest:
+		for row in frappe.get_all(
+			"Available Workflow Transitions",
+			filters={
+				"parent": ("in", [decision.name for decision in latest.values()]),
+				"parenttype": "Workflow Task",
+				"parentfield": "available_workflow_transitions",
+			},
+			fields=["parent", "transition_uuid", "transition_semantic_hash", "auto_complete_unchanged"],
+		):
+			key = (row.parent, row.transition_uuid, row.transition_semantic_hash)
+			saved_flags[key].append(row.auto_complete_unchanged)
+
 	reused_times: dict[str, list[str]] = {}
 	for task in tasks:
+		reused = latest.get(task.approver)
+		if (
+			not reused
+			or not reused.transition_uuid
+			or not reused.transition_semantic_hash
+			or not reused.content_fingerprint
+			or not reused.content_fingerprint_version
+			or reused.content_fingerprint != fingerprint.digest
+			or reused.content_fingerprint_version != fingerprint.version
+		):
+			continue
+		if saved_flags.get((reused.name, reused.transition_uuid, reused.transition_semantic_hash)) != [1]:
+			continue
+		current = [
+			row
+			for row in task.available_workflow_transitions
+			if row.transition_uuid == reused.transition_uuid
+			and row.transition_semantic_hash == reused.transition_semantic_hash
+		]
+		if len(current) != 1 or current[0].auto_complete_unchanged != 1:
+			continue
 		if frappe.db.get_value("Workflow Task", task.name, "status") == "Completed":
 			continue
-		candidates = []
-		for transition in task.available_workflow_transitions:
-			reused = _latest_reuse_for_transition(task, transition, fingerprint)
-			if reused:
-				candidates.append((str(_value(reused, "completed_at") or ""), transition, reused))
-		if not candidates:
-			continue
-		_completed_at, transition, reused = max(
-			candidates,
-			key=lambda item: (
-				item[0],
-				-int(_value(item[1], "transition_idx") or 0),
-				_inverse_text(str(_value(item[1], "transition_uuid") or "")),
-			),
-		)
+		transition = current[0]
 		complete_task(
 			task,
 			transition,
