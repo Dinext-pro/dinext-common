@@ -13,8 +13,8 @@ from frappe.utils import add_days, get_datetime, getdate, now_datetime
 from dinext_common.workflow_approval import engine
 from dinext_common.workflow_approval.pending import required_target_task_names
 from dinext_common.workflow_approval.permissions import (
-	filter_readable_tasks,
 	get_monitorable_workflows,
+	get_task_read_checker,
 	has_workflow_task_permission,
 )
 
@@ -389,6 +389,7 @@ def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monit
 		if not workflows:
 			return []
 		filters = {**filters, "workflow": ("in", workflows)}
+	can_read = get_task_read_checker(user, monitored_only=monitored_only, require_source=True)
 	page_size = 500
 	start = 0
 	result = []
@@ -402,7 +403,7 @@ def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monit
 			limit_page_length=page_size,
 		)
 		selected = [row for row in rows if predicate(row)] if predicate else rows
-		result.extend(filter_readable_tasks(selected, user, monitored_only=monitored_only, require_source=True))
+		result.extend(row for row in selected if can_read(row))
 		if limit and len(result) >= limit:
 			return result[:limit]
 		if len(rows) < page_size:

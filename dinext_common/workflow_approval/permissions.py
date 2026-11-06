@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import cache
 from typing import Any
 
@@ -121,12 +122,10 @@ def _can_read_task(doc, user, is_manager, can_monitor, can_read_source) -> bool:
 	return can_read_source(doc)
 
 
-def filter_readable_tasks(
-	rows: list[dict[str, Any]], user: str, *, monitored_only: bool = False, require_source: bool = False
-) -> list[dict[str, Any]]:
-	"""Check each workflow and source once for this read and this user."""
-	if not rows:
-		return []
+def get_task_read_checker(
+	user: str, *, monitored_only: bool = False, require_source: bool = False
+) -> Callable[[object], bool]:
+	"""Check each workflow and source once across the pages of one read."""
 
 	@cache
 	def workflow_allowed(workflow):
@@ -143,14 +142,18 @@ def filter_readable_tasks(
 		return source_allowed(*_source_reference(row))
 
 	is_manager = _is_system_manager(user)
-	if monitored_only:
-		return [row for row in rows if (is_manager or can_monitor(row)) and can_read_source(row)]
-	if require_source and is_manager:
-		return [
-			row for row in rows
-			if (_get(row, "source_deleted_at") and _get(row, "approver") == user) or can_read_source(row)
-		]
-	return [row for row in rows if _can_read_task(row, user, is_manager, can_monitor, can_read_source)]
+
+	def can_read(row):
+		if monitored_only:
+			return (is_manager or can_monitor(row)) and can_read_source(row)
+		if require_source and is_manager:
+			return bool(
+				(_get(row, "source_deleted_at") and _get(row, "approver") == user)
+				or can_read_source(row)
+			)
+		return _can_read_task(row, user, is_manager, can_monitor, can_read_source)
+
+	return can_read
 
 
 PUBLIC_APPROVAL_NUMBER_CARDS = frozenset(

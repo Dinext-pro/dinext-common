@@ -106,6 +106,13 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 			)
 			for name, source in (("A", "VISIBLE"), ("B", "VISIBLE"), ("C", "HIDDEN"))
 		}
+		tasks = [rows["A"]] * 500 + [rows["B"], rows["C"]]
+
+		def candidates(doctype, *, limit_start=0, limit_page_length=500, **kwargs):
+			if doctype == "Workflow Task":
+				return tasks[limit_start : limit_start + limit_page_length]
+			return ["Monitor"]
+
 		with (
 			patch.object(frappe, "session", frappe._dict(user="monitor@example.com")),
 			patch.object(frappe, "get_roles", return_value=["Monitor"]),
@@ -113,7 +120,7 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 			patch.object(
 				frappe,
 				"get_all",
-				side_effect=lambda dt, **_: list(rows.values()) if dt == "Workflow Task" else ["Monitor"],
+				side_effect=candidates,
 			) as get_all,
 			patch.object(frappe, "get_doc", side_effect=lambda _doctype, name: rows[name]) as get_doc,
 			patch.object(
@@ -124,10 +131,10 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 		):
 			result = api.get_monitoring_rows()
 			self.assertEqual(len(result), 1)
-			self.assertEqual(result[0].active_task_count, 2)
+			self.assertEqual(result[0].active_task_count, 501)
 			get_doc.assert_not_called()
 			self.assertNotIn("source_deleted_at", result[0])
-			self.assertEqual(get_all.call_count, 2)
+			self.assertEqual(get_all.call_count, 3)
 			self.assertEqual(can_read.call_count, 2)
 			can_read.side_effect = None
 			can_read.return_value = False
@@ -137,7 +144,7 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 		row = {"name": "TASK-1", "completed_at": "2026-01-02 00:00:00"}
 		with (
 			patch.object(frappe, "get_all", side_effect=[[row], []]),
-			patch.object(api, "filter_readable_tasks", return_value=[row]),
+			patch.object(api, "get_task_read_checker", return_value=lambda _: True),
 		):
 			result = api._filtered_tasks({"name": "TASK-1"})
 		self.assertEqual(result[0].completed_at, "2026-01-02 00:00:00")
