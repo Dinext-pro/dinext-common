@@ -240,8 +240,7 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 		with (
 			patch.object(frappe, "get_all", side_effect=fetch),
 			patch.object(
-				api, "filter_readable_tasks",
-				side_effect=lambda batch, *_args, **_kwargs: [row for row in batch if row.name == "WT-500"],
+				api, "get_task_read_checker", return_value=lambda row: row.name == "WT-500"
 			),
 		):
 			self.assertEqual([row.name for row in api.get_my_queue(limit=1)], ["WT-500"])

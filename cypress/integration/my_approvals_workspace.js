@@ -60,8 +60,21 @@ describe("My Approvals workspace", () => {
 		cy.contains(".ce-header", "Контроль").should("be.visible");
 		for (const theme of ["dark", "light"]) {
 			cy.window().then((win) => win.frappe.ui.set_theme(theme));
-			cy.get(".number-widget-box").should("have.length", 8);
-			cy.get(".dashboard-widget-box").should("have.length", 5);
+			cy.get(".number-widget-box").should(($cards) => {
+				expect($cards).to.have.length(8);
+				$cards.each((_, card) => {
+					expect(Cypress.$(card).find(".number").text().trim(), "rendered card value").to.be.ok;
+				});
+			});
+			cy.get(".dashboard-widget-box").should(($charts) => {
+				expect($charts).to.have.length(5);
+				$charts.each((_, chart) => {
+					const $body = Cypress.$(chart).find(".widget-body");
+					const rendered = $body.find("svg").length > 0;
+					const empty = $body.find(".chart-loading-state:visible").text().trim();
+					expect(rendered || /^(No Data|Нет данных)$/i.test(empty), "rendered chart").to.be.true;
+				});
+			});
 			card("Открытые раунды", 2).should("be.visible");
 		}
 	});

@@ -128,9 +128,6 @@ class TestWorkflowApprovalPermissions(unittest.TestCase):
 				side_effect=lambda task, _user: task["reference_name"] == "VISIBLE",
 			),
 		):
-			self.assertEqual(
-				permissions.filter_readable_tasks(
-					[visible, hidden], "manager@example.invalid", monitored_only=True,
-				),
-				[visible],
-			)
+			can_read = permissions.get_task_read_checker("manager@example.invalid", monitored_only=True)
+			self.assertTrue(can_read(visible))
+			self.assertFalse(can_read(hidden))
