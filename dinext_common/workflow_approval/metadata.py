@@ -102,6 +102,20 @@ def get_workflow_approval_custom_fields() -> dict[str, list[dict[str, Any]]]:
 		],
 		"Workflow": [
 			{
+				"fieldname": "custom_approval_fingerprint_section",
+				"fieldtype": "Section Break",
+				"insert_after": "workflow_state_field",
+				"label": "Approval Content Snapshot",
+			},
+			{
+				"fieldname": "custom_fingerprint_excluded_fields",
+				"fieldtype": "Table",
+				"insert_after": "custom_approval_fingerprint_section",
+				"label": "Fields Excluded from Snapshot",
+				"options": "Workflow Fingerprint Exclusion",
+				"description": "These fields are excluded for all transitions of this Workflow, in addition to application hooks and system fields.",
+			},
+			{
 				"depends_on": EMAIL_ENABLED_CONDITION,
 				"fieldname": "custom_workflow_approval_email_section",
 				"fieldtype": "Section Break",
@@ -246,6 +260,18 @@ def get_workflow_approval_custom_fields() -> dict[str, list[dict[str, Any]]]:
 		for field in fields:
 			field.setdefault("module", "Dinext Common")
 	return custom_fields
+
+
+def ensure_workflow_fingerprint_fields() -> None:
+	"""Install only the Workflow snapshot editor fields without changing its rows."""
+	fields = [
+		field
+		for field in get_workflow_approval_custom_fields()["Workflow"]
+		if field["fieldname"] in {
+			"custom_approval_fingerprint_section", "custom_fingerprint_excluded_fields",
+		}
+	]
+	create_custom_fields({"Workflow": fields}, ignore_validate=True, update=True)
 
 
 def ensure_workflow_approval_custom_fields() -> None:
@@ -628,9 +654,11 @@ def validate_workflow_doc(doc: object, method: str | None = None) -> None:
 	"""Frappe hook that exposes validation failures as translated messages."""
 	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
 
-	if not is_engine_enabled():
-		return
+	from dinext_common.workflow_approval.exclusions import validate_exclusions
+
 	try:
-		validate_workflow_configuration(doc)
+		validate_exclusions(doc)
+		if is_engine_enabled():
+			validate_workflow_configuration(doc)
 	except ValueError as exc:
 		frappe.throw(_(str(exc)))

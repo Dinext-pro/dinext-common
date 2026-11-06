@@ -7,6 +7,9 @@ from dinext_common.setup.workspace import configure_workspace_menu
 
 
 def after_install() -> None:
+	from dinext_common.workflow_approval.metadata import ensure_workflow_fingerprint_fields
+
+	ensure_workflow_fingerprint_fields()
 	setup_dinext_news_feed()
 	configure_workspace_menu()
 	ensure_default_apps()

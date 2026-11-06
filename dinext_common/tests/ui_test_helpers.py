@@ -59,7 +59,7 @@ PERMISSION_DOCS = (
 	"AFL_Permissions-1",
 )
 ISSUE_READ_ROLES = (ROLE, ROLE_B, ROLE_MONITOR, ROLE_MANAGER)
-TIMESHEET_READ_ROLES = (ROLE,)
+TIMESHEET_READ_ROLES = (ROLE, ROLE_MANAGER)
 
 
 def _permission_as(user: str, doctype: str, ptype: str, doc: str | None = None) -> bool:
@@ -147,6 +147,7 @@ def _ensure_user(email: str, first_name: str, roles: list[str], *, dark: bool = 
 					"role": role,
 				}
 			).db_insert()
+	frappe.db.set_value("User", email, "language", "en", update_modified=False)
 	if dark:
 		frappe.db.set_value("User", email, "desk_theme", "Dark", update_modified=False)
 	if not frappe.db.exists("Notification Settings", email):
@@ -252,9 +253,7 @@ def _insert_workflow(name: str, transitions: list[dict], states: list[str] | Non
 			"workflow_state_field": "status",
 			"is_active": 0,
 			"send_email_alert": 0,
-			"states": [
-				{"state": state, "doc_status": "0", "allow_edit": "All"} for state in state_names
-			],
+			"states": [{"state": state, "doc_status": "0", "allow_edit": "All"} for state in state_names],
 			"transitions": transitions,
 			"custom_approval_monitor_roles": [{"role": ROLE_MONITOR}],
 		}
@@ -276,9 +275,9 @@ def _activate(name: str) -> None:
 
 
 def _issue(subject: str):
-	return frappe.get_doc(
-		{"doctype": "Issue", "subject": subject, "status": "Open"}
-	).insert(ignore_permissions=True)
+	return frappe.get_doc({"doctype": "Issue", "subject": subject, "status": "Open"}).insert(
+		ignore_permissions=True
+	)
 
 
 def _working_tasks(name: str) -> list[dict]:
@@ -378,10 +377,15 @@ def _engine_paused():
 	from dinext_common.workflow_approval import lifecycle
 
 	original = lifecycle._should_handle
-	lifecycle._should_handle = lambda _doc: False
+	previous = frappe.flags.get("_cypress_approval_paused")
+	frappe.flags._cypress_approval_paused = True
+	lifecycle._should_handle = lambda doc: (
+		False if frappe.flags.get("_cypress_approval_paused") else original(doc)
+	)
 	try:
 		yield
 	finally:
+		frappe.flags._cypress_approval_paused = previous
 		lifecycle._should_handle = original
 
 
@@ -525,6 +529,10 @@ def _duplicate_uuid_result() -> dict:
 
 
 def _seed_timesheet(workflow_name: str) -> dict:
+	from frappe.model.workflow import get_workflow_name
+
+	position_workflow = get_workflow_name("User Timesheet Position")
+	leave_workflow = get_workflow_name("Application For Leave")
 	worker = frappe.db.get_value("Worker", {"wuser": AUTHOR}, "name")
 	leave_type = frappe.db.get_value("Type Of Leave", {}, "name")
 	if not worker or not leave_type:
@@ -549,6 +557,13 @@ def _seed_timesheet(workflow_name: str) -> dict:
 				"period": "Cypress parallel workflow",
 			}
 		).insert(ignore_permissions=True)
+		frappe.db.set_value(
+			"User Timesheet Position",
+			position.name,
+			"status",
+			"Pending Approval",
+			update_modified=False,
+		)
 		leave = frappe.get_doc(
 			{
 				"doctype": "Application For Leave",
@@ -557,7 +572,7 @@ def _seed_timesheet(workflow_name: str) -> dict:
 				"altype_of_leave": leave_type,
 				"alfrom_date": LEAVE_FROM,
 				"alto_date": LEAVE_TO,
-				"status": "На согласовании",
+				"status": "Pending Approval",
 				"alreasons": "Cypress parallel workflow",
 			}
 		).insert(ignore_permissions=True)
@@ -565,7 +580,7 @@ def _seed_timesheet(workflow_name: str) -> dict:
 	_manual_task(
 		doctype="User Timesheet Position",
 		name=position.name,
-		workflow=workflow_name,
+		workflow=position_workflow,
 		state="Pending Approval",
 		approver=APPROVER,
 		round_status="Open",
@@ -579,7 +594,7 @@ def _seed_timesheet(workflow_name: str) -> dict:
 	_manual_task(
 		doctype="User Timesheet Position",
 		name=position.name,
-		workflow=workflow_name,
+		workflow=position_workflow,
 		state="Pending Approval",
 		approver=APPROVER_B,
 		round_status="Open",
@@ -594,28 +609,28 @@ def _seed_timesheet(workflow_name: str) -> dict:
 	_manual_task(
 		doctype="Application For Leave",
 		name=leave.name,
-		workflow=workflow_name,
-		state="На согласовании",
+		workflow=leave_workflow,
+		state="Pending Approval",
 		approver=APPROVER,
 		round_status="Open",
 		status="Working",
 		round_id=leave_round,
 		action="Cypress Leave",
-		next_state="Согласовано",
+		next_state="Approved",
 		transition_uuid="cypress-leave",
 		allowed_role=ROLE,
 	)
 	_manual_task(
 		doctype="Application For Leave",
 		name=leave.name,
-		workflow=workflow_name,
-		state="На согласовании",
+		workflow=leave_workflow,
+		state="Pending Approval",
 		approver=APPROVER_B,
 		round_status="Open",
 		status="Working",
 		round_id=leave_round,
 		action="Cypress Leave",
-		next_state="Согласовано",
+		next_state="Approved",
 		transition_uuid="cypress-leave",
 		allowed_role=ROLE,
 	)
@@ -651,7 +666,22 @@ def _seed_conflicted_timesheet(workflow_name: str) -> dict:
 		frappe.db.set_value(
 			"User Timesheet Position",
 			position.name,
-			{"project": "Cypress Project", "project_role": "Cypress Role"},
+			{"project": "Cypress Project", "project_role": "Cypress Role", "status": "Pending Approval"},
+			update_modified=False,
+		)
+		stalled_position = frappe.get_doc(
+			{
+				"doctype": "User Timesheet Position",
+				"user_timesheet": timesheet.name,
+				"user": AUTHOR,
+				"status": "Pending Approval",
+				"period": "Cypress stalled position",
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.set_value(
+			"User Timesheet Position",
+			stalled_position.name,
+			{"project": "Cypress Second Project", "status": "Pending Approval"},
 			update_modified=False,
 		)
 	task_name = _manual_task(
@@ -692,7 +722,21 @@ def _seed_conflicted_timesheet(workflow_name: str) -> dict:
 		),
 		update_modified=False,
 	)
-	return {"conflicted_timesheet": timesheet.name}
+	_manual_task(
+		doctype="User Timesheet Position",
+		name=stalled_position.name,
+		workflow=workflow_name,
+		state="Pending Approval",
+		approver=APPROVER,
+		round_status="Stalled",
+		status="Working",
+		round_id=frappe.generate_hash(length=40),
+	)
+	return {
+		"conflicted_timesheet": timesheet.name,
+		"conflicted_position": position.name,
+		"stalled_position": stalled_position.name,
+	}
 
 
 def _seed_conflicted(issue_name: str, workflow_name: str) -> str:
@@ -757,14 +801,21 @@ def seed_parallel_workflow_cypress() -> dict:
 	_ensure_user(APPROVER_B, "Cypress Approver B", [ROLE, ROLE_B, "Desk User"])
 	_ensure_user(MONITOR, "Cypress Monitor", [ROLE_MONITOR, "Desk User"])
 	_ensure_user(EXCLUDED, "Cypress Excluded", [ROLE_COHORT, "Desk User"])
-	_ensure_user(MANAGER, "Cypress Manager", [ROLE_MANAGER, "System Manager", "Desk User"])
+	_ensure_user(
+		MANAGER,
+		"Cypress Manager",
+		[ROLE_MANAGER, "System Manager", "Desk User", TIMESHEET_ROLE],
+	)
 	for role in ISSUE_READ_ROLES:
 		_ensure_issue_perm(role)
 		_ensure_permission_condition("Issue_Permissions", role)
 	for role in ROLES:
 		_ensure_read_perm("Report", role)
 		_ensure_read_perm("Support Settings", role)
+		_ensure_read_perm("Kanban Board", role)
 	for role in TIMESHEET_READ_ROLES:
+		for doctype in ("User Timesheet", "User Timesheet Position"):
+			_ensure_read_perm(doctype, role)
 		for parent in ("UT_Permissions-1", "UTP_Permissions-1", "AFL_Permissions-1"):
 			_ensure_permission_condition(parent, role)
 	frappe.clear_cache()
@@ -1185,3 +1236,68 @@ def seed_workflow_action_desk() -> dict:
 		"deleted_task": blank_task,
 		"missing_task": missing_task,
 	}
+
+
+@whitelist_for_tests
+def seed_live_configuration_conflict_cypress() -> dict:
+	"""Create real accepted votes, then change their workflow without a source save."""
+	fixture = seed_parallel_workflow_cypress()
+	from dinext_common.workflow_approval import engine
+
+	workflow = frappe.get_doc("Workflow", "_Cypress WF All")
+	original_next_state = workflow.transitions[0].next_state
+	previous_user = frappe.session.user
+	sources = []
+	try:
+		workflow.transitions[0].next_state = "Open"
+		workflow.save(ignore_permissions=True)
+		_clear_workflow_cache()
+		for label in ("error", "batch first", "batch second"):
+			issue = _issue(f"Cypress live conflict {label}")
+			tasks = _working_tasks(issue.name)
+			voter = next(task for task in tasks if task.approver == APPROVER_B)
+			remaining = next(task for task in tasks if task.approver == APPROVER)
+			frappe.session.user = APPROVER_B
+			frappe.local.user_perms = None
+			frappe.local.role_permissions = {}
+			result = engine.cast_vote(voter.name, action="Cypress Approve", request_id=f"seed-{issue.name}")
+			assert not result["transitioned"]
+			frappe.session.user = previous_user
+			frappe.local.user_perms = None
+			frappe.local.role_permissions = {}
+			sources.append(
+				{
+					"name": issue.name,
+					"round_id": remaining.approval_round_id,
+					"task": remaining.name,
+					"completed_task": voter.name,
+				}
+			)
+	finally:
+		frappe.session.user = previous_user
+		frappe.local.user_perms = None
+		frappe.local.role_permissions = {}
+		workflow.transitions[0].next_state = original_next_state
+		workflow.save(ignore_permissions=True)
+		_clear_workflow_cache()
+	fixture["configuration_issues"] = sources
+	return fixture
+
+
+@whitelist_for_tests
+def attempt_conflicted_vote_cypress(task_name: str) -> dict:
+	"""Verify that conflict persistence does not commit rejected business writes."""
+	from dinext_common.workflow_approval import api, engine
+
+	api._require_post()
+	task = frappe.get_doc("Workflow Task", task_name)
+	task.check_permission("read")
+	source = frappe.get_doc(task.reference_doctype, task.reference_name)
+	if (
+		task.approver != frappe.session.user
+		or source.doctype != "Issue"
+		or not source.subject.startswith("Cypress live conflict ")
+	):
+		raise frappe.PermissionError
+	frappe.db.set_value("Issue", source.name, "description", "Cypress rejected temporary change")
+	return engine.cast_vote(task_name, action="Cypress Approve", request_id="reject-live-conflict")

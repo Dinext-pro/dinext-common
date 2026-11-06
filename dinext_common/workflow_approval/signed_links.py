@@ -8,6 +8,7 @@ import json
 
 import frappe
 from frappe import _
+from frappe.model.workflow import get_workflow_name
 from frappe.utils import get_datetime, get_url
 from frappe.utils.verified_command import get_signed_params, verify_request
 from frappe.workflow.doctype.workflow_action.workflow_action import (
@@ -15,7 +16,7 @@ from frappe.workflow.doctype.workflow_action.workflow_action import (
 	return_success_page,
 )
 
-from dinext_common.workflow_approval import engine
+from dinext_common.workflow_approval import engine, localization
 
 COMMAND_TTL_SECONDS = 15 * 60
 
@@ -149,7 +150,7 @@ def _render_preview(
 		or task.status != "Working"
 		or task.round_status != "Open"
 		or not _actor_can_read_task(task, user)
-		or task.workflow_state != current_state
+		or task.workflow_state != localization.state_name(task.workflow, current_state)
 		or not delivery_key
 		or not _open_action(task_name, delivery_key)
 	):
@@ -298,6 +299,11 @@ def apply_action(
 	"""Compatibility entry point for already-issued standard Workflow links."""
 	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
 
+	if not verify_request():
+		return
+	workflow = get_workflow_name(doctype)
+	action = localization.action_name(workflow, action)
+	current_state = localization.state_name(workflow, current_state)
 	if not is_engine_enabled():
 		from frappe.workflow.doctype.workflow_action.workflow_action import (
 			apply_action as core_apply_action,
@@ -311,7 +317,7 @@ def apply_action(
 			user,
 			last_modified,
 		)
-	if not verify_request() or not user:
+	if not user:
 		return
 	from dinext_common.workflow_approval.api import _find_task_for_action
 
@@ -346,14 +352,16 @@ def confirm_legacy_action(
 	"""Compatibility confirmation for a signed standard link after cutover."""
 	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
 
+	if not verify_request():
+		return
+	action = localization.action_name(get_workflow_name(doctype), action)
 	if not is_engine_enabled():
 		from frappe.workflow.doctype.workflow_action.workflow_action import (
 			confirm_action as core_confirm_action,
 		)
 
 		return core_confirm_action(doctype, docname, user, action)
-	if not verify_request():
-		return
+
 	from dinext_common.workflow_approval.api import _find_task_for_action
 
 	task_name = _find_task_for_action(doctype, docname, action, user)

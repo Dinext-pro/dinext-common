@@ -204,8 +204,14 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 				failure_metadata=None,
 			),
 		]
+		# A large cohort on one document must not hide another document's round.
+		rows = rows[:2] * 60 + rows[2:]
+
+		def query_rows(*args, limit=0, **kwargs):
+			return rows[:limit] if limit else rows
+
 		with (
-			patch.object(api.frappe, "get_all", return_value=rows) as get_all,
+			patch.object(api.frappe, "get_all", side_effect=query_rows) as get_all,
 			patch.object(api, "_caller_is_system_manager", return_value=False),
 		):
 			result = api.describe_rebuild_rounds("ToDo", ["DOC-1", "DOC-2"])

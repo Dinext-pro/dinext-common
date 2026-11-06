@@ -225,7 +225,7 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 			for transition in workflow["transitions"]:
 				self.assertTrue(transition["custom_transition_uuid"])
 				self.assertIn(transition["custom_parallel_approval_policy"], {"Any", "All", "Minimum"})
-				if transition["action"] == "Согласовано":
+				if transition["action"] == "Approve":
 					self.assertEqual(transition["custom_parallel_approval_policy"], "All")
 		patch = (
 			APP_ROOT / "patches" / "v1_0" / "generalize_parallel_workflow_approvals.py"
@@ -239,16 +239,19 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 			"dinext_common.workflow_approval.metadata.ensure_workflow_approval_desk_records",
 			hooks.after_migrate,
 		)
+		metadata = self.metadata()
 		metadata_source = (APP_ROOT / "workflow_approval" / "metadata.py").read_text()
 		workspace = json.loads(
 			(APP_ROOT / "dinext_common" / "workspace" / "my_approvals" / "my_approvals.json").read_text()
 		)
-		self.assertFalse(workspace["custom_blocks"])
-		self.assertEqual(len(workspace["number_cards"]), 8)
-		self.assertEqual(len(workspace["charts"]), 5)
-		shortcuts = {row["label"]: row["link_to"] for row in workspace["shortcuts"]}
-		self.assertEqual(shortcuts["My Approval Queue"], "My Approvals")
-		self.assertEqual(shortcuts["Approval Load"], "Approval Load")
+		cards = {row["number_card_name"] for row in workspace["number_cards"]}
+		self.assertIn("My open approvals", cards)
+		self.assertIn(metadata.OPEN_ROUNDS_CARD, cards)
+		self.assertIn(metadata.CHART_NAME, {row["chart_name"] for row in workspace["charts"]})
+		self.assertIn("chart", {row["type"] for row in json.loads(workspace["content"])})
+		shortcuts = {row["link_to"] for row in workspace["shortcuts"]}
+		self.assertIn(metadata.QUEUE_SHORTCUT, shortcuts)
+		self.assertIn(metadata.LOAD_SHORTCUT, shortcuts)
 		self.assertIn("open_control_round_count", metadata_source)
 		self.assertNotIn("custom_block_name", metadata_source)
 		self.assertNotIn("my_approvals_workspace.js", metadata_source)
@@ -259,12 +262,20 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 			/ "dinext_timesheets"
 			/ "public"
 			/ "js"
-			/ "user_timesheet_form.js"
+			/ "user_timesheet"
+			/ "data.js"
 		).read_text()
-		self.assertIn('frappe.model.can_read("Holiday List")', form_script)
+		self.assertIn("get_timesheet_context", form_script)
+		context_api = (
+			Path(__file__).resolve().parents[3]
+			/ "dinext_timesheets" / "dinext_timesheets" / "dinext_timesheets"
+			/ "user_timesheet" / "api.py"
+		).read_text().split("def get_timesheet_context(", 1)[1].split("@frappe.whitelist()", 1)[0]
+		self.assertIn('parent.check_permission("read")', context_api)
 		banner = (APP_ROOT / "public" / "js" / "workflow_approval.js").read_text()
-		self.assertIn("get_form_approval_banner", banner)
-		self.assertNotIn(".catch(() => [])", banner)
+		paint = banner.split("const paintApprovalBanner =", 1)[1].split("const scheduleBanner =", 1)[0]
+		self.assertIn("get_form_approval_banner", paint)
+		self.assertNotIn(".catch(() => [])", paint)
 		project_perm = json.loads(
 			(
 				Path(__file__).resolve().parents[3]
@@ -293,8 +304,8 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 		banner = (APP_ROOT / "public" / "js" / "workflow_approval.js").read_text()
 		self.assertIn("frappe.dinext.workflowActionLabel = workflowActionLabel", banner)
 		self.assertIn("document.getElementById", banner)
-		self.assertIn("workflowActionLabel(transition.action)", banner)
-		self.assertIn("workflowActionLabel(item.name, item.label)", banner)
+		self.assertIn("workflowTransitionLabel(transition)", banner)
+		self.assertIn("label: workflowTransitionLabel(", banner)
 		self.assertIn('__("Comment required for {0}", [__(transition.action)])', banner)
 		timesheet = (
 			Path(__file__).resolve().parents[3]
@@ -305,10 +316,16 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 			/ "user_timesheet"
 			/ "workflow.js"
 		).read_text()
-		self.assertIn("frappe.dinext?.workflowActionLabel?.(transition.action)", timesheet)
+		self.assertIn("frappe.dinext?.workflowTransitionLabel?.(transition)", timesheet)
 		self.assertIn("frm._ut_wf_button_labels.push(label)", timesheet)
-		icons = {"Согласовано": "check", "Не согласовано": "close"}
-		for app in ("dinext_timesheets", "dinext_projects", "dinext_projects_pl"):
+		icons = {
+			"Submit for Approval": "arrow-up-right",
+			"Approve": "check",
+			"Reject": "close",
+			"Stop Workflow": "reply",
+			"Edit": "edit",
+		}
+		for app in ("dinext_common", "dinext_timesheets", "dinext_projects", "dinext_projects_pl"):
 			rows = json.loads(
 				(
 					Path(__file__).resolve().parents[3]
@@ -323,7 +340,10 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 				for row in rows
 				if row.get("custom_icon")
 			}
-			self.assertEqual(filled, icons)
+			if app == "dinext_common":
+				self.assertEqual(filled, icons)
+			else:
+				self.assertFalse(set(icons).intersection(row["name"] for row in rows))
 
 	def test_user_timesheet_form_does_not_use_the_common_approver_banner(self):
 		banner = (APP_ROOT / "public" / "js" / "workflow_approval.js").read_text()

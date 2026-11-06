@@ -13,6 +13,14 @@ website_context = {
 }
 
 fixtures = [
+    {
+        "doctype": "Workflow State",
+        "filters": [["name", "in", ["Draft", "Editing", "Pending Approval", "Approved", "Rejected"]]],
+    },
+    {
+        "doctype": "Workflow Action Master",
+        "filters": [["name", "in", ["Submit for Approval", "Approve", "Reject", "Stop Workflow", "Edit"]]],
+    },
     "Website Settings",
     "Navbar Settings",
     "Data Cleanup Rules",
@@ -118,7 +126,7 @@ app_include_css = [
     "/assets/dinext_common/css/common.css",
     "/assets/dinext_common/css/workspace_sidebar_hover.css",
     "/assets/dinext_common/css/dinext-tour.css",
-    "/assets/dinext_common/css/workflow_approval.css",
+    "/assets/dinext_common/css/workflow_approval.css?v=20261106",
 ]
 app_include_js = [
     "/assets/dinext_common/js/workspace_slug_redirects.js",
@@ -128,7 +136,7 @@ app_include_js = [
     "/assets/dinext_common/js/dinext-desk.js",
     "/assets/dinext_common/js/dashboard_filters_fix.js",
     "/assets/dinext_common/js/workspace_sidebar_hover.js",
-    "/assets/dinext_common/js/workflow_approval.js?v=20261101b",
+    "/assets/dinext_common/js/workflow_approval.js?v=20261106",
 ]
 
 # Expose site_config flags to Desk bootinfo
@@ -152,6 +160,7 @@ web_include_css = ["/assets/dinext_common/css/public_auth_header.css"]
 
 # include js in doctype views
 doctype_js = {
+	"Workflow": "public/js/workflow_fingerprint_settings.js",
 	"Project": "public/js/sticky-datatable.js",
 	"Workflow Action": "public/js/workflow_action_desk.js",
 }
@@ -197,11 +206,14 @@ doctype_list_js = {
 
 # before_install = "dinext_common.install.before_install"
 after_install = "dinext_common.install.after_install"
+before_migrate = ["dinext_common.workflow_approval.localization.guard_label_migration"]
 after_migrate = [
+	"dinext_common.workflow_approval.metadata.ensure_workflow_fingerprint_fields",
 	"dinext_common.changelog_feed.on_after_migrate",
 	"dinext_common.setup.workspace.configure_workspace_menu",
 	"dinext_common.apps.ensure_default_apps",
 	"dinext_common.workflow_approval.metadata.ensure_transition_identity",
+	"dinext_common.workflow_approval.localization.migrate_workflow_labels",
 	"dinext_common.workflow_approval.metadata.ensure_workflow_approval_desk_records",
 ]
 
@@ -271,6 +283,10 @@ doc_events = {
 		],
 	},
 	"Workflow": {
+		"before_import": [
+			"dinext_common.workflow_approval.exclusions.preserve_fixture_exclusions",
+			"dinext_common.workflow_approval.localization.preserve_fixture_transition_ids",
+		],
 		"validate": [
 			"dinext_common.workflow_approval.metadata.validate_workflow_doc",
 		],

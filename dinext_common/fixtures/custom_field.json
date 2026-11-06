@@ -1423,5 +1423,17 @@
   "translatable": 0,
   "unique": 0,
   "width": null
+ },
+ {
+  "description": "Frappe icon name, for example: check, close, edit",
+  "docstatus": 0,
+  "doctype": "Custom Field",
+  "dt": "Workflow Action Master",
+  "fieldname": "custom_icon",
+  "fieldtype": "Data",
+  "insert_after": "workflow_action_name",
+  "label": "Icon",
+  "module": "Dinext Common",
+  "name": "Workflow Action Master-custom_icon"
  }
 ]
