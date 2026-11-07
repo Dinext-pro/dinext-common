@@ -32,11 +32,12 @@ from dinext_common.workflow_approval.policy import (
 	configuration_change_metadata,
 	is_threshold_reachable,
 	make_task_name,
-	normalize_comment,
 	normalize_policy,
 	required_approvals,
 	transition_semantic_hash,
 )
+
+from dinext_common.workflow_approval.validation import normalize_comment
 
 ACTIVE_ROUND_STATUSES = ("Open", "Stalled", "Finalizing", "Conflicted")
 MAX_AUTOMATIC_TRANSITIONS = 20

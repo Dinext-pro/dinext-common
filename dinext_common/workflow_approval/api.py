@@ -12,6 +12,7 @@ from frappe import _
 from frappe.utils import add_days, get_datetime, getdate, now_datetime
 
 from dinext_common.workflow_approval import engine
+from dinext_common.workflow_approval.validation import discard_collected_comment_messages
 from dinext_common.workflow_approval.pending import (
 	PendingApproverTask,
 	get_required_state_pending_tasks,
@@ -261,6 +262,7 @@ def bulk_vote(
 	for index, name in enumerate(docnames, 1):
 		if not track_progress:
 			show_progress(docnames, _("Applying: {0}").format(action), index, name)
+		message_count = len(frappe.local.message_log or [])
 		try:
 			vote_result = _vote_source_action(
 				doctype,
@@ -275,6 +277,7 @@ def bulk_vote(
 			result["succeeded"].append({"name": name, "result": vote_result})
 		except Exception as exc:
 			frappe.db.rollback()
+			discard_collected_comment_messages(exc, message_count)
 			redacted = isinstance(
 				exc,
 				(frappe.DoesNotExistError, frappe.PermissionError),
@@ -323,6 +326,7 @@ def bulk_task_vote(
 
 	result: dict[str, list[dict[str, Any]]] = {"succeeded": [], "failed": []}
 	for index, ((task_name, transition_uuid), item) in enumerate(deduplicated.items()):
+		message_count = len(frappe.local.message_log or [])
 		try:
 			vote_result = engine.cast_vote(
 				task_name,
@@ -338,6 +342,7 @@ def bulk_task_vote(
 			frappe.db.commit()
 		except Exception as exc:
 			frappe.db.rollback()
+			discard_collected_comment_messages(exc, message_count)
 			redacted = isinstance(
 				exc,
 				(frappe.DoesNotExistError, frappe.PermissionError),
@@ -927,6 +932,11 @@ def reset_round(round_id: str, reason: object) -> dict[str, Any]:
 	_require_post()
 	_require_system_manager()
 	normalized_reason = engine.normalize_comment(reason, required=True)
+	return _reset_round(round_id, normalized_reason)
+
+
+def _reset_round(round_id: str, normalized_reason: str) -> dict[str, Any]:
+	"""Reset one round after the public entrypoint authorized and normalized it."""
 	task_names = engine._round_task_names(round_id)
 	if not task_names:
 		raise frappe.DoesNotExistError(_("Approval round does not exist"))
@@ -993,7 +1003,7 @@ def reset_rounds(round_ids: str | list[str], reason: object) -> RebuildRoundsRes
 	result: RebuildRoundsResult = {"succeeded": [], "failed": []}
 	for round_id in identifiers:
 		try:
-			reset_round(round_id, normalized_reason)
+			_reset_round(round_id, normalized_reason)
 			frappe.db.commit()
 			result["succeeded"].append(round_id)
 		except Exception as exc:

@@ -26,6 +26,30 @@ describe("My Approvals audit corrections", () => {
 		});
 	}
 
+	function assertTranslatedReportCells() {
+		cy.window().then((win) => {
+			const report = win.frappe.query_report;
+			const fields = ["reference_doctype", "workflow_state", "status", "round_status", "action", "completion_source", "group_label"];
+			for (const field of fields) {
+				const column = report.datatable.datamanager.getColumns().find((item) => item.id === field);
+				if (!column) continue;
+				const row = report.data.find((item) => item[field]);
+				if (!row || (field === "group_label" && row.group_type !== "Document Type")) continue;
+				const raw = row[field];
+				const label = win.__(raw, null, field === "completion_source" ? "Approval completion source" : undefined);
+				expect(label, `${report.report_name} ${field}`).to.match(/[А-Яа-яЁё]/);
+				cy.contains(`.dt-scrollable .dt-cell--col-${column.colIndex}`, label).scrollIntoView().should("be.visible");
+				if (field === "reference_doctype" || field === "group_label") expect(raw).to.eq("Note");
+			}
+			if (["My Approvals", "Approval Duration"].includes(report.report_name)) {
+				expect(report.chart.data.labels).to.include(win.__("Note"));
+			}
+			if (report.data.some((row) => row.reference_doctype === "Note")) {
+				cy.get('.dt-scrollable a[href*="/app/note/"]').should("exist");
+			}
+		});
+	}
+
 	function assertCommentValidity() {
 		cy.get(".modal:visible [data-fieldname=comment] textarea").as("comment").should("be.focused");
 		cy.get(".modal:visible .btn-modal-primary").as("submit").should("be.disabled");
@@ -90,6 +114,7 @@ describe("My Approvals audit corrections", () => {
 
 	it("renders Russian report values and legends while retaining canonical data", () => {
 		openReport("My Approval History", fixture.bob);
+		assertTranslatedReportCells();
 		cy.contains(".dt-scrollable .dt-cell", "Вручную").scrollIntoView().should("be.visible");
 		cy.window().then((win) => {
 			const completed = win.__("Completed");
@@ -103,6 +128,7 @@ describe("My Approvals audit corrections", () => {
 		});
 		for (const name of ["My Approvals", "Approval Monitoring", "Approval Load", "Approval Duration"]) {
 			openReport(name, fixture.bob);
+			assertTranslatedReportCells();
 			cy.window().should((win) => {
 				const report = win.frappe.query_report;
 				expect(report.report_name).to.eq(name);
@@ -133,6 +159,80 @@ describe("My Approvals audit corrections", () => {
 			expect(report.get_filter_value("reference_doctype")).to.eq("");
 			expect(report.get_filter_value("completed_since")).to.be.ok;
 			expect(report.data.reduce((sum, row) => sum + row.manual_count, 0)).to.be.greaterThan(0);
+		});
+	});
+
+
+	it("localizes the native completion filter and sends canonical Manual after report reuse", {defaultCommandTimeout: 15000}, () => {
+		for (const [user, label] of [[fixture.bob, "Вручную"], [fixture.alice, "Manual"]]) {
+			openReport("My Approval History", user);
+			for (let visit = 0; visit < 2; visit++) {
+				cy.get('[data-fieldname="completion_source"] select option[value="Manual"]').should("have.text", label);
+				cy.get('[data-fieldname="completion_source"] select').select("Manual").should("have.value", "Manual");
+				cy.window().should((win) => {
+					expect(win.frappe.query_report.get_filter_value("completion_source")).to.eq("Manual");
+					expect(win.frappe.query_report.data.length).to.be.greaterThan(0);
+					expect(win.frappe.query_report.data.every((row) => row.completion_source === "Manual")).to.eq(true);
+				});
+				if (visit === 0) {
+					cy.window().then((win) => win.frappe.set_route("query-report", "My Approvals"));
+					cy.window().should((win) => expect(win.frappe.query_report.report_name).to.eq("My Approvals"));
+					cy.window().then((win) => {
+						win.frappe.route_options = {completion_source: "Manual", ignore_prepared_report: 1};
+						return win.frappe.set_route("query-report", "My Approval History");
+					});
+					cy.window().should((win) => expect(win.frappe.query_report.report_name).to.eq("My Approval History"));
+				}
+			}
+		}
+	});
+
+	it("returns localized HTTP validation for votes, bulk and reset without changing tasks", {defaultCommandTimeout: 30000}, () => {
+		let before;
+		async function post(win, method, args) {
+			const response = await win.fetch(`/api/method/dinext_common.workflow_approval.${method}`, {
+				method: "POST", headers: {"Content-Type": "application/json", "X-Frappe-CSRF-Token": win.frappe.csrf_token},
+				body: JSON.stringify(args),
+			});
+			return {status: response.status, body: await response.json()};
+		}
+		function expected(language, long) {
+			return language === "ru" ? (long ? "Комментарий процесса не может превышать 4000 символов" : "Для этого действия процесса требуется комментарий")
+				: (long ? "Workflow comments cannot exceed 4000 characters" : "A comment is required for this workflow action");
+		}
+		function assertError(response, message) {
+			expect(response.status).to.eq(417);
+			expect(response.body.exc_type).to.eq("WorkflowCommentValidationError");
+			const messages = JSON.parse(response.body._server_messages).map((entry) => JSON.parse(entry).message);
+			expect(messages).to.deep.eq([message]);
+		}
+		openReport("My Approvals");
+		cy.window().then(async (win) => {
+			before = await win.frappe.xcall("frappe.client.get", {doctype: "Workflow Task", name: fixture.tasks.Main});
+			for (const language of ["ru", "en"]) for (const long of [false, true]) {
+				const comment = long ? "x".repeat(4001) : "<p>&nbsp;</p>";
+				const args = {transition_uuid: fixture.transition_uuid, comment, _lang: language};
+				assertError(await post(win, "api.vote", {...args, task_name: fixture.tasks.Main}), expected(language, long));
+				assertError(await post(win, "api.apply_workflow", {...args, doc: {doctype: "Note", name: fixture.prefix + "Main"}, action: "Approve"}), expected(language, long));
+				const bulk = await post(win, "api.bulk_task_vote", {...args, items: [{task_name: fixture.tasks.Main, transition_uuid: fixture.transition_uuid}]});
+				expect(bulk.status).to.eq(200);
+				expect(bulk.body.message.succeeded).to.have.length(0);
+				expect(bulk.body.message.failed[0].error).to.eq(expected(language, long));
+				expect(bulk.body._server_messages).to.be.undefined;
+			}
+			const after = await win.frappe.xcall("frappe.client.get", {doctype: "Workflow Task", name: fixture.tasks.Main});
+			expect(after).to.deep.eq(before);
+		});
+		cy.login("Administrator");
+		cy.openDesk(`/app/note/${encodeURIComponent(fixture.prefix + "Main")}`);
+		cy.window().then(async (win) => {
+			for (const language of ["ru", "en"]) for (const long of [false, true]) {
+				const reason = long ? "x".repeat(4001) : "<p>&nbsp;</p>";
+				assertError(await post(win, "api.reset_round", {round_id: before.approval_round_id, reason, _lang: language}), expected(language, long));
+				assertError(await post(win, "api.reset_rounds", {round_ids: [before.approval_round_id], reason, _lang: language}), expected(language, long));
+			}
+			const after = await win.frappe.xcall("frappe.client.get", {doctype: "Workflow Task", name: fixture.tasks.Main});
+			expect(after).to.deep.eq(before);
 		});
 	});
 
