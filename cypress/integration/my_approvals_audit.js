@@ -113,6 +113,9 @@ describe("My Approvals audit corrections", () => {
 		cy.window().then(async (win) => {
 			await win.frappe.query_report.set_filter_value("workflow", "stale-workflow");
 			await win.frappe.query_report.set_filter_value("reference_doctype", "Issue");
+			// A card is opened from another Desk page; same-path set_route is a no-op.
+			// Keep this window so the cached report still contains stale filters.
+			await win.frappe.set_route("Form", "Note", fixture.prefix + "Main");
 			const card = await win.frappe.xcall("dinext_common.workflow_approval.api.control_decision_count");
 			expect(card.route_options.completed_since).to.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/);
 			win.frappe.route_options = card.route_options;
