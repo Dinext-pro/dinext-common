@@ -99,5 +99,6 @@ for (const lang of ['ru', 'en', 'ru']) {
   frappe.query_reports['My Approval History'].onload({get_filter: () => filter});
   assert.equal(filter.df.options.find(option => option.value === 'Manual').label, lang === 'ru' ? 'Вручную' : 'Manual');
   assert.equal(filter.get_value(), 'Manual');
+  assert.equal(filter.df.options[0], '', 'blank options must remain scalar for deployed Select controls');
 }
 console.log('history completion filter translates labels and retains canonical values across reuse: PASS');

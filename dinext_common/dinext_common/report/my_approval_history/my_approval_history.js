@@ -9,7 +9,7 @@ frappe.query_reports["My Approval History"] = {
 		filter.df.context = "Approval completion source";
 		filter.df.options = options.map((option) => {
 			const value = typeof option === "string" ? option : option.value;
-			return {value, label: __(value, null, filter.df.context)};
+			return value === "" ? "" : {value, label: __(value, null, filter.df.context)};
 		});
 		filter.refresh();
 		filter.set_input(selected);

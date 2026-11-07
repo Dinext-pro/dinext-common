@@ -173,34 +173,60 @@ describe("My Approvals audit corrections", () => {
 	});
 
 
-	it("localizes the native completion filter and sends canonical Manual after report reuse", {defaultCommandTimeout: 15000}, () => {
+	it("preserves native blank completion options and canonical Manual after report reuse", {defaultCommandTimeout: 15000}, () => {
+		let expectClear = false;
 		cy.intercept("GET", "**/api/method/frappe.desk.query_report.run*", (request) => {
 			const url = new URL(request.url);
-			if (url.searchParams.get("report_name") === "My Approval History" && JSON.parse(url.searchParams.get("filters") || "{}").completion_source === "Manual") request.alias = "canonicalManual";
+			if (url.searchParams.get("report_name") !== "My Approval History") return;
+			const source = JSON.parse(url.searchParams.get("filters") || "{}").completion_source;
+			if (source === "Manual") request.alias = "canonicalManual";
+			if (expectClear && !source) { request.alias = "canonicalBlank"; expectClear = false; }
 		});
 		for (const [user, label] of [[fixture.bob, "Вручную"], [fixture.alice, "Manual"]]) {
 			openReport("My Approval History", user);
-			for (let visit = 0; visit < 2; visit++) {
-				cy.get('[data-fieldname="completion_source"] select option[value="Manual"]').should("have.text", label);
-				cy.get('[data-fieldname="completion_source"] select').select("Bulk");
-				cy.get('[data-fieldname="completion_source"] select').select("Manual").should("have.value", "Manual");
-				cy.wait("@canonicalManual").then(({request, response}) => {
-					expect(response.statusCode).to.eq(200);
-					expect(JSON.parse(new URL(request.url).searchParams.get("filters")).completion_source).to.eq("Manual");
-				});
-				cy.window().should((win) => {
-					expect(win.frappe.query_report.get_filter_value("completion_source")).to.eq("Manual");
-					expect(win.frappe.query_report.data.length).to.be.greaterThan(0);
-					expect(win.frappe.query_report.data.every((row) => row.completion_source === "Manual")).to.eq(true);
-				});
-				if (visit === 0) {
-					cy.window().then((win) => win.frappe.set_route("query-report", "My Approvals"));
-					cy.window().should((win) => expect(win.frappe.query_report.report_name).to.eq("My Approvals"));
+			for (const withBlank of [false, true]) {
+				for (let visit = 0; visit < 2; visit++) {
 					cy.window().then((win) => {
-						win.frappe.route_options = {completion_source: "Manual", ignore_prepared_report: 1};
-						return win.frappe.set_route("query-report", "My Approval History");
+						const report = win.frappe.query_report;
+						const filter = report.get_filter("completion_source");
+						filter.df.options = (withBlank ? "\n" : "") + "Manual\nSigned Link\nBulk\nAutomatic Unchanged";
+						win.frappe.query_reports["My Approval History"].onload(report);
 					});
-					cy.window().should((win) => expect(win.frappe.query_report.report_name).to.eq("My Approval History"));
+					cy.get('[data-fieldname="completion_source"] select').should(($select) => {
+						expect([...$select[0].options].some((option) => option.value === "[object Object]" || option.text === "[object Object]")).to.eq(false);
+						expect([...$select[0].options].some((option) => option.value === "")).to.eq(withBlank);
+					});
+					cy.get('[data-fieldname="completion_source"] select option[value="Manual"]').should("have.text", label);
+					cy.get('[data-fieldname="completion_source"] select').select("Bulk");
+					cy.get('[data-fieldname="completion_source"] select').select("Manual").should("have.value", "Manual");
+					cy.wait("@canonicalManual").then(({request, response}) => {
+						expect(response.statusCode).to.eq(200);
+						expect(JSON.parse(new URL(request.url).searchParams.get("filters")).completion_source).to.eq("Manual");
+					});
+					cy.window().should((win) => {
+						expect(win.frappe.query_report.get_filter_value("completion_source")).to.eq("Manual");
+						expect(win.frappe.query_report.data.length).to.be.greaterThan(0);
+						expect(win.frappe.query_report.data.every((row) => row.completion_source === "Manual")).to.eq(true);
+					});
+					if (withBlank) {
+						cy.then(() => { expectClear = true; });
+						cy.get('[data-fieldname="completion_source"] select').select("").should("have.value", "");
+						cy.wait("@canonicalBlank").then(({request, response}) => {
+							expect(response.statusCode).to.eq(200);
+							const source = JSON.parse(new URL(request.url).searchParams.get("filters")).completion_source;
+							expect(source === "" || source === undefined).to.eq(true);
+						});
+						cy.window().should((win) => expect(win.frappe.query_report.get_filter_value("completion_source")).to.eq(""));
+					}
+					if (visit === 0) {
+						cy.window().then((win) => win.frappe.set_route("query-report", "My Approvals"));
+						cy.window().should((win) => expect(win.frappe.query_report.report_name).to.eq("My Approvals"));
+						cy.window().then((win) => {
+							win.frappe.route_options = {completion_source: "Manual", ignore_prepared_report: 1};
+							return win.frappe.set_route("query-report", "My Approval History");
+						});
+						cy.window().should((win) => expect(win.frappe.query_report.report_name).to.eq("My Approval History"));
+					}
 				}
 			}
 		}
