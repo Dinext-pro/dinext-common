@@ -1,5 +1,5 @@
-.dinext-pending-approvers .section-body {
-	padding: var(--padding-sm) 0;
+.form-message.dinext-pending-approvers {
+	overflow-wrap: anywhere;
 }
 
 .dinext-rebuild-summary {

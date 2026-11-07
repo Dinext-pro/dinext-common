@@ -126,7 +126,7 @@ app_include_css = [
     "/assets/dinext_common/css/common.css",
     "/assets/dinext_common/css/workspace_sidebar_hover.css",
     "/assets/dinext_common/css/dinext-tour.css",
-    "/assets/dinext_common/css/workflow_approval.css?v=20261106",
+    "/assets/dinext_common/css/workflow_approval.css?v=20261107-6",
 ]
 app_include_js = [
     "/assets/dinext_common/js/workspace_slug_redirects.js",
@@ -136,7 +136,7 @@ app_include_js = [
     "/assets/dinext_common/js/dinext-desk.js",
     "/assets/dinext_common/js/dashboard_filters_fix.js",
     "/assets/dinext_common/js/workspace_sidebar_hover.js",
-    "/assets/dinext_common/js/workflow_approval.js?v=20261107-5",
+    "/assets/dinext_common/js/workflow_approval.js?v=20261107-6",
 ]
 
 # Expose site_config flags to Desk bootinfo

@@ -221,6 +221,36 @@
 		$(element)
 			.addClass("dinext-workflow-transition")
 			.attr("data-workflow-style", workflowTransitionStyle(transition));
+
+	const getPendingApproverNames = (rows) => {
+		const byUser = new Map();
+		for (const row of rows || []) {
+			if (!row?.approver || row.approver === frappe.session?.user) continue;
+			if (!byUser.has(row.approver)) {
+				byUser.set(row.approver, String(row.approver_name || row.approver));
+			}
+		}
+		return [...byUser.values()].sort((left, right) => left.localeCompare(right));
+	};
+
+	const paintPendingApprovers = (frm, rows) => {
+		const messages = frm.layout?.message;
+		if (!messages?.length) return;
+		frm.dashboard?.parent?.find(".dinext-pending-approvers").remove();
+		messages.children(".dinext-pending-approvers").remove();
+		const names = getPendingApproverNames(rows).map((name) => frappe.utils.escape_html(name));
+		if (!names.length) {
+			if (!messages.children().length) messages.addClass("hidden");
+			return;
+		}
+		frm.dashboard.add_comment(
+			__("Action expected from: {0}", [frappe.utils.comma_and(names)]),
+			"blue",
+			true
+		);
+		return messages.children(".form-message").last().addClass("dinext-pending-approvers");
+	};
+
 	Object.assign(frappe.dinext, {
 		workflowTransitionStyle,
 		workflowTransitionLabel,
@@ -231,6 +261,8 @@
 		reloadWorkflowForm,
 		captureWorkflowForm,
 		reportWorkflowError,
+		getPendingApproverNames,
+		paintPendingApprovers,
 	});
 
 	const rebuildCleanups = new WeakMap();
@@ -656,23 +688,26 @@
 	const pendingRegistered = new Set();
 	const paintApprovalBanner = async (frm) => {
 		if (!frm || !frm.dashboard?.parent) return;
+		const target = captureWorkflowForm(frm);
+		const generation = (frm._dinext_approval_banner_generation || 0) + 1;
+		frm._dinext_approval_banner_generation = generation;
+		const isCurrent = () => target.isCurrent() &&
+			frm._dinext_approval_banner_generation === generation;
 		const options = {
 			container: frm.page?.wrapper?.find(".page-body").first(),
 			reload: () => frm.reload_doc(),
 		};
 		frappe.dinext.paintRebuildRounds(frm.dashboard, [], options);
+		paintPendingApprovers(frm, []);
 		if (frm.is_new()) return;
-		const requested = frm.doc.name;
-		const generation = (frm._dinext_approval_banner_generation || 0) + 1;
-		frm._dinext_approval_banner_generation = generation;
-		frm.dashboard.parent.find(".dinext-pending-approvers").remove();
 		let banner;
 		try {
-			banner = await frappe.xcall(
+			banner = await workflowRequest(
 				"dinext_common.workflow_approval.api.get_form_approval_banner",
-				{ doctype: frm.doctype, name: requested }
+				{ doctype: frm.doctype, name: target.name }
 			);
 		} catch (error) {
+			if (!isCurrent()) return;
 			console.error(error);
 			frappe.show_alert({
 				message: __("Could not load approval status"),
@@ -680,21 +715,10 @@
 			});
 			return;
 		}
-		if (
-			!banner ||
-			frm.doc?.name !== requested ||
-			frm._dinext_approval_banner_generation !== generation
-		)
-			return;
+		if (!banner || !isCurrent()) return;
 		const rounds = banner.rounds || [];
 		frappe.dinext.paintRebuildRounds(frm.dashboard, rounds, options);
-		if (rounds.length) return;
-		const pending = banner.pending_approvers || [];
-		if (!pending.length) return;
-		const names = [...new Set(pending.map((row) => row.approver_name || row.approver))].sort();
-		const body = names.map((user) => frappe.utils.escape_html(user)).join(", ");
-		frm.dashboard.add_section(body, __("Pending approvers"), "dinext-pending-approvers");
-		frm.dashboard.show();
+		paintPendingApprovers(frm, banner.pending_approvers || []);
 	};
 	const scheduleBanner = (frm, attempt = 0) => {
 		if (!frm) return;
