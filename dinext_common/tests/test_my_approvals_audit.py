@@ -58,3 +58,16 @@ class TestMyApprovalsAudit(unittest.TestCase):
 		self.assertEqual(options["reference_doctype"], "")
 		self.assertEqual(duration._period(options)[0], datetime(2026, 10, 8, 13, 15, 42))
 		self.assertEqual(str(duration._period({"from_date": "2026-10-08", "to_date": "2026-11-07"})[0]), "2026-10-08")
+
+	def test_old_platform_task_lists_fail_closed(self):
+		from frappe.model.db_query import DatabaseQuery
+
+		self.assertTrue(hasattr(permissions, "require_final_task_permission_queries"))
+		for version, method in [(0, lambda *args: ""), (1, None)]:
+			with self.subTest(version=version, method=method), patch.object(
+				DatabaseQuery, "final_permission_query_conditions_version", version, create=True
+			), patch.object(DatabaseQuery, "get_final_permission_query_conditions", method, create=True), patch.object(
+				frappe, "throw", side_effect=frappe.PermissionError
+			), patch.object(frappe, "_", side_effect=lambda text: text):
+				with self.assertRaises(frappe.PermissionError):
+					permissions.require_final_task_permission_queries("Administrator")

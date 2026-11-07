@@ -462,3 +462,4 @@ Bulk,Массовое действие,Approval completion source
 Signed Link,По подписанной ссылке,Approval completion source
 Automatic Unchanged,Автоматически: без изменений,Approval completion source
 Carried,Перенесено,Approval completion source
+Update Dinext Platform to support final permission query conditions before reading Workflow Tasks.,Для просмотра задач согласования обновите Dinext Platform до версии с поддержкой итоговых условий доступа.

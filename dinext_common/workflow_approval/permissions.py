@@ -195,6 +195,21 @@ def has_public_number_card_permission(doc, ptype="read", user=None, debug=False)
 	return None
 
 
+def require_final_task_permission_queries(user: str | None = None) -> str:
+	"""Refuse standard Task lists on platforms that can widen policy via shares."""
+	from frappe import _
+	from frappe.model.db_query import DatabaseQuery
+
+	if getattr(DatabaseQuery, "final_permission_query_conditions_version", 0) < 1 or not callable(
+		getattr(DatabaseQuery, "get_final_permission_query_conditions", None)
+	):
+		frappe.throw(
+			_("Update Dinext Platform to support final permission query conditions before reading Workflow Tasks."),
+			frappe.PermissionError,
+		)
+	return ""
+
+
 def get_workflow_task_permission_query_conditions(user: str | None = None) -> str:
 	"""Narrow standard lists using the same policy as document reads.
 

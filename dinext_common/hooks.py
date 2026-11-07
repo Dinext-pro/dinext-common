@@ -254,6 +254,10 @@ after_migrate = [
 # }
 #
 permission_query_conditions = {
+	"Workflow Task": "dinext_common.workflow_approval.permissions.require_final_task_permission_queries",
+}
+
+final_permission_query_conditions = {
 	"Workflow Task": "dinext_common.workflow_approval.permissions.get_workflow_task_permission_query_conditions",
 }
 

@@ -190,3 +190,12 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 			flags={"ignore_share_permission": True})
 		with self._task_role_constraint():
 			self._assert_denied(self.bob)
+
+	def test_standard_task_list_fails_closed_without_final_platform_capability(self):
+		from frappe.model.db_query import DatabaseQuery
+
+		with patch.object(DatabaseQuery, "final_permission_query_conditions_version", 0, create=True):
+			with self.assertRaises(frappe.PermissionError):
+				self._visible(self.alice)
+			self.assertEqual([row.name for row in frappe.get_all("Workflow Task",
+				filters={"name": self.task.name}, fields=["name"])], [self.task.name])
