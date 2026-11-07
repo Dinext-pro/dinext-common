@@ -120,7 +120,7 @@ class TestRebuildRoundConflict(unittest.TestCase):
 			patch.object(api, "_require_post"),
 			patch.object(api, "_require_system_manager"),
 			patch.object(api.engine, "normalize_comment", return_value="Reason"),
-			patch.object(api, "reset_round", side_effect=[{}, ValueError("Cannot rebuild"), {}]) as reset,
+			patch.object(api, "_reset_round", side_effect=[{}, ValueError("Cannot rebuild"), {}]) as reset,
 			patch.object(api.frappe.db, "commit") as commit,
 			patch.object(api.frappe.db, "rollback") as rollback,
 		):

@@ -465,6 +465,7 @@ def _ensure_personal_report_filters() -> None:
 	for name, fieldname, label, fieldtype in (
 		(QUEUE_SHORTCUT, "created_on", "Created On", "Date"),
 		(HISTORY_SHORTCUT, "completed_since", "Completed Since", "Data"),
+		(DURATION_SHORTCUT, "completed_since", "Completed Since", "Data"),
 	):
 		if not frappe.db.exists("Report", name):
 			continue
@@ -479,6 +480,23 @@ def _ensure_personal_report_filters() -> None:
 			"filters", {"fieldname": fieldname, "label": label, "fieldtype": fieldtype}
 		).db_insert()
 		frappe.clear_document_cache("Report", name)
+
+	_ensure_queue_action_filter()
+
+
+def _ensure_queue_action_filter() -> None:
+	"""The personal queue filter must not require workflow setup read access."""
+	if not frappe.db.exists("Report", QUEUE_SHORTCUT):
+		return
+	report = frappe.get_doc("Report", QUEUE_SHORTCUT)
+	action = next((row for row in report.filters if row.fieldname == "action"), None)
+	if action is None:
+		report.append("filters", {"fieldname": "action", "label": "Action", "fieldtype": "Data"}).db_insert()
+	elif action.fieldtype != "Data" or action.options:
+		frappe.db.set_value("Report Filter", action.name, {"fieldtype": "Data", "options": ""})
+	else:
+		return
+	frappe.clear_document_cache("Report", QUEUE_SHORTCUT)
 
 
 def _ensure_number_card(name: str, label: str, method: str, color: str) -> None:

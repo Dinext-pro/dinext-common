@@ -1,7 +1,7 @@
 """Completed approval duration and open-round charts for monitored workflows."""
 
 from frappe import _
-from frappe.utils import add_days, getdate, now_datetime
+from frappe.utils import add_days, get_datetime, getdate, now_datetime
 
 from dinext_common.workflow_approval.api import (
 	approver_display_names,
@@ -46,12 +46,17 @@ def execute(filters=None):
 	)
 	names = approver_display_names(_approvers(tasks, open_rounds))
 	rows = aggregate_duration(tasks, group_by, names)
+	for row in rows:
+		row["group_type"] = group_by
 	chart_rows = (
 		aggregate_open_groups(open_rounds, group_by, names)
 		if view == "Open rounds"
 		else rows
 	)
-	return get_columns(), rows, None, _translated_chart(duration_chart(chart_rows, view))
+	chart = duration_chart(chart_rows, view)
+	if group_by == "Document Type":
+		chart["data"]["labels"] = [_(label) for label in chart["data"]["labels"]]
+	return get_columns(), rows, None, _translated_chart(chart)
 
 
 def get_columns():
@@ -66,7 +71,11 @@ def get_columns():
 
 def _period(filters):
 	today = getdate(now_datetime())
-	start = getdate(filters.get("from_date") or add_days(today, -30))
+	start = (
+		get_datetime(filters["completed_since"])
+		if filters.get("completed_since")
+		else getdate(filters.get("from_date") or add_days(today, -30))
+	)
 	end = getdate(filters.get("to_date") or today)
 	return start, end
 

@@ -21,6 +21,23 @@ function conceal_workflow_task(frm) {
 frappe.ui.form.on("Workflow Task", {
 	onload: conceal_workflow_task,
 	refresh(frm) {
+		const label = (value, df) => frappe.utils.escape_html(
+			frappe.dinext.approvalValueLabel(value, df?.fieldname)
+		);
+		for (const fieldname of ["status", "round_status", "workflow_state", "completion_source", "action", "finalization_status"]) {
+			if (frm.fields_dict[fieldname]) {
+				frm.set_df_property(fieldname, "formatter", label);
+				frm.refresh_field(fieldname);
+			}
+		}
+		const grid = frm.fields_dict.available_workflow_transitions?.grid;
+		if (grid) {
+			for (const fieldname of ["state", "action", "next_state", "policy", "allowed_role"]) {
+				grid.update_docfield_property(fieldname, "formatter", label);
+			}
+			grid.refresh();
+		}
+
 		if (conceal_workflow_task(frm)) {
 			return;
 		}

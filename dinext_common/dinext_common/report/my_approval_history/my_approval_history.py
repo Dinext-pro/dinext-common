@@ -37,7 +37,7 @@ def _chart(rows):
 			"labels": dates,
 			"datasets": [
 				{
-					"name": _(source),
+					"name": _(source, context="Approval completion source") if source in {"Manual", "Bulk", "Signed Link", "Automatic Unchanged", "Carried"} else _(source),
 					"values": [counts[(date, source)] for date in dates],
 				}
 				for source in sources

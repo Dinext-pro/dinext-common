@@ -155,16 +155,152 @@
 		}
 	};
 
+	const normalizeWorkflowComment = (value) => {
+		// Match policy.normalize_comment: decode entities, strip markup and Cc/Cf,
+		// trim, then count Unicode code points (not UTF-16 units).
+		let text = String(value || "");
+		if (typeof document.createElement === "function") {
+			const decoder = document.createElement("textarea");
+			// Preserve control separators during entity parsing. HTML replaces
+			// literal NUL, so use another removable Cc until the final strip.
+			decoder.innerHTML = text.replace(/\0/g, "\u0001").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+			text = decoder.value;
+		} else {
+			text = text.replace(/&(?:#([xX][0-9a-fA-F]+|[0-9]+);?|(nbsp|lt|gt|quot|apos|amp);)/g,
+				(_, code, key) => {
+					if (!code) return {nbsp: "\u00a0", lt: "<", gt: ">", quot: '"', apos: "'", amp: "&"}[key];
+					const value = code[0].toLowerCase() === "x" ? parseInt(code.slice(1), 16) : Number(code);
+					return value === 0 || value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff)
+						? "\ufffd" : String.fromCodePoint(value);
+				});
+		}
+		return text.replace(/<[^>]*>/g, "").replace(/[\p{Cc}\p{Cf}]/gu, "").trim();
+	};
+
+	const bindWorkflowCommentValidation = (dialog, required = () => true) => {
+		const field = dialog.fields_dict.comment;
+		let submitting = false;
+		const validate = () => {
+			const comment = normalizeWorkflowComment(dialog.get_value("comment"));
+			const valid = (!required() || Boolean(comment)) && [...comment].length <= 4000;
+			if (valid && !submitting) dialog.enable_primary_action();
+			else dialog.disable_primary_action();
+			// Frappe only toggles a CSS class; also disable keyboard activation.
+			dialog.get_primary_btn().prop("disabled", !valid || submitting);
+			return valid;
+		};
+		field.$input.on("input.dinextApproval change.dinextApproval", validate);
+		dialog.$wrapper.on("shown.bs.modal.dinextApproval", () => field.set_focus());
+		validate();
+		return {
+			validate,
+			setSubmitting(value) { submitting = value; validate(); },
+		};
+	};
+
+	const approvalValueLabel = (value, fieldname) =>
+		fieldname === "completion_source"
+			? __(value || "", null, "Approval completion source")
+			: __(value || "");
+
+	const approvalReportFormatter = (value, row, column, data, defaultFormatter) => {
+		const field = column.fieldname;
+		const safe = frappe.utils.escape_html;
+		if (field === "reference_name" && data?.source_deleted_at) return safe(value || "");
+		if (field === "available_actions") {
+			const actions = data?.available_transitions?.map((item) => item.action)
+				|| String(value || "").split(", ");
+			return [...new Set(actions)].map((action) => safe(__(action))).join(", ");
+		}
+		if (field === "progress" && data?.progress_transitions) {
+			return data.progress_transitions.map((transition) =>
+				`${safe(__(transition.action))} ${Number(transition.votes)}/${Number(transition.threshold)}`
+			).join("; ");
+		}
+		if (["action", "status", "round_status", "workflow_state", "reference_doctype", "completion_source"].includes(field)) {
+			return safe(approvalValueLabel(value, field));
+		}
+		if (field === "group_label" && data?.group_type === "Document Type") return safe(__(value));
+		return defaultFormatter(value, row, column, data);
+	};
+
+	const localizeApprovalEvent = (content) => {
+		// Only engine-generated Workflow templates with the expected escaped bold
+		// actor/action structure. User suffixes are preserved, never translated.
+		const safe = frappe.utils.escape_html;
+		const decode = (text) => String(text).replace(/&(amp|lt|gt|quot|apos|#39);/g,
+			(_, key) => ({amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'"})[key]);
+		const vote = String(content || "").match(/^<(strong|b)>([^<>]+)<\/\1> (voted|automatically reused action) <(strong|b)>([^<>]+)<\/\4>(: [^<>]*)?$/);
+		if (vote) {
+			const actor = `<strong>${safe(decode(vote[2]))}</strong>`;
+			const action = `<strong>${safe(__(decode(vote[5])))}</strong>`;
+			const suffix = vote[6] ? safe(decode(vote[6])) : "";
+			return vote[3] === "voted"
+				? __("{0} voted {1}{2}", [actor, action, suffix])
+				: __("{0} automatically reused action {1}", [actor, action]);
+		}
+		const reset = String(content || "").match(/^Approval round reset by <(strong|b)>([^<>]+)<\/\1>: ([^<>]*)$/);
+		if (reset) {
+			const actor = `<strong>${safe(decode(reset[2]))}</strong>`;
+			const details = reset[3].match(/^([\s\S]*?)\. Carried: ([\s\S]*)\. Dropped: ([\s\S]*)\.$/);
+			return details
+				? __("Approval round reset by {0}: {1}. Carried: {2}. Dropped: {3}.",
+					[actor, ...details.slice(1).map((part) => safe(decode(part)))])
+				: __("Approval round reset by {0}: {1}", [actor, safe(decode(reset[3]))]);
+		}
+		const retry = String(content || "").match(/^Approval finalization retried by <(strong|b)>([^<>]+)<\/\1>$/);
+		if (retry) return __("Approval finalization retried by {0}", [`<strong>${safe(decode(retry[2]))}</strong>`]);
+		const fixed = [
+			"Workflow approval is stalled because no action can reach its threshold.",
+			"Workflow finalization failed and requires a manager rebuild.",
+		];
+		return fixed.includes(content) ? safe(__(content)) : null;
+	};
+
+	const localizeApprovalTimeline = (frm) => {
+		const timeline = frm.timeline;
+		if (!timeline || timeline._dinextApprovalEvents) return;
+		const original = timeline.get_workflow_timeline_contents;
+		if (typeof original !== "function") return;
+		timeline._dinextApprovalEvents = true;
+		timeline.get_workflow_timeline_contents = function () {
+			const items = original.call(this);
+			if (cur_frm !== frm) return items;
+			const logs = this.doc_info.workflow_logs || [];
+			return items.map((item, index) => {
+				const content = logs[index]?.content;
+				const localized = localizeApprovalEvent(content);
+				if (localized === null) return item;
+				return {...item, content: item.content.replace(__(content), () => localized)};
+			});
+		};
+		timeline.refresh();
+	};
+
 	const withWorkflowComment = (transition, submit) => {
 		if (workflowBusy) return;
 		if (!(transition.comment_is_required ?? transition.custom_comment_is_required))
 			return submit("");
-		return frappe.prompt(
-			{ fieldname: "comment", fieldtype: "Small Text", label: __("Comment"), reqd: 1 },
-			(values) => submit(values.comment),
-			frappe.utils.escape_html(__("Comment required for {0}", [__(transition.action)])),
-			__("Apply")
-		);
+		let validation;
+		const dialog = new frappe.ui.Dialog({
+			title: frappe.utils.escape_html(__("Comment required for {0}", [__(transition.action)])),
+			fields: [{fieldname: "comment", fieldtype: "Small Text", label: __("Comment"), reqd: 1}],
+			primary_action_label: __("Apply"),
+			async primary_action() {
+				if (!validation.validate()) return;
+				validation.setSubmitting(true);
+				try {
+					const result = await submit(dialog.get_value("comment"));
+					dialog.hide();
+					return result;
+				} finally {
+					validation.setSubmitting(false);
+				}
+			},
+		});
+		validation = bindWorkflowCommentValidation(dialog);
+		dialog.show();
+		return dialog;
 	};
 
 	const knownIcon = (name) => {
@@ -289,6 +425,11 @@
 	};
 
 	Object.assign(frappe.dinext, {
+		normalizeWorkflowComment,
+		bindWorkflowCommentValidation,
+		approvalValueLabel,
+		approvalReportFormatter,
+		localizeApprovalEvent,
 		workflowTransitionStyle,
 		workflowTransitionLabel,
 		decorateWorkflowTransition,
@@ -783,6 +924,10 @@
 			frappe.ui.form.on(doctype, {
 				refresh(frm) {
 					scheduleBanner(frm);
+					localizeApprovalTimeline(frm);
+				},
+				timeline_refresh(frm) {
+					localizeApprovalTimeline(frm);
 				},
 			});
 			if (cur_frm && cur_frm.doctype === doctype && !cur_frm.is_new()) {
