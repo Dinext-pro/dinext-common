@@ -1,5 +1,10 @@
-.form-message.dinext-pending-approvers {
+.form-message.dinext-pending-approvers,
+.form-message.dinext-workflow-comments {
 	overflow-wrap: anywhere;
+}
+
+.dinext-workflow-comment-text {
+	white-space: pre-wrap;
 }
 
 .dinext-rebuild-summary {

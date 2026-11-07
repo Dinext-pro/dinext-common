@@ -12,6 +12,7 @@ from frappe import _
 from frappe.utils import add_days, get_datetime, getdate, now_datetime
 
 from dinext_common.workflow_approval import engine
+from dinext_common.workflow_approval.comments import WorkflowCommentResponse, get_latest_round_comments
 from dinext_common.workflow_approval.pending import (
 	PendingApproverTask,
 	get_required_state_pending_tasks,
@@ -761,6 +762,33 @@ def _active_round_rows(reference_doctype: str, reference_names: list[str]) -> li
 		order_by="creation desc, name desc",
 		limit=100,
 	)
+
+
+@frappe.whitelist()
+def get_workflow_comments(doctype: str, name: str) -> list[WorkflowCommentResponse]:
+	"""Read required comments from the source's most recent decision rounds."""
+	source = frappe.get_doc(doctype, name)
+	source.check_permission("read")
+	if doctype != "User Timesheet":
+		return get_latest_round_comments(doctype, [name])
+	positions = frappe.get_all(
+		"User Timesheet Position", filters={"user_timesheet": name}, pluck="name"
+	)
+	references = [
+		{"reference_doctype": "User Timesheet Position", "reference_name": position}
+		for position in positions
+	]
+	permissions = {}
+	prepare_source_permissions(references, frappe.session.user, permissions)
+	readable = [
+		position for position in positions
+		if (
+			permissions[("User Timesheet Position", position)]
+			if ("User Timesheet Position", position) in permissions
+			else frappe.has_permission("User Timesheet Position", "read", doc=position)
+		)
+	]
+	return get_latest_round_comments("User Timesheet Position", readable)
 
 
 @frappe.whitelist()

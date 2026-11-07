@@ -114,6 +114,8 @@ def _tasks(source, workflow, state, mandatory, optional, *, second=False):
 @whitelist_for_tests
 def cleanup_required_pending_cypress():
 	fixture = frappe.db.get_default(FIXTURE_KEY)
+	leave = frappe.parse_json(fixture or "{}").get("leave")
+	leaves = [leave] if leave and frappe.db.exists("Application For Leave", leave) else []
 	timesheets = frappe.get_all("User Timesheet", filters={"timesheet_from": VIEWER}, pluck="name")
 	positions = (
 		frappe.get_all(
@@ -126,7 +128,9 @@ def cleanup_required_pending_cypress():
 	previous_flag = frappe.flags.get("in_workflow_task_retention")
 	frappe.flags.in_workflow_task_retention = True
 	try:
-		for doctype, names in (("User Timesheet Position", positions), ("Issue", issues)):
+		for doctype, names in (
+			("User Timesheet Position", positions), ("Issue", issues), ("Application For Leave", leaves)
+		):
 			if not names:
 				continue
 			for name in frappe.get_all(
@@ -310,3 +314,91 @@ def set_required_pending_optional(doctype: str, optional: int):
 		"Workflow Document State", {"parent": workflow, "state": state}, "is_optional_state", int(optional)
 	)
 	return {"optional": int(optional)}
+
+
+@whitelist_for_tests
+def set_workflow_comments_cypress(mode: str, doctype: str = "Issue"):
+	"""Record display-only decisions on this suite's own sources."""
+	from frappe.utils import add_to_date, now_datetime
+
+	_assert_flag()
+	fixture = frappe.parse_json(frappe.db.get_default(FIXTURE_KEY) or "null")
+	if not fixture or frappe.session.user not in (VIEWER, "Administrator"):
+		frappe.throw("Only the fixture viewer may edit its comment fixtures", frappe.PermissionError)
+	if doctype not in ("Issue", "User Timesheet Position", "Application For Leave") or mode not in (
+		"empty", "single", "self", "multiple", "mixed", "later", "unsafe",
+	):
+		frappe.throw("Unknown comment fixture")
+	if doctype == "Application For Leave" and not fixture.get("leave"):
+		frappe.throw("No comment leave fixture exists")
+	names = fixture["positions"] if doctype == "User Timesheet Position" else [
+		fixture["issue"] if doctype == "Issue" else fixture["leave"]
+	]
+	marker = "cypress-workflow-comment-banner"
+	previous_flag = frappe.flags.get("in_workflow_task_retention")
+	frappe.flags.in_workflow_task_retention = True
+	try:
+		for task_name in frappe.get_all("Workflow Task", filters={
+			"reference_doctype": doctype, "reference_name": ("in", names), "correlation_id": marker,
+		}, pluck="name"):
+			frappe.delete_doc("Workflow Task", task_name, force=True, ignore_permissions=True)
+	finally:
+		frappe.flags.in_workflow_task_retention = previous_flag
+	if mode == "empty":
+		return {"comments": 0}
+	workflow = ISSUE_WORKFLOW if doctype == "Issue" else POSITION_WORKFLOW
+	state = "Open" if doctype == "Issue" else "Pending Approval"
+	if doctype == "Application For Leave":
+		from frappe.model.workflow import get_workflow_name
+		workflow = get_workflow_name(doctype)
+	for name in names:
+		round_id = frappe.generate_hash(length=40)
+		decisions = [(VIEWER if mode == "self" else REQUIRED, "Correct the dates", True)]
+		if mode in ("multiple", "mixed", "later"):
+			decisions.append((MIXED, "Attach the details", True))
+		if mode == "unsafe":
+			decisions[0] = (REQUIRED, 'First line\n<img src=x onerror="window.commentExecuted=true">' + "long" * 100, True)
+		if mode in ("mixed", "later"):
+			decisions.append((VIEWER, "", False))
+		for index, (actor, text, required) in enumerate(decisions):
+			if mode == "later" and not required:
+				round_id = frappe.generate_hash(length=40)
+			uuid = "comment-required" if required else "without-comment"
+			task_name = _manual_task(
+				doctype=doctype, name=name, workflow=workflow, state=state,
+				approver=actor, round_status="Open", status="Completed", round_id=round_id,
+			)
+			frappe.db.set_value("Workflow Task", task_name, {
+				"correlation_id": marker, "vote_comment": text, "transition_uuid": uuid,
+				"completed_at": add_to_date(now_datetime(), seconds=index - 5),
+				"round_manifest": json.dumps({"transitions": [{
+					"transition_uuid": uuid, "comment_is_required": required,
+				}]}),
+			}, update_modified=False)
+	return {"sources": names}
+
+
+@whitelist_for_tests
+def seed_workflow_comment_leave_cypress():
+	"""Add one isolated leave form for its legacy-adapter regression."""
+	from frappe.model.workflow import get_workflow
+
+	_assert_flag()
+	fixture = seed_required_pending_cypress()
+	_ensure_read_perm("Application For Leave", ROLE)
+	_ensure_permission_condition("AFL_Permissions-1", ROLE)
+	workflow = get_workflow("Application For Leave")
+	leave = frappe.get_doc({
+		"doctype": "Application For Leave", "name": PREFIX + " Leave " + frappe.generate_hash(),
+		"lauser": VIEWER, "alworker": frappe.db.get_value("Worker", {"wuser": VIEWER}, "name"),
+		"altype_of_leave": frappe.db.get_value("Type Of Leave", {}, "name"),
+		"alfrom_date": "2027-01-11", "alto_date": "2027-01-12", "status": "Pending Approval",
+		workflow.workflow_state_field: "Pending Approval",
+	})
+	leave.db_insert()
+	fixture["leave"] = leave.name
+	frappe.db.set_default(FIXTURE_KEY, json.dumps(fixture))
+	_tasks(leave, workflow, "Pending Approval", "Approved", "Editing")
+	set_workflow_comments_cypress("mixed", "Application For Leave")
+	frappe.clear_cache()
+	return fixture

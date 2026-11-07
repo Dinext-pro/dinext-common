@@ -250,6 +250,43 @@
 		);
 		return messages.children(".form-message").last().addClass("dinext-pending-approvers");
 	};
+	const paintWorkflowComments = (frm, rows) => {
+		const messages = frm.layout?.message;
+		if (!messages?.length) return;
+		messages.children(".dinext-workflow-comments").remove();
+		if (!rows?.length) {
+			if (!messages.children().length) messages.addClass("hidden");
+			return;
+		}
+		const escape = (value) => frappe.utils.escape_html(String(value || ""));
+		const showReference = frm.doctype === "User Timesheet" &&
+			new Set(rows.map((row) => row.reference_name)).size > 1;
+		const html = rows.map((row) => {
+			const reference = showReference ? `<strong>${escape(row.reference_name)}</strong> · ` : "";
+			return `<div class="dinext-workflow-comment-row">${reference}<strong>${escape(
+				row.author_name || row.author
+			)}</strong>: <span class="dinext-workflow-comment-text">${escape(row.comment)}</span></div>`;
+		}).join("");
+		frm.dashboard.add_comment(html, "orange", true);
+		return messages.children(".form-message").last().addClass("dinext-workflow-comments");
+	};
+	const refreshWorkflowComments = async (frm) => {
+		if (!frm?.doc) return;
+		const target = captureWorkflowForm(frm);
+		const generation = (frm._dinext_comment_generation || 0) + 1;
+		frm._dinext_comment_generation = generation;
+		const isCurrent = () => target.isCurrent() && frm._dinext_comment_generation === generation;
+		paintWorkflowComments(frm, []);
+		if (frm.is_new() || !target.name) return;
+		try {
+			const rows = await workflowRequest("dinext_common.workflow_approval.api.get_workflow_comments", {
+				doctype: frm.doc.doctype, name: target.name,
+			});
+			if (isCurrent()) paintWorkflowComments(frm, rows || []);
+		} catch (error) {
+			if (isCurrent()) console.error(error);
+		}
+	};
 
 	Object.assign(frappe.dinext, {
 		workflowTransitionStyle,
@@ -263,6 +300,8 @@
 		reportWorkflowError,
 		getPendingApproverNames,
 		paintPendingApprovers,
+		paintWorkflowComments,
+		refreshWorkflowComments,
 	});
 
 	const rebuildCleanups = new WeakMap();
@@ -688,6 +727,7 @@
 	const pendingRegistered = new Set();
 	const paintApprovalBanner = async (frm) => {
 		if (!frm || !frm.dashboard?.parent) return;
+		void refreshWorkflowComments(frm);
 		const target = captureWorkflowForm(frm);
 		const generation = (frm._dinext_approval_banner_generation || 0) + 1;
 		frm._dinext_approval_banner_generation = generation;
