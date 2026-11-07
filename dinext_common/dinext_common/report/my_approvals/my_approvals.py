@@ -18,9 +18,13 @@ def execute(filters=None):
 	for row in rows:
 		manifest = json.loads(row.round_manifest)
 		row.available_actions = ", ".join(
-			transition["action"] for transition in manifest["transitions"]
+			dict.fromkeys(transition["action"] for transition in row.available_transitions)
 		)
-		row.progress = _progress(manifest, completed[row.approval_round_id])
+		row.progress_transitions = [
+			{**transition, "votes": completed[(row.approval_round_id, transition.get("transition_uuid"))]}
+			for transition in manifest["transitions"]
+		]
+		row.progress = _progress(row.progress_transitions)
 		row.age_days = max(0, date_diff(now_datetime(), row.creation))
 	rows = [row for row in rows if _matches(row, filters)]
 	counts = Counter(row.reference_doctype for row in rows)
@@ -38,23 +42,23 @@ def _completed_votes(round_ids: set[str]) -> Counter:
 	if not round_ids:
 		return Counter()
 	return Counter(
-		frappe.get_all(
+		(row.approval_round_id, row.transition_uuid)
+		for row in frappe.get_all(
 			"Workflow Task",
 			filters={
 				"approval_round_id": ("in", tuple(round_ids)),
 				"status": "Completed",
 			},
-			pluck="approval_round_id",
+			fields=["approval_round_id", "transition_uuid"],
 		)
 	)
 
 
-def _progress(manifest: dict, completed: int) -> str:
-	target = min(
-		(int(row["threshold"]) for row in manifest["transitions"]),
-		default=0,
+def _progress(transitions: list[dict]) -> str:
+	return "; ".join(
+		f"{row['action']} {row['votes']}/{int(row['threshold'])}"
+		for row in transitions
 	)
-	return f"{completed}/{target}"
 
 
 def _matches(row, filters) -> bool:
@@ -64,7 +68,8 @@ def _matches(row, filters) -> bool:
 			not filters.reference_doctype
 			or row.reference_doctype == filters.reference_doctype,
 			not filters.workflow_state or row.workflow_state == filters.workflow_state,
-			not filters.action or filters.action in row.available_actions.split(", "),
+			not filters.action
+			or any(transition["action"] == filters.action for transition in row.available_transitions),
 			not filters.minimum_age or row.age_days >= int(filters.minimum_age),
 		)
 	)

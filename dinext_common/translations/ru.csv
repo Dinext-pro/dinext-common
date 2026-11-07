@@ -373,3 +373,113 @@ Workflow email settings migration,Перенос настроек рассылк
 Automatic workflow transition,Автоматический переход процесса,
 Open document,Открыть документ,
 Position,Позиция,
+Workflow state can only be changed through an active Workflow Task,Состояние процесса можно изменить только через действующую задачу согласования
+Workflow approval is stalled for {0},Согласование {0} остановлено
+Specify the transition UUID. More than one workflow action matches.,Укажите UUID перехода: найдено несколько подходящих действий процесса.
+Workflow action is not available for this task,Это действие процесса недоступно для задачи
+Workflow Task does not exist,Задача согласования не существует
+Only the snapshotted approver can complete this task,"Выполнить задачу может только согласующий, указанный в снимке"
+The snapshotted approver is disabled,"Согласующий, указанный в снимке, отключён"
+Workflow Task is no longer active,Задача согласования больше не действует
+The source document has no active Workflow,У исходного документа нет действующего процесса
+The source workflow state has changed,Состояние процесса исходного документа изменилось
+Workflow transition configuration changed,Настройки перехода процесса изменились
+Reached transition has no completed approver,"У перехода, достигшего порога, нет проголосовавшего согласующего"
+Workflow core did not create the expected Submission Queue,Механизм процесса не создал ожидаемую очередь проведения
+Domain transition has no eligible actor,Нет пользователя с правом выполнить переход
+The requested domain transition is not permitted,Запрошенный переход запрещён
+Workflow approval round manifest is invalid,Манифест раунда согласования некорректен
+Workflow transition has no eligible approvers,Нет согласующих с правом выполнить переход
+Source workflow state changed,Состояние процесса исходного документа изменилось
+{0} voted {1}{2},{0} выбрал(а) {1}{2}
+Workflow approval is stalled because no action can reach its threshold.,Согласование остановлено: ни одно действие не может набрать нужное число голосов.
+Workflow core validation rejected the winning transition,"Проверка процесса отклонила переход, набравший нужное число голосов"
+Workflow finalization failed and requires a manager rebuild.,Не удалось завершить согласование. Требуется пересоздание раунда администратором.
+Source content changed,Содержимое исходного документа изменилось
+{0} automatically reused action {1},{0}: действие {1} зачтено автоматически
+Another transition reached its threshold,Другой переход набрал нужное число голосов
+No unique configured domain transition from {0} to {1},Не найден единственный настроенный переход из {0} в {1}
+Workflow Action is no longer open,Действие процесса уже закрыто
+This approval link belongs to another user,Эта ссылка согласования предназначена другому пользователю
+This approval command is expired or was already used.,Срок действия команды согласования истёк или она уже использована.
+The referenced document is no longer available.,Указанный документ больше недоступен.
+Apply workflow action {0}?,Выполнить действие процесса {0}?
+Document was modified after the email was sent.,Документ изменён после отправки письма.
+Pending workflow approvals,Ожидающие согласования
+Workflow digest is {0} bytes; configured maximum is {1},Размер сводки согласований — {0} байт; допустимый максимум — {1}
+Workflow approval for {0},Согласование {0}
+Finalizing round no longer has a reached transition,В завершаемом раунде больше нет перехода с нужным числом голосов
+Source document was deleted during finalization,Исходный документ удалён во время завершения согласования
+none,нет
+This workflow operation requires POST,Для этой операции процесса требуется POST-запрос
+System Manager role is required,Требуется роль системного администратора
+No unique active Workflow Task is available for this action,Для этого действия не найдена единственная действующая задача согласования
+A persisted source document is required,Сначала сохраните исходный документ
+Bulk approval supports at most 500 documents,За один раз можно согласовать не более 500 документов
+Bulk approval payload is too large,Объём данных массового согласования слишком велик
+Bulk approval supports at most 500 tasks,За один раз можно обработать не более 500 задач согласования
+Bulk approval only supports up to 500 documents.,За один раз можно согласовать не более 500 документов.
+Expected a source type and a list of document names,Укажите тип исходных документов и список их имён
+Approval round does not exist,Раунд согласования не существует
+Approval round cannot be reset,Этот раунд согласования нельзя пересоздать
+{0} Reset by {1}: {2},{0} Пересоздал(а) {1}: {2}
+Finalization is not failed,Завершение согласования не находится в состоянии ошибки
+"Card filters require doc, state, and route","Для фильтров карточки требуются doc, state и route"
+Expected a JSON list,Ожидается список в формате JSON
+Each bulk item must be an object,Каждый элемент массовой операции должен быть объектом
+Task and transition are required,Укажите задачу и переход
+No active Workflow Task,Нет действующей задачи согласования
+Approval round reset by {0}: {1},Раунд согласования пересоздал(а) {0}: {1}
+Approval finalization retried by {0},Повторное завершение согласования запустил(а) {0}
+The workflow item could not be processed,Не удалось обработать элемент процесса
+Stalled,Остановлен
+Conflicted,Конфликт
+Pending Approver,Ожидаемый согласующий
+Minimum Age (hours),Минимальное время ожидания (часы)
+Signed Link,По подписанной ссылке
+Bulk,Массовое действие
+Automatic Unchanged,Автоматически: без изменений
+Finalizing,Завершается
+Transitioned,Переход выполнен
+Finalization Status,Статус завершения
+Not Required,Не требуется
+Approval Round ID,Идентификатор раунда согласования
+Source Snapshot,Снимок исходного документа
+Source Created At,Дата создания исходного документа
+Source Title,Заголовок исходного документа
+Source Owner,Автор исходного документа
+Source Deleted At,Дата удаления исходного документа
+Transition Semantic Hash,Хеш настроек перехода
+Approval Policy,Правило согласования
+Any,Любой
+Required Approvals,Требуемое число согласований
+Carried,Перенесено
+Reused From Workflow Task,Исходная задача повторно зачтённого решения
+Cancelled At,Дата отмены
+Cancellation Reason,Причина отмены
+Content Fingerprint,Отпечаток содержимого
+Entry Fingerprint,Отпечаток при входе
+Entry Fingerprint Version,Версия отпечатка при входе
+Content Fingerprint Version,Версия отпечатка содержимого
+Technical,Технические данные
+Round Manifest,Манифест раунда
+Failure Metadata,Сведения об ошибке
+Correlation ID,Идентификатор связи
+All Users,Все пользователи
+Transition Row,Строка перехода
+Allowed Role,Разрешённая роль
+Comment Is Required,Комментарий обязателен
+Auto Complete Unchanged,Автозачёт без изменений
+Eligible Approvers,Допущенные согласующие
+Workflow Task can only be created by the approval engine,Задачу согласования может создать только механизм согласования
+Workflow Task is an immutable approval audit record,Задача согласования — неизменяемая запись журнала согласования
+Workflow Task can only be deleted by configured retention,Задачу согласования можно удалить только по настроенным правилам хранения
+A comment is required for this workflow action,Для этого действия процесса требуется комментарий
+Workflow comments cannot exceed 4000 characters,Комментарий процесса не может превышать 4000 символов
+Manual,Вручную,Approval completion source
+Bulk,Массовое действие,Approval completion source
+Signed Link,По подписанной ссылке,Approval completion source
+Automatic Unchanged,Автоматически: без изменений,Approval completion source
+Carried,Перенесено,Approval completion source
+Update Dinext Platform to support final permission query conditions before reading Workflow Tasks.,Для просмотра задач согласования обновите Dinext Platform до версии с поддержкой итоговых условий доступа.
+Workflow comments cannot exceed {0} characters,Комментарий процесса не может превышать {0} символов

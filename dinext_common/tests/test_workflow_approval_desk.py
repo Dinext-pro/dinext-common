@@ -317,8 +317,9 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 			workflow="W",
 			workflow_state="Open",
 			creation=created,
+			available_transitions=[{"action": "Approve", "transition_uuid": "approve"}],
 			round_manifest=json.dumps(
-				{"transitions": [{"action": "Approve", "threshold": 2}]}
+				{"transitions": [{"action": "Approve", "transition_uuid": "approve", "threshold": 2}]}
 			),
 		)
 		with (
@@ -328,12 +329,12 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 			),
 			patch(
 				"dinext_common.dinext_common.report.my_approvals.my_approvals._completed_votes",
-				return_value={("ROUND-1"): 0},
+				return_value={("ROUND-1", "approve"): 0},
 			),
 		):
 			_columns, rows, _message, _chart = execute({})
 		self.assertEqual(rows[0].available_actions, "Approve")
-		self.assertEqual(rows[0].progress, "0/2")
+		self.assertEqual(rows[0].progress, "Approve 0/2")
 
 
 class TestWorkflowApprovalDesk(FrappeTestCase):
@@ -383,6 +384,20 @@ class TestWorkflowApprovalDesk(FrappeTestCase):
 				frappe.db.set_value("Workflow", name, "is_active", 1, update_modified=False)
 		frappe.clear_cache(doctype="Issue")
 		super().tearDown()
+
+	def test_required_comment_nested_entities_are_normalized_once(self):
+		user = self._user("desk-nested-entities@example.com")
+		self._workflow("_Test Desk Nested Entities", [self._transition(
+			"_Test Desk Approve Nested", "Closed", policy="Any",
+			uuid="_test-desk-nested", comment_required=1,
+		)])
+		source = self._issue("Nested entities comment")
+		task = self._tasks(source.name)[0]
+		frappe.set_user(user)
+		engine.cast_vote(task.name, transition_uuid="_test-desk-nested",
+			comment="&amp;lt;b&amp;gt;&amp;lt;/b&amp;gt;", request_id="desk-nested-comment")
+		self.assertEqual(frappe.db.get_value("Workflow Task", task.name, "vote_comment"), "&lt;b&gt;&lt;/b&gt;")
+		self.assertEqual(frappe.db.get_value("Workflow Task", task.name, "status"), "Completed")
 
 	def test_all_policy_threshold_counts_both_eligible_approvers(self):
 		users = [self._user(f"desk-all-{index}@example.com") for index in (1, 2)]

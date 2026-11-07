@@ -13,6 +13,7 @@ from frappe.utils import add_days, get_datetime, getdate, now_datetime
 
 from dinext_common.workflow_approval import engine
 from dinext_common.workflow_approval.comments import WorkflowCommentResponse, get_latest_round_comments
+from dinext_common.workflow_approval.validation import discard_collected_comment_messages
 from dinext_common.workflow_approval.pending import (
 	PendingApproverTask,
 	get_required_state_pending_tasks,
@@ -263,6 +264,7 @@ def bulk_vote(
 	for index, name in enumerate(docnames, 1):
 		if not track_progress:
 			show_progress(docnames, _("Applying: {0}").format(action), index, name)
+		message_count = len(frappe.local.message_log or [])
 		try:
 			vote_result = _vote_source_action(
 				doctype,
@@ -277,6 +279,7 @@ def bulk_vote(
 			result["succeeded"].append({"name": name, "result": vote_result})
 		except Exception as exc:
 			frappe.db.rollback()
+			discard_collected_comment_messages(exc, message_count)
 			redacted = isinstance(
 				exc,
 				(frappe.DoesNotExistError, frappe.PermissionError),
@@ -325,6 +328,7 @@ def bulk_task_vote(
 
 	result: dict[str, list[dict[str, Any]]] = {"succeeded": [], "failed": []}
 	for index, ((task_name, transition_uuid), item) in enumerate(deduplicated.items()):
+		message_count = len(frappe.local.message_log or [])
 		try:
 			vote_result = engine.cast_vote(
 				task_name,
@@ -340,6 +344,7 @@ def bulk_task_vote(
 			frappe.db.commit()
 		except Exception as exc:
 			frappe.db.rollback()
+			discard_collected_comment_messages(exc, message_count)
 			redacted = isinstance(
 				exc,
 				(frappe.DoesNotExistError, frappe.PermissionError),
@@ -960,6 +965,12 @@ def reset_round(round_id: str, reason: object) -> dict[str, Any]:
 	_require_post()
 	_require_system_manager()
 	normalized_reason = engine.normalize_comment(reason, required=True)
+	return _reset_round(round_id, normalized_reason)
+
+
+def _reset_round(round_id: str, normalized_reason: str) -> dict[str, Any]:
+	"""Reset one round after the public entrypoint normalized the reason."""
+	_require_system_manager()
 	task_names = engine._round_task_names(round_id)
 	if not task_names:
 		raise frappe.DoesNotExistError(_("Approval round does not exist"))
@@ -983,7 +994,7 @@ def reset_round(round_id: str, reason: object) -> dict[str, Any]:
 		source.add_comment(
 			"Workflow",
 			_("Approval round reset by {0}: {1}. Carried: {2}. Dropped: {3}.").format(
-				frappe.bold(frappe.session.user),
+				frappe.bold(frappe.utils.escape_html(frappe.session.user)),
 				frappe.utils.escape_html(normalized_reason),
 				_vote_audit(rebuilt["carried"]),
 				_vote_audit(rebuilt["dropped"]),
@@ -994,8 +1005,8 @@ def reset_round(round_id: str, reason: object) -> dict[str, Any]:
 	source.add_comment(
 		"Workflow",
 		_("Approval round reset by {0}: {1}").format(
-			frappe.bold(frappe.session.user),
-			normalized_reason,
+			frappe.bold(frappe.utils.escape_html(frappe.session.user)),
+			frappe.utils.escape_html(normalized_reason),
 		),
 	)
 	return {
@@ -1026,7 +1037,7 @@ def reset_rounds(round_ids: str | list[str], reason: object) -> RebuildRoundsRes
 	result: RebuildRoundsResult = {"succeeded": [], "failed": []}
 	for round_id in identifiers:
 		try:
-			reset_round(round_id, normalized_reason)
+			_reset_round(round_id, normalized_reason)
 			frappe.db.commit()
 			result["succeeded"].append(round_id)
 		except Exception as exc:
@@ -1038,8 +1049,8 @@ def reset_rounds(round_ids: str | list[str], reason: object) -> RebuildRoundsRes
 def _vote_audit(votes: list[object]) -> str:
 	labels = [
 		_("{0} voted {1}").format(
-			getattr(vote, "approver", None) or vote.get("approver"),
-			getattr(vote, "action", None) or vote.get("action"),
+			frappe.utils.escape_html(getattr(vote, "approver", None) or vote.get("approver")),
+			frappe.utils.escape_html(_(getattr(vote, "action", None) or vote.get("action"))),
 		)
 		for vote in votes
 	]
@@ -1070,7 +1081,7 @@ def retry_finalization(round_id: str) -> dict[str, Any]:
 	source.add_comment(
 		"Workflow",
 		_("Approval finalization retried by {0}").format(
-			frappe.bold(frappe.session.user)
+			frappe.bold(frappe.utils.escape_html(frappe.session.user))
 		),
 	)
 	from dinext_common.workflow_approval.finalization import repair_round
@@ -1210,7 +1221,10 @@ def control_decision_count() -> dict[str, Any]:
 		manual_total(rows),
 		"Approval Duration",
 		{
-			"from_date": str(getdate(since)),
+			"completed_since": str(since),
+			"from_date": "",
+			"workflow": "",
+			"reference_doctype": "",
 			"to_date": str(getdate(now_datetime())),
 			"group_by": "Document Type",
 			"chart": "Completed duration",

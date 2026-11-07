@@ -257,7 +257,16 @@ after_migrate = [
 # 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
 # }
 #
+permission_query_conditions = {
+	"Workflow Task": "dinext_common.workflow_approval.permissions.require_final_task_permission_queries",
+}
+
+final_permission_query_conditions = {
+	"Workflow Task": "dinext_common.workflow_approval.permissions.get_workflow_task_permission_query_conditions",
+}
+
 has_permission = {
+	"Workflow Task": "dinext_common.workflow_approval.permissions.has_workflow_task_permission",
 	"Dinext Workspace Settings": (
 		"dinext_common.dinext_common.doctype.dinext_workspace_settings"
 		".dinext_workspace_settings.has_permission"
