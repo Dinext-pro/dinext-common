@@ -61,19 +61,22 @@ def cleanup():
 	return {"cleaned": True}
 
 
-def _grant_report_read():
+def _grant_fixture_read(doctype):
 	# Extend the existing layer: the first Custom DocPerm would replace all
-	# standard Report permissions rather than adding this fixture role.
-	permission_type = "Custom DocPerm" if frappe.db.exists("Custom DocPerm", {"parent": "Report"}) else "DocPerm"
-	frappe.get_doc({"doctype": permission_type, "parent": "Report", "parenttype": "DocType",
+	# standard permissions rather than adding this fixture role.
+	rules = frappe.get_all("DocType Permission", filters={"ref_doctype": doctype},
+		or_filters=[["testing", "=", 1], ["docstatus", "=", 1]], pluck="name")
+	if doctype == "Kanban Board" and not rules:
+		raise AssertionError("The isolated fixture requires an existing active Kanban Board row-permission rule")
+	permission_type = "Custom DocPerm" if frappe.db.exists("Custom DocPerm", {"parent": doctype}) else "DocPerm"
+	frappe.get_doc({"doctype": permission_type, "parent": doctype, "parenttype": "DocType",
 		"parentfield": "permissions", "role": READER_ROLE, "permlevel": 0, "read": 1}).db_insert()
-	report = frappe.qb.DocType("Report")
-	condition = report.name.isin(REPORTS).get_sql()
-	for rule in frappe.get_all("DocType Permission", filters={"ref_doctype": "Report"}, pluck="name"):
+	condition = frappe.qb.DocType("Report").name.isin(REPORTS).get_sql() if doctype == "Report" else "1=0"
+	for rule in rules:
 		frappe.get_doc({"doctype": "DocType Permission Condition", "parent": rule,
 			"parenttype": "DocType Permission", "parentfield": "conditions", "role": READER_ROLE,
 			"perm_level": "Full Access", "script": f"conditions = {condition!r}"}).db_insert()
-	frappe.clear_cache(doctype="Report")
+	frappe.clear_cache(doctype=doctype)
 	frappe.cache.delete_value("doctype_permission_map")
 
 
@@ -86,7 +89,8 @@ def seed():
 		frappe.db.set_value("Workflow", name, "is_active", 0)
 	for role in (ROLE, REJECT_ROLE, MONITOR_ROLE, READER_ROLE):
 		_ensure_role(role)
-	_grant_report_read()
+	for doctype in ("Report", "Kanban Board"):
+		_grant_fixture_read(doctype)
 	for user, roles, language in [(ALICE, [ROLE], "en"), (BOB, [ROLE, REJECT_ROLE, MONITOR_ROLE], "ru"), (MONITOR, [MONITOR_ROLE], "ru")]:
 		_ensure_user(user, user.split("@")[0], ["Desk User", READER_ROLE, *roles])
 		frappe.db.set_value("User", user, "language", language)
@@ -143,6 +147,8 @@ def seed():
 				frappe.get_doc("Report", name).check_permission("read")
 			if frappe.has_permission("Workflow Action Master", ptype="read"):
 				raise AssertionError("The fixture must exercise action filters without workflow setup read")
+			if not frappe.has_permission("Kanban Board", ptype="read") or frappe.get_list("Kanban Board", fields=["name"], limit_page_length=1):
+				raise AssertionError("The fixture needs Kanban metadata read with no readable board rows")
 	finally:
 		frappe.set_user("Administrator")
 	frappe.db.commit()

@@ -2,15 +2,25 @@ const commentCases = require("../../dinext_common/tests/fixtures/approval_commen
 
 describe("My Approvals audit corrections", () => {
 	let fixture;
+	let reportRequest = 0;
 	before(() => cy.task("approvalAuditSeed").then((data) => { fixture = data; }));
 	after(() => cy.task("approvalAuditCleanup"));
 
 	function openReport(name, user = fixture.alice) {
+		const alias = `readyReport${++reportRequest}`;
 		cy.login(user, fixture.password);
+		cy.intercept({method: "GET", pathname: "/api/method/frappe.desk.query_report.run", query: {report_name: name}}).as(alias);
 		cy.openDesk(`/app/query-report/${encodeURIComponent(name)}`);
-		cy.window().should((win) => {
-			expect(win.frappe.query_report.report_name).to.eq(name);
-			expect(win.frappe.query_report.data).to.be.an("array");
+		cy.wait(`@${alias}`).then(({response}) => {
+			expect(response.statusCode).to.eq(200);
+			const expected = response.body.message.result;
+			cy.window().should((win) => {
+				const report = win.frappe.query_report;
+				expect(report.report_name).to.eq(name);
+				expect(report.raw_data?.result).to.deep.eq(expected);
+				expect(report.data).to.have.length(expected.length);
+				if (expected.length) expect(report.datatable).to.be.ok;
+			});
 		});
 	}
 
@@ -86,7 +96,7 @@ describe("My Approvals audit corrections", () => {
 			expect(report.chart.data.datasets.map((set) => set.name)).to.include("Вручную");
 		});
 		for (const name of ["My Approvals", "Approval Monitoring", "Approval Load", "Approval Duration"]) {
-			cy.openDesk(`/app/query-report/${encodeURIComponent(name)}`);
+			openReport(name, fixture.bob);
 			cy.window().should((win) => {
 				const report = win.frappe.query_report;
 				expect(report.report_name).to.eq(name);
@@ -118,8 +128,7 @@ describe("My Approvals audit corrections", () => {
 	});
 
 	it("commits the permitted bulk item and preserves the denied item's audit record", () => {
-		cy.login(fixture.alice, fixture.password);
-		cy.openDesk("/app/query-report/My%20Approvals");
+		openReport("My Approvals");
 		cy.window().then(async (win) => {
 			const result = await win.frappe.xcall("dinext_common.workflow_approval.api.bulk_task_vote", {
 				items: [fixture.tasks.Main, fixture.tasks.Denied].map((name) => ({task_name: name, transition_uuid: fixture.transition_uuid, action: "Approve"})),
