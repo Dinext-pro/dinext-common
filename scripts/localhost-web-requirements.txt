@@ -1,0 +1,6 @@
+# Optional dependencies for the localhost Gunicorn worker profile.
+gunicorn==23.0.0
+gevent==25.9.1
+zope.event==6.2
+zope.interface==8.7
+watchdog[watchmedo]==6.0.0
