@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from typing import Any, TypedDict
+from uuid import uuid4
 
 import frappe
 from frappe import _
@@ -72,6 +73,9 @@ MONITORED_TASK_FIELDS = (
 	"completion_source",
 )
 PERSONAL_TASK_ORDER = "modified desc, name asc"
+BULK_VOTE_METHOD = "dinext_common.workflow_approval.api.bulk_vote"
+BULK_PROGRESS_EVENT = "dinext_workflow_progress"
+MAX_BULK_DOCUMENTS = 500
 
 
 def _require_post() -> None:
@@ -108,6 +112,8 @@ def _find_task_for_action(
 	action: str,
 	user: str,
 	transition_uuid: str | None = None,
+	*,
+	require_unique_task: bool = False,
 ) -> str:
 	task_names = frappe.get_all(
 		"Workflow Task",
@@ -122,6 +128,10 @@ def _find_task_for_action(
 		order_by="creation desc, name asc",
 		limit=2,
 	)
+	if require_unique_task and len(task_names) != 1:
+		raise engine.WorkflowApprovalConflictError(
+			_("No unique active Workflow Task is available for this action")
+		)
 	child_filters: dict[str, Any] = {"parent": None}
 	if transition_uuid:
 		child_filters = {"transition_uuid": transition_uuid}
@@ -158,6 +168,7 @@ def _vote_source_action(
 		action,
 		frappe.session.user,
 		transition_uuid=transition_uuid,
+		require_unique_task=completion_source == "Bulk",
 	)
 	return engine.cast_vote(
 		task_name,
@@ -217,6 +228,16 @@ def apply_workflow(
 	)
 
 
+def publish_workflow_progress(request_id: str, count: int, total: int) -> None:
+	from frappe.realtime import get_user_room
+
+	frappe.publish_realtime(
+		BULK_PROGRESS_EVENT,
+		{"request_id": request_id, "count": count, "total": total},
+		room=get_user_room(frappe.session.user),
+	)
+
+
 @frappe.whitelist(methods=["POST"])
 def bulk_vote(
 	doctype: str,
@@ -225,17 +246,21 @@ def bulk_vote(
 	comment: object = None,
 	request_id: str | None = None,
 	transition_uuid: str | None = None,
+	track_progress: bool = False,
 ) -> dict[str, list[dict[str, Any]]]:
-	"""Process each source under a savepoint and return itemized outcomes."""
+	"""Commit each successful vote and return itemized outcomes."""
+	from frappe.model.workflow import show_progress
+
 	_require_post()
 	docnames = list(dict.fromkeys(str(name) for name in _as_list(names)))
-	if len(docnames) > 500:
+	if len(docnames) > MAX_BULK_DOCUMENTS:
 		raise frappe.ValidationError(_("Bulk approval supports at most 500 documents"))
+	track_progress = str(track_progress).lower() in {"1", "true"}
+	report_progress = track_progress and bool(request_id) and len(docnames) > 1
 	result: dict[str, list[dict[str, Any]]] = {"succeeded": [], "failed": []}
-	for index, name in enumerate(docnames):
-		from frappe.model.workflow import show_progress
-
-		show_progress(docnames, _("Applying: {0}").format(action), index + 1, name)
+	for index, name in enumerate(docnames, 1):
+		if not track_progress:
+			show_progress(docnames, _("Applying: {0}").format(action), index, name)
 		try:
 			vote_result = _vote_source_action(
 				doctype,
@@ -246,8 +271,8 @@ def bulk_vote(
 				request_id=f"{request_id}:{name}" if request_id else None,
 				completion_source="Bulk",
 			)
-			result["succeeded"].append({"name": name, "result": vote_result})
 			frappe.db.commit()
+			result["succeeded"].append({"name": name, "result": vote_result})
 		except Exception as exc:
 			frappe.db.rollback()
 			redacted = isinstance(
@@ -269,6 +294,8 @@ def bulk_vote(
 					),
 				}
 			)
+		if report_progress:
+			publish_workflow_progress(request_id, index, len(docnames))
 	return result
 
 
@@ -341,46 +368,69 @@ def bulk_workflow_approval(
 	comment: object = None,
 	request_id: str | None = None,
 	transition_uuid: str | None = None,
-) -> None:
-	"""Compatibility override for the standard Frappe bulk method."""
+	track_progress: bool = False,
+) -> dict[str, Any] | None:
+	"""Apply a small selection inline or return its background job token."""
 	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
 
 	if not is_engine_enabled():
 		from frappe.model.workflow import bulk_workflow_approval as core_bulk_workflow_approval
 
 		return core_bulk_workflow_approval(docnames, doctype, action)
-	names = [str(name) for name in _as_list(docnames)]
+	names = list(dict.fromkeys(str(name) for name in _as_list(docnames)))
+	if len(names) > MAX_BULK_DOCUMENTS:
+		frappe.throw(
+			_("Bulk approval only supports up to 500 documents."),
+			title=_("Too Many Documents"),
+		)
+	track_progress = str(track_progress).lower() in {"1", "true"}
+	args = {
+		"doctype": doctype,
+		"names": names,
+		"action": action,
+		"comment": comment,
+		"request_id": request_id,
+		"transition_uuid": transition_uuid,
+		"track_progress": track_progress,
+	}
 	if len(names) < 20:
-		bulk_vote(
-			doctype,
-			names,
-			action,
-			comment,
-			request_id,
-			transition_uuid=transition_uuid,
-		)
-		return None
-	if len(names) <= 500:
-		frappe.msgprint(
-			_("Bulk {0} is enqueued in background.").format(action),
-			alert=True,
-		)
-		frappe.enqueue(
-			bulk_vote,
-			doctype=doctype,
-			names=names,
-			action=action,
-			comment=comment,
-			request_id=request_id,
-			transition_uuid=transition_uuid,
-			queue="short",
-			timeout=1000,
-		)
-		return None
-	frappe.throw(
-		_("Bulk approval only supports up to 500 documents."),
-		title=_("Too Many Documents"),
-	)
+		return bulk_vote(**args)
+
+	job_id = uuid4().hex
+	job = frappe.enqueue(BULK_VOTE_METHOD, queue="short", timeout=1000, job_id=job_id, **args)
+	if isinstance(job, dict):
+		# Frappe can execute inline when the queue is unavailable during migration.
+		return job
+	if not track_progress:
+		frappe.msgprint(_("Bulk {0} is enqueued in background.").format(action), alert=True)
+	return {"job_id": job_id}
+
+
+@frappe.whitelist()
+def get_bulk_workflow_job(job_id: str) -> dict[str, Any]:
+	"""Expose only the requesting user's bulk approval result on this site."""
+	from frappe.utils.background_jobs import get_job
+
+	if len(job_id) != 32 or any(char not in "0123456789abcdef" for char in job_id):
+		return {"status": "unavailable"}
+	job = get_job(job_id)
+	if (
+		not job
+		or job.kwargs.get("method") != BULK_VOTE_METHOD
+		or job.kwargs.get("user") != frappe.session.user
+		or job.kwargs.get("site") != frappe.local.site
+	):
+		return {"status": "unavailable"}
+
+	status = job.get_status()
+	if status == "finished":
+		result = job.return_value()
+		if isinstance(result, dict):
+			return {"status": "finished", "result": result}
+		return {"status": "unavailable"}
+	if status in {"failed", "stopped", "canceled"}:
+		return {"status": "failed"}
+	return {"status": "pending"}
 
 
 def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monitored_only=False):
@@ -415,19 +465,12 @@ def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monit
 		start += page_size
 
 
-def _filtered_tasks(filters, *, limit=None, include_transitions=False, predicate=None, fields=QUEUE_FIELDS):
-	rows = _select_task_rows(
-		filters, fields=fields, order_by=PERSONAL_TASK_ORDER, limit=limit, predicate=predicate
-	)
-	if not include_transitions:
-		return [frappe._dict({field: row.get(field) for field in fields}) for row in rows]
-	if not rows:
-		return []
+def _available_task_transitions(task_names: list[str]) -> dict[str, list[dict[str, Any]]]:
 	transitions = defaultdict(list)
 	for child in frappe.get_all(
 		"Available Workflow Transitions",
 		filters={
-			"parent": ("in", [row["name"] for row in rows]),
+			"parent": ("in", task_names),
 			"parenttype": "Workflow Task",
 			"parentfield": "available_workflow_transitions",
 		},
@@ -444,6 +487,18 @@ def _filtered_tasks(filters, *, limit=None, include_transitions=False, predicate
 				"comment_is_required": bool(child.comment_is_required),
 			}
 		)
+	return transitions
+
+
+def _filtered_tasks(filters, *, limit=None, include_transitions=False, predicate=None, fields=QUEUE_FIELDS):
+	rows = _select_task_rows(
+		filters, fields=fields, order_by=PERSONAL_TASK_ORDER, limit=limit, predicate=predicate
+	)
+	if not include_transitions:
+		return [frappe._dict({field: row.get(field) for field in fields}) for row in rows]
+	if not rows:
+		return []
+	transitions = _available_task_transitions([row["name"] for row in rows])
 	return [
 		frappe._dict(
 			{field: row.get(field) for field in QUEUE_FIELDS},
@@ -783,6 +838,62 @@ def get_transitions(
 		}
 		for row in task.available_workflow_transitions
 	]
+
+
+@frappe.whitelist()
+def get_common_list_transitions(doctype: str, names: str | list[str]) -> list[dict[str, Any]]:
+	"""Return the caller's unambiguous transitions across the exact checked selection."""
+	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
+
+	if not is_engine_enabled():
+		return []
+	docnames = list(dict.fromkeys(_as_list(names)))
+	if not docnames:
+		return []
+	if len(docnames) > MAX_BULK_DOCUMENTS:
+		raise frappe.ValidationError(_("Bulk approval supports at most 500 documents"))
+
+	rows = _select_task_rows(
+		{
+			"approver": frappe.session.user,
+			"reference_doctype": doctype,
+			"reference_name": ("in", docnames),
+			"round_status": "Open",
+			"status": "Working",
+			"source_deleted_at": ("is", "not set"),
+		},
+		fields=["name", "reference_name"],
+		order_by="name asc",
+		limit=None,
+	)
+	task_by_source = {row.reference_name: row.name for row in rows}
+	if len(rows) != len(docnames) or len(task_by_source) != len(docnames):
+		return []
+
+	transitions = _available_task_transitions([task_by_source[name] for name in docnames])
+	common = None
+	for name in docnames:
+		by_uuid = {}
+		for row in transitions[task_by_source[name]]:
+			uuid = row["transition_uuid"]
+			if uuid and row["action"] and row["next_state"]:
+				by_uuid[uuid] = row if uuid not in by_uuid else None
+		if common is None:
+			common = {uuid: row for uuid, row in by_uuid.items() if row}
+		else:
+			for uuid, row in list(common.items()):
+				candidate = by_uuid.get(uuid)
+				if (
+					not candidate
+					or row["action"] != candidate["action"]
+					or row["next_state"] != candidate["next_state"]
+				):
+					del common[uuid]
+				else:
+					row["comment_is_required"] |= candidate["comment_is_required"]
+		if not common:
+			return []
+	return list(common.values())
 
 
 @frappe.whitelist()

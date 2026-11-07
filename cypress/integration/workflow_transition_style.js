@@ -104,6 +104,58 @@ context("Workflow destination styles", { viewportWidth: 1280, viewportHeight: 72
 		cy.screenshot("workflow-list-light");
 	});
 
+	it("keeps standard list actions available while looking up the checked documents", () => {
+		cy.login();
+		cy.intercept(
+			"POST",
+			"**/api/method/dinext_common.workflow_approval.api.get_common_list_transitions",
+			(request) => {
+				request.continue((response) => response.setDelay(1000));
+			}
+		).as("commonListTransitions");
+		cy.visit("/app/workflow-style-fixture");
+		cy.get(".list-row-checkbox").first().check({ force: true });
+		const group = ".page-container:visible .actions-btn-group";
+		cy.get(`${group} > button`).click();
+		cy.get(`${group} .dinext-workflow-menu-status`).should("be.visible");
+		cy.get(`${group} .dropdown-item:visible`).should("have.length.greaterThan", 0);
+		cy.get(`${group} .dinext-workflow-transition`).should("not.exist");
+		cy.wait("@commonListTransitions");
+		checkColor("Style approve", "success");
+		checkColor("Style reject", "danger");
+		cy.get(`${group} > button`).click();
+		cy.get(`${group} .dinext-workflow-transition`).should("not.exist");
+	});
+
+	it("locks the Workflow form until reload and finishes quietly for one document", () => {
+		cy.login();
+		let requests = 0;
+		cy.intercept("POST", "**/api/method/frappe.model.workflow.apply_workflow", (request) => {
+			requests += 1;
+			request.reply({ delay: 800, body: { message: { status: "Completed" } } });
+		}).as("styleVote");
+		cy.visit(formPath());
+		cy.get(".page-container:visible .actions-btn-group > button").click();
+		const action = ".page-container:visible .actions-btn-group .dinext-workflow-transition";
+		cy.contains(action, "Style approve").click();
+		cy.get('.page-container:visible[aria-busy="true"]').should("have.prop", "inert", true);
+		cy.window().then((win) => {
+			const event = new win.KeyboardEvent("keydown", {
+				key: "s",
+				ctrlKey: true,
+				bubbles: true,
+				cancelable: true,
+			});
+			expect(win.document.dispatchEvent(event), "Ctrl+S is blocked").to.eq(false);
+			expect(win.frappe.cur_progress == null).to.eq(true);
+		});
+		cy.wait("@styleVote");
+		cy.get('.page-container:visible[aria-busy="true"], #freeze').should("not.exist");
+		cy.get(".modal:visible").should("not.exist");
+		cy.get(".page-container:visible .actions-btn-group > button").should("be.visible");
+		cy.then(() => expect(requests).to.eq(1));
+	});
+
 	it("Neutral fallback and action name independence", () => {
 		cy.login();
 		cy.visit(formPath());

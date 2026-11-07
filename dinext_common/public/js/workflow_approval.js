@@ -3,6 +3,150 @@
 	const requestId = () =>
 		window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+	const progressEvent = "dinext_workflow_progress";
+	let workflowBusy = false;
+
+	// Use the underlying request promise so all HTTP and connection failures settle.
+	const workflowRequest = async (method, args) => {
+		const response = await frappe.call({ method, args, silent: workflowBusy });
+		return response.message;
+	};
+	const captureWorkflowForm = (frm) => {
+		const { doctype, name } = frm.doc;
+		const route = frappe.get_route_str();
+		return {
+			name,
+			isCurrent: () => frappe.get_route_str() === route &&
+				frm.doc?.name === name && frm.doc?.doctype === doctype,
+		};
+	};
+	const reloadWorkflowForm = async (frm, refresh = () => frm.refresh()) => {
+		const target = captureWorkflowForm(frm);
+		const { doctype, docname: name } = frm;
+		const response = await frappe.call({
+			method: "frappe.desk.form.load.getdoc",
+			type: "GET",
+			args: { doctype, name },
+		});
+		if (!target.isCurrent()) return;
+		if (!response.docs?.some((doc) => doc.doctype === doctype && doc.name === name)) {
+			throw new Error(__("Could not reload the workflow document"));
+		}
+		await refresh();
+		// Form.refresh schedules its script hooks on the promise queue.
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await frappe.after_ajax();
+	};
+	const reportWorkflowError = (error) => {
+		const serverMessages = error?.responseJSON?._server_messages;
+		if (serverMessages) {
+			try {
+				frappe.msgprint(JSON.parse(serverMessages));
+				return;
+			} catch {
+				// Fall back to the request error when a response is incomplete.
+			}
+		}
+		frappe.msgprint({
+			indicator: "red",
+			message: frappe.utils.escape_html(
+				error?.message || __("The workflow result could not be confirmed")
+			),
+		});
+	};
+
+	const runWorkflowOperation = async (page, operation, { count = 1, title, requestId } = {}) => {
+		if (workflowBusy) return;
+		workflowBusy = true;
+		const wrapper = page?.wrapper?.[0];
+		const wasInert = wrapper?.inert;
+		const wasBusy = wrapper?.getAttribute("aria-busy");
+		const blockKeys = (event) => {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+		};
+		let dialog;
+		let processed = 0;
+		let total = count;
+		const blockBackdrop = (event) => {
+			if (event.target === event.currentTarget) event.stopImmediatePropagation();
+		};
+		const updateProgress = (completed, currentTotal = total) => {
+			if (
+				count < 2 ||
+				!Number.isInteger(completed) ||
+				completed < processed ||
+				!Number.isInteger(currentTotal) ||
+				currentTotal < 1 ||
+				completed > currentTotal
+			)
+				return;
+			processed = completed;
+			total = currentTotal;
+			const current = frappe.show_progress(
+				title,
+				processed,
+				total,
+				__("Processed {0} of {1}", [processed, total])
+			);
+			if (dialog !== current) {
+				dialog?.$wrapper.remove();
+				dialog = current;
+				dialog.no_cancel();
+				dialog.$wrapper[0].addEventListener("click", blockBackdrop, true);
+			}
+		};
+		const onProgress = (progress) => {
+			if (progress.request_id === requestId) {
+				updateProgress(progress.count, progress.total);
+			}
+		};
+
+		try {
+			if (wrapper) {
+				wrapper.inert = true;
+				wrapper.setAttribute("aria-busy", "true");
+			}
+			document.addEventListener("keydown", blockKeys, true);
+			frappe.dom.freeze();
+			if (count > 1) {
+				frappe.realtime.on(progressEvent, onProgress);
+				updateProgress(0);
+			}
+			return await operation(updateProgress);
+		} finally {
+			if (count > 1) frappe.realtime.off(progressEvent, onProgress);
+			if (dialog) {
+				if (frappe.cur_progress === dialog) frappe.hide_progress();
+				else dialog.hide();
+				const dialogs = frappe.ui.open_dialogs;
+				const index = dialogs?.indexOf(dialog) ?? -1;
+				if (index >= 0) dialogs.splice(index, 1);
+				dialog.$wrapper.remove();
+			}
+			frappe.dom.unfreeze();
+			document.removeEventListener("keydown", blockKeys, true);
+			if (wrapper) {
+				wrapper.inert = wasInert;
+				if (wasBusy == null) wrapper.removeAttribute("aria-busy");
+				else wrapper.setAttribute("aria-busy", wasBusy);
+			}
+			workflowBusy = false;
+		}
+	};
+
+	const withWorkflowComment = (transition, submit) => {
+		if (workflowBusy) return;
+		if (!(transition.comment_is_required ?? transition.custom_comment_is_required))
+			return submit("");
+		return frappe.prompt(
+			{ fieldname: "comment", fieldtype: "Small Text", label: __("Comment"), reqd: 1 },
+			(values) => submit(values.comment),
+			frappe.utils.escape_html(__("Comment required for {0}", [__(transition.action)])),
+			__("Apply")
+		);
+	};
+
 	const knownIcon = (name) => {
 		const icon = String(name || "").trim();
 		if (!/^[A-Za-z0-9-]+$/.test(icon) || typeof document === "undefined") return "";
@@ -61,6 +205,12 @@
 		workflowTransitionStyle,
 		workflowTransitionLabel,
 		decorateWorkflowTransition,
+		runWorkflowOperation,
+		withWorkflowComment,
+		workflowRequest,
+		reloadWorkflowForm,
+		captureWorkflowForm,
+		reportWorkflowError,
 	});
 
 	const rebuildCleanups = new WeakMap();
@@ -183,48 +333,43 @@
 		return workflowTransitionLabel(transition, text);
 	};
 
-	const applyAction = async (frm, transition, comment = "") => {
-		frappe.dom.freeze(__("Applying workflow action…"));
-		frm.selected_workflow_action = transition.action;
+	const applyAction = async (frm, transition, comment, target = captureWorkflowForm(frm)) => {
+		if (!target.isCurrent()) return;
 		try {
-			if (!frappe.ui.form.check_mandatory(frm)) return;
-			await frm.script_manager.trigger("before_workflow_action");
-			await frappe.xcall("frappe.model.workflow.apply_workflow", {
-				doc: frm.doc,
-				action: transition.action,
-				transition_uuid: transition.custom_transition_uuid,
-				comment,
-				request_id: requestId(),
+			await runWorkflowOperation(frm.page, async () => {
+				frm.selected_workflow_action = transition.action;
+				try {
+					if (!frappe.ui.form.check_mandatory(frm)) return;
+					await frm.script_manager.trigger("before_workflow_action");
+					if (!target.isCurrent()) return;
+					const args = { doc: frm.doc, action: transition.action };
+					if (enabled()) {
+						Object.assign(args, {
+							transition_uuid: transition.custom_transition_uuid,
+							comment,
+							request_id: requestId(),
+						});
+					}
+					const result = await workflowRequest(
+						"frappe.model.workflow.apply_workflow",
+						args
+					);
+					if (!target.isCurrent()) return;
+					if (enabled()) {
+						await reloadWorkflowForm(frm);
+					} else {
+						frappe.model.sync(result);
+						await frm.refresh();
+						frm.selected_workflow_action = null;
+					}
+					if (target.isCurrent()) await frm.script_manager.trigger("after_workflow_action");
+				} finally {
+					frm.selected_workflow_action = null;
+				}
 			});
-			await frm.reload_doc();
-			await frm.script_manager.trigger("after_workflow_action");
-		} finally {
-			frm.selected_workflow_action = null;
-			frappe.dom.unfreeze();
+		} catch (error) {
+			reportWorkflowError(error);
 		}
-	};
-
-	const promptForAction = (frm, transition) => {
-		if (!transition.custom_comment_is_required) {
-			return applyAction(frm, transition);
-		}
-		const dialog = new frappe.ui.Dialog({
-			title: __("Comment required for {0}", [__(transition.action)]),
-			fields: [
-				{
-					fieldname: "comment",
-					fieldtype: "Small Text",
-					label: __("Comment"),
-					reqd: 1,
-				},
-			],
-			primary_action_label: __("Apply"),
-			primary_action(values) {
-				dialog.hide();
-				applyAction(frm, transition, values.comment);
-			},
-		});
-		dialog.show();
 	};
 
 	const showStandardActions = function () {
@@ -249,27 +394,9 @@
 					return;
 				}
 				added = true;
-				me.frm.page.add_action_item(workflowTransitionLabel(transition), () => {
-					frappe.dom.freeze();
-					me.frm.selected_workflow_action = transition.action;
-					if (!frappe.ui.form.check_mandatory(me.frm)) return frappe.dom.unfreeze();
-					me.frm.script_manager.trigger("before_workflow_action").then(() => {
-						frappe
-							.xcall("frappe.model.workflow.apply_workflow", {
-								doc: me.frm.doc,
-								action: transition.action,
-							})
-							.then((doc) => {
-								frappe.model.sync(doc);
-								me.frm.refresh();
-								me.frm.selected_workflow_action = null;
-								me.frm.script_manager.trigger("after_workflow_action");
-							})
-							.finally(() => {
-								frappe.dom.unfreeze();
-							});
-					});
-				});
+				me.frm.page.add_action_item(workflowTransitionLabel(transition), () =>
+					applyAction(me.frm, transition)
+				);
 			});
 			this.setup_btn(added);
 		});
@@ -283,9 +410,12 @@
 			frappe.workflow.get_transitions(this.frm.doc).then((transitions) => {
 				this.frm.page.clear_actions_menu();
 				transitions.forEach((transition) => {
-					this.frm.page.add_action_item(transitionLabel(transition, transitions), () =>
-						promptForAction(this.frm, transition)
-					);
+					this.frm.page.add_action_item(transitionLabel(transition, transitions), () => {
+						const target = captureWorkflowForm(this.frm);
+						return withWorkflowComment(transition, (comment) =>
+							applyAction(this.frm, transition, comment, target)
+						);
+					});
 				});
 				this.setup_btn(transitions.length > 0);
 			});
@@ -294,7 +424,8 @@
 	};
 
 	const showBulkResult = (result) => {
-		const succeeded = result.succeeded?.length || 0;
+		const succeeded = result.succeeded || [];
+		const successItems = succeeded.map((row) => `<li>${frappe.utils.escape_html(row.name)}</li>`).join("");
 		const failures = (result.failed || [])
 			.map(
 				(row) =>
@@ -306,10 +437,115 @@
 		frappe.msgprint({
 			title: __("Workflow result"),
 			indicator: failures ? "orange" : "green",
-			message: `<p>${__("Succeeded")}: ${succeeded}</p>${
-				failures ? `<p>${__("Failed")}:</p><ul>${failures}</ul>` : ""
-			}`,
+			message: `<p>${__("Succeeded")}: ${succeeded.length}</p>${
+				successItems ? `<details><summary>${__("Succeeded")}</summary><ul>${successItems}</ul></details>` : ""
+			}${failures ? `<p>${__("Failed")}:</p><ul>${failures}</ul>` : ""}`,
 		});
+	};
+
+	const waitForBulkJob = async (jobId) => {
+		let timeout;
+		let request;
+		let active = true;
+		const unknown = () => new Error(__("The workflow result could not be confirmed"));
+		try {
+			return await Promise.race([
+				(async () => {
+					while (active) {
+						request = frappe.call({
+							method: "dinext_common.workflow_approval.api.get_bulk_workflow_job",
+							args: { job_id: jobId },
+							silent: true,
+						});
+						const { message } = await Promise.resolve(request).catch(() => {
+							throw unknown();
+						});
+						if (message?.status === "finished") return message.result;
+						if (message?.status === "failed")
+							throw new Error(__("The background workflow operation failed"));
+						if (message?.status !== "pending") throw unknown();
+						await new Promise((resolve) => setTimeout(resolve, 1000));
+					}
+				})(),
+				new Promise((_, reject) => {
+					timeout = setTimeout(() => reject(unknown()), 20 * 60 * 1000);
+				}),
+			]);
+		} finally {
+			active = false;
+			clearTimeout(timeout);
+			request?.abort?.();
+		}
+	};
+
+	let activeListMenu;
+	const selectedNames = (listview) => {
+		const names = listview.view_name === "List"
+			? Array.from(listview.$result.find(".list-row-checkbox:checked"), (row) => row.dataset.name)
+			: listview.get_checked_items(true);
+		return [...new Set(names)];
+	};
+	const selectionKey = (names) => JSON.stringify([...names].sort());
+	const clearListWorkflowMenu = (listview) => {
+		if (activeListMenu === listview) activeListMenu = null;
+		listview._dinext_workflow_menu = null;
+		listview.page.actions
+			.find(".dinext-list-workflow-item, .dinext-workflow-menu-status")
+			.remove();
+	};
+	const workflowMenuStatus = (listview, message) => {
+		listview.page.actions.prepend(
+			$('<li class="dinext-workflow-menu-status text-muted px-3 py-2" role="status">').text(
+				message
+			)
+		);
+	};
+
+	const executeListTransition = async (listview, names, transition, comment) => {
+		const id = requestId();
+		try {
+			const result = await runWorkflowOperation(
+				listview.page,
+				async (updateProgress) => {
+					const wasDisabled = listview.disable_list_update;
+					listview.disable_list_update = true;
+					try {
+						const response = await workflowRequest(
+							"frappe.model.workflow.bulk_workflow_approval",
+							{
+								docnames: names,
+								doctype: listview.doctype,
+								action: transition.action,
+								transition_uuid: transition.transition_uuid,
+								comment,
+								request_id: id,
+								track_progress: names.length > 1,
+							}
+						);
+						const outcome = response?.job_id
+							? await waitForBulkJob(response.job_id)
+							: response;
+						if (!outcome)
+							throw new Error(__("The workflow result could not be confirmed"));
+						updateProgress(outcome.succeeded.length + outcome.failed.length);
+						listview.last_args = null;
+						await listview.refresh();
+						await listview._dinext_workflow_render_promise;
+						return outcome;
+					} finally {
+						listview.disable_list_update = wasDisabled;
+					}
+				},
+				{
+					count: names.length,
+					title: frappe.utils.escape_html(__("Applying: {0}", [__(transition.action)])),
+					requestId: id,
+				}
+			);
+			if (result && (names.length > 1 || result.failed.length)) showBulkResult(result);
+		} catch (error) {
+			reportWorkflowError(error);
+		}
 	};
 
 	const patchBulkActions = () => {
@@ -319,98 +555,79 @@
 		ListView.prototype.toggle_workflow_actions = async function () {
 			if (!enabled()) return originalToggle.call(this);
 			if (!frappe.model.has_workflow(this.doctype)) return;
-			const generation = (this._dinext_workflow_menu_generation || 0) + 1;
-			this._dinext_workflow_menu_generation = generation;
-			const items = Object.entries(this.workflow_action_items || {});
-			items.forEach(([_key, link]) => link.addClass("disabled"));
-			const selected = this.get_checked_items(true);
-			const queue = await frappe
-				.xcall("dinext_common.workflow_approval.api.get_my_queue", { limit: 1000 })
-				.catch(() => []);
-			if (this._dinext_workflow_menu_generation !== generation) return;
-			let common = null;
-			selected.forEach((name) => {
-				const tasks = queue.filter(
-					(task) => task.reference_doctype === this.doctype && task.reference_name === name
+			clearListWorkflowMenu(this);
+			if (workflowBusy) return;
+			const names = selectedNames(this);
+			if (!names.length) return;
+			const route = frappe.get_route_str();
+			const key = selectionKey(names);
+			const menu = { key };
+			activeListMenu = this;
+			this._dinext_workflow_menu = menu;
+			const sameSelection = () =>
+				frappe.get_route_str() === route && selectionKey(selectedNames(this)) === key;
+			const isCurrent = () => this._dinext_workflow_menu === menu && sameSelection();
+			this.page.actions_btn_group
+				.off("hide.bs.dropdown.dinextWorkflow")
+				.on("hide.bs.dropdown.dinextWorkflow", () => clearListWorkflowMenu(this));
+			workflowMenuStatus(this, __("Loading workflow actions…"));
+			let transitions;
+			try {
+				transitions = await workflowRequest(
+					"dinext_common.workflow_approval.api.get_common_list_transitions",
+					{
+						doctype: this.doctype,
+						names,
+					}
 				);
-				const ids = new Set(
-					tasks.length === 1
-						? tasks[0].available_transitions.map((row) => row.transition_uuid)
-						: []
-				);
-				common = common === null ? ids : new Set([...common].filter((id) => ids.has(id)));
-			});
-			items.forEach(([key, link]) => {
-				const visible = common?.has(key) || false;
-				link.removeClass("disabled").toggle(visible);
-				link.closest("li").toggle(visible);
-			});
+			} catch {
+				if (isCurrent()) {
+					clearListWorkflowMenu(this);
+					workflowMenuStatus(this, __("Could not load workflow actions"));
+				}
+				return;
+			}
+			if (!isCurrent()) return;
+			this.page.actions.find(".dinext-workflow-menu-status").remove();
+			if (!transitions?.length) {
+				workflowMenuStatus(this, __("No common workflow actions"));
+				return;
+			}
+			for (const transition of transitions) {
+				this.page
+					.add_actions_menu_item(transitionLabel(transition, transitions), () => {
+						if (!isCurrent()) return;
+						return withWorkflowComment(transition, (comment) => {
+							if (sameSelection())
+								return executeListTransition(this, names, transition, comment);
+						});
+					})
+					.closest("li")
+					.addClass("dinext-list-workflow-item");
+			}
+		};
+		const originalChecked = ListView.prototype.on_row_checked;
+		ListView.prototype.on_row_checked = function () {
+			originalChecked.call(this);
+			const menu = this._dinext_workflow_menu;
+			if (menu && menu.key !== selectionKey(selectedNames(this))) {
+				clearListWorkflowMenu(this);
+			}
 		};
 		const original = ListView.prototype.get_workflow_action_menu_items;
 		ListView.prototype.get_workflow_action_menu_items = function () {
-			if (!frappe.model.has_workflow(this.doctype)) {
-				return original.call(this);
-			}
-			if (!enabled()) {
-				const transitions = frappe.workflow.get_all_transitions(this.doctype) || [];
-				return (original.call(this) || []).map((item) => ({
-					...item,
-					label: workflowTransitionLabel(
-						{
-							action: item.name,
-							positions: transitions.filter((row) => row.action === item.name),
-						},
-						item.label
-					),
-				}));
-			}
+			if (!frappe.model.has_workflow(this.doctype)) return original.call(this);
+			if (enabled()) return [];
 			const transitions = frappe.workflow.get_all_transitions(this.doctype) || [];
-			return transitions.map((transition) => ({
-				label: transitionLabel(transition, transitions),
-				name: transition.custom_transition_uuid || transition.action,
-				is_workflow_action: true,
-				action: () => {
-					const selected = this.get_checked_items(true);
-					const action = transition.action;
-					frappe.prompt(
-						[
-							{
-								fieldname: "comment",
-								fieldtype: "Small Text",
-								label: __("Comment"),
-							},
-						],
-						async (values) => {
-							this.disable_list_update = true;
-							try {
-								const result = await frappe.xcall(
-									"frappe.model.workflow.bulk_workflow_approval",
-									{
-										docnames: selected,
-										doctype: this.doctype,
-										action,
-										transition_uuid: transition.custom_transition_uuid,
-										comment: values.comment,
-										request_id: requestId(),
-									}
-								);
-								if (result) {
-									showBulkResult(result);
-								} else {
-									frappe.show_alert({
-										message: __("Workflow operation accepted"),
-										indicator: "green",
-									});
-								}
-								this.refresh();
-							} finally {
-								this.disable_list_update = false;
-							}
-						},
-						__("Apply {0}", [__(action)]),
-						__("Apply")
-					);
-				},
+			return (original.call(this) || []).map((item) => ({
+				...item,
+				label: workflowTransitionLabel(
+					{
+						action: item.name,
+						positions: transitions.filter((row) => row.action === item.name),
+					},
+					item.label
+				),
 			}));
 		};
 		ListView.__dinext_approval_patched = true;
@@ -494,7 +711,10 @@
 		patchFormActions();
 		patchBulkActions();
 		registerPendingApprovers();
-		frappe.router.on("change", registerPendingApprovers);
+		frappe.router.on("change", () => {
+			if (activeListMenu) clearListWorkflowMenu(activeListMenu);
+			registerPendingApprovers();
+		});
 		$(document).on("form-refresh.dinextApproval", registerPendingApprovers);
 	};
 	if (window.frappe?.router) {

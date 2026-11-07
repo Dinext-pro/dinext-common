@@ -47,31 +47,31 @@ frappe.ui.form.on("Workflow Task", {
 });
 
 function vote(frm, transition) {
-	const submit = async (comment = "") => {
-		await frappe.xcall("dinext_common.workflow_approval.api.vote", {
-			task_name: frm.doc.name,
-			transition_uuid: transition.transition_uuid,
-			comment,
-			request_id:
-				window.crypto?.randomUUID?.() ||
-				`${Date.now()}-${Math.random().toString(16).slice(2)}`,
-		});
-		await frm.reload_doc();
-	};
-	if (!transition.comment_is_required) {
-		return submit();
-	}
-	frappe.prompt(
-		[
-			{
-				fieldname: "comment",
-				fieldtype: "Small Text",
-				label: __("Comment"),
-				reqd: 1,
-			},
-		],
-		(values) => submit(values.comment),
-		__("Comment required for {0}", [__(transition.action)]),
-		__("Apply")
-	);
+	const {
+		captureWorkflowForm,
+		runWorkflowOperation,
+		withWorkflowComment,
+		workflowRequest,
+		reloadWorkflowForm,
+		reportWorkflowError,
+	} = frappe.dinext;
+	const target = captureWorkflowForm(frm);
+	return withWorkflowComment(transition, async (comment) => {
+		if (!target.isCurrent()) return;
+		try {
+			await runWorkflowOperation(frm.page, async () => {
+				await workflowRequest("dinext_common.workflow_approval.api.vote", {
+					task_name: target.name,
+					transition_uuid: transition.transition_uuid,
+					comment,
+					request_id:
+						window.crypto?.randomUUID?.() ||
+						`${Date.now()}-${Math.random().toString(16).slice(2)}`,
+				});
+				if (target.isCurrent()) await reloadWorkflowForm(frm);
+			});
+		} catch (error) {
+			reportWorkflowError(error);
+		}
+	});
 }

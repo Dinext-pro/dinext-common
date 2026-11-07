@@ -31,6 +31,12 @@ const element = () => ({
   on() {
     return this;
   },
+  off() {
+    return this;
+  },
+  text() {
+    return this;
+  },
   removeClass(value) {
     this.classes.delete(value);
     return this;
@@ -81,7 +87,7 @@ const context = {
   window: { frappe },
   cur_frm: null,
   __: (text) => text,
-  $: (value) => (value === document ? element() : value),
+  $: (value) => (value === document || typeof value === "string" ? element() : value),
 };
 vm.runInNewContext(
   fs.readFileSync(
@@ -192,31 +198,106 @@ frappe.boot.enable_parallel_workflow_approval = true;
 state.show_actions();
 await Promise.resolve();
 assert.match(labels[0].text, /data-workflow-style="danger"/);
-items = new ListView().get_workflow_action_menu_items();
-assert.equal(items[0].name, "uuid-red");
-assert.match(items[0].label, /data-workflow-style="danger"/);
-assert.equal(typeof items[0].action, "function");
+assert.equal(new ListView().get_workflow_action_menu_items().length, 0,
+  "parallel workflow actions must not be created before looking up the selection");
+
+const actions = [];
+const lookup = [];
+const actionsMenu = element();
+actionsMenu.find = () => ({ remove() { actions.length = 0; } });
+actionsMenu.prepend = () => {};
 const list = new ListView();
 list.doctype = "Example";
 list.get_checked_items = () => ["one", "two"];
-list.workflow_action_items = { "uuid-red": element(), "uuid-other": element() };
-frappe.xcall = async () =>
-  ["one", "two"].map((name) => ({
-    reference_doctype: "Example",
-    reference_name: name,
-    available_transitions: [
-      { action: "Approve", transition_uuid: "uuid-red" },
-      ...(name === "one"
-        ? [{ action: "Approve", transition_uuid: "uuid-other" }]
-        : []),
-    ],
-  }));
+list.page = {
+  actions: actionsMenu,
+  actions_btn_group: element(),
+  add_actions_menu_item(label, action) {
+    actions.push({ label, action });
+    return element();
+  },
+};
+frappe.get_route_str = () => "List/Example";
+frappe.call = async ({ method, args }) => {
+  lookup.push({ method, args });
+  return { message: [{ action: "Approve", transition_uuid: "uuid-red", next_state: "Red" }] };
+};
 await list.toggle_workflow_actions();
-assert.equal(list.workflow_action_items["uuid-red"].visible, true);
-assert.equal(list.workflow_action_items["uuid-other"].visible, false);
-frappe.xcall = async () => [];
+assert.equal(lookup.length, 1);
+assert.equal(lookup[0].method, "dinext_common.workflow_approval.api.get_common_list_transitions");
+assert.equal(lookup[0].args.names.join(","), "one,two");
+assert.equal(actions.length, 1);
+assert.match(actions[0].label, /data-workflow-style="danger"/);
+
+list.view_name = "List";
+list.$result = { find: () => [{ dataset: { name: "raw%20name" } }] };
 await list.toggle_workflow_actions();
-assert.equal(list.workflow_action_items["uuid-red"].visible, false);
+assert.equal(lookup.at(-1).args.names[0], "raw%20name");
+let finishLookup;
+frappe.call = () => new Promise((resolve) => {
+  finishLookup = resolve;
+});
+const staleMenu = list.toggle_workflow_actions();
+list.$result = { find: () => [{ dataset: { name: "new selection" } }] };
+finishLookup({ message: [{ action: "Approve", transition_uuid: "uuid-red", next_state: "Red" }] });
+await staleMenu;
+assert.equal(actions.length, 0, "late results do not populate actions for a different selection");
+
+const keys = new Map();
+document.addEventListener = (name, handler) => keys.set(name, handler);
+document.removeEventListener = (name) => keys.delete(name);
+frappe.dom = {
+  freeze() {},
+  unfreeze() {},
+};
+const page = { wrapper: [element()] };
+page.wrapper[0].inert = false;
+page.wrapper[0].getAttribute = (name) => page.wrapper[0].attributes[name] || null;
+page.wrapper[0].setAttribute = (name, value) => { page.wrapper[0].attributes[name] = value; };
+page.wrapper[0].removeAttribute = (name) => { delete page.wrapper[0].attributes[name]; };
+let release;
+const run = frappe.dinext.runWorkflowOperation(page, () => new Promise((resolve) => {
+  release = resolve;
+}));
+assert.equal(page.wrapper[0].inert, true);
+assert.ok(keys.has("keydown"));
+let duplicate = false;
+await frappe.dinext.runWorkflowOperation(page, () => { duplicate = true; });
+assert.equal(duplicate, false);
+release();
+await run;
+assert.equal(page.wrapper[0].inert, false);
+assert.equal(keys.size, 0);
+const events = new Map();
+const counts = [];
+frappe.realtime = {
+  on(name, handler) { events.set(name, handler); },
+  off(name) { events.delete(name); },
+};
+frappe.show_progress = (_title, count, total) => {
+  counts.push([count, total]);
+  frappe.cur_progress ||= {
+    no_cancel() {},
+    $wrapper: { 0: { addEventListener() {} }, remove() {} },
+  };
+  return frappe.cur_progress;
+};
+frappe.hide_progress = () => { frappe.cur_progress = null; };
+let finishBatch;
+const batch = frappe.dinext.runWorkflowOperation(page, () => new Promise((resolve) => {
+  finishBatch = resolve;
+}), { count: 2, title: "Approve", requestId: "this-batch" });
+const onProgress = events.get("dinext_workflow_progress");
+onProgress({ request_id: "different-batch", count: 1, total: 2 });
+onProgress({ request_id: "this-batch", count: 1, total: 3 });
+onProgress({ request_id: "this-batch", count: 3, total: 3 });
+assert.deepEqual(counts, [[0, 2], [1, 3], [3, 3]]);
+assert.equal(page.wrapper[0].inert, true, "progress is not the completion signal");
+finishBatch();
+await batch;
+assert.equal(frappe.cur_progress, null);
+assert.equal(page.wrapper[0].inert, false);
+assert.equal(events.size, 0);
 console.log(
   "Workflow style: six styles, neutral/aggregate/local metadata, escaping, icons and both form/list modes passed."
 );

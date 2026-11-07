@@ -1131,7 +1131,11 @@ def _apply_automatic_votes(
 	manifest: dict[str, Any],
 	fingerprint: ContentFingerprint,
 ) -> dict[str, Any] | None:
-	latest = _latest_personal_decisions(tasks)
+	eligible = [
+		task for task in tasks
+		if any(row.auto_complete_unchanged for row in task.available_workflow_transitions)
+	]
+	latest = _latest_personal_decisions(eligible)
 	saved_flags = defaultdict(list)
 	if latest:
 		for row in frappe.get_all(
