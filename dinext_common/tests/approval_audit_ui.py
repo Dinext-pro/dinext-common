@@ -66,11 +66,12 @@ def _grant_fixture_read(doctype):
 	# standard permissions rather than adding this fixture role.
 	rules = frappe.get_all("DocType Permission", filters={"ref_doctype": doctype},
 		or_filters=[["testing", "=", 1], ["docstatus", "=", 1]], pluck="name")
-	if doctype == "Kanban Board" and not rules:
-		raise AssertionError("The isolated fixture requires an existing active Kanban Board row-permission rule")
 	permission_type = "Custom DocPerm" if frappe.db.exists("Custom DocPerm", {"parent": doctype}) else "DocPerm"
 	frappe.get_doc({"doctype": permission_type, "parent": doctype, "parenttype": "DocType",
-		"parentfield": "permissions", "role": READER_ROLE, "permlevel": 0, "read": 1}).db_insert()
+		"parentfield": "permissions", "role": READER_ROLE, "permlevel": 0, "read": 1,
+		# Synthetic users own no boards. Core owner filtering also works when
+		# the site has no optional DocType Permission rule for this doctype.
+		"if_owner": int(doctype == "Kanban Board")}).db_insert()
 	condition = frappe.qb.DocType("Report").name.isin(REPORTS).get_sql() if doctype == "Report" else "1=0"
 	for rule in rules:
 		frappe.get_doc({"doctype": "DocType Permission Condition", "parent": rule,
