@@ -168,7 +168,14 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 
 	@contextmanager
 	def _task_role_constraint(self, *, owner_only=False):
+		# Other installed apps also ship Task Custom DocPerm rows. Appending a
+		# narrow grant cannot override those broad grants, so replace the full
+		# fixture layer temporarily and restore every original DB value.
+		columns = frappe.db.get_table_columns("Custom DocPerm")
+		original = frappe.get_all("Custom DocPerm", filters={"parent": "Workflow Task"},
+			fields=columns, as_list=True)
 		created = []
+		frappe.db.delete("Custom DocPerm", {"parent": "Workflow Task"})
 		try:
 			roles = [("System Manager", False)]
 			if owner_only:
@@ -183,6 +190,8 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 			yield
 		finally:
 			frappe.db.delete("Custom DocPerm", {"name": ["in", created]})
+			if original:
+				frappe.db.bulk_insert("Custom DocPerm", fields=columns, values=original)
 			frappe.clear_cache(doctype="Workflow Task")
 
 	def test_owner_constraint_and_task_share_do_not_restore_denied_row(self):
