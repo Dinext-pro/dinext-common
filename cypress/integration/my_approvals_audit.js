@@ -28,7 +28,8 @@ describe("My Approvals audit corrections", () => {
 		cy.get(".modal:visible .modal-header .btn-modal-close").click();
 	}
 
-	it("shows only personal actions and counts competing UUID thresholds separately", () => {
+	it("filters canonical personal actions without setup read and counts UUID thresholds separately", () => {
+		cy.intercept("POST", "**/api/method/frappe.client.validate_link").as("actionLinkValidation");
 		openReport("My Approvals");
 		cy.window().should((win) => {
 			const row = win.frappe.query_report.data.find((item) => item.name === fixture.tasks.Main);
@@ -36,8 +37,12 @@ describe("My Approvals audit corrections", () => {
 			expect(row.progress).to.eq("Approve 1/2; Reject 0/1");
 			expect(win.frappe.query_report.data.some((item) => item.name === fixture.tasks.Denied)).to.eq(false);
 		});
+		cy.window().should((win) => expect(win.frappe.query_report.get_filter("action").df.fieldtype).to.eq("Data"));
+		cy.window().then((win) => win.frappe.query_report.set_filter_value("action", "Approve"));
+		cy.window().should((win) => expect(win.frappe.query_report.data).to.have.length(1));
 		cy.window().then((win) => win.frappe.query_report.set_filter_value("action", "Reject"));
 		cy.window().should((win) => expect(win.frappe.query_report.data).to.have.length(0));
+		cy.get("@actionLinkValidation.all").should("have.length", 0);
 	});
 
 	it("matches literal-control normalization in a real browser DOM", () => {

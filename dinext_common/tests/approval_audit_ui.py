@@ -141,6 +141,8 @@ def seed():
 			frappe.set_user(user)
 			for name in REPORTS:
 				frappe.get_doc("Report", name).check_permission("read")
+			if frappe.has_permission("Workflow Action Master", ptype="read"):
+				raise AssertionError("The fixture must exercise action filters without workflow setup read")
 	finally:
 		frappe.set_user("Administrator")
 	frappe.db.commit()

@@ -224,3 +224,23 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 				self._visible(self.alice)
 			self.assertEqual([row.name for row in frappe.get_all("Workflow Task",
 				filters={"name": self.task.name}, fields=["name"])], [self.task.name])
+
+	def test_existing_queue_link_filter_is_upgraded_without_setup_permissions(self):
+		from dinext_common.workflow_approval.metadata import _ensure_queue_action_filter
+
+		report = frappe.get_doc("Report", "My Approvals")
+		action = next(row for row in report.filters if row.fieldname == "action")
+		previous = {"fieldtype": action.fieldtype, "options": action.options}
+		try:
+			frappe.db.set_value("Report Filter", action.name,
+				{"fieldtype": "Link", "options": "Workflow Action Master"})
+			frappe.clear_document_cache("Report", report.name)
+			_ensure_queue_action_filter()
+			_ensure_queue_action_filter()
+			current = frappe.db.get_value("Report Filter", action.name, ["fieldtype", "options"], as_dict=True)
+			self.assertEqual(current.fieldtype, "Data")
+			self.assertFalse(current.options)
+			self.assertEqual(frappe.db.count("Report Filter", {"parent": report.name, "fieldname": "action"}), 1)
+		finally:
+			frappe.db.set_value("Report Filter", action.name, previous)
+			frappe.clear_document_cache("Report", report.name)

@@ -80,3 +80,10 @@ class TestMyApprovalsAudit(unittest.TestCase):
 		for case in cases:
 			with self.subTest(raw=case["raw"]):
 				self.assertEqual(normalize_comment(case["raw"]), case["normalized"])
+
+	def test_shipped_queue_action_filter_does_not_require_setup_document_read(self):
+		path = Path(__file__).parents[1] / "dinext_common" / "report" / "my_approvals" / "my_approvals.json"
+		report = json.loads(path.read_text())
+		action = next(field for field in report["filters"] if field["fieldname"] == "action")
+		self.assertEqual(action["fieldtype"], "Data")
+		self.assertFalse(action.get("options"))

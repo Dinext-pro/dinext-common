@@ -10,7 +10,7 @@
   {"fieldname": "workflow", "fieldtype": "Data", "label": "Workflow"},
   {"fieldname": "reference_doctype", "fieldtype": "Data", "label": "Document Type"},
   {"fieldname": "workflow_state", "fieldtype": "Data", "label": "State"},
-  {"fieldname": "action", "fieldtype": "Link", "label": "Action", "options": "Workflow Action Master"},
+  {"fieldname": "action", "fieldtype": "Data", "label": "Action"},
   {"fieldname": "minimum_age", "fieldtype": "Int", "label": "Minimum Age (days)"},
   {"fieldname": "created_today", "fieldtype": "Check", "label": "Created Today"},
   {"fieldname": "created_on", "fieldtype": "Date", "label": "Created On"}
