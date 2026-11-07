@@ -185,6 +185,8 @@
 			const valid = (!required() || Boolean(comment)) && [...comment].length <= 4000;
 			if (valid && !submitting) dialog.enable_primary_action();
 			else dialog.disable_primary_action();
+			// Frappe only toggles a CSS class; also disable keyboard activation.
+			dialog.get_primary_btn().prop("disabled", !valid || submitting);
 			return valid;
 		};
 		field.$input.on("input.dinextApproval change.dinextApproval", validate);

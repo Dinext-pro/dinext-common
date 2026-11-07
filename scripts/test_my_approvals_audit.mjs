@@ -42,12 +42,13 @@ for (const filter of dateFilters) {
   assert.equal(state.cutoff, '', 'manual calendar editing uses standalone calendar semantics');
 }
 console.log('duration calendar filter preserves route cutoff and clears it on user edits: PASS');
-let inputChanged, shown, focused = false, disabled = false;
+let inputChanged, shown, focused = false, styledDisabled = false, disabled = false;
 let value = '';
 let required = true;
 const dialog = {fields_dict: {comment: {$input: {on(_events, handler) {inputChanged = handler;}}, set_focus() {focused = true;}}},
   $wrapper: {on(_event, handler) {shown = handler;}}, get_value() {return value;},
-  disable_primary_action() {disabled = true;}, enable_primary_action() {disabled = false;}};
+  disable_primary_action() {styledDisabled = true;}, enable_primary_action() {styledDisabled = false;},
+  get_primary_btn() {return {prop(name, state) {assert.equal(name, "disabled"); disabled = state;}};}};
 const validation = frappe.dinext.bindWorkflowCommentValidation(dialog, () => required);
 assert.equal(disabled, true);
 shown();
@@ -71,6 +72,7 @@ frappe.ui.Dialog = class {
     this.$wrapper = {on() {}};
   }
   get_value() { return nested; }
+  get_primary_btn() { return {prop() {}}; }
   disable_primary_action() {}
   enable_primary_action() {}
   show() {}

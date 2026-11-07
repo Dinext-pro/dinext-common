@@ -347,6 +347,7 @@ frappe.ui.Dialog = class {
   }
   get_value(name) { return this.values[name]; }
   set_df_property() {}
+  get_primary_btn() { return {prop() {}}; }
   disable_primary_action() {}
   enable_primary_action() {}
   show() {}
