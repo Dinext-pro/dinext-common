@@ -55,6 +55,28 @@
 		});
 	};
 
+	const closeProgressDialog = (dialog) => new Promise((resolve) => {
+		const remove = () => {
+			if (frappe.cur_progress === dialog) frappe.cur_progress = null;
+			const dialogs = frappe.ui.open_dialogs;
+			const index = dialogs?.indexOf(dialog) ?? -1;
+			if (index >= 0) dialogs.splice(index, 1);
+			dialog.$wrapper.remove();
+			resolve();
+		};
+		if (!dialog.is_visible && !dialog.$wrapper.is(":visible")) {
+			remove();
+			return;
+		}
+		dialog.$wrapper.one("hidden.bs.modal", remove);
+		const hide = () => {
+			if (frappe.cur_progress === dialog) frappe.hide_progress();
+			else dialog.hide();
+		};
+		if (dialog.display) hide();
+		else dialog.$wrapper.one("shown.bs.modal", hide);
+	});
+
 	const runWorkflowOperation = async (page, operation, { count = 1, title, requestId } = {}) => {
 		if (workflowBusy) return;
 		workflowBusy = true;
@@ -66,6 +88,7 @@
 			event.stopImmediatePropagation();
 		};
 		let dialog;
+		const progressCleanups = [];
 		let processed = 0;
 		let total = count;
 		const blockBackdrop = (event) => {
@@ -90,7 +113,7 @@
 				__("Processed {0} of {1}", [processed, total])
 			);
 			if (dialog !== current) {
-				dialog?.$wrapper.remove();
+				if (dialog) progressCleanups.push(closeProgressDialog(dialog));
 				dialog = current;
 				dialog.no_cancel();
 				dialog.$wrapper[0].addEventListener("click", blockBackdrop, true);
@@ -115,23 +138,20 @@
 			}
 			return await operation(updateProgress);
 		} finally {
-			if (count > 1) frappe.realtime.off(progressEvent, onProgress);
-			if (dialog) {
-				if (frappe.cur_progress === dialog) frappe.hide_progress();
-				else dialog.hide();
-				const dialogs = frappe.ui.open_dialogs;
-				const index = dialogs?.indexOf(dialog) ?? -1;
-				if (index >= 0) dialogs.splice(index, 1);
-				dialog.$wrapper.remove();
+			try {
+				if (count > 1) frappe.realtime.off(progressEvent, onProgress);
+				if (dialog) progressCleanups.push(closeProgressDialog(dialog));
+				await Promise.all(progressCleanups);
+			} finally {
+				frappe.dom.unfreeze();
+				document.removeEventListener("keydown", blockKeys, true);
+				if (wrapper) {
+					wrapper.inert = wasInert;
+					if (wasBusy == null) wrapper.removeAttribute("aria-busy");
+					else wrapper.setAttribute("aria-busy", wasBusy);
+				}
+				workflowBusy = false;
 			}
-			frappe.dom.unfreeze();
-			document.removeEventListener("keydown", blockKeys, true);
-			if (wrapper) {
-				wrapper.inert = wasInert;
-				if (wasBusy == null) wrapper.removeAttribute("aria-busy");
-				else wrapper.setAttribute("aria-busy", wasBusy);
-			}
-			workflowBusy = false;
 		}
 	};
 
@@ -538,7 +558,7 @@
 				},
 				{
 					count: names.length,
-					title: frappe.utils.escape_html(__("Applying: {0}", [__(transition.action)])),
+					title: frappe.utils.escape_html(__("Applying: {0}", [__(transition.action)], "Workflow")),
 					requestId: id,
 				}
 			);

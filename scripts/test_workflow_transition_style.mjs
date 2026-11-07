@@ -270,6 +270,7 @@ assert.equal(page.wrapper[0].inert, false);
 assert.equal(keys.size, 0);
 const events = new Map();
 const counts = [];
+const progressDialogEvents = new Map();
 frappe.realtime = {
   on(name, handler) { events.set(name, handler); },
   off(name) { events.delete(name); },
@@ -277,12 +278,22 @@ frappe.realtime = {
 frappe.show_progress = (_title, count, total) => {
   counts.push([count, total]);
   frappe.cur_progress ||= {
+    is_visible: true,
+    display: true,
     no_cancel() {},
-    $wrapper: { 0: { addEventListener() {} }, remove() {} },
+    hide() { progressDialogEvents.get("hidden.bs.modal")?.(); },
+    $wrapper: {
+      0: { addEventListener() {} },
+      one(event, handler) { progressDialogEvents.set(event, handler); },
+      remove() {},
+    },
   };
   return frappe.cur_progress;
 };
-frappe.hide_progress = () => { frappe.cur_progress = null; };
+frappe.hide_progress = () => {
+  frappe.cur_progress.hide();
+  frappe.cur_progress = null;
+};
 let finishBatch;
 const batch = frappe.dinext.runWorkflowOperation(page, () => new Promise((resolve) => {
   finishBatch = resolve;

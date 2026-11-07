@@ -349,6 +349,7 @@ Row {0}: field path {1} is duplicated.,Строка {0}: поле {1} указа
 "Could not load workflow actions","Не удалось загрузить действия согласования",""
 "No common workflow actions","Для выбранных документов нет общих действий согласования",""
 "Processed {0} of {1}","Обработано {0} из {1}",""
+"Applying: {0}","Обработка: {0}","Workflow"
 "The workflow result could not be confirmed","Не удалось подтвердить результат согласования",""
 "The background workflow operation failed","Фоновая операция согласования завершилась с ошибкой",""
 "Could not reload the workflow document","Не удалось обновить документ согласования",""
