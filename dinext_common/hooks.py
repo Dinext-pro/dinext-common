@@ -136,7 +136,7 @@ app_include_js = [
     "/assets/dinext_common/js/dinext-desk.js",
     "/assets/dinext_common/js/dashboard_filters_fix.js",
     "/assets/dinext_common/js/workspace_sidebar_hover.js",
-    "/assets/dinext_common/js/workflow_approval.js?v=20261107-4",
+    "/assets/dinext_common/js/workflow_approval.js?v=20261107-5",
 ]
 
 # Expose site_config flags to Desk bootinfo

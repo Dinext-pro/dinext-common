@@ -309,6 +309,65 @@ await batch;
 assert.equal(frappe.cur_progress, null);
 assert.equal(page.wrapper[0].inert, false);
 assert.equal(events.size, 0);
+
+const results = [];
+frappe.msgprint = (message) => results.push(message);
+let refreshedLists = 0;
+list.view_name = undefined;
+list.page.wrapper = page.wrapper;
+list.refresh = async () => { refreshedLists += 1; };
+const outcomes = [
+  { succeeded: [{ name: "one" }, { name: "two" }], failed: [] },
+  { succeeded: [{ name: "one" }], failed: [{ name: "two", error: "Task already completed" }] },
+];
+for (const outcome of outcomes) {
+  results.length = 0;
+  frappe.call = async ({ method }) => ({
+    message: method.endsWith("get_common_list_transitions")
+      ? [{ action: "Approve", transition_uuid: "uuid-red", next_state: "Red" }]
+      : outcome,
+  });
+  await list.toggle_workflow_actions();
+  await actions[0].action();
+  assert.equal(results.length, outcome.failed.length ? 1 : 0,
+    "list actions show errors and finish successful batches quietly");
+}
+assert.equal(refreshedLists, 2);
+
+let reportButton;
+let reportDialog;
+let refreshedReports = 0;
+frappe.query_reports = {};
+frappe.ui.Dialog = class {
+  constructor(options) { this.options = options; reportDialog = this; }
+  disable_primary_action() {}
+  enable_primary_action() {}
+  show() {}
+  hide() { this.closed = true; }
+};
+vm.runInContext(fs.readFileSync(
+  "dinext_common/dinext_common/report/my_approvals/my_approvals.js", "utf8"
+), context);
+const report = {
+  page: { add_inner_button(_label, handler) { reportButton = handler; } },
+  datatable: { rowmanager: { getCheckedRows: () => [0, 1] } },
+  data: ["one", "two"].map((name) => ({
+    name, available_transitions: [{ action: "Approve", transition_uuid: "uuid-red" }],
+  })),
+  refresh() { refreshedReports += 1; },
+};
+frappe.query_reports["My Approvals"].onload(report);
+for (const outcome of outcomes) {
+  results.length = 0;
+  frappe.xcall = async () => outcome;
+  await reportButton();
+  await reportDialog.options.primary_action({ action: "Approve", comment: "" });
+  assert.equal(results.length, outcome.failed.length ? 1 : 0,
+    "My Approvals shows errors and finishes successful selections quietly");
+  assert.equal(reportDialog.closed, true);
+}
+assert.equal(refreshedReports, 2);
+
 console.log(
-  "Workflow style: six styles, neutral/aggregate/local metadata, escaping, icons and both form/list modes passed."
+  "Workflow styles, form/list actions, operation cleanup and quiet success passed."
 );

@@ -562,7 +562,7 @@
 					requestId: id,
 				}
 			);
-			if (result && (names.length > 1 || result.failed.length)) showBulkResult(result);
+			if (result?.failed?.length) showBulkResult(result);
 		} catch (error) {
 			reportWorkflowError(error);
 		}

@@ -78,14 +78,16 @@ frappe.query_reports["My Approvals"] = {
 									`${Date.now()}-${Math.random().toString(16).slice(2)}`,
 							}
 						);
-						frappe.msgprint({
-							title: __("Workflow result"),
-							indicator: result.failed.length ? "orange" : "green",
-							message: __("Succeeded: {0}; failed: {1}", [
-								result.succeeded.length,
-								result.failed.length,
-							]),
-						});
+						if (result.failed.length) {
+							frappe.msgprint({
+								title: __("Workflow result"),
+								indicator: "orange",
+								message: __("Succeeded: {0}; failed: {1}", [
+									result.succeeded.length,
+									result.failed.length,
+								]),
+							});
+						}
 						dialog.hide();
 						report.refresh();
 					} finally {
