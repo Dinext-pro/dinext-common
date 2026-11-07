@@ -189,12 +189,22 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 		frappe.share.add("Workflow Task", self.task.name, self.bob, read=1,
 			flags={"ignore_share_permission": True})
 		with self._task_role_constraint(owner_only=True):
+			from frappe.model.db_query import requires_owner_constraint
+
+			frappe.set_user(self.bob)
+			self.assertTrue(requires_owner_constraint(frappe.permissions.get_role_permissions(
+				frappe.get_meta("Workflow Task"), user=self.bob
+			)))
 			self._assert_denied(self.bob)
 
 	def test_only_shared_task_still_requires_approval_policy(self):
 		frappe.share.add("Workflow Task", self.task.name, self.bob, read=1,
 			flags={"ignore_share_permission": True})
 		with self._task_role_constraint():
+			frappe.set_user(self.bob)
+			self.assertFalse(frappe.permissions.get_role_permissions(
+				frappe.get_meta("Workflow Task"), user=self.bob
+			).get("read"))
 			self._assert_denied(self.bob)
 
 	def test_standard_task_list_fails_closed_without_final_platform_capability(self):
