@@ -354,3 +354,11 @@ Row {0}: field path {1} is duplicated.,Строка {0}: поле {1} указа
 "The workflow result could not be confirmed","Не удалось подтвердить результат согласования",""
 "The background workflow operation failed","Фоновая операция согласования завершилась с ошибкой",""
 "Could not reload the workflow document","Не удалось обновить документ согласования",""
+Digest Send Times,Время отправки сводок,
+"Recipient-local times, for example: 08:00, 17:00","Время получателя, например: 08:00, 17:00",
+Email Settings Source,Источник настроек рассылки,
+Override Workflow Email Settings,Переопределить настройки рассылки Workflow,
+From Workflow,Из Workflow,
+State settings,Настройки состояния,
+Use Workflow Settings,Использовать настройки Workflow,
+Digest times must be comma-separated HH:MM values,Укажите время сводок в формате ЧЧ:ММ через запятую,

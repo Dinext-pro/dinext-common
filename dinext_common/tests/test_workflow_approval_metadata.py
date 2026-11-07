@@ -132,9 +132,9 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 			transition["custom_minimum_approvals"]["mandatory_depends_on"],
 			"eval:doc.custom_parallel_approval_policy=='Minimum'",
 		)
-		self.assertEqual(workflow["custom_group_send_time"]["depends_on"], metadata.DAILY_SEND_TIME_CONDITION)
+		self.assertEqual(workflow["custom_group_send_times"]["depends_on"], metadata.DAILY_SEND_TIME_CONDITION)
 		self.assertEqual(
-			workflow["custom_group_send_time"]["mandatory_depends_on"],
+			workflow["custom_group_send_times"]["mandatory_depends_on"],
 			metadata.DAILY_SEND_TIME_CONDITION,
 		)
 		self.assertEqual(

@@ -256,6 +256,9 @@ def get_workflow_approval_custom_fields() -> dict[str, list[dict[str, Any]]]:
 			},
 		],
 	}
+	from dinext_common.workflow_approval.email_metadata import extend_email_fields
+
+	extend_email_fields(custom_fields)
 	for fields in custom_fields.values():
 		for field in fields:
 			field.setdefault("module", "Dinext Common")
@@ -281,6 +284,9 @@ def ensure_workflow_approval_custom_fields() -> None:
 		ignore_validate=True,
 		update=True,
 	)
+	from dinext_common.workflow_approval.email_metadata import ensure_state_email_properties
+
+	ensure_state_email_properties()
 
 
 def ensure_workflow_approval_email_templates() -> None:
@@ -629,25 +635,12 @@ def validate_workflow_configuration(workflow: object) -> None:
 	if any(not role for role in monitor_roles) or len(monitor_roles) != len(set(monitor_roles)):
 		raise ValueError("Approval monitor roles must be non-empty and unique")
 
-	if not bool(getattr(workflow, "send_email_alert", False)):
-		return
-	if not bool(getattr(workflow, "custom_group_workflow_action_emails", False)):
-		return
-	setattr(workflow, "custom_attach_document_pdf", 0)
-	if not getattr(workflow, "custom_group_schedule_anchor", None):
-		setattr(workflow, "custom_group_schedule_anchor", frappe.utils.now_datetime())
+	from dinext_common.workflow_approval.email_settings import prepare_email_profiles
 
-	unit = str(getattr(workflow, "custom_group_interval_unit", "") or "")
-	if unit not in {"Hours", "Days"}:
-		raise ValueError("Digest interval unit must be Hours or Days")
-	try:
-		interval = int(getattr(workflow, "custom_group_interval_value", 0) or 0)
-	except (TypeError, ValueError):
-		raise ValueError("Digest interval must be a positive integer")
-	if interval <= 0:
-		raise ValueError("Digest interval must be a positive integer")
-	if unit == "Days" and not getattr(workflow, "custom_group_send_time", None):
-		raise ValueError("Digest send time is required for daily delivery")
+	previous = workflow.get_doc_before_save() if hasattr(workflow, "get_doc_before_save") else None
+	prepare_email_profiles(workflow, previous, now=frappe.utils.now_datetime)
+	if getattr(workflow, "custom_group_workflow_action_emails", False):
+		workflow.custom_attach_document_pdf = 0
 
 
 def validate_workflow_doc(doc: object, method: str | None = None) -> None:

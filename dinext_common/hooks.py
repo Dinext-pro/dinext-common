@@ -62,6 +62,7 @@ fixtures = [
                 "Dinext Workflow Correction",
                 "Dinext Workflow Digest",
                 "Dinext Timesheet Workflow Digest",
+                "Dinext Timesheet Workflow Correction",
             ]]
         ]
     },
@@ -160,7 +161,7 @@ web_include_css = ["/assets/dinext_common/css/public_auth_header.css"]
 
 # include js in doctype views
 doctype_js = {
-	"Workflow": "public/js/workflow_fingerprint_settings.js",
+	"Workflow": ["public/js/workflow_fingerprint_settings.js", "public/js/workflow_email_settings.js"],
 	"Project": "public/js/sticky-datatable.js",
 	"Workflow Action": "public/js/workflow_action_desk.js",
 }

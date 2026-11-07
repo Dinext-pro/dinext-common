@@ -59,7 +59,8 @@ def latest_due_digest_slot(
 	timezone_name: str,
 	unit: str,
 	interval: int,
-	send_time: time | None,
+	send_time: time | None = None,
+	send_times: tuple[time, ...] = (),
 	anchor: datetime,
 ) -> datetime | None:
 	"""Return one latest due slot, naturally coalescing scheduler downtime."""
@@ -78,7 +79,8 @@ def latest_due_digest_slot(
 			return None
 		return slot if slot <= now_utc else None
 
-	if unit != "Days" or send_time is None:
+	times = send_times or ((send_time,) if send_time else ())
+	if unit != "Days" or not times:
 		return None
 	zone = get_timezone(timezone_name)
 	now_local = now_utc.astimezone(zone)
@@ -86,13 +88,12 @@ def latest_due_digest_slot(
 	days_since_anchor = (now_local.date() - anchor_date).days
 	aligned_days = days_since_anchor - (days_since_anchor % interval)
 	slot_date = anchor_date + timedelta(days=aligned_days)
-	slot = _daily_slot_utc(slot_date, send_time, zone)
-	if slot > now_utc:
-		slot_date -= timedelta(days=interval)
-		slot = _daily_slot_utc(slot_date, send_time, zone)
-	if slot < created_utc:
-		return None
-	return slot
+	candidates = [
+		_daily_slot_utc(day, scheduled, zone)
+		for day in (slot_date, slot_date - timedelta(days=interval))
+		for scheduled in times
+	]
+	return max((slot for slot in candidates if max(created_utc, anchor_utc) <= slot <= now_utc), default=None)
 
 
 def make_delivery_key(mode: str, workflow: str, recipient: str, identity: str) -> str:
