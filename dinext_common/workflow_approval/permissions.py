@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Callable
 from functools import cache
+from importlib import import_module
 from typing import Any
 
 import frappe
@@ -122,8 +124,43 @@ def _can_read_task(doc, user, is_manager, can_monitor, can_read_source) -> bool:
 	return can_read_source(doc)
 
 
+def _batch_read_helper():
+	if "doctype_permission" not in frappe.get_installed_apps():
+		return None
+	module_name = "doctype_permission.doctype_permission.batch_read"
+	try:
+		return import_module(module_name).readable_document_names
+	except ModuleNotFoundError as error:
+		if error.name != module_name:
+			raise
+		return None
+
+
+def prepare_source_permissions(rows, user, source_permissions):
+	"""Resolve only new, non-archived source identities for this task read."""
+	if user != frappe.session.user:
+		return
+	sources = defaultdict(set)
+	for row in rows:
+		key = _source_reference(row)
+		if all(key) and not _get(row, "source_deleted_at") and key not in source_permissions:
+			sources[key[0]].add(key[1])
+	if not sources:
+		return
+	batch_read = _batch_read_helper()
+	if batch_read is None:
+		return
+	for doctype, names in sources.items():
+		visible = batch_read(doctype, names)
+		source_permissions.update(((doctype, name), name in visible) for name in names)
+
+
 def get_task_read_checker(
-	user: str, *, monitored_only: bool = False, require_source: bool = False
+	user: str,
+	*,
+	monitored_only: bool = False,
+	require_source: bool = False,
+	source_permissions: dict[tuple[str, str], bool] | None = None,
 ) -> Callable[[object], bool]:
 	"""Check each workflow and source once across the pages of one read."""
 
@@ -133,6 +170,8 @@ def get_task_read_checker(
 
 	@cache
 	def source_allowed(doctype, name):
+		if source_permissions is not None and (doctype, name) in source_permissions:
+			return source_permissions[(doctype, name)]
 		return _has_source_read_permission({"reference_doctype": doctype, "reference_name": name}, user)
 
 	def can_monitor(row):
@@ -148,8 +187,7 @@ def get_task_read_checker(
 			return (is_manager or can_monitor(row)) and can_read_source(row)
 		if require_source and is_manager:
 			return bool(
-				(_get(row, "source_deleted_at") and _get(row, "approver") == user)
-				or can_read_source(row)
+				(_get(row, "source_deleted_at") and _get(row, "approver") == user) or can_read_source(row)
 			)
 		return _can_read_task(row, user, is_manager, can_monitor, can_read_source)
 

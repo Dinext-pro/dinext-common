@@ -73,6 +73,7 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 		with (
 			patch.object(frappe, "session", frappe._dict(user=user)),
 			patch.object(frappe, "get_roles", return_value=[]),
+			patch.object(permissions, "_batch_read_helper", return_value=None),
 			patch.object(frappe, "get_all", side_effect=[tasks, transitions]) as get_all,
 			patch.object(frappe, "get_doc") as get_doc,
 			patch.object(

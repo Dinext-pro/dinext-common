@@ -21,6 +21,7 @@ from dinext_common.workflow_approval.permissions import (
 	get_monitorable_workflows,
 	get_task_read_checker,
 	has_workflow_task_permission,
+	prepare_source_permissions,
 )
 
 QUEUE_FIELDS = [
@@ -443,7 +444,10 @@ def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monit
 		if not workflows:
 			return []
 		filters = {**filters, "workflow": ("in", workflows)}
-	can_read = get_task_read_checker(user, monitored_only=monitored_only, require_source=True)
+	source_permissions = {}
+	can_read = get_task_read_checker(
+		user, monitored_only=monitored_only, require_source=True, source_permissions=source_permissions
+	)
 	page_size = 500
 	start = 0
 	result = []
@@ -457,6 +461,7 @@ def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monit
 			limit_page_length=page_size,
 		)
 		selected = [row for row in rows if predicate(row)] if predicate else rows
+		prepare_source_permissions(selected, user, source_permissions)
 		result.extend(row for row in selected if can_read(row))
 		if limit and len(result) >= limit:
 			return result[:limit]
@@ -1134,7 +1139,12 @@ def open_control_round_count() -> dict[str, Any]:
 
 @frappe.whitelist()
 def attention_control_round_count() -> dict[str, Any]:
-	rows = _control_rounds("Attention")
+	rows = []
+	if frappe.db.exists(
+		"Workflow Task",
+		{"round_status": ("in", ("Stalled", "Conflicted")), "source_deleted_at": ("is", "not set")},
+	):
+		rows = _control_rounds("Attention")
 	return _number_card(
 		len(rows),
 		"Approval Monitoring",

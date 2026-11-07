@@ -10,6 +10,12 @@ from dinext_common.workflow_approval import api, engine
 
 
 class TestWorkflowApprovalReportRows(unittest.TestCase):
+	def setUp(self):
+		# These tests exercise the legacy permission seam; batching has its own suite.
+		helper = patch("dinext_common.workflow_approval.permissions._batch_read_helper", return_value=None)
+		helper.start()
+		self.addCleanup(helper.stop)
+
 	def test_open_card_reads_task_rows_without_loading_transitions(self):
 		row = frappe._dict(name="TASK-1", approver="Administrator", reference_doctype="Issue", reference_name="ISS-1")
 		with (

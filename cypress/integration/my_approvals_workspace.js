@@ -77,5 +77,11 @@ describe("My Approvals workspace", () => {
 			});
 			card("Открытые раунды", 2).should("be.visible");
 		}
+		card("Открытые раунды", 2).find(".widget-body").click();
+		cy.window().should((win) => {
+			expect(win.frappe.get_route()).to.deep.eq(["query-report", "Approval Monitoring"]);
+			expect(win.frappe.query_report.get_filter_value("round_status")).to.eq("Open");
+		});
+		cy.noPermissionDialog();
 	});
 });
