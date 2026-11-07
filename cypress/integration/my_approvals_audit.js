@@ -164,11 +164,19 @@ describe("My Approvals audit corrections", () => {
 
 
 	it("localizes the native completion filter and sends canonical Manual after report reuse", {defaultCommandTimeout: 15000}, () => {
+		cy.intercept("GET", "**/api/method/frappe.desk.query_report.run*", (request) => {
+			const url = new URL(request.url);
+			if (url.searchParams.get("report_name") === "My Approval History" && JSON.parse(url.searchParams.get("filters") || "{}").completion_source === "Manual") request.alias = "canonicalManual";
+		});
 		for (const [user, label] of [[fixture.bob, "Вручную"], [fixture.alice, "Manual"]]) {
 			openReport("My Approval History", user);
 			for (let visit = 0; visit < 2; visit++) {
 				cy.get('[data-fieldname="completion_source"] select option[value="Manual"]').should("have.text", label);
 				cy.get('[data-fieldname="completion_source"] select').select("Manual").should("have.value", "Manual");
+				cy.wait("@canonicalManual").then(({request, response}) => {
+					expect(response.statusCode).to.eq(200);
+					expect(JSON.parse(new URL(request.url).searchParams.get("filters")).completion_source).to.eq("Manual");
+				});
 				cy.window().should((win) => {
 					expect(win.frappe.query_report.get_filter_value("completion_source")).to.eq("Manual");
 					expect(win.frappe.query_report.data.length).to.be.greaterThan(0);

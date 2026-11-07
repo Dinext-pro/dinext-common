@@ -936,7 +936,8 @@ def reset_round(round_id: str, reason: object) -> dict[str, Any]:
 
 
 def _reset_round(round_id: str, normalized_reason: str) -> dict[str, Any]:
-	"""Reset one round after the public entrypoint authorized and normalized it."""
+	"""Reset one round after the public entrypoint normalized the reason."""
+	_require_system_manager()
 	task_names = engine._round_task_names(round_id)
 	if not task_names:
 		raise frappe.DoesNotExistError(_("Approval round does not exist"))

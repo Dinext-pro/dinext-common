@@ -103,3 +103,23 @@ class TestApprovalValidationLocalization(FrappeTestCase):
 		self.assertEqual(result, {"succeeded": [self.round_id], "failed": []})
 		reason = frappe.db.get_value("Workflow Task", self.task, "cancellation_reason")
 		self.assertTrue(reason.endswith(policy.normalize_comment(raw)), reason)
+
+
+	def test_reset_requires_manager_before_normalizing_or_mutating(self):
+		before = self._snapshot()
+		frappe.set_user(fixture.ALICE)
+		for method, identifier in [(api.reset_round, self.round_id), (api.reset_rounds, [self.round_id])]:
+			with self.assertRaises(frappe.PermissionError):
+				method(identifier, "Reason")
+		self.assertEqual(self._snapshot(), before)
+
+	def test_unexpected_policy_value_errors_are_not_reclassified(self):
+		from dinext_common.workflow_approval.validation import normalize_comment
+
+		error = ValueError("Unexpected policy failure")
+		with patch.object(policy, "normalize_comment", side_effect=error) as normalize:
+			with self.assertRaises(ValueError) as caught:
+				normalize_comment("Reason", required=True)
+		self.assertIs(caught.exception, error)
+		normalize.assert_called_once_with("Reason", required=True, max_codepoints=4000)
+		self.assertFalse(frappe.local.message_log)
