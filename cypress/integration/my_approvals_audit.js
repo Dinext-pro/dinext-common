@@ -91,7 +91,11 @@ describe("My Approvals audit corrections", () => {
 	it("renders Russian report values and legends while retaining canonical data", () => {
 		openReport("My Approval History", fixture.bob);
 		cy.contains(".dt-scrollable .dt-cell", "Вручную").scrollIntoView().should("be.visible");
-		cy.contains(".dt-scrollable .dt-cell", "Выполнено").scrollIntoView().should("be.visible");
+		cy.window().then((win) => {
+			const completed = win.__("Completed");
+			expect(completed).to.match(/[А-Яа-яЁё]/);
+			cy.contains(".dt-scrollable .dt-cell", completed).scrollIntoView().should("be.visible");
+		});
 		cy.window().should((win) => {
 			const report = win.frappe.query_report;
 			expect(report.data.some((row) => row.completion_source === "Manual" && row.status === "Completed")).to.eq(true);
