@@ -272,7 +272,8 @@ def get_content_fingerprint(doc: object, workflow: object) -> ContentFingerprint
 
 def _eligible_approvers(doc: object, transition: object) -> list[str]:
 	role = str(_value(transition, "allowed") or "")
-	users = get_users_with_role(role)
+	users = (frappe.get_all("User", filters={"enabled": 1, "user_type": "System User"}, pluck="name")
+		if role == "All" else get_users_with_role(role))
 	eligible = []
 	for user in sorted(set(users)):
 		previous_user = frappe.session.user
@@ -825,6 +826,8 @@ def _amend_open_round(
 		raise WorkflowApprovalConflictError(
 			_("Workflow transition has no eligible approvers")
 		)
+	if entry := _parse_manifest(active).get("entry_context"):
+		manifest["entry_context"] = entry
 	round_id = active.approval_round_id
 	_set_round_values(round_id, {"round_manifest": serialize_manifest(manifest)})
 	for task in frappe.get_all(
@@ -1004,6 +1007,7 @@ def reconcile_source(
 	*,
 	cycle_guard: AutomationCycleGuard | None = None,
 	apply_automatic: bool = True,
+	entry_context: dict | None = None,
 ) -> list[str]:
 	"""Create or reconcile the immutable active round for a source document."""
 	if _value(doc, "is_new", lambda: False)():
@@ -1022,6 +1026,8 @@ def reconcile_source(
 	active_names = _active_task_names(_value(doc, "doctype"), _value(doc, "name"))
 	if active_names:
 		active = frappe.get_doc("Workflow Task", active_names[0])
+		if active.workflow_state == state and entry_context is None:
+			entry_context = _parse_manifest(active).get("entry_context")
 		round_id = active.approval_round_id
 		if active.round_status == "Finalizing":
 			return active_names
@@ -1060,6 +1066,8 @@ def reconcile_source(
 			_("Workflow transition has no eligible approvers")
 		)
 
+	if entry_context:
+		manifest["entry_context"] = entry_context
 	round_id, tasks = _insert_round_tasks(
 		doc,
 		workflow_name,
@@ -1503,9 +1511,8 @@ def _ensure_finalization_placeholder(
 			"reference_doctype": source.doctype,
 			"reference_name": source.name,
 			"workflow_state": winner["next_state"],
-			"status": "Completed",
+			"status": "Open",
 			"user": actor,
-			"completed_by": actor,
 			"custom_approval_round_id": round_id,
 			"custom_notification_status": "Skipped",
 		}
@@ -1581,8 +1588,10 @@ def _finalize_round(
 	refreshed = frappe.get_doc(source.doctype, source.name)
 	context = _workflow_context(refreshed)
 	if context and context[3] == winner["next_state"]:
+		from dinext_common.workflow_approval.email_context import entry_context_for_round
+		entry = entry_context_for_round(round_id, winner)
 		_finish_round(round_id, winner)
-		reconcile_source(refreshed, cycle_guard=cycle_guard)
+		reconcile_source(refreshed, cycle_guard=cycle_guard, entry_context=entry)
 		return True
 
 	submission_queue = frappe.db.get_value(
@@ -1803,5 +1812,9 @@ def apply_domain_transition(
 		)
 	refreshed = frappe.get_doc(doctype, name)
 	refreshed.add_comment("Workflow", reason)
-	reconcile_source(refreshed)
+	reconcile_source(refreshed, entry_context={
+		"kind": "domain", "round_id": round_id, "action": transition.action,
+		"next_state": next_state, "actor": actor,
+		"comments": [{"system": True, "actor": actor, "at": str(frappe.utils.now_datetime()), "text": reason}],
+	})
 	return refreshed

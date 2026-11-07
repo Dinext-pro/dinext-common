@@ -12,3 +12,5 @@ dinext_common.patches.v1_0.generalize_parallel_workflow_approvals
 dinext_common.patches.v1_0.migrate_workflow_approval_assignees_v2
 dinext_common.patches.v1_0.cutover_parallel_workflow_approvals
 dinext_common.patches.v1_0.add_workflow_fingerprint_settings
+
+dinext_common.patches.v1_0.add_workflow_state_email_profiles

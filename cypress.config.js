@@ -25,14 +25,16 @@ module.exports = {
 				});
 				return JSON.parse(output.trim().split("\n").at(-1));
 			};
-			const runFixture = (method) => {
+			const runFixture = (method, module = "approval_workspace_ui") => {
 				const url = run("frappe.utils.get_site_url", ["--args", JSON.stringify([site])]);
 				if (new URL(url).origin !== new URL(config.baseUrl).origin) {
 					throw new Error("The Cypress base URL must match the local fixture site.");
 				}
-				return run(`dinext_common.tests.approval_workspace_ui.${method}`);
+				return run(`dinext_common.tests.${module}.${method}`);
 			};
 			on("task", {
+                emailProfileSeed: () => runFixture("seed", "workflow_email_ui"),
+                emailProfileCleanup: () => runFixture("cleanup", "workflow_email_ui"),
 				approvalWorkspaceSeed: () => runFixture("seed"),
 				approvalWorkspaceCleanup: () => runFixture("cleanup"),
 			});

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import json
 from collections import defaultdict
 from contextlib import nullcontext
 from datetime import datetime, time, timedelta, timezone
@@ -14,6 +15,8 @@ from frappe import _
 from frappe.email.doctype.email_template.email_template import get_email_template
 from frappe.translate import get_user_lang, print_language
 from frappe.utils import get_datetime, get_system_timezone, get_url_to_form, now_datetime
+
+from dinext_common.workflow_approval.email_settings import checked, profile_for_state, value
 
 DEFAULT_IMMEDIATE_TEMPLATE = "Dinext Workflow Action"
 DEFAULT_DIGEST_TEMPLATE = "Dinext Workflow Digest"
@@ -96,22 +99,49 @@ def latest_due_digest_slot(
 	return max((slot for slot in candidates if max(created_utc, anchor_utc) <= slot <= now_utc), default=None)
 
 
-def make_delivery_key(mode: str, workflow: str, recipient: str, identity: str) -> str:
-	raw = "\0".join((mode, workflow, recipient, identity))
+def make_delivery_key(mode: str, workflow: str, recipient: str, identity: str, *, state: str = "") -> str:
+	raw = "\0".join((mode, workflow, recipient, state, identity))
 	return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def _state_email_enabled(task: object) -> bool:
-	workflow = frappe.get_cached_doc("Workflow", task.workflow)
-	if not workflow.send_email_alert:
-		return False
-	return bool(
-		frappe.db.get_value(
-			"Workflow Document State",
-			{"parent": task.workflow, "state": task.workflow_state},
-			"send_email",
-		)
-	)
+	return profile_for_state(frappe.get_doc("Workflow", task.workflow), task.workflow_state).enabled
+
+
+def notification_transitions(task: object, workflow: object) -> list:
+	"""Use live delivery flags; leave the immutable voting snapshot unchanged."""
+	current = {value(row, "custom_transition_uuid"): row for row in workflow.transitions}
+	return [
+		row for row in task.available_workflow_transitions
+		if (transition := current.get(value(row, "transition_uuid"))) is not None
+		and (task.approver != task.source_owner or checked(value(transition, "send_email_to_creator")))
+	]
+
+
+def _delivery_context(task: object, workflow: object):
+	profile = profile_for_state(workflow, task.workflow_state)
+	if not profile.enabled or task.status != "Working" or task.round_status != "Open":
+		return None
+	transitions = notification_transitions(task, workflow)
+	if not transitions:
+		return None
+	user = frappe.db.get_value("User", task.approver, ["email", "enabled"], as_dict=True)
+	if not user or not user.enabled or not user.email:
+		return None
+	if not frappe.db.exists(task.reference_doctype, task.reference_name):
+		return None
+	from dinext_common.workflow_approval.engine import _has_source_read_permission
+	source = frappe.get_doc(task.reference_doctype, task.reference_name)
+	if task.source_created_at and get_datetime(source.creation) != get_datetime(task.source_created_at):
+		return None
+	if not _has_source_read_permission(source, task.approver):
+		return None
+	return profile, source, user.email, transitions
+
+
+def _queued_delivery(key: str) -> bool:
+	# Frappe adds its domain to the caller-supplied message-id.
+	return bool(key and frappe.db.exists("Email Queue", {"message_id": ("like", key + "%")}))
 
 
 def _workflow_action(task_name: str, *, for_update: bool = False) -> object | None:
@@ -127,76 +157,44 @@ def _workflow_action(task_name: str, *, for_update: bool = False) -> object | No
 
 
 def schedule_task_notification(task: object) -> None:
-	"""Persist notification mode immediately; enqueue only immediate delivery."""
+	"""Decide the current mode; immediate work is dispatched after commit."""
 	action = _workflow_action(task.name)
 	if not action:
 		return
-	if not _state_email_enabled(task):
-		action.db_set(
-			{
-				"custom_notification_status": "Skipped",
-				"custom_notification_mode": None,
-			},
-			update_modified=False,
-		)
+	if getattr(frappe.flags, "suppress_workflow_mail", False):
+		action.db_set({"custom_notification_suppressed": 1, "custom_notification_status": "Skipped"}, update_modified=False)
 		return
-	if (
-		task.approver == task.source_owner
-		and not any(
-			transition.send_email_to_creator
-			for transition in task.available_workflow_transitions
-		)
-	):
-		action.db_set(
-			{
-				"custom_notification_status": "Skipped",
-				"custom_notification_mode": None,
-			},
-			update_modified=False,
-		)
+	workflow = frappe.get_doc("Workflow", task.workflow)
+	profile = profile_for_state(workflow, task.workflow_state)
+	if (getattr(frappe.flags, "suppress_workflow_mail", False) or not profile.enabled
+		or not notification_transitions(task, workflow)):
+		action.db_set({"custom_notification_status": "Skipped", "custom_notification_mode": None}, update_modified=False)
+		return
+	if action.custom_notification_status == "Enqueued" and _queued_delivery(action.custom_delivery_key):
 		return
 	from dinext_common.workflow_approval.signed_links import ensure_delivery_key
-
 	ensure_delivery_key(task.name)
-	workflow = frappe.get_cached_doc("Workflow", task.workflow)
-	if workflow.custom_group_workflow_action_emails:
-		action.db_set(
-			{
-				"custom_notification_mode": "Digest",
-				"custom_notification_status": "Pending",
-			},
-			update_modified=False,
-		)
-		return
-	if (
-		action.custom_notification_mode == "Immediate"
-		and action.custom_notification_status == "Enqueued"
-	):
-		return
-	action.db_set(
-		{
-			"custom_notification_mode": "Immediate",
-			"custom_notification_status": "Pending",
-		},
-		update_modified=False,
-	)
-	frappe.enqueue(
-		send_immediate_notification,
-		task_name=task.name,
-		queue="short",
-		enqueue_after_commit=True,
-		now=frappe.flags.in_test,
-	)
+	action.db_set({"custom_notification_mode": profile.mode, "custom_notification_status": "Pending"}, update_modified=False)
+	if profile.mode == "Immediate":
+		frappe.enqueue(send_immediate_notification, task_name=task.name, queue="short",
+			enqueue_after_commit=True, now=frappe.flags.in_test)
 
 
-def _task_actions(task: object) -> list[dict[str, str]]:
+def _task_actions(task: object, *, transitions=None) -> list[dict[str, str]]:
 	from dinext_common.workflow_approval.signed_links import get_task_action_url
+	return [{"action_name": row.action, "action_link": get_task_action_url(task, row)}
+		for row in (transitions if transitions is not None else task.available_workflow_transitions)]
 
-	actions = []
-	for transition in task.available_workflow_transitions:
-		link = get_task_action_url(task, transition)
-		actions.append({"action_name": transition.action, "action_link": link})
-	return actions
+
+def _message_context(task, source, transitions):
+	manifest = json.loads(task.round_manifest or "{}")
+	context = {**source.as_dict(), "doc": source.as_dict(), "workflow_task": task.as_dict(),
+		"entry_context": manifest.get("entry_context") or {},
+		"document_link": get_url_to_form(source.doctype, source.name),
+		"actions": _task_actions(task, transitions=transitions)}
+	for adapter_path in frappe.get_hooks("workflow_approval_email_context") or []:
+		context.update(frappe.get_attr(adapter_path)(task, source) or {})
+	return context
 
 
 def _language_context(user: str | None):
@@ -221,63 +219,39 @@ def _sendmail_for_user(user: str, **kwargs):
 def send_immediate_notification(task_name: str) -> None:
 	task = frappe.get_doc("Workflow Task", task_name)
 	action = _workflow_action(task_name, for_update=True)
-	if not action or task.status != "Working" or task.round_status != "Open":
+	if not action or value(action, "custom_notification_suppressed") or task.status != "Working" or task.round_status != "Open":
 		return
 	if (
 		action.custom_notification_mode == "Immediate"
 		and action.custom_notification_status == "Enqueued"
 	):
 		return
-	workflow = frappe.get_cached_doc("Workflow", task.workflow)
-	source = frappe.get_doc(task.reference_doctype, task.reference_name)
-	user = frappe.db.get_value(
-		"User",
-		task.approver,
-		["email", "enabled"],
-		as_dict=True,
-	)
-	email = user.email if user and user.enabled else None
-	if not email:
+	workflow = frappe.get_doc("Workflow", task.workflow)
+	context = _delivery_context(task, workflow)
+	if not context:
 		action.db_set("custom_notification_status", "Skipped", update_modified=False)
 		return
+	profile, source, email, transitions = context
+	if profile.mode != "Immediate":
+		action.db_set({"custom_notification_mode": "Digest", "custom_notification_status": "Pending"}, update_modified=False)
+		return
+	if _queued_delivery(action.custom_delivery_key):
+		action.db_set("custom_notification_status", "Enqueued", update_modified=False)
+		return
 	try:
+		action.db_set("custom_notification_mode", "Immediate", update_modified=False)
+		message_context = _message_context(task, source, transitions)
 		common_args = {
 			"template": "workflow_action",
 			"header": "Workflow Action",
 		}
-		transition_templates = {
-			row.email_template
-			for row in task.available_workflow_transitions
-			if row.email_template
-		}
-		state_template = next(
-			(
-				row.next_action_email_template
-				for row in workflow.states
-				if row.state == task.workflow_state and row.next_action_email_template
-			),
-			None,
-		)
-		template_name = (
-			workflow.custom_workflow_action_email_template
-			or state_template
-			or (
-				next(iter(transition_templates))
-				if len(transition_templates) == 1
-				else None
-			)
-			or DEFAULT_IMMEDIATE_TEMPLATE
-		)
+		template_name = profile.template
 		if not frappe.db.exists("Email Template", template_name):
 			template_name = DEFAULT_IMMEDIATE_TEMPLATE
 		try:
 			subject, message = _template_message(
 				template_name,
-				{
-					**source.as_dict(),
-					"doc": source.as_dict(),
-					"workflow_task": task.as_dict(),
-				},
+				message_context,
 				task.approver,
 			)
 		except Exception:
@@ -290,18 +264,14 @@ def send_immediate_notification(task_name: str) -> None:
 			)
 			subject, message = _template_message(
 				DEFAULT_IMMEDIATE_TEMPLATE,
-				{
-					**source.as_dict(),
-					"doc": source.as_dict(),
-					"workflow_task": task.as_dict(),
-				},
+				message_context,
 				task.approver,
 			)
 		if subject:
 			common_args["subject"] = subject
 		if message:
 			common_args["message"] = message
-		attach_pdf = bool(workflow.custom_attach_document_pdf)
+		attach_pdf = profile.attach_pdf
 		common_args["attachments"] = (
 			[
 				frappe.attach_print(
@@ -316,9 +286,10 @@ def send_immediate_notification(task_name: str) -> None:
 			else []
 		)
 		common_args["recipients"] = [email]
-		common_args["sender"] = "Dinext <erpnext@dinord.ru>"
+		common_args["sender"] = "Dinext <ikhmel@dinext.ru>"
+		common_args["reply_to"] = "ikhmel@dinext.ru"
 		common_args["args"] = {
-			"actions": _task_actions(task),
+			"actions": message_context["actions"],
 			"message": common_args.pop("message", None),
 		}
 		common_args["reference_doctype"] = task.reference_doctype
@@ -345,21 +316,13 @@ def _recipient_timezone(user: str) -> str:
 
 
 def _slot_for_action(action: object, workflow: object, now: datetime) -> datetime | None:
-	anchor = workflow.custom_group_schedule_anchor or workflow.modified
-	send_time = (
-		get_datetime(f"2000-01-01 {workflow.custom_group_send_time}").time()
-		if workflow.custom_group_send_time
-		else None
-	)
-	return latest_due_digest_slot(
-		created_at=_aware_utc(action.creation),
-		now=_aware_utc(now),
-		timezone_name=_recipient_timezone(action.user),
-		unit=workflow.custom_group_interval_unit,
-		interval=int(workflow.custom_group_interval_value or 0),
-		send_time=send_time,
-		anchor=_aware_utc(anchor),
-	)
+	task = frappe.get_doc("Workflow Task", action.custom_workflow_task)
+	profile = profile_for_state(workflow, task.workflow_state)
+	if not profile.enabled or profile.mode != "Digest" or not profile.anchor:
+		return None
+	return latest_due_digest_slot(created_at=_aware_utc(action.creation), now=_aware_utc(now),
+		timezone_name=_recipient_timezone(action.user), unit=profile.interval_unit,
+		interval=profile.interval_value, send_times=profile.send_times, anchor=_aware_utc(profile.anchor))
 
 
 def _action_needs_delivery(action: object, workflow: object, now: datetime) -> datetime | None:
@@ -375,63 +338,45 @@ def _action_needs_delivery(action: object, workflow: object, now: datetime) -> d
 
 
 def dispatch_due_notifications() -> None:
-	"""Send at most one catch-up digest per recipient/workflow scheduler run."""
-	immediate = frappe.get_all(
-		"Workflow Action",
-		filters={
-			"status": "Open",
-			"custom_notification_mode": "Immediate",
-			"custom_notification_status": ("in", ("Pending", "Failed")),
-			"custom_workflow_task": ("is", "set"),
-		},
-		pluck="custom_workflow_task",
-		order_by="creation asc, name asc",
-	)
-	for task_name in immediate:
-		try:
-			send_immediate_notification(task_name)
-		except Exception:
-			# The sender persists/logs a repairable Failed projection.
-			continue
-
-	rows = frappe.get_all(
-		"Workflow Action",
-		filters={
-			"status": "Open",
-			"custom_notification_mode": "Digest",
-			"custom_workflow_task": ("is", "set"),
-		},
-		fields=["name", "user", "custom_workflow_task"],
-		order_by="creation asc, name asc",
-	)
-	groups: dict[tuple[str, str], list[object]] = defaultdict(list)
+	"""Re-read policies for open actions and deliver each state independently."""
+	rows = frappe.get_all("Workflow Action", filters={"status": "Open", "custom_workflow_task": ("is", "set")},
+		fields=["name", "user", "custom_workflow_task"], order_by="creation asc, name asc")
+	groups = defaultdict(list)
+	workflows = {}
 	for row in rows:
-		action = frappe.get_doc("Workflow Action", row.name)
-		task = frappe.get_doc("Workflow Task", action.custom_workflow_task)
-		if task.status == "Working" and task.round_status == "Open":
-			groups[(task.workflow, action.user)].append(action)
-
-	current = now_datetime()
-	for (workflow_name, recipient), actions in groups.items():
-		workflow = frappe.get_cached_doc("Workflow", workflow_name)
-		due_actions = [
-			(action, slot)
-			for action in actions
-			if (slot := _action_needs_delivery(action, workflow, current))
-		]
-		if not due_actions:
-			continue
-		slot = max(due for _action, due in due_actions)
-		actions_for_slot = [action for action, _due in due_actions]
 		try:
-			send_digest(workflow, recipient, actions_for_slot, slot)
+			action = frappe.get_doc("Workflow Action", row.name)
+			task = frappe.get_doc("Workflow Task", row.custom_workflow_task)
+			if value(action, "custom_notification_suppressed") or task.status != "Working" or task.round_status != "Open":
+				continue
+			if task.workflow not in workflows:
+				workflows[task.workflow] = frappe.get_doc("Workflow", task.workflow)
+			workflow = workflows[task.workflow]
+			profile = profile_for_state(workflow, task.workflow_state)
+			if not profile.enabled or not notification_transitions(task, workflow):
+				continue
+			if profile.mode == "Immediate":
+				if action.custom_notification_status != "Enqueued":
+					send_immediate_notification(task.name)
+			else:
+				groups[(task.workflow, task.workflow_state, action.user)].append(action)
 		except Exception:
-			for action in actions_for_slot:
+			frappe.log_error(title=f"Workflow notification dispatch failed: {row.name}")
+	current = now_datetime()
+	for (workflow_name, state, recipient), actions in groups.items():
+		workflow = workflows[workflow_name]
+		due = [(action, slot) for action in actions if (slot := _action_needs_delivery(action, workflow, current))]
+		if not due:
+			continue
+		try:
+			send_digest(workflow, recipient, [action for action, _ in due], max(slot for _, slot in due), state=state)
+		except Exception:
+			for action, _ in due:
 				action.db_set("custom_notification_status", "Failed", update_modified=False)
-			frappe.log_error(title=f"Workflow approval digest failed: {workflow_name} / {recipient}")
+			frappe.log_error(title=f"Workflow approval digest failed: {workflow_name} / {state} / {recipient}")
 
 
-def _digest_rows(tasks: list[object]) -> list[dict[str, object]]:
+def _digest_rows(tasks: list[object], *, permitted=None) -> list[dict[str, object]]:
 	grouped: dict[str, dict[str, object]] = {}
 	for task in tasks:
 		row: dict[str, object] = {
@@ -440,7 +385,7 @@ def _digest_rows(tasks: list[object]) -> list[dict[str, object]]:
 			"name": task.reference_name,
 			"title": task.source_title,
 			"link": get_url_to_form(task.reference_doctype, task.reference_name),
-			"actions": _task_actions(task),
+			"actions": _task_actions(task, transitions=permitted.get(task.name) if permitted is not None else None),
 			"count": 1,
 			"tasks": [task.name],
 		}
@@ -474,16 +419,20 @@ def send_digest(
 	recipient: str,
 	actions: list[object],
 	slot: datetime,
+	*, state: str | None = None,
 ) -> None:
 	"""Send all currently active tasks, without truncation, for one workflow."""
 	active_actions = []
 	tasks = []
+	permitted = {}
+	profile = None
+	delivery_key = None
 	for action in sorted(actions, key=lambda item: item.name):
 		refreshed = _workflow_action(
 			action.custom_workflow_task,
 			for_update=True,
 		)
-		if not refreshed:
+		if not refreshed or value(refreshed, "custom_notification_suppressed"):
 			continue
 		task = frappe.get_doc("Workflow Task", action.custom_workflow_task)
 		last_slot = (
@@ -491,20 +440,25 @@ def send_digest(
 			if refreshed.custom_last_digest_slot
 			else None
 		)
-		if (
-			task.status == "Working"
-			and task.round_status == "Open"
-			and _state_email_enabled(task)
-			and workflow.custom_group_workflow_action_emails
-			and (not last_slot or last_slot < _aware_utc(slot))
-		):
-			active_actions.append(refreshed)
-			tasks.append(task)
+		context = _delivery_context(task, workflow)
+		if not context:
+			continue
+		current_profile, _source, _email, transitions = context
+		state = state or task.workflow_state
+		if task.workflow_state != state or current_profile.mode != "Digest" or (last_slot and last_slot >= _aware_utc(slot)):
+			continue
+		profile = current_profile
+		delivery_key = make_delivery_key("Digest", workflow.name, recipient, slot.isoformat(), state=state)
+		# Links must bind to this delivery, not the previous digest's key.
+		refreshed.db_set("custom_delivery_key", delivery_key, update_modified=False)
+		active_actions.append(refreshed)
+		tasks.append(task)
+		permitted[task.name] = transitions
 	if not tasks:
 		return
-	rows = _digest_rows(tasks)
+	rows = _digest_rows(tasks, permitted=permitted)
 	template_name = (
-		workflow.custom_group_email_template
+		profile.digest_template
 		or (
 			DEFAULT_TIMESHEET_DIGEST_TEMPLATE
 			if any(task.reference_doctype == "User Timesheet Position" for task in tasks)
@@ -517,6 +471,7 @@ def send_digest(
 		"tasks": [task.as_dict() for task in tasks],
 		"rows": rows,
 		"slot": slot,
+		"workflow_state": state,
 	}
 	if not frappe.db.exists("Email Template", template_name):
 		template_name = DEFAULT_DIGEST_TEMPLATE
@@ -565,23 +520,10 @@ def send_digest(
 	email = user.email if user and user.enabled else None
 	if not email:
 		return
-	delivery_key = make_delivery_key(
-		"Digest",
-		workflow.name,
-		recipient,
-		slot.isoformat(),
-	)
-	_sendmail_for_user(
-		recipient,
-		recipients=[email],
-		sender="Dinext <erpnext@dinord.ru>",
-		subject=subject,
-		message=message,
-		header="Workflow Action",
-		reference_doctype="Workflow",
-		reference_name=workflow.name,
-		message_id=delivery_key,
-	)
+	if not _queued_delivery(delivery_key):
+		_sendmail_for_user(recipient, recipients=[email], sender="Dinext <ikhmel@dinext.ru>",
+			reply_to="ikhmel@dinext.ru", subject=subject, message=message, header="Workflow Action",
+			reference_doctype="Workflow", reference_name=workflow.name, message_id=delivery_key)
 	for action in active_actions:
 		action.db_set(
 			{

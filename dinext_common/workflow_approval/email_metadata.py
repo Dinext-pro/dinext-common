@@ -2,7 +2,9 @@
 
 
 def extend_email_fields(fields):
+	fields["Workflow Action"].append({"fieldname": "custom_notification_suppressed", "fieldtype": "Check", "label": "Notification Suppressed", "default": "0", "hidden": 1, "read_only": 1, "insert_after": "custom_notification_status"})
 	parent = fields["Workflow"]
+	parent.append({"fieldname": "custom_email_profile_version", "fieldtype": "Int", "label": "Email Profile Version", "default": "0", "hidden": 1, "read_only": 1, "insert_after": "send_email_alert"})
 	for row in parent:
 		if row["fieldname"] == "custom_group_send_time":
 			row.update(hidden=1, mandatory_depends_on="")
@@ -45,3 +47,17 @@ def ensure_state_email_properties():
 		"eval:doc.send_email && !doc.custom_group_workflow_action_emails", "Data",
 		for_doctype=False, validate_fields_for_doctype=False,
 	)
+
+
+def ensure_workflow_email_fields():
+	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+	from dinext_common.workflow_approval.metadata import get_workflow_approval_custom_fields
+	all_fields = get_workflow_approval_custom_fields()
+	global_names = {"custom_email_profile_version", "custom_group_send_times", "custom_group_send_time", "custom_group_email_template"}
+	fields = {
+		"Workflow": [row for row in all_fields["Workflow"] if row["fieldname"] in global_names],
+		"Workflow Document State": all_fields["Workflow Document State"],
+		"Workflow Action": [row for row in all_fields["Workflow Action"] if row["fieldname"] == "custom_notification_suppressed"],
+	}
+	create_custom_fields(fields, ignore_validate=True, update=True)
+	ensure_state_email_properties()

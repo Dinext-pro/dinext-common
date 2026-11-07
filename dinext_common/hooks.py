@@ -13,6 +13,7 @@ website_context = {
 }
 
 fixtures = [
+    {"doctype": "Property Setter", "filters": [["name", "=", "Workflow Document State-next_action_email_template-depends_on"]]},
     {
         "doctype": "Workflow State",
         "filters": [["name", "in", ["Draft", "Editing", "Pending Approval", "Approved", "Rejected"]]],
@@ -209,6 +210,8 @@ doctype_list_js = {
 after_install = "dinext_common.install.after_install"
 before_migrate = ["dinext_common.workflow_approval.localization.guard_label_migration"]
 after_migrate = [
+	"dinext_common.workflow_approval.email_metadata.ensure_workflow_email_fields",
+	"dinext_common.workflow_approval.email_migration.ensure_email_profiles",
 	"dinext_common.workflow_approval.metadata.ensure_workflow_fingerprint_fields",
 	"dinext_common.changelog_feed.on_after_migrate",
 	"dinext_common.setup.workspace.configure_workspace_menu",

@@ -324,8 +324,16 @@ def ensure_workflow_approval_email_templates() -> None:
 			),
 		},
 	}
-	for name, values in templates.items():
+	legacy_templates = templates
+	from dinext_common.workflow_approval.email_templates import default_email_templates
+
+	for name, values in default_email_templates().items():
 		if frappe.db.exists("Email Template", name):
+			existing = frappe.get_doc("Email Template", name)
+			legacy = legacy_templates.get(name)
+			if legacy and all(existing.get(key) == item for key, item in legacy.items()):
+				existing.update(values)
+				existing.save(ignore_permissions=True)
 			continue
 		frappe.get_doc(
 			{

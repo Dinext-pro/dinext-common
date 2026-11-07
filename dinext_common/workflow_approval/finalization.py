@@ -39,8 +39,10 @@ def repair_round(round_id: str) -> None:
 	source = frappe.get_doc(task.reference_doctype, task.reference_name, for_update=True)
 	context = engine._workflow_context(source)
 	if context and context[3] == winner["next_state"]:
+		from dinext_common.workflow_approval.email_context import entry_context_for_round
+		entry = entry_context_for_round(round_id, winner)
 		engine._finish_round(round_id, winner)
-		engine.reconcile_source(source)
+		engine.reconcile_source(source, entry_context=entry)
 		return
 	if task.submission_queue:
 		queue = frappe.get_doc("Submission Queue", task.submission_queue)
