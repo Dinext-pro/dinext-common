@@ -182,7 +182,7 @@ describe("My Approvals audit corrections", () => {
 			openReport("My Approval History", user);
 			for (let visit = 0; visit < 2; visit++) {
 				cy.get('[data-fieldname="completion_source"] select option[value="Manual"]').should("have.text", label);
-				cy.get('[data-fieldname="completion_source"] select').select("");
+				cy.get('[data-fieldname="completion_source"] select').select("Bulk");
 				cy.get('[data-fieldname="completion_source"] select').select("Manual").should("have.value", "Manual");
 				cy.wait("@canonicalManual").then(({request, response}) => {
 					expect(response.statusCode).to.eq(200);
