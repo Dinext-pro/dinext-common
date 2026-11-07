@@ -41,6 +41,16 @@ describe("My Approvals audit corrections", () => {
 				cy.contains(`.dt-scrollable .dt-cell--col-${column.colIndex}`, label).scrollIntoView().should("be.visible");
 				if (field === "reference_doctype" || field === "group_label") expect(raw).to.eq("Note");
 			}
+			for (const field of ["available_actions", "progress"]) {
+				const column = report.datatable.datamanager.getColumns().find((item) => item.id === field);
+				if (!column) continue;
+				const row = report.data[0];
+				const label = field === "available_actions"
+					? row.available_actions.split(", ").map((action) => win.__(action)).join(", ")
+					: row.progress_transitions.map((item) => `${win.__(item.action)} ${item.votes}/${item.threshold}`).join("; ");
+				expect(label, `${report.report_name} ${field}`).to.match(/[А-Яа-яЁё]/);
+				cy.contains(`.dt-scrollable .dt-cell--col-${column.colIndex}`, label).scrollIntoView().should("be.visible");
+			}
 			if (["My Approvals", "Approval Duration"].includes(report.report_name)) {
 				expect(report.chart.data.labels).to.include(win.__("Note"));
 			}
