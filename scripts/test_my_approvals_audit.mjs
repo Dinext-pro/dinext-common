@@ -89,3 +89,15 @@ const parityCases = JSON.parse(fs.readFileSync('dinext_common/tests/fixtures/app
 assert.deepEqual(parityCases.map(({raw}) => normalize(raw)), parityCases.map(({normalized}) => normalized),
   'client matches authoritative Python normalization without joining split references');
 console.log('split controls, tags, numeric and nested entities match authoritative Python: PASS');
+
+vm.runInNewContext(fs.readFileSync('dinext_common/dinext_common/report/my_approval_history/my_approval_history.js', 'utf8'), context);
+for (const lang of ['ru', 'en', 'ru']) {
+  language = lang;
+  const filter = {df: {options: '\nManual\nSigned Link\nBulk\nAutomatic Unchanged'},
+    value: 'Manual', get_value() {return this.value;},
+    refresh() {}, set_input(value) {this.value = value;}};
+  frappe.query_reports['My Approval History'].onload({get_filter: () => filter});
+  assert.equal(filter.df.options.find(option => option.value === 'Manual').label, lang === 'ru' ? 'Вручную' : 'Manual');
+  assert.equal(filter.get_value(), 'Manual');
+}
+console.log('history completion filter translates labels and retains canonical values across reuse: PASS');
