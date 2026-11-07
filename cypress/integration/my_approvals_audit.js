@@ -88,8 +88,8 @@ describe("My Approvals audit corrections", () => {
 
 	it("renders Russian report values and legends while retaining canonical data", () => {
 		openReport("My Approval History", fixture.bob);
-		cy.contains(".dt-cell", "Вручную").should("be.visible");
-		cy.contains(".dt-cell", "Выполнено").should("be.visible");
+		cy.contains(".dt-cell", "Вручную").scrollIntoView().should("be.visible");
+		cy.contains(".dt-cell", "Выполнено").scrollIntoView().should("be.visible");
 		cy.window().should((win) => {
 			const report = win.frappe.query_report;
 			expect(report.data.some((row) => row.completion_source === "Manual" && row.status === "Completed")).to.eq(true);
