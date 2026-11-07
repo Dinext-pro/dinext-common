@@ -1,4 +1,4 @@
-import commentCases from "../../dinext_common/tests/fixtures/approval_comment_normalization.json";
+const commentCases = require("../../dinext_common/tests/fixtures/approval_comment_normalization.json");
 
 describe("My Approvals audit corrections", () => {
 	let fixture;
