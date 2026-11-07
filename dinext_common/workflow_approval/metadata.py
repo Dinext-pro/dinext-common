@@ -291,47 +291,12 @@ def ensure_workflow_approval_custom_fields() -> None:
 
 def ensure_workflow_approval_email_templates() -> None:
 	"""Install editable defaults used when a Workflow has no custom template."""
-	templates = {
-		"Dinext Workflow Action": {
-			"subject": "Workflow Action on {{ doc.doctype }}: {{ doc.name }}",
-			"response_html": (
-				"<p>A workflow action is required for "
-				"<strong>{{ doc.doctype }} {{ doc.name }}</strong>.</p>"
-			),
-		},
-		"Dinext Workflow Correction": {
-			"subject": "Correction required for {{ doc.doctype }}: {{ doc.name }}",
-			"response_html": (
-				"<p><strong>{{ doc.doctype }} {{ doc.name }}</strong> "
-				"requires correction.</p>"
-			),
-		},
-		"Dinext Workflow Digest": {
-			"subject": "Pending workflow approvals",
-			"response_html": (
-				"<p>Pending workflow approvals:</p><ul>"
-				"{% for row in rows %}<li><a href=\"{{ row.link }}\">"
-				"{{ row.title }}</a>{% if row.count > 1 %} ({{ row.count }}){% endif %}"
-				"</li>{% endfor %}</ul>"
-			),
-		},
-		"Dinext Timesheet Workflow Digest": {
-			"subject": "Timesheets awaiting approval",
-			"response_html": (
-				"<p>Timesheets awaiting approval:</p><ul>"
-				"{% for row in rows %}<li><a href=\"{{ row.link }}\">"
-				"{{ row.title }}</a> — {{ row.count }} position(s)</li>{% endfor %}</ul>"
-			),
-		},
-	}
-	legacy_templates = templates
-	from dinext_common.workflow_approval.email_templates import default_email_templates
+	from dinext_common.workflow_approval.email_templates import default_email_templates, is_known_default_template
 
 	for name, values in default_email_templates().items():
 		if frappe.db.exists("Email Template", name):
 			existing = frappe.get_doc("Email Template", name)
-			legacy = legacy_templates.get(name)
-			if legacy and all(existing.get(key) == item for key, item in legacy.items()):
+			if is_known_default_template(name, existing):
 				existing.update(values)
 				existing.save(ignore_permissions=True)
 			continue

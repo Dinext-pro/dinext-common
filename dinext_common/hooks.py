@@ -286,10 +286,12 @@ doc_events = {
 			"dinext_common.apps.set_default_app_for_new_user",
 		],
 	},
+	"Email Template": {"before_import": "dinext_common.workflow_approval.email_import.preserve_email_template"},
 	"Workflow": {
 		"before_import": [
 			"dinext_common.workflow_approval.exclusions.preserve_fixture_exclusions",
 			"dinext_common.workflow_approval.localization.preserve_fixture_transition_ids",
+			"dinext_common.workflow_approval.email_import.preserve_workflow_email_settings",
 		],
 		"validate": [
 			"dinext_common.workflow_approval.metadata.validate_workflow_doc",

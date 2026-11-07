@@ -31,3 +31,12 @@ class TestWorkflowEmailMigration(unittest.TestCase):
         self.assertEqual(returns[0].next_state,'Draft')
         self.assertEqual(returns[0].condition,'doc.owner == frappe.session.user')
         self.assertEqual(returns[0].send_email_to_creator,1)
+
+    def test_rebuilt_approval_actions_are_not_permanently_suppressed(self):
+        from unittest.mock import Mock,patch
+        from dinext_common.workflow_approval import email_migration as migration,metadata
+        workflow=Mock();workflow.get.return_value=0
+        observed=[]
+        with patch.object(migration.frappe.utils,'now_datetime',return_value='2026-11-07 10:00:00'), patch.object(migration.frappe,'flags',Row(suppress_workflow_mail=False)), patch.object(migration.frappe,'db',Mock()), patch.object(migration.frappe,'get_doc',return_value=workflow), patch.object(migration,'APPROVAL_STATES',{'Goal Approval':('Parent Approval',)}), patch.object(metadata,'ensure_workflow_approval_email_templates'), patch.object(migration,'configure_workflow'), patch.object(migration,'_suppress_existing_corrections'), patch.object(migration,'_rebuild_goal_rounds',side_effect=lambda:observed.append(migration.frappe.flags.suppress_workflow_mail)):
+            migration.ensure_email_profiles()
+        self.assertEqual(observed,[False])

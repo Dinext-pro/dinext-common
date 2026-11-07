@@ -65,22 +65,18 @@ def ensure_email_profiles():
 		return
 	from dinext_common.workflow_approval.metadata import ensure_workflow_approval_email_templates
 	ensure_workflow_approval_email_templates()
-	previous = getattr(frappe.flags, "suppress_workflow_mail", False)
-	frappe.flags.suppress_workflow_mail = True
-	try:
-		for name in APPROVAL_STATES:
-			if not frappe.db.exists("Workflow", {"name": name, "is_active": 1}):
-				continue
-			workflow = frappe.get_doc("Workflow", name)
-			if workflow.get("custom_email_profile_version") == 1:
-				continue
+	for name in APPROVAL_STATES:
+		if not frappe.db.exists("Workflow", {"name": name, "is_active": 1}):
+			continue
+		workflow = frappe.get_doc("Workflow", name)
+		if workflow.get("custom_email_profile_version") == 1:
+			continue
+		_suppress_existing_corrections(workflow.name)
+		configure_workflow(workflow, now=frappe.utils.now_datetime())
+		workflow.save(ignore_permissions=True)
+		if name == "Goal Approval":
+			_rebuild_goal_rounds()
 			_suppress_existing_corrections(workflow.name)
-			configure_workflow(workflow, now=frappe.utils.now_datetime())
-			workflow.save(ignore_permissions=True)
-			if name == "Goal Approval":
-				_rebuild_goal_rounds()
-	finally:
-		frappe.flags.suppress_workflow_mail = previous
 
 
 def _rebuild_goal_rounds():

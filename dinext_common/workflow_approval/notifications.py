@@ -239,6 +239,8 @@ def send_immediate_notification(task_name: str) -> None:
 		action.db_set("custom_notification_status", "Enqueued", update_modified=False)
 		return
 	try:
+		from dinext_common.workflow_approval.signed_links import ensure_delivery_key
+		action.custom_delivery_key = ensure_delivery_key(task.name)
 		action.db_set("custom_notification_mode", "Immediate", update_modified=False)
 		message_context = _message_context(task, source, transitions)
 		common_args = {

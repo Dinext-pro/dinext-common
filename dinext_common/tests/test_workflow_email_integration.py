@@ -186,3 +186,93 @@ class TestWorkflowEmailIntegration(base.TestWorkflowApprovalIntegration):
         self.assertEqual(manifest['entry_context']['kind'],'domain')
         self.assertEqual(manifest['entry_context']['comments'][0]['text'],'Cascade from parent test')
         self.assertTrue(manifest['entry_context']['comments'][0]['system'])
+
+    def _import_fixture(self, values):
+        from frappe.modules.import_file import import_doc
+        previous=frappe.flags.in_fixtures
+        frappe.flags.in_fixtures=True
+        try:return import_doc(values)
+        finally:frappe.flags.in_fixtures=previous
+
+    def test_fixture_import_preserves_profiles_and_custom_template(self):
+        workflow=self._profile(grouped=True)
+        workflow.custom_email_profile_version=1
+        workflow.custom_group_send_times='09:00, 18:00'
+        workflow.states[0].send_email=0
+        workflow.states[1].custom_email_settings_override=1
+        workflow.states[1].custom_group_workflow_action_emails=0
+        workflow.save(ignore_permissions=True)
+        incoming=workflow.as_dict()
+        incoming.custom_group_send_times='08:00, 17:00'
+        incoming.states[0].send_email=1
+        incoming.states[1].custom_email_settings_override=0
+        self._import_fixture(incoming)
+        workflow.reload()
+        self.assertEqual(workflow.custom_group_send_times,'09:00, 18:00')
+        self.assertEqual(workflow.states[0].send_email,0)
+        self.assertEqual(workflow.states[1].custom_email_settings_override,1)
+        self.assertEqual(workflow.states[1].custom_group_workflow_action_emails,0)
+
+    def test_fixture_import_preserves_custom_template(self):
+        template=frappe.get_doc('Email Template','Dinext Workflow Correction')
+        original=template.as_dict()
+        try:
+            template.subject='Preserve fixture customization'
+            template.response_html='<p>My correction text</p>'
+            template.save(ignore_permissions=True)
+            self._import_fixture(original)
+            template.reload()
+            self.assertEqual(template.subject,'Preserve fixture customization')
+            self.assertEqual(template.response_html,'<p>My correction text</p>')
+        finally:frappe.db.set_value('Email Template',template.name,{k:original[k]for k in ['subject','response_html','response','use_html']})
+
+    def test_fixture_import_keeps_legacy_version_for_upgrade_and_suppresses_history(self):
+        workflow=frappe.get_doc('Workflow','AFL Workflow')
+        workflow.db_set('custom_email_profile_version',0,update_modified=False)
+        source,task=self._source_and_task()
+        action=notifications._workflow_action(task.name)
+        task.db_set({'workflow':'AFL Workflow','workflow_state':'Rejected'},update_modified=False)
+        fixture=workflow.as_dict();fixture.custom_email_profile_version=1
+        self._import_fixture(fixture)
+        self.assertEqual(frappe.db.get_value('Workflow',workflow.name,'custom_email_profile_version'),0)
+        action.reload()
+        self.assertEqual(action.custom_notification_suppressed,1)
+        self.assertEqual(action.custom_notification_status,'Skipped')
+
+    def test_configuration_rebuild_preserves_correction_context(self):
+        source,task=self._source_and_task()
+        frappe.set_user(self.user)
+        result=engine.cast_vote(task.name,transition_uuid=task.available_workflow_transitions[0].transition_uuid,
+            comment='Keep exact original correction',request_id='email-rebuild-context')
+        self.assertTrue(result['transitioned'])
+        frappe.set_user('Administrator')
+        old=frappe.get_doc('Workflow Task',frappe.db.get_value('Workflow Task',{'reference_name':source.name,'workflow_state':'Closed','status':'Working'},'name'))
+        expected=json.loads(old.round_manifest)['entry_context']
+        workflow=frappe.get_doc('Workflow',self.workflow_name)
+        workflow.transitions[1].custom_comment_is_required=1
+        workflow.transitions[1].condition='doc.name != ""'
+        workflow.save(ignore_permissions=True)
+        source.reload();engine.reconcile_source(source)
+        result=engine.rebuild_configuration_conflict(source,old.approval_round_id,'Changed correction route')
+        self.assertTrue(result['new_tasks'])
+        manifest=json.loads(frappe.db.get_value('Workflow Task',result['new_tasks'][0],'round_manifest'))
+        self.assertEqual(manifest.get('entry_context'),expected)
+
+    def test_reenabled_immediate_task_uses_delivery_key_for_queue_retry(self):
+        source,task=self._source_and_task()
+        self._profile()
+        action=notifications._workflow_action(task.name)
+        self.assertFalse(action.custom_delivery_key)
+        with patch.object(notifications,'_sendmail_for_user') as send:
+            notifications.send_immediate_notification(task.name)
+            action.reload()
+            self.assertTrue(action.custom_delivery_key)
+            self.assertEqual(send.call_args.kwargs['message_id'],action.custom_delivery_key)
+            frappe.get_doc({'doctype':'Email Queue','name':'_Test reenabled workflow queue',
+                'message_id':action.custom_delivery_key+'@test.local','sender':'ikhmel@dinext.ru',
+                'message':'Test queue idempotency','status':'Not Sent'}).db_insert()
+            action.db_set('custom_notification_status','Failed',update_modified=False)
+            notifications.send_immediate_notification(task.name)
+            self.assertEqual(send.call_count,1)
+            action.reload()
+            self.assertEqual(action.custom_notification_status,'Enqueued')

@@ -1,6 +1,7 @@
 Cypress.removeAllListeners('uncaught:exception');
 let fixture;
 const open = () => {
+    cy.viewport(1440, 1000);
     cy.login(fixture.editor, fixture.password);
     cy.visit('/app/workflow/' + encodeURIComponent(fixture.workflow));
     cy.window().should(w => expect(w.cur_frm?.doc.name).to.equal(fixture.workflow));
@@ -57,10 +58,13 @@ describe('Workflow email state settings', () => {
             expect(form.fields_dict.next_action_email_template.$wrapper.is(':visible')).to.equal(true);
             expect(form.fields_dict.custom_group_send_times.$wrapper.is(':visible')).to.equal(false);
         });
+        cy.get('.modal:visible').should('not.exist');
+        cy.get('#freeze:visible, .modal-backdrop:visible').should('not.exist');
+        cy.window().then(w => cy.wrap(w.cur_frm.fields_dict.states.grid.grid_rows[1].grid_form.fields_dict.custom_email_settings_source.$wrapper).scrollIntoView());
         for (const theme of ['light','dark']) {
             cy.window().then(w => {w.document.documentElement.dataset.theme=theme;});
             cy.contains('Настройки состояния').filter(':visible').should('have.length.at.least',1);
-            cy.screenshot('workflow-email-profile-' + theme, {capture:'viewport'});
+            cy.window().then(w => cy.wrap(w.cur_frm.fields_dict.states.grid.grid_rows[1].grid_form.wrapper).screenshot('workflow-email-profile-' + theme));
         }
     });
 });

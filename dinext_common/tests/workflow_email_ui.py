@@ -1,10 +1,12 @@
 """Run-owned Workflow form fixture for local email-profile acceptance."""
 
 import frappe
-from dinext_common.tests.ui_test_helpers import PASSWORD, _ensure_user
+from unittest.mock import patch
+from dinext_common.tests.ui_test_helpers import PASSWORD, _ensure_user, _ensure_role
 
 NAME = '_Cypress Workflow Email Profiles'
 EDITOR = 'cy.workflow.email@example.com'
+ROLE = NAME + ' Reader'
 
 
 def _guard():
@@ -20,6 +22,10 @@ def cleanup():
     if frappe.db.exists('User', EDITOR):
         frappe.delete_doc('User', EDITOR, force=True, ignore_permissions=True)
     frappe.db.delete('Custom DocPerm', {'name': NAME})
+    for dt in ('DocPerm','Custom DocPerm','DocType Permission Condition'):
+        frappe.db.delete(dt,{'role':ROLE})
+    if frappe.db.exists('Role',ROLE):frappe.delete_doc('Role',ROLE,force=True,ignore_permissions=True)
+    frappe.cache.delete_value('doctype_permission_map')
     frappe.clear_cache()
     return {'cleaned': True}
 
@@ -27,7 +33,11 @@ def cleanup():
 def seed():
     _guard()
     cleanup()
-    _ensure_user(EDITOR, 'Workflow Email Editor', ['System Manager', 'Desk User', 'Dinext_UT_Full_Access'])
+    from dinext_common.tests import approval_workspace_ui
+    _ensure_role(ROLE)
+    with patch.object(approval_workspace_ui,'READER_ROLE',ROLE):
+        approval_workspace_ui._grant_fixture_read('Kanban Board')
+    _ensure_user(EDITOR, 'Workflow Email Editor', ['System Manager', 'Desk User', 'Dinext_UT_Full_Access',ROLE])
     frappe.db.set_value('User', EDITOR, 'language', 'ru')
     permission = frappe.get_doc({'doctype':'Custom DocPerm','name':NAME,'parent':'Workflow',
         'parenttype':'DocType','parentfield':'permissions','role':'System Manager',

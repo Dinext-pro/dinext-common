@@ -971,9 +971,11 @@ def rebuild_configuration_conflict(
 	reason: str,
 ) -> dict[str, Any]:
 	"""Cancel a configuration conflict and open a round that keeps stable votes."""
+	old_names = _round_task_names(round_id)
+	entry_context = _parse_manifest(frappe.get_doc("Workflow Task", old_names[0])).get("entry_context") if old_names else None
 	votes = _completed_vote_rows(round_id)
 	_cancel_round(round_id, reason)
-	names = reconcile_source(doc, apply_automatic=False)
+	names = reconcile_source(doc, apply_automatic=False, entry_context=entry_context)
 	if not names:
 		return {"carried": [], "dropped": votes, "new_tasks": []}
 	new_round_id = frappe.db.get_value("Workflow Task", names[0], "approval_round_id")
