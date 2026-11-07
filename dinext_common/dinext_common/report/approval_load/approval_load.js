@@ -1,4 +1,5 @@
 frappe.query_reports["Approval Load"] = {
+	formatter(...args) { return frappe.dinext.approvalReportFormatter(...args); },
 	filters: [
 		{
 			fieldname: "workflow",

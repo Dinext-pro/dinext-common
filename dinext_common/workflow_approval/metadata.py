@@ -465,6 +465,7 @@ def _ensure_personal_report_filters() -> None:
 	for name, fieldname, label, fieldtype in (
 		(QUEUE_SHORTCUT, "created_on", "Created On", "Date"),
 		(HISTORY_SHORTCUT, "completed_since", "Completed Since", "Data"),
+		(DURATION_SHORTCUT, "completed_since", "Completed Since", "Data"),
 	):
 		if not frappe.db.exists("Report", name):
 			continue

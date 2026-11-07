@@ -27,9 +27,12 @@ class TestWorkflowApprovalPermissions(unittest.TestCase):
 	def test_workflow_documents_use_standard_permission_hooks(self):
 		from dinext_common import hooks
 
-		for doctype in ("Workflow Action", "Workflow Task"):
+		for doctype in ("Workflow Action",):
 			self.assertNotIn(doctype, hooks.has_permission)
 			self.assertNotIn(doctype, getattr(hooks, "permission_query_conditions", {}))
+
+		self.assertIn("Workflow Task", hooks.has_permission)
+		self.assertIn("Workflow Task", hooks.permission_query_conditions)
 
 	def test_loading_app_hooks_preserves_core_workflow_action_filter(self):
 		from importlib import reload

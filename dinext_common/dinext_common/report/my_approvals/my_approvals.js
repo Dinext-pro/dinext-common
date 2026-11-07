@@ -1,4 +1,5 @@
 frappe.query_reports["My Approvals"] = {
+	formatter(...args) { return frappe.dinext.approvalReportFormatter(...args); },
 	get_datatable_options(options) {
 		return Object.assign(options, { checkboxColumn: true });
 	},
@@ -27,6 +28,10 @@ frappe.query_reports["My Approvals"] = {
 			if (!common.size) {
 				frappe.throw(__("Selected approvals have no common action"));
 			}
+			let validation;
+			const isRequired = () => rows.some((row) => row.available_transitions.some(
+				(transition) => transition.action === dialog.get_value("action") && transition.comment_is_required
+			));
 			const dialog = new frappe.ui.Dialog({
 				title: __("Apply selected approvals"),
 				fields: [
@@ -34,7 +39,7 @@ frappe.query_reports["My Approvals"] = {
 						fieldname: "action",
 						fieldtype: "Select",
 						label: __("Action"),
-						options: [...common].sort().join("\n"),
+						options: [...common].sort().map((action) => ({value: action, label: __(action)})),
 						reqd: 1,
 						change() {
 							const action = dialog.get_value("action");
@@ -46,6 +51,7 @@ frappe.query_reports["My Approvals"] = {
 								)
 							);
 							dialog.set_df_property("comment", "reqd", required ? 1 : 0);
+							validation?.validate();
 						},
 					},
 					{
@@ -56,6 +62,7 @@ frappe.query_reports["My Approvals"] = {
 				],
 				primary_action_label: __("Apply"),
 				async primary_action(values) {
+					if (!validation.validate()) return;
 					const items = rows.map((row) => {
 						const transition = row.available_transitions.find(
 							(candidate) => candidate.action === values.action
@@ -66,13 +73,13 @@ frappe.query_reports["My Approvals"] = {
 							action: values.action,
 						};
 					});
-					dialog.disable_primary_action();
+					validation.setSubmitting(true);
 					try {
 						const result = await frappe.xcall(
 							"dinext_common.workflow_approval.api.bulk_task_vote",
 							{
 								items,
-								comment: values.comment,
+								comment: frappe.dinext.normalizeWorkflowComment(values.comment),
 								request_id:
 									window.crypto?.randomUUID?.() ||
 									`${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -91,10 +98,12 @@ frappe.query_reports["My Approvals"] = {
 						dialog.hide();
 						report.refresh();
 					} finally {
-						dialog.enable_primary_action();
+						validation.setSubmitting(false);
 					}
 				},
 			});
+			dialog.set_df_property("comment", "reqd", isRequired() ? 1 : 0);
+			validation = frappe.dinext.bindWorkflowCommentValidation(dialog, isRequired);
 			dialog.show();
 		});
 	},

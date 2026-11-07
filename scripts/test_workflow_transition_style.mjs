@@ -339,7 +339,14 @@ let reportDialog;
 let refreshedReports = 0;
 frappe.query_reports = {};
 frappe.ui.Dialog = class {
-  constructor(options) { this.options = options; reportDialog = this; }
+  constructor(options) {
+    this.options = options; reportDialog = this;
+    this.values = {action: "Approve", comment: ""};
+    this.fields_dict = {comment: {$input: {on() {}}, set_focus() {}}};
+    this.$wrapper = {on() {}};
+  }
+  get_value(name) { return this.values[name]; }
+  set_df_property() {}
   disable_primary_action() {}
   enable_primary_action() {}
   show() {}

@@ -1189,8 +1189,8 @@ def _apply_automatic_votes(
 		doc.add_comment(
 			"Workflow",
 			_("{0} automatically reused action {1}").format(
-				frappe.bold(task.approver),
-				frappe.bold(transition.action),
+				frappe.bold(frappe.utils.escape_html(task.approver)),
+				frappe.bold(frappe.utils.escape_html(_(transition.action))),
 			),
 		)
 		reused_times.setdefault(str(_value(transition, "transition_uuid")), []).append(
@@ -1380,7 +1380,7 @@ def cast_vote(
 		"Workflow",
 		_("{0} voted {1}{2}").format(
 			frappe.bold(frappe.utils.escape_html(task.approver)),
-			frappe.bold(frappe.utils.escape_html(transition.action)),
+			frappe.bold(frappe.utils.escape_html(_(transition.action))),
 			(
 				f": {frappe.utils.escape_html(normalized_comment)}"
 				if normalized_comment

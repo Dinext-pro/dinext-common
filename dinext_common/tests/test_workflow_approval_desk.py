@@ -311,8 +311,9 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 			workflow="W",
 			workflow_state="Open",
 			creation=created,
+			available_transitions=[{"action": "Approve", "transition_uuid": "approve"}],
 			round_manifest=json.dumps(
-				{"transitions": [{"action": "Approve", "threshold": 2}]}
+				{"transitions": [{"action": "Approve", "transition_uuid": "approve", "threshold": 2}]}
 			),
 		)
 		with (
@@ -322,12 +323,12 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 			),
 			patch(
 				"dinext_common.dinext_common.report.my_approvals.my_approvals._completed_votes",
-				return_value={("ROUND-1"): 0},
+				return_value={("ROUND-1", "approve"): 0},
 			),
 		):
 			_columns, rows, _message, _chart = execute({})
 		self.assertEqual(rows[0].available_actions, "Approve")
-		self.assertEqual(rows[0].progress, "0/2")
+		self.assertEqual(rows[0].progress, "Approve 0/2")
 
 
 class TestWorkflowApprovalDesk(FrappeTestCase):

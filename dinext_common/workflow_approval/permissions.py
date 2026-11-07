@@ -42,15 +42,22 @@ def _has_source_read_permission(task: object, user: str) -> bool:
 		return False
 	if not frappe.get_meta(doctype).is_virtual and not frappe.db.exists(doctype, name):
 		return False
-	return bool(
-		frappe.has_permission(
-			doctype,
-			ptype="read",
-			doc=name,
-			user=user,
-			throw=False,
-		)
-	)
+	previous_user = frappe.session.user
+	previous_user_perms = getattr(frappe.local, "user_perms", None)
+	previous_role_permissions = getattr(frappe.local, "role_permissions", {})
+	try:
+		# The installed DocType Permission hook reads as session.user even when
+		# has_permission receives user=. Preserve the HTTP session id.
+		if previous_user != user:
+			frappe.session.user = user
+			frappe.local.user_perms = None
+			frappe.local.role_permissions = {}
+		return bool(frappe.has_permission(doctype, ptype="read", doc=name, user=user, throw=False))
+	finally:
+		if previous_user != user:
+			frappe.session.user = previous_user
+			frappe.local.user_perms = previous_user_perms
+			frappe.local.role_permissions = previous_role_permissions
 
 
 def _is_workflow_monitor(task: object, user: str) -> bool:
@@ -111,13 +118,10 @@ def has_workflow_task_permission(
 
 
 def _can_read_task(doc, user, is_manager, can_monitor, can_read_source) -> bool:
-	if is_manager:
-		return True
-
 	approver = _get(doc, "approver") or _get(doc, "user")
 	if _get(doc, "source_deleted_at"):
-		return approver == user
-	if approver != user and not can_monitor(doc):
+		return is_manager or approver == user
+	if not is_manager and approver != user and not can_monitor(doc):
 		return False
 	return can_read_source(doc)
 
@@ -146,11 +150,6 @@ def get_task_read_checker(
 	def can_read(row):
 		if monitored_only:
 			return (is_manager or can_monitor(row)) and can_read_source(row)
-		if require_source and is_manager:
-			return bool(
-				(_get(row, "source_deleted_at") and _get(row, "approver") == user)
-				or can_read_source(row)
-			)
 		return _can_read_task(row, user, is_manager, can_monitor, can_read_source)
 
 	return can_read
@@ -194,3 +193,35 @@ def has_public_number_card_permission(doc, ptype="read", user=None, debug=False)
 		user = user or frappe.session.user
 		return _is_system_manager(user) or bool(get_monitorable_workflows(user))
 	return None
+
+
+def get_workflow_task_permission_query_conditions(user: str | None = None) -> str:
+	"""Narrow standard lists using the same policy as document reads.
+
+	Candidates are internal audit records: get_all deliberately avoids recursively
+	invoking this Task hook. Authorization is applied before names enter the SQL
+	condition, with source/workflow checks cached only for this invocation.
+	"""
+	user = user or frappe.session.user
+	can_read = get_task_read_checker(user)
+	allowed = []
+	start = 0
+	while True:
+		rows = frappe.get_all(
+			"Workflow Task",
+			fields=[
+				"name", "approver", "user", "workflow", "reference_doctype",
+				"reference_name", "doc", "wt_docname", "source_deleted_at",
+			],
+			order_by="name asc",
+			limit_start=start,
+			limit_page_length=500,
+		)
+		allowed.extend(row.name for row in rows if can_read(row))
+		if len(rows) < 500:
+			break
+		start += len(rows)
+	if not allowed:
+		return "1=0"
+	task = frappe.qb.DocType("Workflow Task")
+	return task.name.isin(allowed).get_sql()

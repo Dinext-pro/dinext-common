@@ -950,7 +950,7 @@ def reset_round(round_id: str, reason: object) -> dict[str, Any]:
 		source.add_comment(
 			"Workflow",
 			_("Approval round reset by {0}: {1}. Carried: {2}. Dropped: {3}.").format(
-				frappe.bold(frappe.session.user),
+				frappe.bold(frappe.utils.escape_html(frappe.session.user)),
 				frappe.utils.escape_html(normalized_reason),
 				_vote_audit(rebuilt["carried"]),
 				_vote_audit(rebuilt["dropped"]),
@@ -961,8 +961,8 @@ def reset_round(round_id: str, reason: object) -> dict[str, Any]:
 	source.add_comment(
 		"Workflow",
 		_("Approval round reset by {0}: {1}").format(
-			frappe.bold(frappe.session.user),
-			normalized_reason,
+			frappe.bold(frappe.utils.escape_html(frappe.session.user)),
+			frappe.utils.escape_html(normalized_reason),
 		),
 	)
 	return {
@@ -1005,8 +1005,8 @@ def reset_rounds(round_ids: str | list[str], reason: object) -> RebuildRoundsRes
 def _vote_audit(votes: list[object]) -> str:
 	labels = [
 		_("{0} voted {1}").format(
-			getattr(vote, "approver", None) or vote.get("approver"),
-			getattr(vote, "action", None) or vote.get("action"),
+			frappe.utils.escape_html(getattr(vote, "approver", None) or vote.get("approver")),
+			frappe.utils.escape_html(_(getattr(vote, "action", None) or vote.get("action"))),
 		)
 		for vote in votes
 	]
@@ -1037,7 +1037,7 @@ def retry_finalization(round_id: str) -> dict[str, Any]:
 	source.add_comment(
 		"Workflow",
 		_("Approval finalization retried by {0}").format(
-			frappe.bold(frappe.session.user)
+			frappe.bold(frappe.utils.escape_html(frappe.session.user))
 		),
 	)
 	from dinext_common.workflow_approval.finalization import repair_round
@@ -1172,7 +1172,10 @@ def control_decision_count() -> dict[str, Any]:
 		manual_total(rows),
 		"Approval Duration",
 		{
-			"from_date": str(getdate(since)),
+			"completed_since": str(since),
+			"from_date": "",
+			"workflow": "",
+			"reference_doctype": "",
 			"to_date": str(getdate(now_datetime())),
 			"group_by": "Document Type",
 			"chart": "Completed duration",
