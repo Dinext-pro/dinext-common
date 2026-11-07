@@ -1,3 +1,5 @@
+import commentCases from "../../dinext_common/tests/fixtures/approval_comment_normalization.json";
+
 describe("My Approvals audit corrections", () => {
 	let fixture;
 	before(() => cy.task("approvalAuditSeed").then((data) => { fixture = data; }));
@@ -46,6 +48,7 @@ describe("My Approvals audit corrections", () => {
 			expect(normalize("\u200b\u0000")).to.eq("");
 			expect(normalize("<p>&nbsp;</p>")).to.eq("");
 			expect(normalize("&amp;lt;b&amp;gt;&amp;lt;/b&amp;gt;")).to.eq("&lt;b&gt;&lt;/b&gt;");
+			for (const {raw, normalized} of commentCases) expect(normalize(raw), JSON.stringify(raw)).to.eq(normalized);
 		});
 	});
 

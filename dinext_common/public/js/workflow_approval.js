@@ -158,17 +158,21 @@
 	const normalizeWorkflowComment = (value) => {
 		// Match policy.normalize_comment: decode entities, strip markup and Cc/Cf,
 		// trim, then count Unicode code points (not UTF-16 units).
-		let text = String(value || "").replace(/[\p{Cc}\p{Cf}]/gu, "");
+		let text = String(value || "");
 		if (typeof document.createElement === "function") {
 			const decoder = document.createElement("textarea");
-			decoder.innerHTML = text.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+			// Preserve control separators during entity parsing. HTML replaces
+			// literal NUL, so use another removable Cc until the final strip.
+			decoder.innerHTML = text.replace(/\0/g, "\u0001").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 			text = decoder.value;
 		} else {
-			text = text.replace(/&#(x[0-9a-f]+|[0-9]+);?/gi, (_, code) => {
-				const value = code[0].toLowerCase() === "x" ? parseInt(code.slice(1), 16) : Number(code);
-				return value > 0 && value <= 0x10ffff ? String.fromCodePoint(value) : "";
-			}).replace(/&(nbsp|lt|gt|quot|apos|amp);/g,
-				(_, key) => ({nbsp: "\u00a0", lt: "<", gt: ">", quot: '"', apos: "'", amp: "&"})[key]);
+			text = text.replace(/&(?:#([xX][0-9a-fA-F]+|[0-9]+);?|(nbsp|lt|gt|quot|apos|amp);)/g,
+				(_, code, key) => {
+					if (!code) return {nbsp: "\u00a0", lt: "<", gt: ">", quot: '"', apos: "'", amp: "&"}[key];
+					const value = code[0].toLowerCase() === "x" ? parseInt(code.slice(1), 16) : Number(code);
+					return value === 0 || value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff)
+						? "\ufffd" : String.fromCodePoint(value);
+				});
 		}
 		return text.replace(/<[^>]*>/g, "").replace(/[\p{Cc}\p{Cf}]/gu, "").trim();
 	};

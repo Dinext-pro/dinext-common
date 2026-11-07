@@ -14,6 +14,8 @@ MONITOR = "approval-audit.monitor@example.invalid"
 ROLE = PREFIX + "Approver"
 REJECT_ROLE = PREFIX + "Rejector"
 MONITOR_ROLE = PREFIX + "Monitor"
+READER_ROLE = PREFIX + "Reader"
+REPORTS = ("My Approvals", "My Approval History", "Approval Monitoring", "Approval Load", "Approval Duration")
 WORKFLOW = PREFIX + "Note"
 PREVIOUS = PREFIX + "previous-workflows"
 
@@ -44,7 +46,10 @@ def cleanup():
 	for user in (ALICE, BOB, MONITOR):
 		if frappe.db.exists("User", user):
 			frappe.delete_doc("User", user, force=True, ignore_permissions=True)
-	for role in (ROLE, REJECT_ROLE, MONITOR_ROLE):
+	for permission in ("DocPerm", "Custom DocPerm", "DocType Permission Condition"):
+		frappe.db.delete(permission, {"role": READER_ROLE})
+	frappe.cache.delete_value("doctype_permission_map")
+	for role in (ROLE, REJECT_ROLE, MONITOR_ROLE, READER_ROLE):
 		frappe.db.delete("Role", {"name": role})
 	for name in previous:
 		if frappe.db.exists("Workflow", name):
@@ -56,6 +61,22 @@ def cleanup():
 	return {"cleaned": True}
 
 
+def _grant_report_read():
+	# Extend the existing layer: the first Custom DocPerm would replace all
+	# standard Report permissions rather than adding this fixture role.
+	permission_type = "Custom DocPerm" if frappe.db.exists("Custom DocPerm", {"parent": "Report"}) else "DocPerm"
+	frappe.get_doc({"doctype": permission_type, "parent": "Report", "parenttype": "DocType",
+		"parentfield": "permissions", "role": READER_ROLE, "permlevel": 0, "read": 1}).db_insert()
+	report = frappe.qb.DocType("Report")
+	condition = report.name.isin(REPORTS).get_sql()
+	for rule in frappe.get_all("DocType Permission", filters={"ref_doctype": "Report"}, pluck="name"):
+		frappe.get_doc({"doctype": "DocType Permission Condition", "parent": rule,
+			"parenttype": "DocType Permission", "parentfield": "conditions", "role": READER_ROLE,
+			"perm_level": "Full Access", "script": f"conditions = {condition!r}"}).db_insert()
+	frappe.clear_cache(doctype="Report")
+	frappe.cache.delete_value("doctype_permission_map")
+
+
 def seed():
 	_guard()
 	cleanup()
@@ -63,10 +84,11 @@ def seed():
 	frappe.cache.set_value(PREVIOUS, previous)
 	for name in previous:
 		frappe.db.set_value("Workflow", name, "is_active", 0)
-	for role in (ROLE, REJECT_ROLE, MONITOR_ROLE):
+	for role in (ROLE, REJECT_ROLE, MONITOR_ROLE, READER_ROLE):
 		_ensure_role(role)
+	_grant_report_read()
 	for user, roles, language in [(ALICE, [ROLE], "en"), (BOB, [ROLE, REJECT_ROLE, MONITOR_ROLE], "ru"), (MONITOR, [MONITOR_ROLE], "ru")]:
-		_ensure_user(user, user.split("@")[0], ["Desk User", *roles])
+		_ensure_user(user, user.split("@")[0], ["Desk User", READER_ROLE, *roles])
 		frappe.db.set_value("User", user, "language", language)
 		frappe.clear_cache(user=user)
 	for state in ("Draft", "Approved", "Rejected"):
@@ -114,6 +136,13 @@ def seed():
 			"approver": ALICE, "user": ALICE, "workflow": WORKFLOW, "status": "Completed",
 			"round_status": "Transitioned", "approval_round_id": PREFIX + suffix, "creation": stamp,
 			"completed_at": stamp, "completion_source": "Manual", "action": "Approve", "round_manifest": "{}"}).db_insert()
+	try:
+		for user in (ALICE, BOB, MONITOR):
+			frappe.set_user(user)
+			for name in REPORTS:
+				frappe.get_doc("Report", name).check_permission("read")
+	finally:
+		frappe.set_user("Administrator")
 	frappe.db.commit()
 	return {"alice": ALICE, "bob": BOB, "monitor": MONITOR, "password": PASSWORD,
 		"prefix": PREFIX, "tasks": task_names, "transition_uuid": PREFIX + "Approve", "workflow": WORKFLOW}

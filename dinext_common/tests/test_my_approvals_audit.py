@@ -1,6 +1,7 @@
 """Regressions for personal actions, competing thresholds and card boundaries."""
 import json
 import unittest
+from pathlib import Path
 from collections import Counter
 from datetime import datetime
 from unittest.mock import patch
@@ -71,3 +72,11 @@ class TestMyApprovalsAudit(unittest.TestCase):
 			), patch.object(frappe, "_", side_effect=lambda text: text):
 				with self.assertRaises(frappe.PermissionError):
 					permissions.require_final_task_permission_queries("Administrator")
+
+	def test_comment_normalization_contract_matches_server(self):
+		from dinext_common.workflow_approval.policy import normalize_comment
+
+		cases = json.loads((Path(__file__).parent / "fixtures" / "approval_comment_normalization.json").read_text())
+		for case in cases:
+			with self.subTest(raw=case["raw"]):
+				self.assertEqual(normalize_comment(case["raw"]), case["normalized"])

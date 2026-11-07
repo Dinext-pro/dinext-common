@@ -82,3 +82,8 @@ assert.equal(submitted, nested, 'single dialog must submit raw input for exactly
 assert.equal(frappe.dinext.localizeApprovalEvent('<strong>alice@example.invalid</strong> voted <strong>Approve</strong>: It&apos;s fine'),
   '<strong>alice@example.invalid</strong> voted <strong>Approve</strong>: It\'s fine');
 console.log('single raw nested-entity submission and legacy apostrophes: PASS');
+
+const parityCases = JSON.parse(fs.readFileSync('dinext_common/tests/fixtures/approval_comment_normalization.json', 'utf8'));
+assert.deepEqual(parityCases.map(({raw}) => normalize(raw)), parityCases.map(({normalized}) => normalized),
+  'client matches authoritative Python normalization without joining split references');
+console.log('split controls, tags, numeric and nested entities match authoritative Python: PASS');
