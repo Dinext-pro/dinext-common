@@ -61,3 +61,24 @@ validation.setSubmitting(false); assert.equal(disabled, false);
 required = false; value = ''; inputChanged(); assert.equal(disabled, false);
 value = 'x'.repeat(4001); inputChanged(); assert.equal(disabled, true);
 console.log('dialog focus, normalized validity and in-flight primary-button state: PASS');
+const nested = '&amp;lt;b&amp;gt;&amp;lt;/b&amp;gt;';
+assert.equal(normalize(nested), '&lt;b&gt;&lt;/b&gt;');
+let submitted;
+frappe.ui.Dialog = class {
+  constructor(options) {
+    this.options = options;
+    this.fields_dict = {comment: {$input: {on() {}}, set_focus() {}}};
+    this.$wrapper = {on() {}};
+  }
+  get_value() { return nested; }
+  disable_primary_action() {}
+  enable_primary_action() {}
+  show() {}
+  hide() {}
+};
+const single = frappe.dinext.withWorkflowComment({action: 'Approve', comment_is_required: 1}, (raw) => {submitted = raw;});
+await single.options.primary_action();
+assert.equal(submitted, nested, 'single dialog must submit raw input for exactly one server normalization');
+assert.equal(frappe.dinext.localizeApprovalEvent('<strong>alice@example.invalid</strong> voted <strong>Approve</strong>: It&apos;s fine'),
+  '<strong>alice@example.invalid</strong> voted <strong>Approve</strong>: It\'s fine');
+console.log('single raw nested-entity submission and legacy apostrophes: PASS');

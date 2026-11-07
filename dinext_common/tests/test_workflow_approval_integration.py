@@ -276,6 +276,14 @@ class TestWorkflowApprovalIntegration(FrappeTestCase):
 			source = frappe.get_doc(
 				{"doctype": "Issue", "subject": "Source deletion integration", "status": "Open"}
 			).insert(ignore_permissions=True, set_name="_TestDeleteSource-" + frappe.generate_hash(length=12))
+			# This helper deliberately snapshots a synthetic cohort. Give its voter
+			# actual source read access before exercising deletion/history behavior.
+			frappe.share.add("Issue", source.name, self.user, read=1)
+			from dinext_common.workflow_approval.permissions import _has_source_read_permission
+
+			self.assertTrue(_has_source_read_permission({
+				"reference_doctype": "Issue", "reference_name": source.name,
+			}, self.user))
 			history = frappe.get_doc(
 				"Workflow Task",
 				{"reference_doctype": "Issue", "reference_name": source.name, "approver": self.user},

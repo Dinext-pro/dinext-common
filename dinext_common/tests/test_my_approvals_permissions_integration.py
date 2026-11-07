@@ -1,6 +1,7 @@
 """Exercise standard Frappe endpoints against synthetic private source records."""
 import json
 from datetime import datetime, timedelta
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import frappe
@@ -49,11 +50,14 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 		super().tearDown()
 
 	def _cleanup_rows(self):
+		frappe.db.delete("User Permission", {"user": ["in", [self.alice, self.bob, self.monitor, self.manager]]})
+		for user in (self.alice, self.bob, self.monitor, self.manager):
+			frappe.cache.hdel("user_permissions", user)
 		frappe.db.delete("DocShare", {"share_name": ["like", PREFIX + "%"]})
 		frappe.db.delete("Workflow Task", {"name": ["like", PREFIX + "%"]})
 		frappe.db.delete("Note", {"name": PREFIX + "Private"})
 		frappe.db.delete("Has Role", {"parent": PREFIX + "Workflow", "parenttype": "Workflow"})
-		frappe.db.delete("Workflow", {"name": PREFIX + "Workflow"})
+		frappe.db.delete("Workflow", {"name": ["like", PREFIX + "%"]})
 
 	def _visible(self, user):
 		frappe.set_user(user)
@@ -127,3 +131,62 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 			rows = approval_duration.execute(card["route_options"])[1]
 		self.assertEqual(card["value"], 2)
 		self.assertEqual(sum(row["manual_count"] for row in rows), 2)
+
+	def test_linked_user_permission_and_task_share_cannot_restore_denied_list_row(self):
+		frappe.get_doc({"doctype": "User Permission", "user": self.bob,
+			"allow": "Workflow", "for_value": self.workflow,
+			"apply_to_all_doctypes": 0, "applicable_for": "Workflow Task"}).insert(ignore_permissions=True)
+		frappe.share.add("Workflow Task", self.task.name, self.bob, read=1,
+			flags={"ignore_share_permission": True})
+		self._assert_denied(self.bob)
+		# Explicit trusted queries remain available to internal audit services.
+		self.assertEqual([row.name for row in frappe.get_all("Workflow Task",
+			filters={"name": self.task.name}, fields=["name"])], [self.task.name])
+
+	def test_task_policy_preserves_standard_linked_user_constraints(self):
+		other = PREFIX + "Other Workflow"
+		frappe.db.delete("Workflow", {"name": other})
+		frappe.get_doc({"doctype": "Workflow", "name": other,
+			"workflow_name": other, "document_type": "Note"}).db_insert()
+		frappe.get_doc({"doctype": "User Permission", "user": self.alice,
+			"allow": "Workflow", "for_value": other,
+			"apply_to_all_doctypes": 0, "applicable_for": "Workflow Task"}).insert(ignore_permissions=True)
+		self._assert_denied(self.alice)
+
+	def test_unrelated_note_sharing_still_works(self):
+		frappe.share.add("Note", self.source.name, self.bob, read=1)
+		frappe.set_user(self.bob)
+		self.assertEqual([row.name for row in get_list("Note",
+			filters={"name": self.source.name}, fields=["name"])], [self.source.name])
+		self.assertEqual(get("Note", self.source.name)["name"], self.source.name)
+
+	@contextmanager
+	def _task_role_constraint(self, *, owner_only=False):
+		created = []
+		try:
+			roles = [("System Manager", False)]
+			if owner_only:
+				roles.append(("All", True))
+			for role, if_owner in roles:
+				permission = frappe.get_doc({"doctype": "Custom DocPerm", "parent": "Workflow Task",
+					"parenttype": "DocType", "parentfield": "permissions", "role": role,
+					"read": 1, "if_owner": int(if_owner), "permlevel": 0})
+				permission.db_insert()
+				created.append(permission.name)
+			frappe.clear_cache(doctype="Workflow Task")
+			yield
+		finally:
+			frappe.db.delete("Custom DocPerm", {"name": ["in", created]})
+			frappe.clear_cache(doctype="Workflow Task")
+
+	def test_owner_constraint_and_task_share_do_not_restore_denied_row(self):
+		frappe.share.add("Workflow Task", self.task.name, self.bob, read=1,
+			flags={"ignore_share_permission": True})
+		with self._task_role_constraint(owner_only=True):
+			self._assert_denied(self.bob)
+
+	def test_only_shared_task_still_requires_approval_policy(self):
+		frappe.share.add("Workflow Task", self.task.name, self.bob, read=1,
+			flags={"ignore_share_permission": True})
+		with self._task_role_constraint():
+			self._assert_denied(self.bob)

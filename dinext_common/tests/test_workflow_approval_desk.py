@@ -379,6 +379,20 @@ class TestWorkflowApprovalDesk(FrappeTestCase):
 		frappe.clear_cache(doctype="Issue")
 		super().tearDown()
 
+	def test_required_comment_nested_entities_are_normalized_once(self):
+		user = self._user("desk-nested-entities@example.com")
+		self._workflow("_Test Desk Nested Entities", [self._transition(
+			"_Test Desk Approve Nested", "Closed", policy="Any",
+			uuid="_test-desk-nested", comment_required=1,
+		)])
+		source = self._issue("Nested entities comment")
+		task = self._tasks(source.name)[0]
+		frappe.set_user(user)
+		engine.cast_vote(task.name, transition_uuid="_test-desk-nested",
+			comment="&amp;lt;b&amp;gt;&amp;lt;/b&amp;gt;", request_id="desk-nested-comment")
+		self.assertEqual(frappe.db.get_value("Workflow Task", task.name, "vote_comment"), "&lt;b&gt;&lt;/b&gt;")
+		self.assertEqual(frappe.db.get_value("Workflow Task", task.name, "status"), "Completed")
+
 	def test_all_policy_threshold_counts_both_eligible_approvers(self):
 		users = [self._user(f"desk-all-{index}@example.com") for index in (1, 2)]
 		self._workflow(

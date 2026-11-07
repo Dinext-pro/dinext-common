@@ -158,7 +158,7 @@
 	const normalizeWorkflowComment = (value) => {
 		// Match policy.normalize_comment: decode entities, strip markup and Cc/Cf,
 		// trim, then count Unicode code points (not UTF-16 units).
-		let text = String(value || "");
+		let text = String(value || "").replace(/[\p{Cc}\p{Cf}]/gu, "");
 		if (typeof document.createElement === "function") {
 			const decoder = document.createElement("textarea");
 			decoder.innerHTML = text.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -222,8 +222,8 @@
 		// Only engine-generated Workflow templates with the expected escaped bold
 		// actor/action structure. User suffixes are preserved, never translated.
 		const safe = frappe.utils.escape_html;
-		const decode = (text) => String(text).replace(/&(amp|lt|gt|quot|#39);/g,
-			(_, key) => ({amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'"})[key]);
+		const decode = (text) => String(text).replace(/&(amp|lt|gt|quot|apos|#39);/g,
+			(_, key) => ({amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'"})[key]);
 		const vote = String(content || "").match(/^<(strong|b)>([^<>]+)<\/\1> (voted|automatically reused action) <(strong|b)>([^<>]+)<\/\4>(: [^<>]*)?$/);
 		if (vote) {
 			const actor = `<strong>${safe(decode(vote[2]))}</strong>`;
@@ -284,7 +284,7 @@
 				if (!validation.validate()) return;
 				validation.setSubmitting(true);
 				try {
-					const result = await submit(normalizeWorkflowComment(dialog.get_value("comment")));
+					const result = await submit(dialog.get_value("comment"));
 					dialog.hide();
 					return result;
 				} finally {

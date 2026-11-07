@@ -38,6 +38,17 @@ describe("My Approvals audit corrections", () => {
 		cy.window().should((win) => expect(win.frappe.query_report.data).to.have.length(0));
 	});
 
+	it("matches literal-control normalization in a real browser DOM", () => {
+		cy.login(fixture.alice, fixture.password);
+		cy.openDesk(`/app/note/${encodeURIComponent(fixture.prefix + "Main")}`);
+		cy.window().then((win) => {
+			const normalize = win.frappe.dinext.normalizeWorkflowComment;
+			expect(normalize("\u200b\u0000")).to.eq("");
+			expect(normalize("<p>&nbsp;</p>")).to.eq("");
+			expect(normalize("&amp;lt;b&amp;gt;&amp;lt;/b&amp;gt;")).to.eq("&lt;b&gt;&lt;/b&gt;");
+		});
+	});
+
 	it("disables normalized invalid comments in the single action dialog", () => {
 		cy.login(fixture.alice, fixture.password);
 		cy.openDesk(`/app/note/${encodeURIComponent(fixture.prefix + "Main")}`);

@@ -79,7 +79,7 @@ frappe.query_reports["My Approvals"] = {
 							"dinext_common.workflow_approval.api.bulk_task_vote",
 							{
 								items,
-								comment: frappe.dinext.normalizeWorkflowComment(values.comment),
+								comment: values.comment,
 								request_id:
 									window.crypto?.randomUUID?.() ||
 									`${Date.now()}-${Math.random().toString(16).slice(2)}`,

@@ -366,9 +366,13 @@ const report = {
 frappe.query_reports["My Approvals"].onload(report);
 for (const outcome of outcomes) {
   results.length = 0;
-  frappe.xcall = async () => outcome;
+  let submittedComment;
+  frappe.xcall = async (_method, args) => { submittedComment = args.comment; return outcome; };
   await reportButton();
-  await reportDialog.options.primary_action({ action: "Approve", comment: "" });
+  const rawComment = "&amp;lt;b&amp;gt;&amp;lt;/b&amp;gt;";
+  reportDialog.values.comment = rawComment;
+  await reportDialog.options.primary_action({ action: "Approve", comment: rawComment });
+  assert.equal(submittedComment, rawComment, "selected report rows submit raw text for one server normalization");
   assert.equal(results.length, outcome.failed.length ? 1 : 0,
     "My Approvals shows errors and finishes successful selections quietly");
   assert.equal(reportDialog.closed, true);
