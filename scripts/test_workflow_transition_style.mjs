@@ -368,6 +368,20 @@ for (const outcome of outcomes) {
 }
 assert.equal(refreshedReports, 2);
 
+const approverNames = frappe.dinext.getPendingApproverNames([
+  { approver: "reviewer@example.com", approver_name: "Current User" },
+  { approver: "a@example.com", approver_name: "Alpha" },
+  { approver: "a@example.com", approver_name: "Duplicate" },
+  { approver: "b@example.com", approver_name: "Same Name" },
+  { approver: "c@example.com", approver_name: "Same Name" },
+  { approver: "fallback@example.com", approver_name: "" },
+  {},
+]);
+assert.deepEqual(Array.from(approverNames), ["Alpha", "fallback@example.com", "Same Name", "Same Name"]);
+assert.equal(frappe.dinext.getPendingApproverNames([
+  { approver: "reviewer@example.com", approver_name: "Current User" },
+]).length, 0);
+
 console.log(
   "Workflow styles, form/list actions, operation cleanup and quiet success passed."
 );

@@ -175,17 +175,49 @@ class TestRequiredStatePending(PendingFixture, FrappeTestCase):
 			"can_reset": True,
 			"configuration_change": None,
 		}
-		with (
-			patch.object(api, "describe_rebuild_rounds", return_value=[round_info]),
-			patch.object(
-				api,
-				"get_required_state_pending_tasks",
-				side_effect=AssertionError("rebuild must not depend on pending display"),
-			),
-		):
+		with patch.object(api, "describe_rebuild_rounds", return_value=[round_info]):
 			banner = api.get_form_approval_banner(self.source.doctype, self.source.name)
-		self.assertEqual(banner["round_status"], "Stalled")
-		self.assertEqual(banner["rounds"], [round_info])
+		self.assertEqual(
+			banner,
+			{
+				"round_id": self.round_id,
+				"round_status": "Stalled",
+				"pending_approvers": [],
+				"can_reset": True,
+				"configuration_change": None,
+				"rounds": [round_info],
+			},
+		)
+
+	def test_pending_banner_coexists_with_rebuild_metadata(self):
+		self.task("required@example.com", ["Required"])
+		self.task("optional@example.com", ["Optional"])
+		self.round_id = frappe.generate_hash(length=40)
+		self.task("stalled@example.com", ["Required"], round_status="Stalled")
+		metadata = {"reason": "configuration_changed", "void": [{"action": "Approve"}], "stable": []}
+		round_info = {
+			"round_id": self.round_id,
+			"round_status": "Stalled",
+			"reference_name": self.source.name,
+			"source_title": "Pending display fixture",
+			"can_reset": True,
+			"configuration_change": metadata,
+		}
+		with patch.object(api, "describe_rebuild_rounds", return_value=[round_info]):
+			banner = api.get_form_approval_banner(self.source.doctype, self.source.name)
+		self.assertEqual(
+			banner,
+			{
+				"round_id": self.round_id,
+				"round_status": "Stalled",
+				"pending_approvers": [
+					{"approver": "required@example.com", "approver_name": "required@example.com"}
+				],
+				"can_reset": True,
+				"configuration_change": metadata,
+				"rounds": [round_info],
+			},
+		)
 
 	def test_apis_authorize_source_before_selecting_names(self):
 		source = SimpleNamespace(check_permission=Mock(side_effect=frappe.PermissionError))

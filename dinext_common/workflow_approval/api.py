@@ -702,18 +702,6 @@ def _banner_from_rows(
 			"configuration_change": None,
 			"rounds": rounds or [],
 		}
-	stalled = rounds or []
-	if stalled:
-		first = stalled[0]
-		return {
-			"round_id": first["round_id"],
-			"round_status": first["round_status"],
-			"pending_approvers": [],
-			"can_reset": first["can_reset"],
-			"configuration_change": first["configuration_change"],
-			"rounds": stalled,
-		}
-	round_id = rows[0].approval_round_id
 	approvers = sorted({row["approver"] for row in pending or []})
 	names = (
 		dict(
@@ -727,13 +715,25 @@ def _banner_from_rows(
 		if approvers
 		else {}
 	)
+	pending_approvers = [
+		{"approver": approver, "approver_name": names.get(approver) or approver}
+		for approver in approvers
+	]
+	stalled = rounds or []
+	if stalled:
+		first = stalled[0]
+		return {
+			"round_id": first["round_id"],
+			"round_status": first["round_status"],
+			"pending_approvers": pending_approvers,
+			"can_reset": first["can_reset"],
+			"configuration_change": first["configuration_change"],
+			"rounds": stalled,
+		}
 	return {
-		"round_id": round_id,
+		"round_id": rows[0].approval_round_id,
 		"round_status": "Open",
-		"pending_approvers": [
-			{"approver": approver, "approver_name": names.get(approver) or approver}
-			for approver in approvers
-		],
+		"pending_approvers": pending_approvers,
 		"can_reset": False,
 		"configuration_change": None,
 		"rounds": [],
@@ -765,7 +765,7 @@ def _active_round_rows(reference_doctype: str, reference_names: list[str]) -> li
 
 @frappe.whitelist()
 def get_form_approval_banner(doctype: str, name: str) -> dict[str, Any]:
-	"""Pending approvers, or a rebuild indicator for a stalled round."""
+	"""Return pending approvers alongside any round rebuild indicators."""
 	source = frappe.get_doc(doctype, name)
 	source.check_permission("read")
 	reference_doctype = doctype
@@ -788,7 +788,7 @@ def get_form_approval_banner(doctype: str, name: str) -> dict[str, Any]:
 		}
 	rows = _active_round_rows(reference_doctype, reference_names)
 	rounds = describe_rebuild_rounds(reference_doctype, reference_names)
-	pending = [] if rounds else get_required_state_pending_tasks(reference_doctype, reference_names)
+	pending = get_required_state_pending_tasks(reference_doctype, reference_names)
 	return _banner_from_rows(rows, rounds=rounds, pending=pending)
 
 
