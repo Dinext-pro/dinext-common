@@ -10,7 +10,9 @@ describe("My Approvals audit corrections", () => {
 		const alias = `readyReport${++reportRequest}`;
 		cy.login(user, fixture.password);
 		cy.intercept({method: "GET", pathname: "/api/method/frappe.desk.query_report.run", query: {report_name: name}}).as(alias);
-		cy.openDesk(`/app/query-report/${encodeURIComponent(name)}`);
+		// The isolated acceptance site has no background workers. Use the
+		// normal report route option to render prepared reports synchronously.
+		cy.openDesk(`/app/query-report/${encodeURIComponent(name)}?ignore_prepared_report=1`);
 		cy.wait(`@${alias}`).then(({response}) => {
 			expect(response.statusCode).to.eq(200);
 			const expected = response.body.message.result;
