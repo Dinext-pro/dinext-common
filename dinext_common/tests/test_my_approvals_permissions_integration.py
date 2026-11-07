@@ -153,12 +153,18 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 			"apply_to_all_doctypes": 0, "applicable_for": "Workflow Task"}).insert(ignore_permissions=True)
 		self._assert_denied(self.alice)
 
-	def test_unrelated_note_sharing_still_works(self):
+	def test_unrelated_note_permissions_keep_standard_behavior(self):
 		frappe.share.add("Note", self.source.name, self.bob, read=1)
+		frappe.set_user(self.bob)
+		self.assertEqual(get("Note", self.source.name)["name"], self.source.name)
+		# Core Note's owner/public list hook excludes a private shared note
+		# when no owner/User Permission constraint requests share expansion.
+		self.assertEqual(get_list("Note", filters={"name": self.source.name}, fields=["name"]), [])
+		frappe.set_user("Administrator")
+		frappe.db.set_value("Note", self.source.name, "public", 1)
 		frappe.set_user(self.bob)
 		self.assertEqual([row.name for row in get_list("Note",
 			filters={"name": self.source.name}, fields=["name"])], [self.source.name])
-		self.assertEqual(get("Note", self.source.name)["name"], self.source.name)
 
 	@contextmanager
 	def _task_role_constraint(self, *, owner_only=False):
