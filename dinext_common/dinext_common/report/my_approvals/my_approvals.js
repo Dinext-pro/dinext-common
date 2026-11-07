@@ -28,6 +28,7 @@ frappe.query_reports["My Approvals"] = {
 			if (!common.size) {
 				frappe.throw(__("Selected approvals have no common action"));
 			}
+			const actions = [...common].sort();
 			let validation;
 			const isRequired = () => rows.some((row) => row.available_transitions.some(
 				(transition) => transition.action === dialog.get_value("action") && transition.comment_is_required
@@ -39,7 +40,8 @@ frappe.query_reports["My Approvals"] = {
 						fieldname: "action",
 						fieldtype: "Select",
 						label: __("Action"),
-						options: [...common].sort().map((action) => ({value: action, label: __(action)})),
+						options: actions.map((action) => ({value: action, label: __(action)})),
+						default: actions[0],
 						reqd: 1,
 						change() {
 							const action = dialog.get_value("action");

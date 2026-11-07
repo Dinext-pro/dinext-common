@@ -341,13 +341,13 @@ frappe.query_reports = {};
 frappe.ui.Dialog = class {
   constructor(options) {
     this.options = options; reportDialog = this;
-    this.values = {action: "Approve", comment: ""};
+    this.values = {action: options.fields.find((field) => field.fieldname === "action").default || "", comment: ""};
     this.fields_dict = {comment: {$input: {on() {}}, set_focus() {}}};
     this.$wrapper = {on() {}};
   }
   get_value(name) { return this.values[name]; }
-  set_df_property() {}
-  get_primary_btn() { return {prop() {}}; }
+  set_df_property(field, property, value) { this.fields_dict[field].df ||= {}; this.fields_dict[field].df[property] = value; }
+  get_primary_btn() { return {prop: (name, value) => { this[name] = value; }}; }
   disable_primary_action() {}
   enable_primary_action() {}
   show() {}
@@ -360,7 +360,7 @@ const report = {
   page: { add_inner_button(_label, handler) { reportButton = handler; } },
   datatable: { rowmanager: { getCheckedRows: () => [0, 1] } },
   data: ["one", "two"].map((name) => ({
-    name, available_transitions: [{ action: "Approve", transition_uuid: "uuid-red" }],
+    name, available_transitions: [{ action: "Approve", transition_uuid: "uuid-red", comment_is_required: true }],
   })),
   refresh() { refreshedReports += 1; },
 };
@@ -370,6 +370,9 @@ for (const outcome of outcomes) {
   let submittedComment;
   frappe.xcall = async (_method, args) => { submittedComment = args.comment; return outcome; };
   await reportButton();
+  assert.equal(reportDialog.get_value("action"), "Approve", "bulk dialog starts with its canonical common action");
+  assert.equal(reportDialog.fields_dict.comment.df.reqd, 1);
+  assert.equal(reportDialog.disabled, true, "initial required comment disables native button");
   const rawComment = "&amp;lt;b&amp;gt;&amp;lt;/b&amp;gt;";
   reportDialog.values.comment = rawComment;
   await reportDialog.options.primary_action({ action: "Approve", comment: rawComment });
