@@ -7,6 +7,10 @@ from dinext_common.setup.workspace import configure_workspace_menu
 
 
 def after_install() -> None:
+	from dinext_common.workflow_approval.deadlines.metadata import ensure_metadata
+	from dinext_common.workflow_approval.email_preferences import ensure_type
+	ensure_metadata()
+	ensure_type()
 	from dinext_common.workflow_approval.email_metadata import ensure_workflow_email_fields
 	ensure_workflow_email_fields()
 	from dinext_common.workflow_approval.metadata import ensure_workflow_fingerprint_fields

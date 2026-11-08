@@ -162,7 +162,7 @@ web_include_css = ["/assets/dinext_common/css/public_auth_header.css"]
 
 # include js in doctype views
 doctype_js = {
-	"Workflow": ["public/js/workflow_fingerprint_settings.js", "public/js/workflow_email_settings.js"],
+	"Workflow": ["public/js/workflow_fingerprint_settings.js", "public/js/workflow_email_settings.js", "public/js/workflow_deadlines.js"],
 	"Project": "public/js/sticky-datatable.js",
 	"Workflow Action": "public/js/workflow_action_desk.js",
 }
@@ -210,6 +210,8 @@ doctype_list_js = {
 after_install = "dinext_common.install.after_install"
 before_migrate = ["dinext_common.workflow_approval.localization.guard_label_migration"]
 after_migrate = [
+	"dinext_common.workflow_approval.deadlines.metadata.ensure_metadata",
+	"dinext_common.workflow_approval.email_preferences.ensure_type",
 	"dinext_common.workflow_approval.email_metadata.ensure_workflow_email_fields",
 	"dinext_common.workflow_approval.email_migration.ensure_email_profiles",
 	"dinext_common.workflow_approval.metadata.ensure_workflow_fingerprint_fields",
@@ -327,6 +329,7 @@ scheduler_events = {
 	],
 	"cron": {
 		"* * * * *": [
+			"dinext_common.workflow_approval.deadlines.delivery.dispatch_due_deadlines",
 			"dinext_common.workflow_approval.notifications.dispatch_due_notifications",
 			"dinext_common.workflow_approval.finalization.repair_pending_finalizations",
 		],

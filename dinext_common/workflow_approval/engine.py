@@ -516,6 +516,9 @@ def _insert_round_tasks(
 	manifest_json = serialize_manifest(manifest)
 	snapshot = source_snapshot or _source_snapshot(doc)
 	tasks = []
+	from dinext_common.workflow_approval.deadlines.lifecycle import prepare_task, snapshot as deadline_snapshot
+	workflow_doc = frappe.get_doc("Workflow", workflow_name)
+	deadline_assignments = manifest.setdefault("deadline_assignments", {})
 	from dinext_common.workflow_approval.policy import make_task_name
 
 	for approver, transitions in sorted(task_transitions.items()):
@@ -568,8 +571,15 @@ def _insert_round_tasks(
 					),
 				},
 			)
+		prepare_task(task, workflow_doc, inherited=deadline_assignments.get(approver))
+		if task.deadline_assignment_id:
+			deadline_assignments[approver] = deadline_snapshot(task)
 		task.insert(ignore_permissions=True)
 		tasks.append(task)
+	if deadline_assignments:
+		_set_round_values(round_id, {"round_manifest": serialize_manifest(manifest)})
+		for task in tasks:
+			task.round_manifest = serialize_manifest(manifest)
 	return round_id, tasks
 
 
@@ -829,6 +839,8 @@ def _amend_open_round(
 		)
 	if entry := _parse_manifest(active).get("entry_context"):
 		manifest["entry_context"] = entry
+	if deadlines := _parse_manifest(active).get("deadline_assignments"):
+		manifest["deadline_assignments"] = deadlines
 	round_id = active.approval_round_id
 	_set_round_values(round_id, {"round_manifest": serialize_manifest(manifest)})
 	for task in frappe.get_all(
@@ -973,10 +985,12 @@ def rebuild_configuration_conflict(
 ) -> dict[str, Any]:
 	"""Cancel a configuration conflict and open a round that keeps stable votes."""
 	old_names = _round_task_names(round_id)
-	entry_context = _parse_manifest(frappe.get_doc("Workflow Task", old_names[0])).get("entry_context") if old_names else None
+	old_manifest = _parse_manifest(frappe.get_doc("Workflow Task", old_names[0])) if old_names else {}
+	entry_context = old_manifest.get("entry_context")
 	votes = _completed_vote_rows(round_id)
 	_cancel_round(round_id, reason)
-	names = reconcile_source(doc, apply_automatic=False, entry_context=entry_context)
+	names = reconcile_source(doc, apply_automatic=False, entry_context=entry_context,
+		deadline_assignments=old_manifest.get("deadline_assignments"))
 	if not names:
 		return {"carried": [], "dropped": votes, "new_tasks": []}
 	new_round_id = frappe.db.get_value("Workflow Task", names[0], "approval_round_id")
@@ -1011,6 +1025,7 @@ def reconcile_source(
 	cycle_guard: AutomationCycleGuard | None = None,
 	apply_automatic: bool = True,
 	entry_context: dict | None = None,
+	deadline_assignments: dict | None = None,
 ) -> list[str]:
 	"""Create or reconcile the immutable active round for a source document."""
 	if _value(doc, "is_new", lambda: False)():
@@ -1071,6 +1086,8 @@ def reconcile_source(
 
 	if entry_context:
 		manifest["entry_context"] = entry_context
+	if deadline_assignments:
+		manifest["deadline_assignments"] = deadline_assignments
 	round_id, tasks = _insert_round_tasks(
 		doc,
 		workflow_name,

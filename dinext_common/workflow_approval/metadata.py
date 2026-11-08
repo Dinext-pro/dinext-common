@@ -259,6 +259,8 @@ def get_workflow_approval_custom_fields() -> dict[str, list[dict[str, Any]]]:
 	from dinext_common.workflow_approval.email_metadata import extend_email_fields
 
 	extend_email_fields(custom_fields)
+	from dinext_common.workflow_approval.deadlines.metadata import transition_fields
+	custom_fields["Workflow Transition"].extend(transition_fields())
 	for fields in custom_fields.values():
 		for field in fields:
 			field.setdefault("module", "Dinext Common")
@@ -630,6 +632,8 @@ def validate_workflow_configuration(workflow: object) -> None:
 
 	previous = workflow.get_doc_before_save() if hasattr(workflow, "get_doc_before_save") else None
 	prepare_email_profiles(workflow, previous, now=frappe.utils.now_datetime)
+	from dinext_common.workflow_approval.deadlines.metadata import prepare_settings
+	prepare_settings(workflow, previous=previous)
 	if getattr(workflow, "custom_group_workflow_action_emails", False):
 		workflow.custom_attach_document_pdf = 0
 

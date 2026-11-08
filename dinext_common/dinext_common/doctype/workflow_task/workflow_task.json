@@ -1,9 +1,7 @@
 {
  "actions": [],
- "allow_rename": 0,
  "autoname": "prompt",
- "creation": "2025-01-18 18:51:46.315606",
- "custom": 0,
+ "creation": "2026-11-01 17:44:36.714882",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -52,7 +50,18 @@
   "failure_metadata",
   "correlation_id",
   "section_break_8nqw",
-  "available_workflow_transitions"
+  "available_workflow_transitions",
+  "deadline_section",
+  "deadline_assignment_id",
+  "deadline_origin_task",
+  "deadline_started_at",
+  "deadline_due_at",
+  "deadline_transition_uuid",
+  "deadline_interval_type",
+  "deadline_interval_value",
+  "deadline_timezone",
+  "deadline_error",
+  "deadline_candidates"
  ],
  "fields": [
   {
@@ -186,8 +195,7 @@
    "hidden": 1,
    "label": "Approval Round ID",
    "read_only": 1,
-   "search_index": 1,
-   "unique": 0
+   "search_index": 1
   },
   {
    "fieldname": "approver",
@@ -377,17 +385,90 @@
    "hidden": 1,
    "label": "Correlation ID",
    "read_only": 1
+  },
+  {
+   "fieldname": "deadline_section",
+   "fieldtype": "Section Break",
+   "label": "Approval Deadline",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deadline_assignment_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Deadline Assignment",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deadline_origin_task",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Original Assignment",
+   "options": "Workflow Task",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deadline_started_at",
+   "fieldtype": "Datetime",
+   "label": "Deadline Start",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deadline_due_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Deadline",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "deadline_transition_uuid",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Deadline Transition",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deadline_interval_type",
+   "fieldtype": "Data",
+   "label": "Deadline Interval Type",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deadline_interval_value",
+   "fieldtype": "Float",
+   "label": "Deadline Interval",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deadline_timezone",
+   "fieldtype": "Data",
+   "label": "Deadline Timezone",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deadline_error",
+   "fieldtype": "Small Text",
+   "label": "Deadline Calculation Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "deadline_candidates",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Deadline Policy Snapshot",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-11-25 09:27:38.271766",
- "modified_by": "iodyshev@dinord.email",
+ "modified": "2026-11-09 02:07:27.436075",
+ "modified_by": "Administrator",
  "module": "Dinext Common",
  "name": "Workflow Task",
- "naming_rule": "Expression (old style)",
- "owner": "iodyshev@dinord.email",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
  "permissions": [
   {
    "read": 1,

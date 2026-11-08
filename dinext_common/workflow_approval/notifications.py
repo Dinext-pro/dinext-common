@@ -119,6 +119,9 @@ def notification_transitions(task: object, workflow: object) -> list:
 
 
 def _delivery_context(task: object, workflow: object):
+	from dinext_common.workflow_approval.email_preferences import email_allowed
+	if not email_allowed(task.approver):
+		return None
 	profile = profile_for_state(workflow, task.workflow_state)
 	if not profile.enabled or task.status != "Working" or task.round_status != "Open":
 		return None
