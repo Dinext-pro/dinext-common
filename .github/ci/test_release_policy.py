@@ -146,15 +146,31 @@ class ReleasePolicyTests(unittest.TestCase):
         api=FixtureAPI(fixtures());record=inspect_release(api,request(),{'app':OWN},{'app':['Cypress acceptance']})
         with self.assertRaises(Rejected):verify_prechecks(api,record)
 
+    def test_acceptance_profile_is_specific_to_stable_line(self):
+        api=FixtureAPI(fixtures())
+        record=inspect_release(api,request(),{'app':OWN},{'app':{'main':['Cypress acceptance']}})
+        self.assertEqual(record['acceptance_checks'],['Cypress acceptance'])
+        with self.assertRaises(Rejected):
+            inspect_release(api,request(),{'app':OWN},{'app':{'other':[]}})
+
     def test_postchecks_require_exact_tag_event_sha_workflow(self):
         api=FixtureAPI(fixtures());record=inspect_release(api,request(),{'app':OWN},{'app':[]})
         path=ROOT+'/actions/workflows/dinext-validation.yml/runs?event=push&head_sha='+SHA
         api.data[path]={'workflow_runs':[{'id':200,'head_branch':record['version'],'head_sha':SHA,
              'event':'push','path':'.github/workflows/dinext-validation.yml','status':'completed','conclusion':'success'}]}
-        api.data[ROOT+'/actions/runs/200/jobs?filter=latest']={'jobs':[job('Validation / Repository checks'),job('Validation / App unit tests',jid=2)]}
+        api.data[ROOT+'/actions/runs/200/jobs?filter=latest']={'jobs':[job('Validation / Repository checks'),job('Validation / App unit tests',jid=2),job('Tag source context',jid=3)]}
         self.assertEqual(inspect_postchecks(api,record)['state'],'success')
         api.data[path]['workflow_runs'][0]['head_branch']='main'
         self.assertEqual(inspect_postchecks(api,record)['state'],'pending')
+
+    def test_branch_with_same_name_cannot_impersonate_tag_push(self):
+        api=FixtureAPI(fixtures());r=inspect_release(api,request(),{'app':OWN},{'app':[]})
+        path=ROOT+'/actions/workflows/dinext-validation.yml/runs?event=push&head_sha='+SHA
+        api.data[path]={'workflow_runs':[{'id':201,'head_branch':r['version'],'head_sha':SHA,
+             'event':'push','path':'.github/workflows/dinext-validation.yml','status':'completed','conclusion':'success'}]}
+        api.data[ROOT+'/actions/runs/201/jobs?filter=latest']={'jobs':[job('Validation / Repository checks'),
+            job('Validation / App unit tests',jid=2),job('Tag source context','skipped',jid=3)]}
+        self.assertEqual(inspect_postchecks(api,r)['state'],'pending')
 
     def test_tag_object_must_peel_to_exact_commit(self):
         r=request();api=FixtureAPI({ROOT+'/git/ref/tags/v26.11.09-01':{'object':{'type':'tag','sha':TAG_OBJECT}},

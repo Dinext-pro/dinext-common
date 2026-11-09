@@ -80,11 +80,21 @@ def scope(api, request, registry):
     return root, policy
 
 
+def acceptance_checks(profiles, name, branch):
+    if name not in profiles:
+        raise Rejected('Release acceptance profile is missing')
+    profile = profiles[name]
+    if isinstance(profile, list):
+        return profile
+    if branch not in profile:
+        raise Rejected('Stable line has no reviewed acceptance profile')
+    return profile[branch]
+
+
 def inspect_release(api, request, registry, acceptance):
     root, policy = scope(api, request, registry)
     name = request['repository'].split('/')[1]
-    if name not in acceptance:
-        raise Rejected('Release acceptance profile is missing')
+    required_acceptance = acceptance_checks(acceptance, name, request['branch'])
     validate_version(request['version'], policy['own'])
     stable = api.request('GET', root + '/commits/' + quote(request['branch'], safe=''))
     if stable['sha'] != request['commit']:
@@ -107,7 +117,7 @@ def inspect_release(api, request, registry, acceptance):
     return {**request, 'schema_version': 1, 'tree': stable['commit']['tree']['sha'],
             'pull_request': accepted[0]['number'], 'own': policy['own'],
             'validation_checks': ['Repository checks'] + policy['executed_checks'],
-            'acceptance_checks': acceptance[name], 'prepared_at': datetime.now(timezone.utc).isoformat()}
+            'acceptance_checks': required_acceptance, 'prepared_at': datetime.now(timezone.utc).isoformat()}
 
 
 def verify_prechecks(api, record):
@@ -132,13 +142,24 @@ def inspect_postchecks(api, record):
                     and r['event'] == 'push' and r['path'] == workflow]
         if not matching:
             return {'state': 'pending', 'reason': 'Waiting for tag-triggered ' + workflow}
-        run = max(matching, key=lambda r: (r['id'], r.get('run_attempt', 1)))
+        # A branch can share a tag's short name. Only the immutable workflow's
+        # native ref_type-gated job can attest that this was a tag push.
+        run = None
+        jobs = []
+        for candidate in sorted(matching, key=lambda r: (r['id'], r.get('run_attempt', 1)), reverse=True):
+            candidate_jobs = api.pages(root + '/actions/runs/' + str(candidate['id']) + '/jobs?filter=latest', 'jobs')
+            contexts = [j for j in candidate_jobs if j['name'] == 'Tag source context']
+            if contexts and all(j.get('conclusion') == 'skipped' for j in contexts):
+                continue
+            run, jobs = candidate, candidate_jobs
+            break
+        if run is None:
+            return {'state': 'pending', 'reason': 'Waiting for native tag context: ' + workflow}
         if run['status'] != 'completed':
             return {'state': 'pending', 'reason': 'Waiting for run ' + str(run['id'])}
         if run['conclusion'] != 'success':
             raise Rejected('Tag-triggered workflow failed: ' + workflow)
-        jobs = api.pages(root + '/actions/runs/' + str(run['id']) + '/jobs?filter=latest', 'jobs')
-        evidence.append({'workflow': workflow, 'run_id': run['id'], 'jobs': require_jobs(jobs, labels)})
+        evidence.append({'workflow': workflow, 'run_id': run['id'], 'jobs': require_jobs(jobs, labels + ['Tag source context'])})
     return {'state': 'success', 'runs': evidence}
 
 

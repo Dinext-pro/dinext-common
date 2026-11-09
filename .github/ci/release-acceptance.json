@@ -1,53 +1,120 @@
 {
-  "dinext-common": [],
-  "dinext-project-tasks-gantt": [],
-  "dinext-project-stage-gate": [],
-  "dinext-projects-pl": [
-    "Cypress acceptance"
-  ],
-  "dinext-project-scope": [],
-  "dinext-risk-management": [],
-  "dinext-git": [],
-  "dinext-project-evaluation": [],
-  "dinext-timesheets": [],
-  "dinext-projects": [],
-  "dinext_kanban": [],
-  "dinext-project-workload-assignment": [
-    "Cypress acceptance"
-  ],
-  "dinext-deputies": [],
-  "dinext-raven": [
-    "Cypress acceptance"
-  ],
-  "dinext-goals": [],
-  "doctype_permission": [
-    "Compatibility acceptance"
-  ],
-  "frappe_better_select_control": [],
-  "frappe_assistant_core": [],
-  "frappe_comment_xt": [],
-  "frappe_notifier": [],
-  "print_designer": [],
-  "raven_cloud": [],
-  "raven_integration": [],
-  "builder": [],
-  "dinext_crm": [],
-  "dinext_wiki": [],
-  "insights": [],
-  "raven": [],
-  "dinext_erp": [
-    "Cypress acceptance",
-    "Compatibility acceptance"
-  ],
-  "dinext_platform": [
-    "Cypress acceptance",
-    "Compatibility acceptance"
-  ],
-  "hrms": [
-    "Cypress acceptance",
-    "Compatibility acceptance"
-  ],
-  "preview_attachment": [],
-  "huf": [],
-  "dinext_huf_raven": []
+  "dinext-common": {
+    "main": []
+  },
+  "dinext-project-tasks-gantt": {
+    "main": []
+  },
+  "dinext-project-stage-gate": {
+    "main": []
+  },
+  "dinext-projects-pl": {
+    "main": [
+      "Cypress acceptance"
+    ]
+  },
+  "dinext-project-scope": {
+    "main": []
+  },
+  "dinext-risk-management": {
+    "main": []
+  },
+  "dinext-git": {
+    "main": []
+  },
+  "dinext-project-evaluation": {
+    "main": []
+  },
+  "dinext-timesheets": {
+    "main": []
+  },
+  "dinext-projects": {
+    "main": []
+  },
+  "dinext_kanban": {
+    "main": []
+  },
+  "dinext-project-workload-assignment": {
+    "main": [
+      "Cypress acceptance"
+    ]
+  },
+  "dinext-deputies": {
+    "main": []
+  },
+  "dinext-raven": {
+    "main": []
+  },
+  "dinext-goals": {
+    "main": []
+  },
+  "doctype_permission": {
+    "dinext/main/main": [
+      "Compatibility acceptance"
+    ]
+  },
+  "frappe_better_select_control": {
+    "dinext/main/main": []
+  },
+  "frappe_assistant_core": {
+    "dinext/main/main": []
+  },
+  "frappe_comment_xt": {
+    "dinext/main/main": []
+  },
+  "frappe_notifier": {
+    "dinext/main/develop": []
+  },
+  "print_designer": {
+    "dinext/main/main": []
+  },
+  "raven_cloud": {
+    "dinext/main/develop": []
+  },
+  "raven_integration": {
+    "dinext/main/main": []
+  },
+  "builder": {
+    "dinext/main/main": []
+  },
+  "dinext_crm": {
+    "dinext/main/v15": []
+  },
+  "dinext_wiki": {
+    "dinext/main/v15": []
+  },
+  "insights": {
+    "dinext/main/main": []
+  },
+  "raven": {
+    "dinext/main/v2": [],
+    "dinext/main/v3": []
+  },
+  "dinext_erp": {
+    "dinext/main/v15": [
+      "Cypress acceptance",
+      "Compatibility acceptance"
+    ]
+  },
+  "dinext_platform": {
+    "dinext/main/v15": [
+      "Cypress acceptance",
+      "Compatibility acceptance"
+    ]
+  },
+  "hrms": {
+    "dinext/main/version-15": [
+      "Cypress acceptance",
+      "Compatibility acceptance"
+    ]
+  },
+  "preview_attachment": {
+    "dinext/main/main": []
+  },
+  "huf": {
+    "dinext/main/develop": []
+  },
+  "dinext_huf_raven": {
+    "main": []
+  }
 }

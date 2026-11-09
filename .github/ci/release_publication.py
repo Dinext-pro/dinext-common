@@ -10,7 +10,7 @@ import time
 from urllib.parse import quote
 import zipfile
 from release_policy import (GitHub, Rejected, inspect_release, inspect_postchecks, registry_files,
-                            request_from_environment, require_jobs, scope, verify_prechecks,
+                            request_from_environment, require_jobs, scope, acceptance_checks, verify_prechecks,
                             verify_tag, write_record, WORKFLOW)
 
 
@@ -66,7 +66,7 @@ def prepare(api, request, registry, acceptance):
         record, tag = recover(api, request)
         name = request['repository'].split('/')[1]
         if (record['own'] != policy['own'] or record['validation_checks'] != ['Repository checks'] + policy['executed_checks']
-                or record['acceptance_checks'] != acceptance.get(name)):
+                or record['acceptance_checks'] != acceptance_checks(acceptance, name, request['branch'])):
             raise Rejected('Reviewed release profile changed since original preparation')
         return record, tag
     return inspect_release(api, request, registry, acceptance), None

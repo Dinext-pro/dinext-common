@@ -41,6 +41,22 @@ def enable_release_events(text):
         text, count = re.subn(r'(?m)^    tags:.*$', '    tags: ' + str(tags), text, count=1)
         if not count:
             raise ValueError('Unsupported existing multiline tag filter')
+    if 'release-context' not in data.get('jobs', {}):
+        context_job = """jobs:
+  release-context:
+    name: Tag source context
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Verify native tag context
+        run: |
+          test "$GITHUB_REF_TYPE" = tag
+          test "$GITHUB_REF" = "refs/tags/$GITHUB_REF_NAME"
+"""
+        text, count = re.subn(r'(?m)^jobs:[ \t]*(?:\{\})?[ \t]*$', context_job.rstrip(), text, count=1)
+        if count != 1:
+            raise ValueError('Could not locate workflow jobs mapping')
     # A release workflow_call must not be cancelled by a separate branch validation run.
     text = re.sub(r'(?m)^(\s+group: dinext-(?:validation|acceptance)-)(?!\$\{\{ github.workflow)(.*)$',
                   r'\1${{ github.workflow }}-\2', text)

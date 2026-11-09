@@ -23,6 +23,14 @@ class WorkflowGenerationTests(unittest.TestCase):
         text=enable_release_events('on:\n  push:\n    tags: [old/*]\n  workflow_dispatch: {}\njobs: {}\n')
         self.assertIn('old/*',load_workflow(text)['on']['push']['tags'])
 
+    def test_tag_source_job_is_gated_on_native_tag_context(self):
+        text=enable_release_events('on:\n  push:\n    branches: [main]\njobs: {}\n')
+        data=load_workflow(text)
+        context=data['jobs']['release-context']
+        self.assertEqual(context['name'],'Tag source context')
+        self.assertIn("github.ref_type == 'tag'",context['if'])
+        self.assertIn("github.event_name == 'push'",context['if'])
+
     def test_native_booleans_and_on_key(self):
         data=load_workflow('on: {}\nflag: false\n')
         self.assertEqual(data,{'on':{},'flag':False})
