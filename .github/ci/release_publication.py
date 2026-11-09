@@ -87,12 +87,14 @@ def verify_credential(api, record, app_id, selected):
         if 'creation' in types:
             creation.append(detail)
             allowed = any(a['actor_type'] == 'Integration' and a['actor_id'] == app_id
-                          and a['bypass_mode'] == 'always' for a in detail['bypass_actors'])
+                          and a['bypass_mode'] == 'always' for a in detail.get('bypass_actors', []))
+            allowed = allowed or detail.get('current_user_can_bypass') in {'always', 'exempt'}
             if not allowed:
                 raise Rejected('Release App cannot bypass active tag creation restriction')
         if summary['name'] == 'Dinext immutable tags':
             immutable.append(detail)
-            if not {'update', 'deletion'} <= types or detail['bypass_actors']:
+            if (not {'update', 'deletion'} <= types or detail.get('bypass_actors')
+                    or detail.get('current_user_can_bypass', 'never') != 'never'):
                 raise Rejected('Immutable tag safety must have no bypass')
     if not creation or len(immutable) != 1:
         raise Rejected('Expected creation and immutable tag rules are missing')
@@ -112,6 +114,31 @@ def create_tag(api, record, artifact_id, digest, evidence):
     if ref['object']['sha'] != obj['sha']:
         raise Rejected('GitHub returned an unexpected tag object')
     return {'object_sha': obj['sha'], 'commit': record['commit'], 'origin': proof}
+
+
+def release_marker(record):
+    return '<!-- dinext-release:' + str(record['run_id']) + ':' + record['commit'] + ' -->'
+
+
+def validate_existing_release(record, release, app_slug):
+    author = release.get('author', {})
+    if (release['tag_name'] != record['version'] or release['name'] != record['version']
+            or author.get('login') != app_slug + '[bot]' or author.get('type') != 'Bot'
+            or release_marker(record) not in release.get('body', '')):
+        raise Rejected('Existing Release belongs to a different operation or author')
+
+
+def prepare_content(writer, record):
+    if 'release_notes' in record:
+        if not record['release_notes'].strip():
+            raise Rejected('Prepared release notes are empty')
+        return record
+    notes = writer.request('POST', '/repos/' + record['repository'] + '/releases/generate-notes',
+                           {'tag_name': record['version'], 'target_commitish': record['commit']})
+    body = notes['body'].strip()
+    if not body:
+        raise Rejected('GitHub generated empty release notes')
+    return {**record, 'release_notes': body}
 
 
 def publish_release(command, record, notes, assets, verify_assets, existing=None):
@@ -149,11 +176,9 @@ def release_assets(api, record, paths):
 
 def notes_and_manifest(api, record, post, directory):
     directory.mkdir(parents=True, exist_ok=True)
-    notes = api.request('POST', '/repos/' + record['repository'] + '/releases/generate-notes',
-                        {'tag_name': record['version'], 'target_commitish': record['commit']})
-    body = notes['body'].strip()
+    body = record['release_notes'].strip()
     if not body:
-        raise Rejected('GitHub generated empty release notes')
+        raise Rejected('Prepared release notes are empty')
     manifest = {'schema_version': 1, 'repository': record['repository'], 'branch': record['branch'],
                 'tag': record['version'], 'commit': record['commit'], 'tree': record['tree'],
                 'initiator': record['actor'], 'pull_request': record['pull_request'],
@@ -164,7 +189,7 @@ def notes_and_manifest(api, record, post, directory):
     write_record(directory / 'release-manifest.json', manifest)
     write_record(directory / 'release-verification.json', post)
     (directory / 'release-notes.md').write_text(body + '\n\nCommit: `' + record['commit'] + '`\n\n'
-        + 'Validation: ' + ', '.join(manifest['coverage']) + '.\n\n' + manifest['release_run'] + '\n')
+        + 'Validation: ' + ', '.join(manifest['coverage']) + '.\n\n' + manifest['release_run'] + '\n\n' + release_marker(record) + '\n')
     return directory / 'release-notes.md', [directory / 'release-manifest.json', directory / 'release-verification.json']
 
 
@@ -197,8 +222,14 @@ def main():
     if args.phase == 'credential':
         verify_prechecks(api, record)
         selected = json.loads(gh(['api', '/installation/repositories']))['repositories']
-        verify_credential(api, record, int(os.environ['RELEASE_APP_ID']), selected)
-        print('Release App credential scope verified; no writes.')
+        verify_credential(writer, record, int(os.environ['RELEASE_APP_ID']), selected)
+        record = prepare_content(writer, record)
+        write_record(args.record, record)
+        output = os.environ.get('GITHUB_OUTPUT')
+        if output:
+            with open(output, 'a') as stream:
+                stream.write('sha256=' + hashlib.sha256(Path(args.record).read_bytes()).hexdigest() + '\n')
+        print('Release App credential and generated notes verified; no persistent writes.')
     elif args.phase == 'tag':
         evidence = verify_prechecks(api, record)
         refs = api.request('GET', '/repos/' + record['repository'] + '/git/matching-refs/tags/' + quote(record['version'], safe='/'))
@@ -237,7 +268,9 @@ def main():
         if len(existing) > 1:
             raise Rejected('Conflicting Releases')
         if existing:
-            # A draft/published release must already carry this exact trusted operation's manifest.
+            validate_existing_release(record, existing[0], os.environ['RELEASE_APP_SLUG'])
+        if existing and not existing[0]['draft']:
+            # Published evidence must already match; an owned draft can refill missing assets.
             previous = Path('prior-manifest')
             previous.mkdir(exist_ok=True)
             gh(['release', 'download', record['version'], '--repo', record['repository'], '--pattern', 'release-manifest.json', '--dir', str(previous), '--clobber'])

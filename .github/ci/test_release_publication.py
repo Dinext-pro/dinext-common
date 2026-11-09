@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from release_policy import Rejected
-from release_publication import create_tag, validate_origin, publish_release, verify_credential, main
+from release_publication import create_tag, validate_origin, publish_release, verify_credential, main, validate_existing_release, prepare_content
 from test_release_policy import FixtureAPI, ROOT, SHA, TAG_OBJECT, TREE, request, job, fixtures, OWN
 from release_policy import inspect_release, verify_prechecks
 
@@ -72,6 +72,17 @@ class PublicationTests(unittest.TestCase):
         with self.assertRaises(Rejected):verify_credential(api,r,55,[{'full_name':r['repository']}])
         with self.assertRaises(Rejected):verify_credential(api,r,55,[{'full_name':'Dinext-pro/other'}])
 
+    def test_runtime_app_can_verify_effective_bypass_without_admin_actor_list(self):
+        r=record()
+        rules=[{'id':1,'name':'Dinext controlled tag creation','target':'tag','enforcement':'active'},
+               {'id':2,'name':'Dinext immutable tags','target':'tag','enforcement':'active'}]
+        api=FixtureAPI({ROOT+'/rulesets':rules,
+           ROOT+'/rulesets/1':{'rules':[{'type':'creation'}],'current_user_can_bypass':'always'},
+           ROOT+'/rulesets/2':{'rules':[{'type':'update'},{'type':'deletion'}],'current_user_can_bypass':'never'}})
+        verify_credential(api,r,55,[{'full_name':r['repository']}])
+        api.data[ROOT+'/rulesets/2']['current_user_can_bypass']='always'
+        with self.assertRaises(Rejected):verify_credential(api,r,55,[{'full_name':r['repository']}])
+
     def test_dry_run_rejects_skipped_required_job_before_activation(self):
         r=record(); data=fixtures()
         data[ROOT+'/actions/runs/100/jobs?filter=latest']['jobs'][1]['conclusion']='skipped'
@@ -88,6 +99,27 @@ class PublicationTests(unittest.TestCase):
                  patch('release_publication.registry_files',return_value=({'app':OWN},{'app':[]})), \
                  patch('release_publication.gh',return_value=json.dumps({'repositories':[{'full_name':r['repository']}]})):
                 with self.assertRaisesRegex(Rejected,'Required job'):main()
+
+    def test_own_draft_without_manifest_can_resume_but_foreign_draft_cannot(self):
+        r=record(); marker='<!-- dinext-release:100:'+SHA+' -->'
+        draft={'draft':True,'name':r['version'],'tag_name':r['version'],
+               'body':'notes\n'+marker,'author':{'login':'dinext-release[bot]','type':'Bot'},'assets':[]}
+        validate_existing_release(r,draft,'dinext-release')
+        for change in [{'author':{'login':'someone','type':'User'}},{'body':'foreign draft'}, {'name':'unrelated'}]:
+            with self.subTest(change=change),self.assertRaises(Rejected):
+                validate_existing_release(r,{**draft,**change},'dinext-release')
+
+    def test_notes_are_generated_before_tag_and_remain_frozen_on_retry(self):
+        r=record();api=WriterAPI({})
+        original_request=api.request
+        def generate(method,path,data=None):
+            if path==ROOT+'/releases/generate-notes':return {'body':'Native generated notes'}
+            return original_request(method,path,data)
+        api.request=generate
+        content=prepare_content(api,r)
+        self.assertEqual(content['release_notes'],'Native generated notes')
+        api.request=lambda *args: self.fail('Retry must not regenerate notes')
+        self.assertEqual(prepare_content(api,content),content)
 
     def test_release_stays_draft_if_upload_fails(self):
         calls=[]
