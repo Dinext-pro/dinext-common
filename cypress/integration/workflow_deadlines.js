@@ -97,6 +97,29 @@ describe('Workflow deadline settings and discipline', () => {
         });
     }
 
+    it('shows all nine deadline cards to an ordinary worker without System Manager', () => {
+        cy.login(fixture.ordinary_user, fixture.password);
+        for (const route of ['my-approvals', 'my-timesheets']) {
+            cy.visit('/app/' + route);
+            cy.window().should(w => expect(w.frappe.user_roles).not.to.include('System Manager'));
+            const names = route === 'my-approvals'
+                ? ['Просроченные согласования', 'Согласования в срок', 'Согласования с опозданием', 'Ошибки расчёта сроков']
+                : ['Таймшиты, отправленные в срок', 'Таймшиты, согласованные в срок', 'Таймшиты с просроченным согласованием', 'Просроченные позиции таймшитов', 'Часы таймшитов на согласовании'];
+            for (const name of names) {
+                cy.contains('.number-widget-box', name).find('.number').should($number => {
+                    const text = $number.text().trim();
+                    expect(text).not.to.match(/[₽$€]/);
+                    expect(/^[\d\s.,%]+$/.test(text) || ['Н/Д', 'N/A'].includes(text), text).to.equal(true);
+                });
+            }
+            cy.get('.msgprint:visible').should('not.exist');
+            for (const theme of ['light', 'dark']) {
+                cy.window().then(w => w.frappe.ui.set_theme(theme));
+                cy.screenshot('ordinary-worker-' + route + '-' + theme);
+            }
+        }
+    });
+
     it('loads English and system-language forms, reports and workspaces', () => {
         for (const profile of fixture.locale_users) {
             cy.login(profile.user, fixture.password);

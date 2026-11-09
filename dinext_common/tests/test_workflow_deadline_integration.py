@@ -2,13 +2,147 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import frappe
-from frappe.tests.utils import FrappeTestCase
 
 from dinext_common.tests.test_workflow_approval_integration import TestWorkflowApprovalIntegration as Base
 from dinext_common.workflow_approval import engine
 
 
 class TestDeadlineIntegration(Base):
+	def test_dropped_completed_vote_opens_new_obligation_while_unfinished_assignment_keeps_clock(self):
+		other = "deadline-new-obligation-" + frappe.generate_hash(length=8) + "@example.test"
+		frappe.get_doc(
+			dict(
+				doctype="User",
+				email=other,
+				first_name="Other Approver",
+				send_welcome_email=0,
+				roles=[{"role": self.role}, {"role": "System Manager"}],
+			)
+		).insert(ignore_permissions=True)
+		workflow = frappe.get_doc("Workflow", self.workflow_name)
+		workflow.transitions[0].custom_parallel_approval_policy = "All"
+		workflow.save(ignore_permissions=True)
+		source, old = self.source_task(share_with=[self.user, other])
+		old_other = frappe.get_doc(
+			"Workflow Task",
+			frappe.db.get_value(
+				"Workflow Task", {"reference_name": source.name, "approver": other, "status": "Working"}
+			),
+		)
+		frappe.session.user = self.user
+		try:
+			engine.cast_vote(
+				old.name,
+				transition_uuid=old.available_workflow_transitions[0].transition_uuid,
+				request_id="deadline-drop-" + frappe.generate_hash(length=8),
+			)
+		finally:
+			frappe.session.user = "Administrator"
+		old.reload()
+		self.assertEqual(old.status, "Completed")
+		workflow.reload()
+		workflow.transitions[0].condition = "doc.subject != 'Blocked'"
+		workflow.save(ignore_permissions=True)
+		engine.reconcile_source(source)
+		result = engine.rebuild_configuration_conflict(source, old.approval_round_id, "Decision rule changed")
+		new = next(
+			frappe.get_doc("Workflow Task", name)
+			for name in result["new_tasks"]
+			if frappe.db.get_value("Workflow Task", name, "approver") == self.user
+		)
+		new_other = next(
+			frappe.get_doc("Workflow Task", name)
+			for name in result["new_tasks"]
+			if frappe.db.get_value("Workflow Task", name, "approver") == other
+		)
+		self.assertEqual(
+			new.status,
+			"Working",
+			{"carried": result["carried"], "dropped": result["dropped"], "source": source.status},
+		)
+		self.assertNotEqual(new.deadline_assignment_id, old.deadline_assignment_id)
+		self.assertGreaterEqual(new.deadline_started_at, old.completed_at)
+		self.assertEqual(new_other.deadline_assignment_id, old_other.deadline_assignment_id)
+		self.assertEqual(new_other.deadline_due_at, old_other.deadline_due_at)
+		from dinext_common.workflow_approval.deadlines.discipline import observations
+
+		rows = observations(
+			[old.as_dict(), new.as_dict()],
+			now=new.deadline_started_at + timedelta(days=2),
+			site_timezone="Europe/Moscow",
+		)
+		self.assertEqual(len(rows), 2)
+		self.assertEqual({row["discipline_status"] for row in rows}, {"On Time", "Overdue"})
+
+	def test_public_deadline_cards_are_readable_by_an_ordinary_approver_but_not_writable(self):
+		user = frappe.get_doc("User", self.user)
+		original_roles = [{"role": row.role} for row in user.roles]
+		previous_user = frappe.session.user
+		try:
+			user.set("roles", [row for row in user.roles if row.role != "System Manager"])
+			user.save(ignore_permissions=True)
+			frappe.set_user(self.user)
+			for name in (
+				"Overdue Approval Assignments",
+				"On-time Approvals",
+				"Approvals Completed Late",
+				"Approval Deadline Errors",
+				"On-time Timesheet Submissions",
+				"On-time Timesheet Approvals",
+				"Overdue Timesheet Approvals",
+				"Overdue Timesheet Positions",
+				"Timesheet Hours Awaiting Approval",
+			):
+				with self.subTest(card=name):
+					self.assertFalse(frappe.get_doc("Number Card", name).currency)
+					self.assertTrue(frappe.has_permission("Number Card", "read", doc=name, user=self.user))
+					self.assertFalse(frappe.has_permission("Number Card", "write", doc=name, user=self.user))
+		finally:
+			frappe.set_user("Administrator")
+			user.reload().set("roles", original_roles)
+			user.save(ignore_permissions=True)
+			frappe.set_user(previous_user)
+
+	def test_discipline_bounds_history_before_permission_checks_and_loads_no_full_tasks(self):
+		from dinext_common.workflow_approval.deadlines.discipline import visible_rows
+
+		source, current = self.source_task()
+		old_names = []
+		for index in range(12):
+			old = frappe.copy_doc(current)
+			old.name = "deadline-old-" + frappe.generate_hash(length=16)
+			old.update(
+				dict(
+					status="Completed",
+					round_status="Completed",
+					completion_source="Manual",
+					deadline_assignment_id=old.name,
+					deadline_due_at="2020-01-01 10:00:00",
+					completed_at="2020-01-01 09:00:00",
+				)
+			)
+			old.db_insert()
+			old_names.append(old.name)
+		original = frappe.get_doc
+		loads = []
+
+		def counted(*args, **kwargs):
+			if args and args[0] == "Workflow Task" and len(args) > 1:
+				loads.append(args[1])
+			return original(*args, **kwargs)
+
+		with patch.object(frappe, "get_doc", side_effect=counted):
+			rows = visible_rows(
+				{
+					"workflow": self.workflow_name,
+					"reference_name": source.name,
+					"from_date": "2026-11-01",
+					"to_date": "2026-11-30",
+				}
+			)
+		self.assertEqual({row["name"] for row in rows}, {current.name})
+		self.assertEqual(loads, [])
+
 	workflow_name = "_Test Deadline Integration"
 	action_name = "_Test Deadline Approve"
 	reopen_action_name = "_Test Deadline Reopen"
@@ -168,7 +302,7 @@ class TestDeadlineIntegration(Base):
 		workflow.send_email_alert = 1
 		workflow.save(ignore_permissions=True)
 		frappe.db.set_value("Workflow Task", task.name, "deadline_due_at", "2026-01-01 00:00:00")
-		slot = datetime(2026, 11, 10, 5, tzinfo=timezone.utc)
+		slot = datetime(2026, 11, 12, 5, tzinfo=timezone.utc)
 		kwargs = dict(
 			workflow=workflow,
 			recipient=self.user,
@@ -177,6 +311,7 @@ class TestDeadlineIntegration(Base):
 			now=slot + timedelta(minutes=1),
 		)
 		before = frappe.db.count("Email Queue")
+		previous_deliveries = frappe.db.count("Workflow Deadline Delivery", {"workflow": workflow.name})
 		native = mail._sendmail_for_user
 
 		def enqueue_then_fail(*args, **values):
@@ -187,11 +322,16 @@ class TestDeadlineIntegration(Base):
 			with self.assertRaisesRegex(RuntimeError, "Injected interruption"):
 				send_group(**kwargs)
 		self.assertEqual(frappe.db.count("Email Queue"), before)
-		self.assertFalse(frappe.db.exists("Workflow Deadline Delivery", {"workflow": workflow.name}))
+		self.assertEqual(
+			frappe.db.count("Workflow Deadline Delivery", {"workflow": workflow.name}), previous_deliveries
+		)
 		send_group(**kwargs)
 		send_group(**kwargs)
 		self.assertEqual(frappe.db.count("Email Queue"), before + 1)
-		self.assertEqual(frappe.db.count("Workflow Deadline Delivery", {"workflow": workflow.name}), 1)
+		self.assertEqual(
+			frappe.db.count("Workflow Deadline Delivery", {"workflow": workflow.name}),
+			previous_deliveries + 1,
+		)
 
 	def test_deadline_uses_live_template_and_new_schedule_before_forming_email(self):
 		from datetime import datetime, timezone
@@ -318,6 +458,10 @@ class TestDeadlineIntegration(Base):
 			import_doc(fixture)
 			current = frappe.get_doc("Workflow", self.workflow_name)
 			self.assertEqual(current.transitions[0].custom_deadline_value, 24)
+			self.assertEqual(
+				current.transitions[0].custom_deadline_schedule_anchor,
+				workflow.transitions[0].custom_deadline_schedule_anchor,
+			)
 			frappe.flags.in_fixtures = False
 			current.transitions[0].custom_deadline_enabled = 0
 			current.save(ignore_permissions=True)

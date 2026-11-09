@@ -1,7 +1,6 @@
 """Recover original open obligations from assignment history, never migration time."""
 
 import json
-from datetime import datetime
 
 import frappe
 
@@ -24,7 +23,40 @@ def original_assignment(task, history):
 		and row.get("approver") == task["approver"]
 		and row.get("workflow_state") == task["workflow_state"]
 	]
-	return min(matching, key=lambda row: (str(row["creation"]), row["name"]), default=None)
+	matching.sort(key=lambda row: (str(row["creation"]), row["name"]))
+	if not matching:
+		return None
+	current = matching[-1]
+	for previous in reversed(matching[:-1]):
+		# A recorded decision ended the earlier obligation, including a same-state return.
+		if previous.get("status") == "Completed":
+			break
+		fingerprint = current.get("entry_fingerprint")
+		previous_fingerprint = previous.get("entry_fingerprint")
+		version = current.get("entry_fingerprint_version")
+		if (
+			not fingerprint
+			or not previous_fingerprint
+			or not version
+			or version != previous.get("entry_fingerprint_version")
+		):
+			return None
+		if fingerprint != previous_fingerprint:
+			break
+		metadata = previous.get("failure_metadata") or {}
+		if isinstance(metadata, str):
+			try:
+				metadata = json.loads(metadata)
+			except (ValueError, TypeError):
+				return None
+		if (
+			not isinstance(metadata, dict)
+			or previous.get("status") != "Cancelled"
+			or metadata.get("reason") != "configuration_changed"
+		):
+			return None
+		current = previous
+	return current
 
 
 def backfill_open_tasks(workflow_name):
@@ -51,7 +83,18 @@ def backfill_open_tasks(workflow_name):
 				"reference_name": task.reference_name,
 				"source_created_at": task.source_created_at,
 			},
-			fields=["name", "creation", "approver", "workflow_state"],
+			fields=[
+				"name",
+				"creation",
+				"approver",
+				"workflow_state",
+				"approval_round_id",
+				"status",
+				"entry_fingerprint",
+				"entry_fingerprint_version",
+				"cancellation_reason",
+				"failure_metadata",
+			],
 			order_by="creation asc, name asc",
 		)
 		origin = original_assignment(task.as_dict(), history)

@@ -20,6 +20,7 @@ from lxml import etree
 frappe_root = Path(sys.argv[1]).resolve()
 destination = Path(__file__).resolve().parents[1] / "dinext_common/public/images/workflow-icons"
 destination.mkdir(parents=True, exist_ok=True)
+(destination / "LICENSE").write_bytes((frappe_root / "LICENSE").read_bytes())
 rsvg = ctypes.CDLL(ctypes.util.find_library("rsvg-2"))
 pixbuf = ctypes.CDLL(ctypes.util.find_library("gdk_pixbuf-2.0"))
 gobject = ctypes.CDLL(ctypes.util.find_library("gobject-2.0"))

@@ -1,7 +1,7 @@
 """One approval-discipline observation per real personal obligation."""
 
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 
@@ -80,17 +80,41 @@ def summarize(rows, *, from_date, to_date, now, site_timezone="UTC"):
 	)
 
 
+def _candidate_rows(filters, fields):
+	"""Trusted discovery: current work or the selected due cohort, never all history."""
+	import frappe
+	from frappe.utils import add_days, getdate, nowdate
+
+	query = {"deadline_assignment_id": ["is", "set"], "status": ["!=", "Cancelled"]}
+	for field in ("approver", "workflow", "workflow_state", "reference_doctype", "reference_name"):
+		if filters.get(field):
+			query[field] = filters[field]
+	start = getdate(filters.get("from_date") or add_days(nowdate(), -29))
+	end = getdate(filters.get("to_date") or nowdate())
+	# Recipient offsets can put a due date on a neighbouring site date.
+	# Exact cohort selection follows authorization in summarize().
+	bounds = [str(add_days(start, -2)) + " 00:00:00", str(add_days(end, 2)) + " 23:59:59.999999"]
+	return frappe.get_all(
+		"Workflow Task",
+		filters=query,
+		or_filters=[["status", "=", "Working"], ["deadline_due_at", "between", bounds]],
+		fields=fields,
+		limit_page_length=0,
+		order_by="creation asc",
+	)
+
+
 def visible_rows(filters=None):
 	import frappe
 
-	from dinext_common.workflow_approval.engine import _has_source_read_permission
+	from dinext_common.workflow_approval.permissions import (
+		_batch_read_helper,
+		prepare_source_permissions,
+		task_read_candidates,
+	)
 
-	filters = filters or {}
-	query = {"deadline_assignment_id": ["is", "set"]}
-	allowed = ("approver", "workflow", "workflow_state", "reference_doctype", "reference_name")
-	for field in allowed:
-		if filters.get(field):
-			query[field] = filters[field]
+	if not frappe.has_permission("Workflow Task", "read"):
+		return []
 	fields = [
 		"name",
 		"creation",
@@ -99,6 +123,10 @@ def visible_rows(filters=None):
 		"workflow",
 		"workflow_state",
 		"approver",
+		"user",
+		"doc",
+		"wt_docname",
+		"source_deleted_at",
 		"status",
 		"completed_at",
 		"completion_source",
@@ -110,32 +138,54 @@ def visible_rows(filters=None):
 		"source_title",
 		"source_created_at",
 	]
-	rows = frappe.get_list(
-		"Workflow Task", filters=query, fields=fields, limit_page_length=0, order_by="creation asc"
-	)
+	candidates = _candidate_rows(filters or {}, fields)
+	if not candidates:
+		return []
+	source_permissions = {}
+	prepare_source_permissions(candidates, frappe.session.user, source_permissions)
+	batch_read = _batch_read_helper()
 	result = []
-	sources = {}
-	for row in rows:
-		key = (row.reference_doctype, row.reference_name)
-		if key not in sources:
-			try:
-				sources[key] = frappe.get_doc(*key)
-			except frappe.DoesNotExistError:
-				sources[key] = None
-		source = sources[key]
-		if not source or not _has_source_read_permission(source, frappe.session.user):
-			continue
-		if row.source_created_at and row.source_created_at != source.creation:
-			continue
-		task = frappe.get_doc("Workflow Task", row.name)
-		if not task.has_permission("read"):
-			continue
-		result.append(dict(row))
-	return result
+	for offset in range(0, len(candidates), 500):
+		page = candidates[offset : offset + 500]
+		with task_read_candidates(page, source_permissions):
+			rows = frappe.get_list(
+				"Workflow Task",
+				filters={"name": ["in", [row.name for row in page]]},
+				fields=fields,
+				limit_page_length=0,
+				order_by="creation asc",
+			)
+			if batch_read:
+				allowed = batch_read("Workflow Task", [row.name for row in rows])
+			else:
+				allowed = {
+					row.name
+					for row in rows
+					if frappe.get_doc(dict(row, doctype="Workflow Task")).has_permission("read")
+				}
+			result.extend(row for row in rows if row.name in allowed)
+	# Verify the source generation in batches without loading every child table.
+	by_type = defaultdict(set)
+	for row in result:
+		if row.source_created_at:
+			by_type[row.reference_doctype].add(row.reference_name)
+	identities = {}
+	for doctype, source_names in by_type.items():
+		names = list(source_names)
+		for offset in range(0, len(names), 500):
+			for source in frappe.get_all(
+				doctype, filters={"name": ["in", names[offset : offset + 500]]}, fields=["name", "creation"]
+			):
+				identities[(doctype, source.name)] = source.creation
+	return [
+		dict(row)
+		for row in result
+		if not row.source_created_at
+		or row.source_created_at == identities.get((row.reference_doctype, row.reference_name))
+	]
 
 
 def metrics(filters=None):
-	import frappe
 	from frappe.utils import add_days, get_system_timezone, now_datetime, nowdate
 
 	filters = filters or {}

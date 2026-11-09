@@ -1,6 +1,5 @@
 {
  "creation": "2026-11-09 02:48:43.635652",
- "currency": "RUB",
  "docstatus": 0,
  "doctype": "Number Card",
  "function": "Count",
@@ -9,7 +8,7 @@
  "is_standard": 1,
  "label": "Approval Deadline Errors",
  "method": "dinext_common.workflow_approval.deadlines.discipline.errors_card",
- "modified": "2026-11-09 02:48:43.635652",
+ "modified": "2026-11-09 06:03:14.036492",
  "modified_by": "Administrator",
  "module": "Dinext Common",
  "name": "Approval Deadline Errors",

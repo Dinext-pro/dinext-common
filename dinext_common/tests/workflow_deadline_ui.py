@@ -6,7 +6,12 @@ import frappe
 
 from dinext_common.tests import workflow_email_ui as base
 
-LOCALE_USERS = (("cy.workflow.deadline.en@example.com", "en"), ("cy.workflow.deadline.system@example.com", ""))
+ORDINARY_USER = "cy.workflow.deadline.worker@example.com"
+
+LOCALE_USERS = (
+	("cy.workflow.deadline.en@example.com", "en"),
+	("cy.workflow.deadline.system@example.com", ""),
+)
 
 
 def seed():
@@ -20,7 +25,14 @@ def seed():
 	for user, language in LOCALE_USERS:
 		_ensure_user(user, "Workflow Language Preview", roles)
 		frappe.db.set_value("User", user, "language", language)
-	result["locale_users"] = [dict(user=user, language=language or "system") for user, language in LOCALE_USERS]
+	_ensure_user(
+		ORDINARY_USER, "Workflow Ordinary Approver", ["Desk User", "Dinext_User", "Dinext_Worker", base.ROLE]
+	)
+	frappe.db.set_value("User", ORDINARY_USER, "language", "ru")
+	result["ordinary_user"] = ORDINARY_USER
+	result["locale_users"] = [
+		dict(user=user, language=language or "system") for user, language in LOCALE_USERS
+	]
 	result["system_ui_language"] = frappe.db.get_default("lang") or "en"
 	workflow = frappe.get_doc("Workflow", result["workflow"])
 	workflow.append("states", {"state": "Approved", "doc_status": "0", "allow_edit": "All"})
@@ -60,7 +72,7 @@ def seed():
 
 def cleanup():
 	base._guard()
-	for user, _language in LOCALE_USERS:
+	for user in [ORDINARY_USER, *(user for user, _language in LOCALE_USERS)]:
 		if frappe.db.exists("User", user):
 			frappe.delete_doc("User", user, force=True, ignore_permissions=True)
 	return base.cleanup()

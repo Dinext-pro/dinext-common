@@ -1002,6 +1002,25 @@ def rebuild_configuration_conflict(
 	]
 	sample = frappe.get_doc("Workflow Task", names[0])
 	manifest = _parse_manifest(sample)
+	# A discarded completed decision is a new request, while continuing waits
+	# and compatible carried decisions retain their frozen obligation.
+	from dinext_common.workflow_approval.deadlines.lifecycle import FIELDS, candidates, prepare_task, snapshot
+	dropped_actors = {str(_value(vote, "approver") or "") for vote in dropped}
+	changed_deadlines = False
+	for task in working:
+		if task.approver not in dropped_actors:
+			continue
+		workflow = frappe.get_doc("Workflow", task.workflow)
+		if not task.deadline_assignment_id and not candidates(task, workflow):
+			continue
+		task.update({field: None for field in (*FIELDS, "deadline_origin_task")})
+		task.deadline_interval_value = 0
+		prepare_task(task, workflow, started_at=task.creation)
+		_set_task_values(task.name, {field: task.get(field) for field in (*FIELDS, "deadline_origin_task")})
+		manifest.setdefault("deadline_assignments", {})[task.approver] = snapshot(task)
+		changed_deadlines = True
+	if changed_deadlines:
+		_set_round_values(new_round_id, {"round_manifest": serialize_manifest(manifest)})
 	if working:
 		fingerprint = ContentFingerprint(
 			version=str(sample.entry_fingerprint_version or "1"),

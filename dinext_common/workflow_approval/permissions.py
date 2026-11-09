@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import cache
 from importlib import import_module
 from typing import Any
@@ -12,6 +14,20 @@ import frappe
 
 READ_PERMISSION_TYPES = {"read", "report", "export", "print", "email", "select"}
 MUTATING_PERMISSION_TYPES = {"create", "write", "delete", "share", "submit", "cancel"}
+
+_task_candidates = ContextVar("workflow_task_read_candidates", default=None)
+
+
+@contextmanager
+def task_read_candidates(rows, source_permissions):
+	"""Bound the existing final SQL permission hook to this read's candidates."""
+	user = frappe.session.user
+	token = _task_candidates.set((user, rows, source_permissions,
+		get_task_read_checker(user, source_permissions=source_permissions)))
+	try:
+		yield
+	finally:
+		_task_candidates.reset(token)
 
 
 def _get(doc: object, fieldname: str, default: Any = None) -> Any:
@@ -110,6 +126,9 @@ def has_workflow_task_permission(
 	user = user or frappe.session.user
 	if ptype in MUTATING_PERMISSION_TYPES or ptype not in READ_PERMISSION_TYPES:
 		return False
+	scope = _task_candidates.get()
+	if scope and scope[0] == user:
+		return scope[3](doc)
 	return _can_read_task(
 		doc,
 		user,
@@ -200,6 +219,10 @@ PUBLIC_APPROVAL_NUMBER_CARDS = frozenset(
 		"Новые сегодня",
 		"My completed approvals",
 		"Автоматически выполнено за 30 дней",
+		"Overdue Approval Assignments",
+		"On-time Approvals",
+		"Approvals Completed Late",
+		"Approval Deadline Errors",
 	}
 )
 
@@ -257,6 +280,11 @@ def get_workflow_task_permission_query_conditions(user: str | None = None) -> st
 	condition, with source/workflow checks cached only for this invocation.
 	"""
 	user = user or frappe.session.user
+	scope = _task_candidates.get()
+	if scope and scope[0] == user:
+		can_read = scope[3]
+		allowed = [row.name for row in scope[1] if can_read(row)]
+		return frappe.qb.DocType("Workflow Task").name.isin(allowed).get_sql() if allowed else "1=0"
 	can_read = get_task_read_checker(user)
 	allowed = []
 	start = 0

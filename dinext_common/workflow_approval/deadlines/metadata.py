@@ -1,6 +1,5 @@
 """Workflow transition policy fields and server-side validation."""
 
-from datetime import datetime
 
 import frappe
 
