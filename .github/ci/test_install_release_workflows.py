@@ -6,6 +6,17 @@ import yaml
 from install_release_workflows import enable_release_events, release_caller, load_workflow
 
 class WorkflowGenerationTests(unittest.TestCase):
+    def test_protected_environment_key_is_explicitly_forwarded_only_to_writer(self):
+        secret='DINEXT_RELEASE_APP_PRIVATE_KEY'
+        publisher=load_workflow((Path(__file__).parents[1]/'workflows/dinext-release-publish.yml').read_text())
+        contract=publisher['on']['workflow_call'].get('secrets',{})
+        self.assertEqual(set(contract),{secret})
+        self.assertTrue(contract[secret]['required'])
+        caller=load_workflow(release_caller('a'*40,True))
+        self.assertEqual(caller['jobs']['publish'].get('secrets'),{secret:'${{ secrets.'+secret+' }}'})
+        for name,job in caller['jobs'].items():
+            if name!='publish':self.assertNotIn('secrets',job)
+
     def test_preserves_branches_and_adds_call_and_tags(self):
         original="name: CI\n'on':\n  push:\n    branches: [main, develop]\n  pull_request: {}\n  workflow_dispatch: {}\npermissions:\n  contents: read\njobs: {}\n"
         text=enable_release_events(original)
