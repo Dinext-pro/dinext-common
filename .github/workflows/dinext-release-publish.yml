@@ -1,6 +1,9 @@
 name: Dinext verified release publication
 'on':
   workflow_call:
+    secrets:
+      DINEXT_RELEASE_APP_PRIVATE_KEY:
+        required: true
     inputs:
       support-ref:
         type: string

@@ -80,6 +80,7 @@ def release_caller(support_ref, acceptance):
         needs.append('acceptance')
     jobs['publish'] = {'name': 'Publish verified release', 'needs': needs,
                        'uses': common + 'dinext-release-publish.yml@' + support_ref,
+                       'secrets': {'DINEXT_RELEASE_APP_PRIVATE_KEY': '${{ secrets.DINEXT_RELEASE_APP_PRIVATE_KEY }}'},
                        'with': {'support-ref': support_ref, 'version': '${{ inputs.version }}',
                                 'commit': '${{ inputs.commit }}', 'dry-run': '${{ inputs.dry-run }}',
                                 'artifact-id': '${{ needs.preflight.outputs.artifact-id }}',
