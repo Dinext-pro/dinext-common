@@ -1,0 +1,53 @@
+{
+  "dinext-common": [],
+  "dinext-project-tasks-gantt": [],
+  "dinext-project-stage-gate": [],
+  "dinext-projects-pl": [
+    "Cypress acceptance"
+  ],
+  "dinext-project-scope": [],
+  "dinext-risk-management": [],
+  "dinext-git": [],
+  "dinext-project-evaluation": [],
+  "dinext-timesheets": [],
+  "dinext-projects": [],
+  "dinext_kanban": [],
+  "dinext-project-workload-assignment": [
+    "Cypress acceptance"
+  ],
+  "dinext-deputies": [],
+  "dinext-raven": [
+    "Cypress acceptance"
+  ],
+  "dinext-goals": [],
+  "doctype_permission": [
+    "Compatibility acceptance"
+  ],
+  "frappe_better_select_control": [],
+  "frappe_assistant_core": [],
+  "frappe_comment_xt": [],
+  "frappe_notifier": [],
+  "print_designer": [],
+  "raven_cloud": [],
+  "raven_integration": [],
+  "builder": [],
+  "dinext_crm": [],
+  "dinext_wiki": [],
+  "insights": [],
+  "raven": [],
+  "dinext_erp": [
+    "Cypress acceptance",
+    "Compatibility acceptance"
+  ],
+  "dinext_platform": [
+    "Cypress acceptance",
+    "Compatibility acceptance"
+  ],
+  "hrms": [
+    "Cypress acceptance",
+    "Compatibility acceptance"
+  ],
+  "preview_attachment": [],
+  "huf": [],
+  "dinext_huf_raven": []
+}

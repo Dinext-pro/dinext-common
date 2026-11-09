@@ -1,0 +1,194 @@
+name: Dinext verified release publication
+'on':
+  workflow_call:
+    inputs:
+      support-ref:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      commit:
+        type: string
+        required: true
+      dry-run:
+        type: boolean
+        required: true
+      artifact-id:
+        type: string
+        required: true
+      preparation-sha256:
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  credential:
+    name: Verify protected release identity
+    environment: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        repository: Dinext-pro/dinext-common
+        ref: ${{ inputs.support-ref }}
+        path: trusted-release
+        sparse-checkout: .github/ci
+        persist-credentials: false
+    - name: Read preparation evidence
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        artifact-ids: ${{ inputs.artifact-id }}
+        path: .
+        merge-multiple: true
+    - name: Mint single-repository release token
+      id: app-token
+      uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+      with:
+        app-id: ${{ vars.DINEXT_RELEASE_APP_ID }}
+        private-key: ${{ secrets.DINEXT_RELEASE_APP_PRIVATE_KEY }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+        permission-contents: write
+    - name: Release credential
+      env:
+        RELEASE_VERSION: ${{ inputs.version }}
+        RELEASE_COMMIT: ${{ inputs.commit }}
+        GITHUB_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        RELEASE_APP_ID: ${{ vars.DINEXT_RELEASE_APP_ID }}
+      run: python3 trusted-release/.github/ci/release_publication.py credential
+  tag:
+    name: Create immutable version tag
+    needs: credential
+    if: ${{ !inputs.dry-run }}
+    environment: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        repository: Dinext-pro/dinext-common
+        ref: ${{ inputs.support-ref }}
+        path: trusted-release
+        sparse-checkout: .github/ci
+        persist-credentials: false
+    - name: Read preparation evidence
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        artifact-ids: ${{ inputs.artifact-id }}
+        path: .
+        merge-multiple: true
+    - name: Mint single-repository release token
+      id: app-token
+      uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+      with:
+        app-id: ${{ vars.DINEXT_RELEASE_APP_ID }}
+        private-key: ${{ secrets.DINEXT_RELEASE_APP_PRIVATE_KEY }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+        permission-contents: write
+    - name: Release tag
+      env:
+        RELEASE_VERSION: ${{ inputs.version }}
+        RELEASE_COMMIT: ${{ inputs.commit }}
+        GITHUB_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        PREPARATION_ARTIFACT_ID: ${{ inputs.artifact-id }}
+        PREPARATION_SHA256: ${{ inputs.preparation-sha256 }}
+      run: python3 trusted-release/.github/ci/release_publication.py tag --artifact-id "$PREPARATION_ARTIFACT_ID" --digest
+        "$PREPARATION_SHA256"
+    - name: Preserve release-tag-receipt
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: release-tag-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+        path: release-tag-receipt.json
+        if-no-files-found: error
+        retention-days: 90
+  postcheck:
+    name: Verify tag and tag-triggered CI
+    needs: tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    outputs:
+      artifact-id: ${{ steps.evidence.outputs.artifact-id }}
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        repository: Dinext-pro/dinext-common
+        ref: ${{ inputs.support-ref }}
+        path: trusted-release
+        sparse-checkout: .github/ci
+        persist-credentials: false
+    - name: Read preparation evidence
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        artifact-ids: ${{ inputs.artifact-id }}
+        path: .
+        merge-multiple: true
+    - name: Release postcheck
+      env:
+        RELEASE_VERSION: ${{ inputs.version }}
+        RELEASE_COMMIT: ${{ inputs.commit }}
+        GITHUB_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ github.token }}
+      run: python3 trusted-release/.github/ci/release_publication.py postcheck
+    - name: Preserve release-postchecks
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: release-postchecks-${{ github.run_id }}-${{ github.run_attempt }}
+        path: release-postchecks.json
+        if-no-files-found: error
+        retention-days: 90
+      id: evidence
+  release:
+    name: Publish matching GitHub Release
+    needs: postcheck
+    environment: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        repository: Dinext-pro/dinext-common
+        ref: ${{ inputs.support-ref }}
+        path: trusted-release
+        sparse-checkout: .github/ci
+        persist-credentials: false
+    - name: Read preparation evidence
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        artifact-ids: ${{ inputs.artifact-id }}
+        path: .
+        merge-multiple: true
+    - name: Read post-tag evidence
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        artifact-ids: ${{ needs.postcheck.outputs.artifact-id }}
+        path: .
+        merge-multiple: true
+    - name: Mint single-repository release token
+      id: app-token
+      uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+      with:
+        app-id: ${{ vars.DINEXT_RELEASE_APP_ID }}
+        private-key: ${{ secrets.DINEXT_RELEASE_APP_PRIVATE_KEY }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+        permission-contents: write
+    - name: Release publish
+      env:
+        RELEASE_VERSION: ${{ inputs.version }}
+        RELEASE_COMMIT: ${{ inputs.commit }}
+        GITHUB_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+      run: python3 trusted-release/.github/ci/release_publication.py publish
+    - name: Preserve release-assets
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: release-assets-${{ github.run_id }}-${{ github.run_attempt }}
+        path: release-assets/
+        if-no-files-found: error
+        retention-days: 90
