@@ -1,0 +1,53 @@
+name: Dinext release preflight
+'on':
+  workflow_call:
+    inputs:
+      support-ref:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      commit:
+        type: string
+        required: true
+    outputs:
+      artifact-id:
+        value: ${{ jobs.prepare.outputs.artifact-id }}
+      sha256:
+        value: ${{ jobs.prepare.outputs.sha256 }}
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prepare:
+    name: Verify release request
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      artifact-id: ${{ steps.evidence.outputs.artifact-id }}
+      sha256: ${{ steps.prepare.outputs.sha256 }}
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        repository: Dinext-pro/dinext-common
+        ref: ${{ inputs.support-ref }}
+        path: trusted-release
+        sparse-checkout: .github/ci
+        persist-credentials: false
+    - name: Release prepare
+      env:
+        RELEASE_VERSION: ${{ inputs.version }}
+        RELEASE_COMMIT: ${{ inputs.commit }}
+        GITHUB_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ github.token }}
+      run: python3 trusted-release/.github/ci/release_publication.py prepare
+      id: prepare
+    - name: Preserve release-preparation
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: release-preparation-${{ github.run_id }}-${{ github.run_attempt }}
+        path: release-preparation.json
+        if-no-files-found: error
+        retention-days: 90
+      id: evidence
