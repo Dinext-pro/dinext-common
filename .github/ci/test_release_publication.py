@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from release_policy import Rejected
-from release_publication import create_tag, validate_origin, publish_release, verify_credential, main, validate_existing_release, prepare_content
+from release_publication import create_tag, validate_origin, publish_release, verify_credential, main, validate_existing_release, prepare_content, release_assets
 from test_release_policy import FixtureAPI, ROOT, SHA, TAG_OBJECT, TREE, request, job, fixtures, OWN
 from release_policy import inspect_release, verify_prechecks
 
@@ -120,6 +120,17 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(content['release_notes'],'Native generated notes')
         api.request=lambda *args: self.fail('Retry must not regenerate notes')
         self.assertEqual(prepare_content(api,content),content)
+
+    def test_release_assets_reject_notes_changed_after_creation(self):
+        r=record()
+        with tempfile.TemporaryDirectory() as d:
+            notes=Path(d)/'notes.md';notes.write_text('frozen notes')
+            asset=Path(d)/'release-manifest.json';asset.write_text('{}')
+            data={ROOT+'/releases':[{'id':1,'name':r['version'],'tag_name':r['version'],'body':'tampered notes'}],
+                  ROOT+'/releases/1/assets':[{'name':asset.name,'size':2,'digest':'sha256:'+hashlib.sha256(b'{}').hexdigest()}]}
+            with self.assertRaises(Rejected):release_assets(FixtureAPI(data),r,[asset],notes)
+            data[ROOT+'/releases'][0]['body']='frozen notes'
+            self.assertEqual(release_assets(FixtureAPI(data),r,[asset],notes)['id'],1)
 
     def test_release_stays_draft_if_upload_fails(self):
         calls=[]

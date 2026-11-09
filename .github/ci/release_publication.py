@@ -157,13 +157,15 @@ def publish_release(command, record, notes, assets, verify_assets, existing=None
     command(['release', 'edit', tag, '--repo', repo, '--draft=false', '--latest=' + ('true' if record['own'] else 'false')])
 
 
-def release_assets(api, record, paths):
+def release_assets(api, record, paths, notes=None):
     root = '/repos/' + record['repository']
     releases = api.pages(root + '/releases')
     matches = [r for r in releases if r['tag_name'] == record['version']]
     if len(matches) != 1 or matches[0]['name'] != record['version']:
         raise Rejected('Release metadata does not match the version tag')
     release = matches[0]
+    if notes is not None and release.get('body', '').replace('\r\n', '\n').strip() != Path(notes).read_text().replace('\r\n', '\n').strip():
+        raise Rejected('Release notes differ from the frozen preparation')
     assets = api.pages(root + '/releases/' + str(release['id']) + '/assets')
     by_name = {a['name']: a for a in assets}
     for path in paths:
@@ -278,8 +280,8 @@ def main():
             current = json.loads(assets[0].read_text())
             if old != current:
                 raise Rejected('Existing Release belongs to a different operation')
-        publish_release(gh, record, notes, assets, lambda: release_assets(writer, record, assets), existing[0] if existing else None)
-        result = release_assets(writer, record, assets)
+        publish_release(gh, record, notes, assets, lambda: release_assets(writer, record, assets, notes), existing[0] if existing else None)
+        result = release_assets(writer, record, assets, notes)
         if result['draft']:
             raise Rejected('Release was not published')
         print(result['html_url'])
