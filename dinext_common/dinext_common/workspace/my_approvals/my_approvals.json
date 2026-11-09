@@ -19,9 +19,13 @@
   {
    "chart_name": "Approval duration by document type",
    "label": "Approval duration by document type"
+  },
+  {
+   "chart_name": "Approval Deadline Discipline Trend",
+   "label": "Approval Deadline Discipline Trend"
   }
  ],
- "content": "[{\"id\":\"approvals-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">My Approvals</span>\",\"col\":12}},{\"id\":\"approvals-open\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Awaiting My Decision\",\"col\":3}},{\"id\":\"approvals-new\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"New Approvals Today\",\"col\":3}},{\"id\":\"approvals-completed\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"My Decisions in the Last 30 Days\",\"col\":3}},{\"id\":\"approvals-automatic\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Automatic Decisions in the Last 30 Days\",\"col\":3}},{\"id\":\"approvals-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"approvals-by-doctype\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Pending approvals by document type\",\"col\":12}},{\"id\":\"approvals-reports-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"approvals-queue\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"My Approval Queue\",\"col\":4}},{\"id\":\"approvals-history\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"My Approval History\",\"col\":4}},{\"id\":\"approvals-monitoring\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Approval Monitoring\",\"col\":4}},{\"id\":\"control-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"control-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Approval Control</span>\",\"col\":12}},{\"id\":\"control-open\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Open Approval Rounds\",\"col\":3}},{\"id\":\"control-attention\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Approval Issues\",\"col\":3}},{\"id\":\"control-longest\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Longest Approval Wait\",\"col\":3}},{\"id\":\"control-decisions\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Decisions in the Last 30 Days\",\"col\":3}},{\"id\":\"control-charts-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"control-load-count\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Open tasks by approver\",\"col\":6}},{\"id\":\"control-load-age\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Open task age by approver\",\"col\":6}},{\"id\":\"control-type-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"control-open-rounds\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Open rounds by document type\",\"col\":6}},{\"id\":\"control-duration\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Approval duration by document type\",\"col\":6}},{\"id\":\"control-links-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"control-load-link\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Approval Load\",\"col\":4}},{\"id\":\"control-duration-link\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Approval Duration\",\"col\":4}}]",
+ "content": "[{\"id\":\"approvals-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">My Approvals</span>\",\"col\":12}},{\"id\":\"approvals-open\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Awaiting My Decision\",\"col\":3}},{\"id\":\"approvals-new\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"New Approvals Today\",\"col\":3}},{\"id\":\"approvals-completed\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"My Decisions in the Last 30 Days\",\"col\":3}},{\"id\":\"approvals-automatic\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Automatic Decisions in the Last 30 Days\",\"col\":3}},{\"id\":\"approvals-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"approvals-by-doctype\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Pending approvals by document type\",\"col\":12}},{\"id\":\"approvals-reports-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"approvals-queue\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"My Approval Queue\",\"col\":4}},{\"id\":\"approvals-history\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"My Approval History\",\"col\":4}},{\"id\":\"approvals-monitoring\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Approval Monitoring\",\"col\":4}},{\"id\":\"control-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"control-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Approval Control</span>\",\"col\":12}},{\"id\":\"control-open\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Open Approval Rounds\",\"col\":3}},{\"id\":\"control-attention\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Approval Issues\",\"col\":3}},{\"id\":\"control-longest\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Longest Approval Wait\",\"col\":3}},{\"id\":\"control-decisions\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Decisions in the Last 30 Days\",\"col\":3}},{\"id\":\"control-charts-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"control-load-count\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Open tasks by approver\",\"col\":6}},{\"id\":\"control-load-age\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Open task age by approver\",\"col\":6}},{\"id\":\"control-type-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"control-open-rounds\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Open rounds by document type\",\"col\":6}},{\"id\":\"control-duration\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Approval duration by document type\",\"col\":6}},{\"id\":\"control-links-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"control-load-link\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Approval Load\",\"col\":4}},{\"id\":\"control-duration-link\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Approval Duration\",\"col\":4}},{\"id\":\"deadline-spacer\",\"type\":\"spacer\",\"data\":{\"col\":12}},{\"id\":\"deadline-card-0\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Overdue Approval Assignments\",\"col\":3}},{\"id\":\"deadline-card-1\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"On-time Approvals\",\"col\":3}},{\"id\":\"deadline-card-2\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Approvals Completed Late\",\"col\":3}},{\"id\":\"deadline-card-3\",\"type\":\"number_card\",\"data\":{\"number_card_name\":\"Approval Deadline Errors\",\"col\":3}},{\"id\":\"deadline-report\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Approval Deadline Discipline\",\"col\":4}},{\"id\":\"deadline-trend\",\"type\":\"chart\",\"data\":{\"chart_name\":\"Approval Deadline Discipline Trend\",\"col\":12}}]",
  "creation": "2026-09-10 00:00:00",
  "custom_blocks": [],
  "docstatus": 0,
@@ -34,7 +38,7 @@
  "is_hidden": 0,
  "label": "My Approvals",
  "links": [],
- "modified": "2026-10-05 02:22:24.287280",
+ "modified": "2026-11-09 02:53:25.269785",
  "modified_by": "Administrator",
  "module": "",
  "name": "My Approvals",
@@ -70,6 +74,22 @@
   {
    "label": "Decisions in the Last 30 Days",
    "number_card_name": "\u0420\u0435\u0448\u0435\u043d\u0438\u0439 \u0437\u0430 30 \u0434\u043d\u0435\u0439"
+  },
+  {
+   "label": "Overdue Approval Assignments",
+   "number_card_name": "Overdue Approval Assignments"
+  },
+  {
+   "label": "On-time Approvals",
+   "number_card_name": "On-time Approvals"
+  },
+  {
+   "label": "Approvals Completed Late",
+   "number_card_name": "Approvals Completed Late"
+  },
+  {
+   "label": "Approval Deadline Errors",
+   "number_card_name": "Approval Deadline Errors"
   }
  ],
  "owner": "Administrator",
@@ -111,6 +131,13 @@
    "doc_view": "",
    "label": "Approval Duration",
    "link_to": "Approval Duration",
+   "report_ref_doctype": "Workflow Task",
+   "type": "Report"
+  },
+  {
+   "doc_view": "",
+   "label": "Approval Deadline Discipline",
+   "link_to": "Approval Deadline Discipline",
    "report_ref_doctype": "Workflow Task",
    "type": "Report"
   }

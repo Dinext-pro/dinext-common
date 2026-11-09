@@ -64,10 +64,10 @@ def _actor_can_read_task(task: object, user: str) -> bool:
 		return False
 	previous_user = frappe.session.user
 	try:
-		frappe.set_user(user)
-		return bool(task.has_permission("read"))
+		frappe.session.user = user
+		return bool(task.has_permission("read", user=user))
 	finally:
-		frappe.set_user(previous_user)
+		frappe.session.user = previous_user
 
 
 def ensure_delivery_key(task_name: str) -> str:
@@ -178,7 +178,7 @@ def _render_preview(
 		'<label for="workflow-comment">{}</label>'
 		'<textarea id="workflow-comment" name="comment" required maxlength="4000" '
 		'class="form-control"></textarea>'.format(html.escape(_("Comment")))
-		if transition.comment_is_required
+		if engine.current_comment_required(task, transition_uuid)
 		else ""
 	)
 	message = """
@@ -241,7 +241,7 @@ def confirm_action(
 	preview = _peek_command(command_token)
 	if preview and frappe.session.user not in ("Guest", preview["user"]):
 		raise frappe.PermissionError(_("This approval link belongs to another user"))
-	command = _consume_command(command_token)
+	command = preview
 	if not command:
 		frappe.respond_as_web_page(
 			_("Link Expired"),
@@ -272,7 +272,7 @@ def confirm_action(
 		return
 	previous_user = frappe.session.user
 	try:
-		frappe.set_user(user)
+		frappe.session.user = user
 		result = engine.cast_vote(
 			task_name,
 			transition_uuid=transition_uuid,
@@ -280,11 +280,14 @@ def confirm_action(
 			completion_source="Signed Link",
 			request_id=f"signed:{command_token}",
 		)
+		# Invalid input/rollback leaves the command usable; the engine request ID
+		# makes a retry after commit idempotent even if Redis cleanup is delayed.
+		frappe.db.after_commit.add(lambda: _consume_command(command_token))
 		return_success_page(
 			frappe.get_doc(result["reference_doctype"], result["reference_name"])
 		)
 	finally:
-		frappe.set_user(previous_user)
+		frappe.session.user = previous_user
 
 
 @frappe.whitelist(allow_guest=True, methods=["GET"])

@@ -1,6 +1,0 @@
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="font-family:Arial,sans-serif;color:#243247;background:#f3f5f8"><tr><td align="center" style="padding:24px 12px">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#fff;border:1px solid #e0e5ed;border-radius:12px">
-<tr><td style="padding:24px;background:#e9edf3;border-radius:12px 12px 0 0"><img embed="assets/dinext_common/images/DINEXT_2.png" alt="Dinext" width="116" style="display:block;margin-bottom:20px;max-width:100%"><h1 style="font-size:23px;line-height:1.3;margin:0">{{ _("Approval deadline exceeded") }}</h1><p style="margin:10px 0 0">{{ rows|length }} · {{ _(workflow_state) }}</p></td></tr>
-<tr><td style="padding:24px"><p>{{ _("The following documents are still awaiting a decision.") }}</p>
-{% for row in rows %}<table role="presentation" width="100%" style="border-top:1px solid #e0e5ed"><tr><td style="padding:16px 0;overflow-wrap:anywhere"><a href="{{ row.link|e }}" style="color:#1769aa;font-size:16px;font-weight:bold">{{ row.title|e }}</a><p>{{ row.approver_name|e }}</p><p>{{ _("Deadline") }}: {{ row.due|e }}<br>{{ _("Overdue hours") }}: {{ row.overdue_hours|round(1) }}</p></td></tr></table>{% endfor %}
-</td></tr></table></td></tr></table>

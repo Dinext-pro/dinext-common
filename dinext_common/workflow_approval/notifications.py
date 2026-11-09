@@ -118,6 +118,18 @@ def notification_transitions(task: object, workflow: object) -> list:
 	]
 
 
+def recipient_can_read(task: object, source: object, recipient: str) -> bool:
+	"""Adapters may require access to a parent used in an email link."""
+	from dinext_common.workflow_approval.engine import _has_source_read_permission
+
+	if not _has_source_read_permission(source, recipient):
+		return False
+	return all(
+		frappe.get_attr(path)(task, source, recipient) is not False
+		for path in frappe.get_hooks("workflow_approval_email_permission") or []
+	)
+
+
 def _delivery_context(task: object, workflow: object):
 	from dinext_common.workflow_approval.email_preferences import email_allowed
 	if not email_allowed(task.approver):
@@ -133,11 +145,10 @@ def _delivery_context(task: object, workflow: object):
 		return None
 	if not frappe.db.exists(task.reference_doctype, task.reference_name):
 		return None
-	from dinext_common.workflow_approval.engine import _has_source_read_permission
 	source = frappe.get_doc(task.reference_doctype, task.reference_name)
 	if task.source_created_at and get_datetime(source.creation) != get_datetime(task.source_created_at):
 		return None
-	if not _has_source_read_permission(source, task.approver):
+	if not recipient_can_read(task, source, task.approver):
 		return None
 	return profile, source, user.email, transitions
 
@@ -185,7 +196,7 @@ def schedule_task_notification(task: object) -> None:
 
 def _task_actions(task: object, *, transitions=None) -> list[dict[str, str]]:
 	from dinext_common.workflow_approval.signed_links import get_task_action_url
-	return [{"action_name": row.action, "action_link": get_task_action_url(task, row)}
+	return [{"action_name": row.action, "action_link": get_task_action_url(task, row), "next_state": row.next_state}
 		for row in (transitions if transitions is not None else task.available_workflow_transitions)]
 
 
@@ -201,7 +212,8 @@ def _message_context(task, source, transitions):
 
 
 def _language_context(user: str | None):
-	return print_language(get_user_lang(user)) if user else nullcontext()
+	from dinext_common.workflow_approval.email_presentation import language_context
+	return language_context(user)
 
 
 def _template_message(
@@ -210,12 +222,29 @@ def _template_message(
 	user: str | None = None,
 ) -> tuple[str, str]:
 	with _language_context(user):
-		rendered = get_email_template(template_name, context)
+		from dinext_common.workflow_approval.email_presentation import prepare_context
+		rendered = get_email_template(template_name, prepare_context(template_name, context, user))
 	return rendered.get("subject") or "", rendered.get("message") or ""
 
 
 def _sendmail_for_user(user: str, **kwargs):
 	with _language_context(user):
+		if kwargs.get("template") == "workflow_action" and (kwargs.get("args") or {}).get("message"):
+			kwargs["message"] = kwargs.pop("args")["message"]
+			kwargs.pop("template", None)
+		kwargs.pop("header", None)
+		from dinext_common.workflow_approval.email_presentation import inline_assets
+		provided = list(kwargs.get("inline_images") or [])
+		known = {item.get("filename") for item in provided}
+		kwargs["inline_images"] = provided + [item for item in inline_assets(kwargs.get("message")) if item["filename"] not in known]
+		if kwargs.get("message"):
+			from frappe.core.utils import html_to_plain_text
+			from frappe.utils import get_url
+			body = kwargs.pop("message")
+			kwargs["template"] = "dinext_workflow_message"
+			kwargs["args"] = dict(message=body, text_message=html_to_plain_text(body), sent_label=_("Sent by"),
+				settings_label=_("Notification settings"),
+				settings_url=get_url("/api/method/dinext_common.workflow_approval.email_preferences.open_settings"))
 		return frappe.sendmail(**kwargs)
 
 

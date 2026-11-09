@@ -1,0 +1,22 @@
+{
+ "creation": "2026-11-09 02:48:35.961353",
+ "currency": "RUB",
+ "docstatus": 0,
+ "doctype": "Number Card",
+ "function": "Count",
+ "idx": 0,
+ "is_public": 1,
+ "is_standard": 1,
+ "label": "On-time Approvals",
+ "method": "dinext_common.workflow_approval.deadlines.discipline.on_time_card",
+ "modified": "2026-11-09 02:48:35.961353",
+ "modified_by": "Administrator",
+ "module": "Dinext Common",
+ "name": "On-time Approvals",
+ "owner": "Administrator",
+ "report_function": "Sum",
+ "show_full_number": 1,
+ "show_percentage_stats": 1,
+ "stats_time_interval": "Daily",
+ "type": "Custom"
+}

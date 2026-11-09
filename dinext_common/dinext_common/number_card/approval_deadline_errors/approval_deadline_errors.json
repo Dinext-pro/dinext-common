@@ -1,0 +1,22 @@
+{
+ "creation": "2026-11-09 02:48:43.635652",
+ "currency": "RUB",
+ "docstatus": 0,
+ "doctype": "Number Card",
+ "function": "Count",
+ "idx": 0,
+ "is_public": 1,
+ "is_standard": 1,
+ "label": "Approval Deadline Errors",
+ "method": "dinext_common.workflow_approval.deadlines.discipline.errors_card",
+ "modified": "2026-11-09 02:48:43.635652",
+ "modified_by": "Administrator",
+ "module": "Dinext Common",
+ "name": "Approval Deadline Errors",
+ "owner": "Administrator",
+ "report_function": "Sum",
+ "show_full_number": 1,
+ "show_percentage_stats": 1,
+ "stats_time_interval": "Daily",
+ "type": "Custom"
+}

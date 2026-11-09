@@ -483,3 +483,85 @@ Automatic Unchanged,Автоматически: без изменений,Approv
 Carried,Перенесено,Approval completion source
 Update Dinext Platform to support final permission query conditions before reading Workflow Tasks.,Для просмотра задач согласования обновите Dinext Platform до версии с поддержкой итоговых условий доступа.
 Workflow comments cannot exceed {0} characters,Комментарий процесса не может превышать {0} символов
+Sent by,Отправлено
+Notification settings,Настройки уведомлений
+Former user,Бывший пользователь
+Approval deadline exceeded,Нарушен срок согласования
+Please review the comment and correct the document.,Прочитайте комментарий и исправьте документ.
+A document is awaiting your decision.,Документ ожидает вашего решения.
+The following documents are still awaiting a decision.,Эти документы всё ещё ожидают решения.
+Review the documents below. Each action applies to its own document.,Рассмотрите документы ниже. Каждое действие относится к своему документу.
+Hours awaiting approval,Часы на согласовании
+Overdue hours,Часы просрочки
+Positions,Позиции
+Timesheets,Таймшиты
+Documents,Документы
+Timesheet,Таймшит
+Deadline,Срок
+Approval Deadline,Срок согласования
+Enable Approval Deadline,Контролировать срок согласования
+Deadline Interval,Величина срока
+Deadline Interval Type,Единица срока
+Deadline Recipient Type,Способ определения получателя
+Deadline Recipient,Получатель уведомления
+Deadline Recipient Role,Роль получателя уведомления
+Deadline Notification Mode,Режим уведомления о просрочке
+Deadline Email Template,Шаблон уведомления о просрочке
+Deadline Digest Interval Type,Единица интервала сводки просрочек
+Deadline Digest Interval,Интервал сводки просрочек
+Deadline Digest Send Times,Время отправки сводки просрочек
+Deadline Schedule Anchor,Начало отсчёта расписания просрочек
+Immediate,Отдельное письмо
+Digest,Сводка
+Working Days,Рабочие дни
+Worker Group Manager,Руководитель группы сотрудника
+Approval deadlines require a mandatory target state,Срок согласования можно задать только для обязательного целевого состояния
+Deadline recipient is required,Укажите получателя уведомления о просрочке
+Deadline recipient role is required,Укажите роль получателя уведомления о просрочке
+Choose an immediate notification or digest,Выберите отдельное письмо или сводку
+Deadline interval must be positive,Величина срока должна быть больше нуля
+Deadline interval must be a positive whole number,Величина срока должна быть целым числом больше нуля
+Original assignment time is unknown,Исходное время назначения неизвестно
+Deadline policy snapshot is missing,Не сохранены исходные настройки срока
+Deadline extension must return a timezone-aware datetime,Расчёт срока должен вернуть дату и время с часовым поясом
+Approval Deadline Discipline,Дисциплина согласования
+Overdue Approval Assignments,Просроченные согласования
+On-time Approvals,Согласования в срок
+Approvals Completed Late,Согласования с опозданием
+Approval Deadline Errors,Ошибки расчёта сроков
+Approval Deadline Discipline Trend,Динамика дисциплины согласования
+On Time,В срок
+Completed Late,С опозданием
+Unknown,Нет достоверных данных
+Assignments,Назначения
+"On-time approvals, %","Согласования в срок, %"
+Assigned At,Назначено
+Decision At,Решение принято
+"Delay, hours","Опоздание, ч"
+Deadline Calculation Error,Ошибка расчёта срока
+No observations,Нет наблюдений
+Not specified,Не указано
+Detail,Подробно
+Timesheet Deadline Discipline,Дисциплина таймшитов
+On-time Timesheet Submissions,"Таймшиты, отправленные в срок"
+On-time Timesheet Approvals,"Таймшиты, согласованные в срок"
+Overdue Timesheet Approvals,Таймшиты с просроченным согласованием
+Overdue Timesheet Positions,Просроченные позиции таймшитов
+Timesheet Hours Awaiting Approval,Часы таймшитов на согласовании
+Submission Deadline,Срок отправки
+First Complete Submission,Первая полная отправка
+Submission Discipline,Дисциплина отправки
+Resubmissions,Повторные отправки
+Overdue Positions,Просроченные позиции
+Worker calendar does not cover the deadline start,Календарь сотрудника не охватывает дату назначения
+Worker calendar does not cover the deadline,Календарь сотрудника не охватывает срок согласования
+Worker is missing for user {0},Для пользователя {0} не найдена карточка сотрудника
+Worker holiday calendar is missing,В карточке сотрудника не указан календарь
+Worker calendar does not cover the notification schedule,Календарь сотрудника не охватывает расписание уведомлений
+Workflow Approval Email,Письма процесса согласования
+Deadline Assignment,Назначение с контролем срока
+Original Assignment,Исходное назначение
+Deadline Start,Начало отсчёта срока
+Deadline Transition,Переход с контролем срока
+Deadline Timezone,Часовой пояс срока
+Deadline Policy Snapshot,Исходные настройки срока

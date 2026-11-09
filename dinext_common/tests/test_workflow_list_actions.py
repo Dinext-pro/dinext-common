@@ -33,7 +33,7 @@ class TestWorkflowListActions(unittest.TestCase):
 			)
 			get_all = stack.enter_context(patch.object(frappe, "get_all", side_effect=[tasks, transitions]))
 			result = api.get_common_list_transitions("Issue", '["ISS-1", "ISS-2", "ISS-1"]')
-		can_read.assert_called_once_with(USER, monitored_only=False, require_source=True)
+		can_read.assert_called_once_with(USER, monitored_only=False, require_source=True, source_permissions={})
 		self.assertEqual(
 			get_all.call_args_list[0].kwargs["filters"],
 			{

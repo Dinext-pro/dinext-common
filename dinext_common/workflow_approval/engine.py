@@ -280,7 +280,7 @@ def _eligible_approvers(doc: object, transition: object) -> list[str]:
 		previous_user = frappe.session.user
 		try:
 			if previous_user != user:
-				frappe.set_user(user)
+				frappe.session.user = user
 			if not has_approval_access(user, doc, transition):
 				continue
 			if not is_transition_condition_satisfied(transition, doc):
@@ -290,7 +290,7 @@ def _eligible_approvers(doc: object, transition: object) -> list[str]:
 			eligible.append(user)
 		finally:
 			if previous_user != user:
-				frappe.set_user(previous_user)
+				frappe.session.user = previous_user
 	return eligible
 
 
@@ -299,7 +299,7 @@ def _has_source_read_permission(doc: object, user: str) -> bool:
 	previous_user = frappe.session.user
 	try:
 		if previous_user != user:
-			frappe.set_user(user)
+			frappe.session.user = user
 		try:
 			return bool(
 				frappe.has_permission(
@@ -314,7 +314,7 @@ def _has_source_read_permission(doc: object, user: str) -> bool:
 			return False
 	finally:
 		if previous_user != user:
-			frappe.set_user(previous_user)
+			frappe.session.user = previous_user
 
 
 def _current_transitions(doc: object, workflow: object, state: str) -> list[dict[str, Any]]:
@@ -1317,6 +1317,15 @@ def _dispatch_vote_completed(task: object, source: object, transition: object) -
 		frappe.get_attr(adapter_path)(task, source, transition)
 
 
+def current_comment_required(task: object, transition_uuid: str, *, workflow=None) -> bool:
+	workflow = workflow or frappe.get_doc("Workflow", task.workflow)
+	transition = next((row for row in workflow.transitions
+		if row.custom_transition_uuid == transition_uuid and row.state == task.workflow_state), None)
+	if transition is None:
+		raise WorkflowApprovalConflictError(_("Workflow transition configuration changed"))
+	return bool(transition.get("custom_comment_is_required"))
+
+
 def cast_vote(
 	task_name: str,
 	*,
@@ -1391,7 +1400,7 @@ def cast_vote(
 		transition = _task_transition(task, transition_uuid, action)
 	normalized_comment = normalize_comment(
 		comment,
-		required=bool(transition.comment_is_required),
+		required=current_comment_required(task, transition.transition_uuid, workflow=workflow),
 	)
 	fingerprint = get_content_fingerprint(source, workflow)
 	complete_task(
@@ -1571,7 +1580,7 @@ def _finalize_round(
 		_ensure_finalization_placeholder(source, round_id, winner, actor)
 		frappe.flags.in_dinext_workflow_finalization = True
 		if actor != previous_user:
-			frappe.set_user(actor)
+			frappe.session.user = actor
 		_apply_winning_transition(source, winner["action"])
 	except Exception as caught:
 		notes = getattr(frappe.flags, "workflow_finalization_errors", None)
@@ -1601,7 +1610,7 @@ def _finalize_round(
 		return False
 	finally:
 		if actor != previous_user:
-			frappe.set_user(previous_user)
+			frappe.session.user = previous_user
 		frappe.flags.in_dinext_workflow_finalization = previous_flag
 	frappe.db.release_savepoint(savepoint)
 
@@ -1818,10 +1827,10 @@ def apply_domain_transition(
 	previous_flag = getattr(frappe.flags, "in_dinext_workflow_finalization", False)
 	try:
 		frappe.flags.in_dinext_workflow_finalization = True
-		frappe.set_user(actor)
+		frappe.session.user = actor
 		core_apply_workflow(source, transition.action)
 	finally:
-		frappe.set_user(previous_user)
+		frappe.session.user = previous_user
 		frappe.flags.in_dinext_workflow_finalization = previous_flag
 		frappe.db.delete(
 			"Workflow Action",

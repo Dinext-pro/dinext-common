@@ -13,7 +13,8 @@ website_context = {
 }
 
 fixtures = [
-    {"doctype": "Property Setter", "filters": [["name", "=", "Workflow Document State-next_action_email_template-depends_on"]]},
+    {"doctype": "Property Setter", "filters": [["name", "in", ["Workflow Document State-next_action_email_template-depends_on", "Workflow Document State-main-field_order"]]]},
+    {"doctype": "Notification Type", "filters": [["name", "=", "Workflow"]]},
     {
         "doctype": "Workflow State",
         "filters": [["name", "in", ["Draft", "Editing", "Pending Approval", "Approved", "Rejected"]]],
@@ -64,6 +65,8 @@ fixtures = [
                 "Dinext Workflow Digest",
                 "Dinext Timesheet Workflow Digest",
                 "Dinext Timesheet Workflow Correction",
+                "Dinext Workflow Deadline Digest",
+                "Dinext Timesheet Workflow Deadline Digest",
             ]]
         ]
     },
@@ -208,6 +211,7 @@ doctype_list_js = {
 
 # before_install = "dinext_common.install.before_install"
 after_install = "dinext_common.install.after_install"
+after_sync = ["dinext_common.workflow_approval.email_preferences.migrate_preferences"]
 before_migrate = ["dinext_common.workflow_approval.localization.guard_label_migration"]
 after_migrate = [
 	"dinext_common.workflow_approval.deadlines.metadata.ensure_metadata",
@@ -302,6 +306,7 @@ doc_events = {
 		"before_import": [
 			"dinext_common.workflow_approval.exclusions.preserve_fixture_exclusions",
 			"dinext_common.workflow_approval.localization.preserve_fixture_transition_ids",
+			"dinext_common.workflow_approval.deadlines.fixtures.preserve_deadline_settings",
 			"dinext_common.workflow_approval.email_import.preserve_workflow_email_settings",
 		],
 		"validate": [

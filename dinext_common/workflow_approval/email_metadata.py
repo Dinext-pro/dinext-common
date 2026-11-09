@@ -40,6 +40,8 @@ def extend_email_fields(fields):
 
 
 def ensure_state_email_properties():
+	import json
+	import frappe
 	from frappe.custom.doctype.property_setter.property_setter import make_property_setter
 
 	make_property_setter(
@@ -47,6 +49,12 @@ def ensure_state_email_properties():
 		"eval:doc.send_email && !doc.custom_group_workflow_action_emails", "Data",
 		for_doctype=False, validate_fields_for_doctype=False,
 	)
+	order=[field.fieldname for field in frappe.get_meta("Workflow Document State",cached=False).fields]
+	if "custom_group_workflow_action_emails" in order and "next_action_email_template" in order:
+		order.remove("next_action_email_template")
+		order.insert(order.index("custom_group_workflow_action_emails")+1,"next_action_email_template")
+		make_property_setter("Workflow Document State",None,"field_order",json.dumps(order),"Data",
+			for_doctype=True,validate_fields_for_doctype=False)
 
 
 def ensure_workflow_email_fields():

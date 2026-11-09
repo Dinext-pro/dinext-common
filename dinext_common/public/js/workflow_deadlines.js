@@ -24,7 +24,11 @@
             const target = (frm.doc.states || []).find(state => state.state === row.doc.next_state);
             const allowed = !!target && !target.is_optional_state;
             if (row.grid_form) {
-                row.toggle_display("custom_deadline_section", allowed);
+                const section = row.grid_form.layout?.sections_dict.custom_deadline_section;
+                if (section) {
+                    section.df.hidden = allowed ? 0 : 1;
+                    section.refresh();
+                }
                 row.toggle_editable("custom_deadline_enabled", allowed);
             }
         }

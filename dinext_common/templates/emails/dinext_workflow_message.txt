@@ -1,0 +1,4 @@
+{{ text_message }}
+
+{{ sent_label }} Dinext (https://dinext.ru)
+{{ settings_label }}: {{ settings_url }}

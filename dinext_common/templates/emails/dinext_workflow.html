@@ -1,0 +1,27 @@
+{% macro action_buttons(items) -%}
+{% for action in items %}<a href="{{ action.action_link|e }}" style="display:inline-block;padding:13px 18px;margin:8px 8px 0 0;border-radius:6px;background:{{ action.color }};color:#fff;text-decoration:none;font-size:15px;font-weight:bold;line-height:20px">{% if action.icon_image %}<img embed="{{ action.icon_image|e }}" alt="" width="16" height="16" style="vertical-align:middle;margin-right:6px">{% endif %}{{ action.action_label|e }}</a>{% endfor %}
+{%- endmacro %}
+{% macro overdue_details(items) -%}
+{% for item in items %}<p style="font-size:14px;line-height:1.6;margin:8px 0;color:#596579">{{ item.approver_name|e }}<br>{{ _("Deadline") }}: {{ item.due_label|e }}<br>{{ _("Overdue hours") }}: <strong>{{ item.overdue_label|e }}</strong></p>{% endfor %}
+{%- endmacro %}
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="font-family:Arial,Helvetica,sans-serif;color:#243247;background:#f3f5f8"><tr><td align="center" style="padding:24px 12px">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#fff;border:1px solid #e0e5ed;border-radius:12px">
+<tr><td style="padding:24px;background:{% if email_kind=='correction' %}#fbe8e6{% else %}#e9edf3{% endif %};border-radius:12px 12px 0 0"><img embed="assets/dinext_common/images/dinext.png" alt="Dinext" width="116" style="display:block;max-width:100%;height:auto;margin-bottom:22px"><h1 style="font-size:24px;line-height:1.3;margin:0;{% if email_kind=='correction' %}color:#9f2f2f;{% endif %}">{{ header_title|e }}</h1><p style="font-size:14px;line-height:1.5;margin:10px 0 0">{{ summary|e }}</p></td></tr>
+<tr><td style="padding:24px;word-break:break-word;overflow-wrap:anywhere;font-size:16px;line-height:1.6">
+{% if email_kind=='correction' %}
+<p style="margin-top:0">{{ _("Please review the comment and correct the document.") }}</p>
+<p><a href="{{ (timesheet_link or document_link)|e }}" style="color:#1769aa;font-weight:bold">{{ (timesheet_title or document_title)|e }}</a></p>
+{% if position_label %}<p>{{ position_label|e }}</p>{% endif %}
+{% for comment in comments %}<table role="presentation" width="100%" style="margin:16px 0;border-left:3px solid #cf635a;background:#fff5f3"><tr><td style="padding:12px 16px;white-space:pre-wrap">{% if comment.get('system') %}{{ _("Automatic workflow transition") }}{% else %}<strong>{{ comment.author_name|e }}</strong>{% endif %}: {{ comment.text|e }}</td></tr></table>{% endfor %}
+{% elif email_kind=='action' %}
+<p style="margin-top:0">{{ _("A document is awaiting your decision.") }}</p><p><a href="{{ document_link|e }}" style="color:#1769aa;font-weight:bold">{{ document_title|e }}</a><br><span style="color:#596579;font-size:14px">{{ author_name|e }}</span></p>{{ action_buttons(actions) }}
+{% else %}
+<p style="margin-top:0">{% if email_kind=='deadline' %}{{ _("The following documents are still awaiting a decision.") }}{% else %}{{ _("Review the documents below. Each action applies to its own document.") }}{% endif %}</p>
+{% if is_timesheet %}
+{% for author in author_groups %}<h2 style="font-size:18px;margin:24px 0 12px">{{ author.author_name|e }}</h2>
+{% for sheet in author.sheets %}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:12px 0 20px;border:1px solid #e0e5ed;border-radius:8px"><tr><td style="padding:16px;background:#f7f9fc"><a href="{{ sheet.link|e }}" style="color:#1769aa;font-weight:bold">{{ sheet.title|e }}</a><p style="font-size:14px;margin:6px 0 0;color:#596579">{{ _("Positions") }}: {{ sheet.count }} · {{ _("Hours awaiting approval") }}: {{ sheet.hours_label|e }}</p></td></tr>
+{% for position in sheet.positions %}<tr><td style="padding:16px;border-top:1px solid #e0e5ed"><a href="{{ sheet.link|e }}" style="color:#243247;font-weight:bold;text-decoration:none">{{ position.position_label|e }}</a>{% if email_kind=='deadline' %}{{ overdue_details(position.overdues) }}{% else %}<p style="font-size:14px;margin:6px 0">{{ _("Hours") }}: {{ position.hours_label|e }}</p>{{ action_buttons(position.actions) }}{% endif %}</td></tr>{% endfor %}</table>{% endfor %}{% endfor %}
+{% else %}
+{% for row in rows %}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-top:1px solid #e0e5ed"><tr><td style="padding:18px 0"><span style="font-size:12px;color:#596579">{{ row.doctype_label|e }}</span><br><a href="{{ row.link|e }}" style="color:#1769aa;font-weight:bold">{{ row.title|e }}</a>{% if email_kind=='deadline' %}{{ overdue_details([row]) }}{% else %}<br>{{ action_buttons(row.actions) }}{% endif %}</td></tr></table>{% endfor %}
+{% endif %}{% endif %}
+</td></tr></table></td></tr></table>

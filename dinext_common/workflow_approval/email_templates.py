@@ -1,7 +1,7 @@
 """Editable, escaped defaults shared by all workflow email profiles."""
 
 
-def default_email_templates():
+def previous_email_templates():
     document = '<p><strong>{{ doc.doctype|e }} {{ doc.name|e }}</strong></p><p><a href="{{ document_link|e }}">{{ _("Open document") }}</a></p>'
     comments = ('{% for comment in entry_context.get("comments", []) %}'
         '<p>{% if comment.get("system") %}{{ _("Automatic workflow transition") }}: {% endif %}{{ comment.actor|e }} — {{ comment.at|e }}</p><pre>{{ comment.text|e }}</pre>{% endfor %}')
@@ -34,6 +34,15 @@ def default_email_templates():
                 '<p>{{ _("Position") }}: <strong>{{ doc.name|e }}</strong> {{ position_label|e }}</p>' + comments),
         },
     }
+
+
+def default_email_templates():
+    names=("Dinext Workflow Action","Dinext Workflow Digest","Dinext Workflow Correction",
+        "Dinext Timesheet Workflow Digest","Dinext Timesheet Workflow Correction",
+        "Dinext Workflow Deadline Digest","Dinext Timesheet Workflow Deadline Digest")
+    return {name:{"subject":('{{ header_title }}: {{ summary }}' if 'Digest' in name else
+        '{{ header_title }}: {{ timesheet_title if is_timesheet else document_title|truncate(100) }}'),
+        "response_html":'{% include "templates/emails/dinext_workflow.html" %}'} for name in names}
 
 
 def legacy_email_templates():
@@ -79,7 +88,10 @@ def is_known_default_template(name, existing):
     current = default_email_templates().get(name)
     if not current:
         return False
-    former = dict(current)
+    previous = previous_email_templates().get(name, {})
+    former = dict(previous)
+    if not former:
+        return all(existing.get(key) == item for key,item in current.items())
     former["response_html"] = former["response_html"].replace('{% if comment.get("system") %}{{ _("Automatic workflow transition") }}: {% endif %}', '')
     return any(all(existing.get(key) == item for key, item in version.items())
-        for version in (current, former, legacy_email_templates().get(name, {})) if version)
+        for version in (current, previous, former, legacy_email_templates().get(name, {})) if version)

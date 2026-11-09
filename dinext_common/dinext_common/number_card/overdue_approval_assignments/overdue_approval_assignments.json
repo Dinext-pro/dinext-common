@@ -1,0 +1,22 @@
+{
+ "creation": "2026-11-09 02:48:33.355466",
+ "currency": "RUB",
+ "docstatus": 0,
+ "doctype": "Number Card",
+ "function": "Count",
+ "idx": 0,
+ "is_public": 1,
+ "is_standard": 1,
+ "label": "Overdue Approval Assignments",
+ "method": "dinext_common.workflow_approval.deadlines.discipline.overdue_card",
+ "modified": "2026-11-09 02:48:33.355466",
+ "modified_by": "Administrator",
+ "module": "Dinext Common",
+ "name": "Overdue Approval Assignments",
+ "owner": "Administrator",
+ "report_function": "Sum",
+ "show_full_number": 1,
+ "show_percentage_stats": 1,
+ "stats_time_interval": "Daily",
+ "type": "Custom"
+}
