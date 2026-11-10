@@ -116,8 +116,6 @@ def execute(filters=None):
 			type="line",
 			height=230,
 		)
-		if labels
-		else None
 	)
 	summary = [
 		dict(

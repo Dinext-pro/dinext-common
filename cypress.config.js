@@ -33,6 +33,9 @@ module.exports = {
 				return run(`dinext_common.tests.${module}.${method}`);
 			};
 			on("task", {
+				emailLayoutSeed: () => runFixture("seed", "workflow_email_refinement_ui"),
+				emailLayoutCleanup: () => runFixture("cleanup", "workflow_email_refinement_ui"),
+				emailLayoutPreviews: () => runFixture("previews", "workflow_email_refinement_ui"),
 				deadlineSeed: () => runFixture("seed", "workflow_deadline_ui"),
 				deadlineCleanup: () => runFixture("cleanup", "workflow_deadline_ui"),
 				deadlinePreviews: () => runFixture("previews", "workflow_deadline_ui"),

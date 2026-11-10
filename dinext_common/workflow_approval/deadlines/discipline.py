@@ -205,8 +205,8 @@ def _card(key, *, percent=False):
 		raise frappe.PermissionError
 	value = metrics()[key]
 	return {
-		"value": round(value, 1) if value is not None else None,
-		"fieldtype": "Percent" if percent else "Int",
+		"value": round(value, 1) if value is not None else frappe._("No observations"),
+		"fieldtype": ("Percent" if percent else "Int") if value is not None else "Data",
 		"route": ["query-report", "Approval Deadline Discipline"],
 		"route_options": {},
 	}

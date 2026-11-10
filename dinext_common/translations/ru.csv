@@ -565,3 +565,5 @@ Deadline Start,Начало отсчёта срока
 Deadline Transition,Переход с контролем срока
 Deadline Timezone,Часовой пояс срока
 Deadline Policy Snapshot,Исходные настройки срока
+Responsible approver,Согласующий
+Earliest missed deadline,Самый ранний нарушенный срок

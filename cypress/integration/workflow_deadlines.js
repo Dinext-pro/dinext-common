@@ -109,7 +109,7 @@ describe('Workflow deadline settings and discipline', () => {
                 cy.contains('.number-widget-box', name).find('.number').should($number => {
                     const text = $number.text().trim();
                     expect(text).not.to.match(/[₽$€]/);
-                    expect(/^[\d\s.,%]+$/.test(text) || ['Н/Д', 'N/A'].includes(text), text).to.equal(true);
+                    expect(/^[\d\s.,%]+$/.test(text) || ['Нет наблюдений', 'No observations'].includes(text), text).to.equal(true);
                 });
             }
             cy.get('.msgprint:visible').should('not.exist');

@@ -236,7 +236,10 @@ def _sendmail_for_user(user: str, **kwargs):
 		from dinext_common.workflow_approval.email_presentation import inline_assets
 		provided = list(kwargs.get("inline_images") or [])
 		known = {item.get("filename") for item in provided}
-		kwargs["inline_images"] = provided + [item for item in inline_assets(kwargs.get("message")) if item["filename"] not in known]
+		# The standard footer is formatted later by Frappe; provide its logo bytes
+		# now so CID embedding also works when a worker starts outside sites/.
+		asset_html = (kwargs.get("message") or "") + '<img embed="assets/dinext_common/images/dinext.png">'
+		kwargs["inline_images"] = provided + [item for item in inline_assets(asset_html) if item["filename"] not in known]
 		if kwargs.get("message"):
 			from frappe.core.utils import html_to_plain_text
 			from frappe.utils import get_url

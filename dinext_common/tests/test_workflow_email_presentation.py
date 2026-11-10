@@ -61,7 +61,7 @@ class TestWorkflowEmailPresentation(FrappeTestCase):
 		from dinext_common.workflow_approval.email_presentation import render_standard
 
 		subject, body = render_standard("Dinext Workflow Digest", self.context(), self.user)
-		self.assertIn("Dinext", body)
+		self.assertIn("Ожидающие согласования", body)
 		self.assertIn("preview_action", body)
 		self.assertIn("#18794e", body)
 		self.assertIn("Проект &lt;проверка&gt;", body)
@@ -144,8 +144,8 @@ class TestWorkflowEmailPresentation(FrappeTestCase):
 		self.assertEqual(sheet["count"], 2)
 		self.assertEqual(sheet["hours"], 12)
 		subject, body = render_standard("Dinext Timesheet Workflow Deadline Digest", context, self.user)
-		self.assertIn("№ 2", body)
-		self.assertIn("№ 5", body)
+		self.assertNotIn("№ 2", body)
+		self.assertNotIn("№ 5", body)
 		self.assertIn("app/user-timesheet/TS-1", body)
 		self.assertNotIn("preview_action", body)
 
