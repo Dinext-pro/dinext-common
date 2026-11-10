@@ -73,8 +73,12 @@ def cleanup():
 
 def previews():
 	guard()
+	from unittest.mock import patch
+
 	from dinext_common.tests.test_workflow_email_refinements import TestWorkflowEmailRefinements
+	from dinext_common.tests.test_workflow_mail_outlook import TestWorkflowMailOutlook
 	from dinext_common.workflow_approval.email_templates import default_email_templates
+	from dinext_common.workflow_approval.notifications import _task_actions
 
 	fixture = TestWorkflowEmailRefinements()
 	fixture.users = [user for user, _name in USERS]
@@ -86,6 +90,30 @@ def previews():
 			frappe.db.set_value("User", fixture.user, "language", language)
 			for name in default_email_templates():
 				context = fixture.timesheets() if "Timesheet" in name else fixture.context()
+				if "Timesheet" in name:
+					comments = (
+						("testing", "development", "documentation")
+						if language == "en"
+						else ("тестирование", "доработка", "документация")
+					)
+					for row in context["rows"]:
+						row["hours_details"] = [
+							dict(hours=hours, description=text)
+							for hours, text in zip((2, 3.5, 2.5), comments, strict=True)
+						]
+				else:
+					# The production projector receives three role options and emits two choices.
+					task, workflow = TestWorkflowMailOutlook.choices()
+					with patch(
+						"dinext_common.workflow_approval.signed_links.get_task_action_url",
+						side_effect=lambda task, row: (
+							"http://localhost:8000/preview_action?choice=" + row.transition_uuid
+						),
+					):
+						actions = _task_actions(task, workflow=workflow)
+					context["actions"] = actions
+					for row in context["rows"]:
+						row["actions"] = actions
 				if "Correction" in name:
 					context["workflow_state"] = "Rejected"
 				if "Timesheet" in name:

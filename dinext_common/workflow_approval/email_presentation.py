@@ -76,6 +76,19 @@ def number_label(value, user):
 	return format_decimal(value or 0, format="#,##0.##", locale=recipient_language(user).replace("-", "_"))
 
 
+def hours_breakdown(details, user):
+	unit = _("h", context="WorkflowTimesheetHours")
+	entries = []
+	for item in details or []:
+		hours = float(item.get("hours") or 0)
+		if hours == 0:
+			continue
+		text = number_label(hours, user) + " " + unit
+		description = (item.get("description") or "").strip()
+		entries.append(text + (" — " + description if description else ""))
+	return ", ".join(entries)
+
+
 def action_details(action):
 	result = dict(action)
 	name = result.get("action_name") or result.get("action") or ""
@@ -120,6 +133,7 @@ def _row(row, user):
 	result["due_label"] = date_label(row.get("due"), user)
 	result["overdue_label"] = number_label(row.get("overdue_hours"), user)
 	result["hours_label"] = number_label(row.get("hours"), user)
+	result["hours_breakdown_label"] = hours_breakdown(row.get("hours_details"), user)
 	if row.get("approver"):
 		result["approver_name"] = full_name(row["approver"])
 	return result
@@ -243,6 +257,8 @@ def prepare_context(template_name, context, user):
 		doc.get("owner") or (result.get("workflow_task") or {}).get("source_owner")
 	)
 	result["actions"] = [action_details(action) for action in result.get("actions") or []]
+	result["hours_label"] = number_label(result.get("hours"), user)
+	result["hours_breakdown_label"] = hours_breakdown(result.get("hours_details"), user)
 	result["rows"] = [_row(row, user) for row in result.get("rows") or []]
 	result["author_groups"] = timesheet_groups(result["rows"], user) if kind != "deadline" else []
 	result["overdue_timesheets"] = (

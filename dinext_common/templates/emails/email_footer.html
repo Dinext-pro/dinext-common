@@ -1,8 +1,9 @@
-<div class="email-footer-container text-muted" style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;padding:12px 16px;font-size:12px;line-height:1.6;color:#596579;background-color:#f3f5f8;border-radius:8px;box-sizing:border-box">
+<table role="presentation" width="100%" bgcolor="#f3f5f8" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0;background-color:#f3f5f8"><tr><td align="center" style="padding:0 12px 12px">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;margin:0 auto"><tr><td class="email-footer-container text-muted" style="font-family:Arial,Helvetica,sans-serif;margin:0;padding:12px 16px;font-size:12px;line-height:1.6;color:#596579;background-color:#f3f5f8">
 {% if email_account_footer %}<div class="email-account-footer">{{ email_account_footer }}</div>{% endif %}
 {% if sender_address %}<div class="sender-address">{% for line in sender_address.splitlines(True) %}<div>{{ line }}</div>{% endfor %}</div>{% endif %}
 <!--unsubscribe link here-->
 <div class="email-pixel"><!--email_open_check--></div>
 <div data-dinext-email-footer="1"><img embed="assets/dinext_common/images/dinext.png" alt="Dinext" width="80" style="display:block;width:80px;height:auto;margin:0 0 8px;background:#fff;padding:4px 6px;border-radius:4px">{{ _("Sent by") }} <a href="https://dinext.ru" style="color:#1769aa;text-decoration:none">Dinext</a><br><a href="{{ frappe.utils.get_url('/api/method/dinext_common.workflow_approval.email_preferences.open_settings') }}" style="color:#596579">{{ _("Notification settings") }}</a></div>
 {% if default_mail_footer %}<div class="default-mail-footer">{% for line in default_mail_footer %}{% if 'frappe.io/erpnext?source=via_email_footer' not in line %}<div>{{ line }}</div>{% endif %}{% endfor %}</div>{% endif %}
-</div>
+</td></tr></table></td></tr></table>

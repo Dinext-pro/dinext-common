@@ -54,6 +54,21 @@ describe('Workflow email presentation after mailbox acceptance', () => {
                         expect(parseFloat(style.paddingLeft)).to.be.at.least(10);
                         expect(td.querySelectorAll('a[href*="preview_action"]')).to.have.length(1);
                     }
+                    // Outlook may discard display:inline-table. The table row is the layout.
+                    for (const table of doc.querySelectorAll('table')) table.style.removeProperty('display');
+                    const groups = new Map();
+                    for (const a of doc.querySelectorAll('a[href*="preview_action"]')) {
+                        const row = a.closest('table').parentElement.closest('tr');
+                        if (!groups.has(row)) groups.set(row, []);
+                        groups.get(row).push(a);
+                    }
+                    for (const links of groups.values()) {
+                        expect(links).to.have.length(2);
+                        const first = links[0].getBoundingClientRect();
+                        const second = links[1].getBoundingClientRect();
+                        expect(Math.abs(first.top-second.top)).to.be.at.most(2);
+                        expect(second.left-first.right).to.be.at.least(6);
+                    }
                 });
                 if (email.language === 'ru' && [1024, 390].includes(width)) {
                     for (const theme of ['light', 'dark']) {
@@ -66,6 +81,42 @@ describe('Workflow email presentation after mailbox acceptance', () => {
                     }
                 }
             }
+        }
+    });
+
+    it('extends the footer background to the full message width with aligned contents', () => {
+        for (const email of previews) {
+            for (const width of [360, 390, 1024]) {
+                cy.viewport(width, 1000);
+                display(email);
+                cy.document().should(doc => {
+                    const footer = doc.querySelector('table[bgcolor="#f3f5f8"]');
+                    const background = doc.querySelector('h1').closest('table').parentElement.closest('table');
+                    const actual = footer.getBoundingClientRect();
+                    const expected = background.getBoundingClientRect();
+                    expect(Math.abs(actual.left-expected.left)).to.be.at.most(1);
+                    expect(Math.abs(actual.width-expected.width)).to.be.at.most(1);
+                    const logo = doc.querySelector('[data-dinext-email-footer="1"] img');
+                    const heading = doc.querySelector('h1');
+                    expect(Math.abs(logo.getBoundingClientRect().left-heading.getBoundingClientRect().left)).to.be.at.most(3);
+                });
+            }
+        }
+    });
+
+    it('shows one project rejection for the two-role decision', () => {
+        display(previews.find(p => p.name === 'Dinext Workflow Digest' && p.language === 'ru'));
+        cy.get('a[href*="preview_action"]').should('have.length', 2);
+        cy.get('body').invoke('text').should(text => expect((text.match(/Не согласовано/g) || [])).to.have.length(1));
+    });
+
+    it('shows localized recorded hour comments after each timesheet position total', () => {
+        for (const language of ['ru', 'en', 'system']) {
+            display(previews.find(p => p.name === 'Dinext Timesheet Workflow Digest' && p.language === language));
+            const text = language === 'en'
+                ? 'Hours: 8 (2 h — testing, 3.5 h — development, 2.5 h — documentation)'
+                : 'Часы: 8 (2 ч. — тестирование, 3,5 ч. — доработка, 2,5 ч. — документация)';
+            cy.get('p').filter((_, p) => p.textContent === text).should('have.length', 2);
         }
     });
 

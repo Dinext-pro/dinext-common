@@ -194,18 +194,43 @@ def schedule_task_notification(task: object) -> None:
 			enqueue_after_commit=True, now=frappe.flags.in_test)
 
 
-def _task_actions(task: object, *, transitions=None) -> list[dict[str, str]]:
+def _email_choice_key(row: object, current: object) -> tuple | None:
+	"""Only an identical single-vote outcome may share one email button across roles."""
+	if (not current or value(row, "policy") != "Any" or int(value(row, "threshold") or 0) != 1
+		or (value(current, "custom_parallel_approval_policy") or "Any") != "Any"):
+		return None
+	return (
+		value(row, "state"), value(row, "action"), value(row, "next_state"),
+		checked(value(row, "comment_is_required")), checked(value(row, "auto_complete_unchanged")),
+		value(current, "action"), value(current, "next_state"), value(current, "condition") or "",
+		checked(value(current, "allow_self_approval")), checked(value(current, "custom_reset_on_change")),
+		checked(value(current, "custom_comment_is_required")), checked(value(current, "custom_timesheet_management_action")),
+	)
+
+
+def _task_actions(task: object, *, transitions=None, workflow=None) -> list[dict[str, str]]:
 	from dinext_common.workflow_approval.signed_links import get_task_action_url
-	return [{"action_name": row.action, "action_link": get_task_action_url(task, row), "next_state": row.next_state}
-		for row in (transitions if transitions is not None else task.available_workflow_transitions)]
+	current = {value(row, "custom_transition_uuid"): row for row in value(workflow, "transitions", [])}
+	seen = set()
+	actions = []
+	for row in transitions if transitions is not None else task.available_workflow_transitions:
+		key = _email_choice_key(row, current.get(value(row, "transition_uuid")))
+		if key is not None:
+			if key in seen:
+				continue
+			seen.add(key)
+		actions.append({"action_name": row.action, "action_link": get_task_action_url(task, row), "next_state": row.next_state})
+	return actions
 
 
-def _message_context(task, source, transitions):
+def _message_context(task, source, transitions, *, workflow=None):
+	if workflow is None and value(task, "workflow"):
+		workflow = frappe.get_doc("Workflow", task.workflow)
 	manifest = json.loads(task.round_manifest or "{}")
 	context = {**source.as_dict(), "doc": source.as_dict(), "workflow_task": task.as_dict(),
 		"entry_context": manifest.get("entry_context") or {},
 		"document_link": get_url_to_form(source.doctype, source.name),
-		"actions": _task_actions(task, transitions=transitions)}
+		"actions": _task_actions(task, transitions=transitions, workflow=workflow)}
 	for adapter_path in frappe.get_hooks("workflow_approval_email_context") or []:
 		context.update(frappe.get_attr(adapter_path)(task, source) or {})
 	return context
@@ -277,7 +302,7 @@ def send_immediate_notification(task_name: str) -> None:
 		from dinext_common.workflow_approval.signed_links import ensure_delivery_key
 		action.custom_delivery_key = ensure_delivery_key(task.name)
 		action.db_set("custom_notification_mode", "Immediate", update_modified=False)
-		message_context = _message_context(task, source, transitions)
+		message_context = _message_context(task, source, transitions, workflow=workflow)
 		common_args = {
 			"template": "workflow_action",
 			"header": "Workflow Action",
@@ -413,7 +438,9 @@ def dispatch_due_notifications() -> None:
 			frappe.log_error(title=f"Workflow approval digest failed: {workflow_name} / {state} / {recipient}")
 
 
-def _digest_rows(tasks: list[object], *, permitted=None) -> list[dict[str, object]]:
+def _digest_rows(tasks: list[object], *, permitted=None, workflow=None) -> list[dict[str, object]]:
+	if workflow is None and tasks and value(tasks[0], "workflow"):
+		workflow = frappe.get_doc("Workflow", tasks[0].workflow)
 	grouped: dict[str, dict[str, object]] = {}
 	for task in tasks:
 		row: dict[str, object] = {
@@ -422,7 +449,7 @@ def _digest_rows(tasks: list[object], *, permitted=None) -> list[dict[str, objec
 			"name": task.reference_name,
 			"title": task.source_title,
 			"link": get_url_to_form(task.reference_doctype, task.reference_name),
-			"actions": _task_actions(task, transitions=permitted.get(task.name) if permitted is not None else None),
+			"actions": _task_actions(task, transitions=permitted.get(task.name) if permitted is not None else None, workflow=workflow),
 			"count": 1,
 			"tasks": [task.name],
 		}
@@ -493,7 +520,7 @@ def send_digest(
 		permitted[task.name] = transitions
 	if not tasks:
 		return
-	rows = _digest_rows(tasks, permitted=permitted)
+	rows = _digest_rows(tasks, permitted=permitted, workflow=workflow)
 	template_name = (
 		profile.digest_template
 		or (

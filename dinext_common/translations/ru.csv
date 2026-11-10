@@ -567,3 +567,4 @@ Deadline Timezone,Часовой пояс срока
 Deadline Policy Snapshot,Исходные настройки срока
 Responsible approver,Согласующий
 Earliest missed deadline,Самый ранний нарушенный срок
+h,ч.,WorkflowTimesheetHours

@@ -1,5 +1,6 @@
 from datetime import timedelta
 from unittest.mock import patch
+from uuid import uuid4
 
 import frappe
 
@@ -201,6 +202,15 @@ class TestDeadlineIntegration(Base):
 		)
 		return source, frappe.get_doc("Workflow Task", name)
 
+	def digest_source_task(self):
+		# Digest identity includes workflow/state/recipient/slot/policy, not the source.
+		# A distinct policy isolates these cases from committed fixtures of another run.
+		workflow = frappe.get_doc("Workflow", self.workflow_name)
+		workflow.transitions[0].custom_transition_uuid = str(uuid4())
+		workflow.save(ignore_permissions=True)
+		frappe.db.set_value("User", self.user, "time_zone", "Europe/Moscow")
+		return self.source_task()
+
 	def test_assignment_gets_frozen_deadline_and_changes_apply_only_to_new_tasks(self):
 		source, task = self.source_task()
 		self.assertTrue(task.deadline_due_at)
@@ -261,14 +271,14 @@ class TestDeadlineIntegration(Base):
 		from dinext_common.workflow_approval.deadlines.delivery import send_group
 		from dinext_common.workflow_approval.email_preferences import email_allowed
 
-		source, task = self.source_task()
+		source, task = self.digest_source_task()
 		workflow = frappe.get_doc("Workflow", self.workflow_name)
 		workflow.send_email_alert = 1
 		workflow.save(ignore_permissions=True)
 		self.assertTrue(email_allowed(self.user))
 		frappe.db.set_value("Workflow Task", task.name, "deadline_due_at", "2026-01-01 00:00:00")
 		task.reload()
-		slot = datetime(2026, 11, 10, 5, tzinfo=timezone.utc)
+		slot = (datetime.now(timezone.utc) + timedelta(days=2)).replace(hour=5, minute=0, second=0, microsecond=0)
 		kwargs = dict(
 			workflow=workflow,
 			recipient=self.user,
@@ -286,7 +296,7 @@ class TestDeadlineIntegration(Base):
 			self.assertEqual(send.call_count, 1)
 			self.assertNotIn("preview_action", send.call_args.kwargs["message"])
 			frappe.db.set_value("Workflow Task", task.name, "status", "Completed")
-			kwargs["slot"] = datetime(2026, 11, 10, 14, tzinfo=timezone.utc)
+			kwargs["slot"] = slot.replace(hour=14)
 			kwargs["now"] = kwargs["slot"] + timedelta(minutes=1)
 			send_group(**kwargs)
 			self.assertEqual(send.call_count, 1)
@@ -297,12 +307,12 @@ class TestDeadlineIntegration(Base):
 		from dinext_common.workflow_approval import notifications as mail
 		from dinext_common.workflow_approval.deadlines.delivery import send_group
 
-		source, task = self.source_task()
+		source, task = self.digest_source_task()
 		workflow = frappe.get_doc("Workflow", self.workflow_name)
 		workflow.send_email_alert = 1
 		workflow.save(ignore_permissions=True)
 		frappe.db.set_value("Workflow Task", task.name, "deadline_due_at", "2026-01-01 00:00:00")
-		slot = datetime(2026, 11, 12, 5, tzinfo=timezone.utc)
+		slot = (datetime.now(timezone.utc) + timedelta(days=2)).replace(hour=5, minute=0, second=0, microsecond=0)
 		kwargs = dict(
 			workflow=workflow,
 			recipient=self.user,
@@ -338,7 +348,7 @@ class TestDeadlineIntegration(Base):
 
 		from dinext_common.workflow_approval.deadlines.delivery import send_group
 
-		source, task = self.source_task()
+		source, task = self.digest_source_task()
 		workflow = frappe.get_doc("Workflow", self.workflow_name)
 		workflow.send_email_alert = 1
 		workflow.save(ignore_permissions=True)
@@ -356,7 +366,7 @@ class TestDeadlineIntegration(Base):
 		workflow.transitions[0].custom_deadline_send_times = "09:00"
 		workflow.save(ignore_permissions=True)
 		frappe.db.set_value("Workflow Task", task.name, "deadline_due_at", "2026-01-01 00:00:00")
-		slot = datetime(2026, 11, 10, 5, tzinfo=timezone.utc)
+		slot = (datetime.now(timezone.utc) + timedelta(days=2)).replace(hour=5, minute=0, second=0, microsecond=0)
 		kwargs = dict(
 			workflow=stale,
 			recipient=self.user,
@@ -367,7 +377,7 @@ class TestDeadlineIntegration(Base):
 		with patch("dinext_common.workflow_approval.notifications._sendmail_for_user") as send:
 			send_group(**kwargs)
 			self.assertEqual(send.call_count, 0)
-			kwargs["slot"] = datetime(2026, 11, 10, 6, tzinfo=timezone.utc)
+			kwargs["slot"] = slot.replace(hour=6)
 			kwargs["now"] = kwargs["slot"] + timedelta(minutes=1)
 			send_group(**kwargs)
 			self.assertEqual(send.call_count, 1)
