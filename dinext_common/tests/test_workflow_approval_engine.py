@@ -253,6 +253,7 @@ class TestAutomaticVoteReuse(unittest.TestCase):
 			patch.object(engine.frappe, "db", db),
 			patch.object(engine.frappe, "get_hooks", return_value=[]),
 			patch.object(engine, "now_datetime", return_value="2026-02-01"),
+			patch("dinext_common.workflow_approval.scenarios.service.is_ready", return_value=False),
 			patch.object(engine, "_", side_effect=lambda message: message),
 		):
 			return engine._apply_automatic_votes(Mock(), list(tasks), manifest, self.fingerprint)

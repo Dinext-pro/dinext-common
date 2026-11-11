@@ -18,3 +18,4 @@ dinext_common.patches.v1_0.add_workflow_deadlines
 dinext_common.patches.v1_0.refine_deadline_chart
 
 dinext_common.patches.v1_0.enable_workflow_scenarios
+dinext_common.patches.v1_0.retain_workflow_notification_delivery

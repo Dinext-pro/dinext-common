@@ -306,6 +306,9 @@ override_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
+	"Workflow Action": {
+		"on_change": "dinext_common.workflow_approval.projections.persist_delivery_snapshot",
+	},
 	"Workspace": {"before_save": "dinext_common.setup.workspace.preserve_approval_control_blocks"},
 	"User": {
 		"after_insert": [

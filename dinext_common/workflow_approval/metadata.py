@@ -649,4 +649,6 @@ def validate_workflow_doc(doc: object, method: str | None = None) -> None:
 		if is_engine_enabled():
 			validate_workflow_configuration(doc)
 	except ValueError as exc:
-		frappe.throw(_(str(exc)))
+		from dinext_common.workflow_approval.deadlines.errors import display_deadline_error
+
+		frappe.throw(_(display_deadline_error(str(exc))))

@@ -145,6 +145,8 @@ def prepare_settings(workflow, previous=None, *, extensions=None, now=None):
 				if interval_unit != "Hours"
 				else ""
 			)
+			if interval_unit != "Hours" and not row.custom_deadline_send_times:
+				raise ValueError("Digest send time is required for daily delivery")
 		prior = old.get(value(row, "custom_transition_uuid"))
 		row.custom_deadline_schedule_anchor = (
 			value(prior, "custom_deadline_schedule_anchor")

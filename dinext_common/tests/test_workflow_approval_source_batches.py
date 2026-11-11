@@ -109,6 +109,7 @@ class TestApprovalSourceBatches(unittest.TestCase):
 			patch.object(frappe, "session", frappe._dict(user="monitor")),
 			patch.object(frappe, "get_roles", return_value=["Monitor"]),
 			patch.object(api, "get_monitorable_workflows", return_value=["W"]),
+			patch("dinext_common.workflow_approval.scenarios.service.current_task_rows", side_effect=lambda rows: rows),
 			patch.object(permissions, "_is_system_manager", return_value=False),
 			patch.object(permissions, "_is_workflow_monitor", return_value=True),
 			patch.object(permissions, "_batch_read_helper", return_value=read),

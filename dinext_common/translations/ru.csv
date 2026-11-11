@@ -609,3 +609,11 @@ Automatic Workflow processing paused at the cascade limit. A new user action is 
 The document creation timestamp cannot be changed during Workflow processing,Во время обработки Workflow нельзя изменять время создания документа,
 Finish the active Workflow processes before merging documents,Перед объединением документов завершите активные процессы Workflow,
 Automatic Workflow processing paused. A new user action is required.,Автоматическая обработка Workflow приостановлена. Требуется новое действие пользователя.,
+Unknown deadline interval: {0},Неизвестный интервал дедлайна: {0}
+Unknown deadline recipient type: {0},Неизвестный тип получателя уведомления о сроке: {0}
+Unknown deadline sending interval: {0},Неизвестный интервал отправки уведомлений о сроке: {0}
+Duplicate workflow deadline extension: {0},Повторное расширение дедлайна процесса: {0}
+Notification Delivery Snapshot,Снимок доставки уведомления
+Workflow notification history is incomplete,История доставки уведомлений процесса неполная
+Delivery evidence is missing for {0} legacy tasks; historical immediate mail was skipped.,Для прежних заданий ({0}) нет сведений о доставке; исторические отдельные письма не отправлялись.
+Digest send time is required for daily delivery,Укажите время отправки ежедневной сводки

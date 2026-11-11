@@ -123,6 +123,7 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 			patch.object(frappe, "session", frappe._dict(user="monitor@example.com")),
 			patch.object(frappe, "get_roles", return_value=["Monitor"]),
 			patch.object(api, "get_monitorable_workflows", return_value=["W"]),
+			patch("dinext_common.workflow_approval.scenarios.service.current_task_rows", side_effect=lambda rows: rows),
 			patch.object(
 				frappe,
 				"get_all",
@@ -595,6 +596,128 @@ class TestWorkflowApprovalDesk(FrappeTestCase):
 			"Open",
 		)
 
+	def test_reconciliation_restores_missing_action_without_repeating_formed_mail(self):
+		self._user("desk-repair-delivery@example.com")
+		self._workflow("_Test Desk Repair Delivery", [self._transition(
+			"_Test Repair Delivery", "Closed", policy="Any", uuid="_test-repair-delivery",
+		)])
+		source = self._issue("Warehouse acceptance: approval delivery recovery")
+		task = self._tasks(source.name)[0]
+		action = frappe.get_doc("Workflow Action", {"custom_workflow_task": task.name, "status": "Open"})
+		action.db_set({
+			"custom_notification_mode": "Immediate", "custom_notification_status": "Enqueued",
+			"custom_delivery_key": "retained-personal-delivery-key",
+		}, update_modified=False)
+		frappe.db.delete("Workflow Action", {"name": action.name})
+		frappe.db.delete("ToDo", {"reference_type": "Workflow Task", "reference_name": task.name})
+		with patch("dinext_common.workflow_approval.notifications.schedule_task_notification") as schedule:
+			engine.reconcile_source(source)
+			engine.reconcile_source(source)
+			schedule.assert_not_called()
+		restored = frappe.get_doc("Workflow Action", {"custom_workflow_task": task.name, "status": "Open"})
+		self.assertEqual(restored.custom_delivery_key, "retained-personal-delivery-key")
+		self.assertEqual(restored.custom_notification_status, "Enqueued")
+		self.assertEqual(frappe.db.count("Workflow Action", {"custom_workflow_task": task.name, "status": "Open"}), 1)
+		self.assertEqual(frappe.db.count("ToDo", {"reference_type": "Workflow Task", "reference_name": task.name, "status": "Open"}), 1)
+
+	def test_reconciliation_repairs_assignment_without_resetting_existing_action(self):
+		self._user("desk-repair-assignment@example.com")
+		self._workflow("_Test Desk Repair Assignment", [self._transition(
+			"_Test Repair Assignment", "Closed", policy="Any", uuid="_test-repair-assignment",
+		)])
+		source = self._issue("Project office: restore a missing approval assignment")
+		task = self._tasks(source.name)[0]
+		action = frappe.get_doc("Workflow Action", {"custom_workflow_task": task.name, "status": "Open"})
+		action.db_set({"custom_notification_status": "Enqueued", "custom_delivery_key": "keep-existing-key"}, update_modified=False)
+		frappe.db.delete("ToDo", {"reference_type": "Workflow Task", "reference_name": task.name})
+		with patch("dinext_common.workflow_approval.notifications.schedule_task_notification") as schedule:
+			engine.reconcile_source(source)
+			schedule.assert_not_called()
+		self.assertEqual(frappe.db.count("ToDo", {"reference_type": "Workflow Task", "reference_name": task.name, "status": "Open"}), 1)
+		action.reload()
+		self.assertEqual(action.custom_delivery_key, "keep-existing-key")
+		self.assertEqual(action.custom_notification_status, "Enqueued")
+
+	def test_delivery_snapshot_backfill_preserves_legacy_keys_and_unknown_history(self):
+		from dinext_common.workflow_approval.notifications import send_immediate_notification
+		from dinext_common.workflow_approval.projections import backfill_delivery_snapshots
+
+		self._user("desk-legacy-delivery@example.com")
+		self._workflow("_Test Desk Legacy Delivery", [self._transition(
+			"_Test Legacy Delivery", "Closed", policy="Any", uuid="_test-legacy-delivery",
+		)])
+		source = self._issue("Supplier acceptance: restore legacy delivery evidence")
+		task = self._tasks(source.name)[0]
+		action = frappe.get_doc("Workflow Action", {"custom_workflow_task": task.name, "status": "Open"})
+		action.db_set({"custom_notification_status": "Enqueued", "custom_delivery_key": "legacy-key"}, update_modified=False)
+		frappe.db.set_value("Workflow Task", task.name, "notification_delivery_snapshot", None)
+		backfill_delivery_snapshots()
+		backfill_delivery_snapshots()
+		snapshot = json.loads(frappe.db.get_value("Workflow Task", task.name, "notification_delivery_snapshot"))
+		self.assertEqual(snapshot["custom_delivery_key"], "legacy-key")
+		frappe.db.delete("Workflow Action", {"name": action.name})
+		frappe.db.set_value("Workflow Task", task.name, "notification_delivery_snapshot", None)
+		backfill_delivery_snapshots()
+		engine.reconcile_source(source)
+		with patch("dinext_common.workflow_approval.notifications._delivery_context") as delivery:
+			send_immediate_notification(task.name)
+			delivery.assert_not_called()
+		self.assertTrue(json.loads(frappe.db.get_value("Workflow Task", task.name, "notification_delivery_snapshot"))["legacy_unknown"])
+
+	def test_delivery_snapshot_rolls_back_with_its_action(self):
+		self._user("desk-rollback-delivery@example.com")
+		self._workflow("_Test Desk Rollback Delivery", [self._transition(
+			"_Test Rollback Delivery", "Closed", policy="Any", uuid="_test-rollback-delivery",
+		)])
+		source = self._issue("Project office: notification transaction rollback")
+		task = self._tasks(source.name)[0]
+		action = frappe.get_doc("Workflow Action", {"custom_workflow_task": task.name, "status": "Open"})
+		before = frappe.db.get_value("Workflow Task", task.name, "notification_delivery_snapshot")
+		frappe.db.savepoint("delivery_snapshot_rollback")
+		action.db_set({"custom_notification_status": "Enqueued", "custom_delivery_key": "rolled-back-key"}, update_modified=False)
+		self.assertNotEqual(frappe.db.get_value("Workflow Task", task.name, "notification_delivery_snapshot"), before)
+		frappe.db.rollback(save_point="delivery_snapshot_rollback")
+		self.assertEqual(frappe.db.get_value("Workflow Task", task.name, "notification_delivery_snapshot"), before)
+		action.reload()
+		self.assertNotEqual(action.custom_delivery_key, "rolled-back-key")
+
+	def test_pending_projection_is_rescheduled_once_after_repair(self):
+		self._user("desk-pending-delivery@example.com")
+		self._workflow("_Test Desk Pending Delivery", [self._transition(
+			"_Test Pending Delivery", "Closed", policy="Any", uuid="_test-pending-delivery",
+		)])
+		source = self._issue("Warehouse integration: recover interrupted notification")
+		task = self._tasks(source.name)[0]
+		action = frappe.get_doc("Workflow Action", {"custom_workflow_task": task.name, "status": "Open"})
+		action.db_set({"custom_notification_status": "Pending", "custom_delivery_key": "pending-key"}, update_modified=False)
+		frappe.db.delete("Workflow Action", {"name": action.name})
+		with patch("dinext_common.workflow_approval.notifications.schedule_task_notification") as schedule:
+			engine.reconcile_source(source)
+			engine.reconcile_source(source)
+			schedule.assert_called_once()
+		self.assertEqual(frappe.db.get_value("Workflow Action", {"custom_workflow_task": task.name, "status": "Open"}, "custom_delivery_key"), "pending-key")
+
+	def test_scheduling_keeps_key_written_by_another_loaded_action(self):
+		from types import SimpleNamespace
+
+		from dinext_common.workflow_approval.notifications import schedule_task_notification
+
+		self._user("desk-nested-delivery@example.com")
+		self._workflow("_Test Desk Nested Delivery", [self._transition(
+			"_Test Nested Delivery", "Closed", policy="Any", uuid="_test-nested-delivery",
+		)])
+		source = self._issue("Project approval: retain a newly allocated delivery key")
+		task = self._tasks(source.name)[0]
+		with (
+			patch("dinext_common.workflow_approval.notifications.profile_for_state", return_value=SimpleNamespace(enabled=True, mode="Digest")),
+			patch("dinext_common.workflow_approval.notifications.notification_transitions", return_value=[object()]),
+		):
+			schedule_task_notification(task)
+		key = frappe.db.get_value("Workflow Action", {"custom_workflow_task": task.name, "status": "Open"}, "custom_delivery_key")
+		self.assertTrue(key)
+		snapshot = json.loads(frappe.db.get_value("Workflow Task", task.name, "notification_delivery_snapshot"))
+		self.assertEqual(snapshot["custom_delivery_key"], key)
+
 	def test_changed_vote_conflicts_and_rebuild_carries_the_stable_vote(self):
 		first = self._user("desk-carry-a@example.com")
 		second = self._user("desk-carry-b@example.com")
@@ -882,6 +1005,8 @@ class TestWorkflowApprovalDesk(FrappeTestCase):
 				"workflow_name": name,
 				"document_type": "Issue",
 				"workflow_state_field": "status",
+				# These decision tests stop at their terminal result; repeat instances have a separate suite.
+				"custom_activation_condition": "doc.status == 'Open'",
 				"is_active": 1,
 				"send_email_alert": 0,
 				"states": state_rows,

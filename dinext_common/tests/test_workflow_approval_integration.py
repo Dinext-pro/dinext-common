@@ -15,6 +15,8 @@ class TestWorkflowApprovalIntegration(FrappeTestCase):
 		super().setUp()
 		self.previous_flag = frappe.conf.get("enable_parallel_workflow_approval")
 		frappe.conf.enable_parallel_workflow_approval = False
+		# Keep the one-schema integration fixture independent of other active scenarios.
+		frappe.db.set_value("Workflow", {"document_type": "Issue"}, "is_active", 0)
 		self._ensure_master("Workflow State", "Open", {"workflow_state_name": "Open"})
 		self._ensure_master("Workflow State", "Closed", {"workflow_state_name": "Closed"})
 		self._ensure_master(
@@ -85,6 +87,13 @@ class TestWorkflowApprovalIntegration(FrappeTestCase):
 			}
 		)
 		workflow.insert(ignore_permissions=True)
+		# Tests supply their own Issue access instead of relying on site role fixtures.
+		permission = frappe.db.get_value("Custom DocPerm", {"parent": "Issue", "role": "System Manager", "permlevel": 0})
+		if permission:
+			frappe.db.set_value("Custom DocPerm", permission, {"read": 1, "write": 1, "create": 1})
+		else:
+			frappe.get_doc({"doctype": "Custom DocPerm", "parent": "Issue", "role": "System Manager",
+				"permlevel": 0, "read": 1, "write": 1, "create": 1}).insert(ignore_permissions=True)
 		frappe.clear_cache(doctype="Issue")
 		frappe.conf.enable_parallel_workflow_approval = True
 

@@ -280,7 +280,10 @@ def _sendmail_for_user(user: str, **kwargs):
 
 
 def send_immediate_notification(task_name: str) -> None:
-	task = frappe.get_doc("Workflow Task", task_name)
+	task = frappe.get_doc("Workflow Task", task_name, for_update=True)
+	from dinext_common.workflow_approval.projections import delivery_snapshot
+	if delivery_snapshot(task).get("legacy_unknown"):
+		return
 	action = _workflow_action(task_name, for_update=True)
 	if not action or value(action, "custom_notification_suppressed") or task.status != "Working" or task.round_status != "Open":
 		return
@@ -494,14 +497,14 @@ def send_digest(
 	permitted = {}
 	profile = None
 	delivery_key = None
-	for action in sorted(actions, key=lambda item: item.name):
+	for action in sorted(actions, key=lambda item: item.custom_workflow_task):
+		task = frappe.get_doc("Workflow Task", action.custom_workflow_task, for_update=True)
 		refreshed = _workflow_action(
 			action.custom_workflow_task,
 			for_update=True,
 		)
 		if not refreshed or value(refreshed, "custom_notification_suppressed"):
 			continue
-		task = frappe.get_doc("Workflow Task", action.custom_workflow_task)
 		last_slot = (
 			_aware_utc(refreshed.custom_last_digest_slot)
 			if refreshed.custom_last_digest_slot

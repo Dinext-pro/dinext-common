@@ -25,3 +25,14 @@ class TestDeadlineWorkspaceCards(TestCase):
 			_cols, _rows, _msg, chart, _summary = execute()
 		self.assertEqual(chart["data"]["labels"], [])
 		self.assertEqual(chart["data"]["datasets"][0]["values"], [])
+
+	def test_report_summary_distinguishes_no_observations_from_zero_percent(self):
+		from dinext_common.workflow_approval.deadlines import report
+
+		metrics = dict(rows=[], all_rows=[], on_time_percent=None, open_overdue=0, completed_late=0, errors=0)
+		for percent, expected_type in ((None, "Data"), (0, "Percent")):
+			metrics["on_time_percent"] = percent
+			with patch.object(report, "metrics", return_value=metrics):
+				_summary = report.execute()[-1]
+			self.assertEqual(_summary[0]["datatype"], expected_type)
+			self.assertEqual(_summary[0]["value"], frappe._("No observations") if percent is None else 0)

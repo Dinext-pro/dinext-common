@@ -78,6 +78,35 @@ def cleanup():
 	return base.cleanup()
 
 
+def diagnostics():
+	"""Real report formatting over a controlled diagnostic dataset; no source writes."""
+	from copy import deepcopy
+	from unittest.mock import patch
+
+	from frappe.translate import print_language
+
+	from dinext_common.workflow_approval.deadlines import report
+
+	base._guard()
+	rows = [dict(
+		reference_doctype="Application For Leave", reference_name=f"AFL-2026-00{11 + i}",
+		source_title=title, workflow="AFL Workflow", workflow_state="Pending Approval",
+		approver=base.EDITOR, discipline_status="Error", deadline_error=error,
+	) for i, (title, error) in enumerate([
+		("Плановый отпуск: 23-27 ноября", "Original assignment time is unknown"),
+		("Плановое отсутствие — 30 ноября", "Worker is missing for user marina.sokolova@example.com"),
+	])]
+	result = {}
+	for language in ("ru", "en"):
+		with print_language(language), patch.object(report, "metrics", return_value=dict(
+			rows=[], all_rows=deepcopy(rows), on_time_percent=None, open_overdue=0, completed_late=0, errors=2,
+		)), patch.object(report, "full_name", return_value="Елена Морозова"):
+			columns, data, message, chart, summary = report.execute()
+			result[language] = dict(columns=columns, result=data, message=message, chart=chart,
+				report_summary=summary, add_total_row=0)
+	return result
+
+
 def previews():
 	base._guard()
 	from unittest.mock import patch

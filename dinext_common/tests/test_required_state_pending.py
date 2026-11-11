@@ -12,6 +12,9 @@ from dinext_common.workflow_approval import api, pending
 class PendingFixture:
 	def setUp(self):
 		super().setUp()
+		legacy_scope = patch("dinext_common.workflow_approval.scenarios.service.is_ready", return_value=False)
+		legacy_scope.start()
+		self.addCleanup(legacy_scope.stop)
 		self.round_id = frappe.generate_hash(length=40)
 		self.workflow = self.make_workflow()
 		self.source = frappe.get_doc(
@@ -36,6 +39,9 @@ class PendingFixture:
 			}
 		)
 		workflow.workflow_name = workflow.name
+		from dinext_common.workflow_approval.scenarios.metadata import next_selection_order
+
+		workflow.custom_selection_order = next_selection_order(doctype)
 		workflow.db_insert()
 		for state, flag in [("Open", 1), ("Required", int(optional)), ("Optional", 1)]:
 			row = frappe.get_doc(
@@ -62,6 +68,7 @@ class PendingFixture:
 				"workflow": workflow.name,
 				"reference_doctype": source.doctype,
 				"reference_name": source.name,
+				"source_created_at": source.creation,
 				"approver": actor,
 				"user": actor,
 				"status": status,

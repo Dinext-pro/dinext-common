@@ -626,6 +626,9 @@ def _repair_open_round_tasks(
 		for approver in task_transitions
 		if make_task_name(active.approval_round_id, approver) not in existing_names
 	}
+	from dinext_common.workflow_approval.projections import repair_round_projections
+
+	repair_round_projections(doc, active.approval_round_id)
 	if not missing_approvers:
 		return []
 	fingerprint = ContentFingerprint(
@@ -735,8 +738,8 @@ def preview_configuration_conflict(
 	return configuration_change_metadata(classification) if classification["void"] else None
 
 
-def _persist_configuration_conflict(round_id: str) -> None:
-	"""Persist only conflict reconciliation after the rejected vote rolls back."""
+def _persist_round_configuration(round_id: str) -> None:
+	"""Reconcile only the round after the rejected caller transaction rolls back."""
 	# A separate connection keeps this commit from clearing the request's other
 	# rollback callbacks or committing any of its rejected business changes.
 	previous_db = frappe.local.db
@@ -756,9 +759,23 @@ def _persist_configuration_conflict(round_id: str) -> None:
 		except frappe.DoesNotExistError:
 			return
 		task = frappe.get_doc("Workflow Task", pointer.name, for_update=True)
-		metadata = preview_configuration_conflict(task, source=source)
-		if metadata:
-			_mark_conflicted(round_id, _("Workflow transition configuration changed"), metadata=metadata)
+		from dinext_common.workflow_approval.scenarios import service
+
+		if service.is_ready() and not service.task_is_current(source, task):
+			return
+		context = _workflow_context(source)
+		if not context or task.round_status != "Open":
+			return
+		workflow_name, workflow, _state_field, state = context
+		if workflow_name != task.workflow or state != task.workflow_state:
+			return
+		classification = _classify_round(_parse_manifest(task), workflow, state, round_id)
+		if classification["void"]:
+			_mark_conflicted(round_id, _("Workflow transition configuration changed"),
+				metadata=configuration_change_metadata(classification))
+			frappe.db.commit()
+		elif classification["dropped"] or classification["add"]:
+			_amend_open_round(source, task, workflow, state, classification)
 			frappe.db.commit()
 	finally:
 		frappe.db.close()
@@ -1426,7 +1443,7 @@ def cast_vote(
 			_("Workflow transition configuration changed"),
 			metadata=configuration_change_metadata(classification),
 		)
-		frappe.db.after_rollback.add(partial(_persist_configuration_conflict, task.approval_round_id))
+		frappe.db.after_rollback.add(partial(_persist_round_configuration, task.approval_round_id))
 		raise WorkflowApprovalConflictError(_("Workflow transition configuration changed"))
 	if classification["dropped"] or classification["add"]:
 		finalized = _amend_open_round(source, task, workflow, state, classification)
@@ -1442,8 +1459,7 @@ def cast_vote(
 		try:
 			transition = _task_transition(task, transition_uuid, action)
 		except WorkflowApprovalConflictError:
-			if not frappe.flags.in_test:
-				frappe.db.commit()
+			frappe.db.after_rollback.add(partial(_persist_round_configuration, task.approval_round_id))
 			raise
 	else:
 		transition = _task_transition(task, transition_uuid, action)

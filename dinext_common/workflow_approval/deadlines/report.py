@@ -7,6 +7,7 @@ import frappe
 from frappe import _
 
 from dinext_common.workflow_approval.deadlines.discipline import metrics
+from dinext_common.workflow_approval.deadlines.errors import display_deadline_error
 from dinext_common.workflow_approval.email_presentation import full_name
 
 
@@ -38,6 +39,7 @@ def execute(filters=None):
 			user_group=groups.get(row["approver"]),
 			state_label=_(row["workflow_state"]),
 			result_label=_(row["discipline_status"]),
+			deadline_error=display_deadline_error(row.get("deadline_error")),
 		)
 	if filters.get("result"):
 		rows = [row for row in rows if row["discipline_status"] == filters.result]
@@ -121,7 +123,7 @@ def execute(filters=None):
 		dict(
 			label=_(label),
 			value=result[key] if result[key] is not None else _("No observations"),
-			datatype="Percent" if key == "on_time_percent" else "Int",
+			datatype=("Data" if result[key] is None else "Percent") if key == "on_time_percent" else "Int",
 			indicator=indicator,
 		)
 		for label, key, indicator in [

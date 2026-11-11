@@ -175,9 +175,10 @@ def _delete_terminal_round(round_id: str) -> bool:
 	return True
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def cleanup_workflow_approval_rounds() -> int:
 	"""Delete bounded terminal rounds only when an explicit rule permits it."""
+	frappe.only_for("System Manager")
 	if not frappe.db.table_exists("Data Cleanup Rules"):
 		return 0
 	rules = frappe.get_single("Data Cleanup Rules")

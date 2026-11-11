@@ -1,117 +1,131 @@
+[Русский](README.ru.md)
+
+<!-- dinext-presentation:start -->
+<p align="center">
+  <a href="https://dinext.ru"><img src="docs/assets/readme/dinext-logo.png" alt="Dinext" width="128"></a>
+</p>
+<h1 align="center">Dinext Common</h1>
+
+<hr>
+
+<p align="center">Shared branding, navigation, settings and reusable interface components for Dinext applications.</p>
+
+<p align="center">
+  <img src="docs/assets/readme/overview.png" alt="Shared Dinext navigation and workspace cards." width="960">
+</p>
+<p align="center"><sub>Shared Dinext navigation and workspace cards.</sub></p>
+
+<p align="center">
+  <a href="https://dinext.ru">Website</a> · <a href="https://docs.dinext.ru">Documentation</a>
+</p>
+<!-- dinext-presentation:end -->
+
 # Dinext Common
 
-`dinext_common` — общее Frappe-приложение платформы Dinext. Оно устанавливается
-в существующий [Bench](https://github.com/frappe/bench) с Frappe и ERPNext и
-централизует сквозной брендинг, настройки сайта, переиспользуемое поведение
-Desk, настраиваемые workspace-хабы, ленту What's New, подключаемые
-frontend-библиотеки, подсистему очистки данных и общий engine параллельного
-согласования Workflow.
+`dinext_common` is the shared Frappe application of the Dinext platform. It installs in an existing [Bench](https://github.com/frappe/bench) with Frappe and ERPNext and centralizes branding, site settings, reusable Desk behavior, configurable workspace hubs, the What's New feed, on-demand frontend libraries, data cleanup and the shared parallel Workflow approval engine.
 
-Приложение ставится на несколько сайтов вместе с другими приложениями Dinext.
-Domain-приложения (`dinext_*`) потребляют его API и assets; само
-`dinext_common` не сидирует доменные карточки хаба.
+The application is installed on multiple sites together with other Dinext applications.
+Domain applications (`dinext_*`) consume its API and assets;
+`dinext_common` itself does not seed domain hub cards.
 
-## Содержание
+## Contents
 
-- [Обзор и границы ответственности](#обзор-и-границы-ответственности)
-- [Возможности](#возможности)
-- [Установка](#установка)
-- [Использование](#использование)
-- [Технологии](#технологии)
-- [Конфигурация](#конфигурация)
-- [Требования](#требования)
-- [Разработка и сопровождение](#разработка-и-сопровождение)
-- [Документация](#документация)
-- [Благодарности](#благодарности)
-- [История изменений](#история-изменений)
-- [Структура репозитория](#структура-репозитория)
-- [Схема взаимодействия](#схема-взаимодействия)
-- [Лицензия](#лицензия)
+- [Overview and responsibilities](#-overview-and-responsibilities)
+- [Features](#-features)
+- [Installation](#-installation)
+- [Usage](#-usage)
+- [Technologies](#-technologies)
+- [Configuration](#-configuration)
+- [Requirements](#-requirements)
+- [Development and maintenance](#-development-and-maintenance)
+- [Documentation](#-documentation)
+- [Changelog](#-changelog)
+- [Repository structure](#-repository-structure)
+- [Interaction diagram](#-interaction-diagram)
+- [License](#-license)
 
-## 📖 Обзор и границы ответственности
+## 📖 Overview and responsibilities
 
-На практике приложение делает следующее:
+In practice, the application does the following:
 
-- применяет общую конфигурацию сайта через fixtures: `Website Settings`,
+- applies shared site configuration through fixtures: `Website Settings`,
   `Navbar Settings`, `Web Page`, `Data Cleanup Rules`, `Server Script`,
   `Custom HTML Block`;
-- подключает общие Desk-ресурсы из `hooks.py`;
-- курирует меню workspace: корневые `Dinext` и `Settings`, хабы с карточками,
-  списками страниц и персональными списками DocType;
-- публикует и синхронизирует ленту `Dinext News Feed` для Desk What's New;
-- предоставляет стандартную тему сайта и брендинговые ресурсы Dinext;
-- поставляет переиспользуемые JS/CSS-библиотеки, которые другие приложения
-  подгружают по требованию;
-- даёт инструмент Desk для предварительного анализа fixtures по всем
-  установленным приложениям;
-- предоставляет task-based engine параллельного согласования Workflow,
-  workspace «Мои согласования» и overrides стандартных Workflow RPC.
+- includes shared Desk assets from `hooks.py`;
+- curates the workspace menu: `Dinext` and `Settings` roots, hubs with cards,
+  page lists and personal DocType lists;
+- publishes and synchronizes the `Dinext News Feed` for Desk What's New;
+- provides the standard site theme and Dinext branding assets;
+- supplies reusable JS/CSS libraries that other applications
+  load on demand;
+- provides a Desk tool for previewing and analyzing fixtures across all
+  installed applications.
+- Provides the task-based parallel Workflow engine, My Approvals and standard Workflow RPC overrides.
 
-В экосистеме Dinext функциональность разделена между приложениями:
+Functionality is divided among applications in the Dinext ecosystem:
 
-| Приложение | Ответственность |
+| Application | Responsibility |
 | --- | --- |
-| `dinext_common` | Брендинг, Desk UX, workspace-меню и хабы, News Feed, Fixture Analysis, очистка данных, общие JS/CSS, шаблон плана счетов Dinext, параллельное согласование Workflow и workspace «Мои согласования». |
-| Domain-приложения (`dinext_projects` и др.) | Свои DocType, workspace и карточки хаба. Регистрируют вклады через `dinext_common.setup.hub_catalog`. |
-| ERPNext | Обязательная зависимость (`required_apps`). План счетов и Company переопределяются только для шаблона `Dinext`. |
+| `dinext_common` | Branding, Desk UX, workspace menus and hubs, News Feed, Fixture Analysis, data cleanup, shared JS/CSS, Dinext chart of accounts template.  Shared parallel Workflow approval and My Approvals. |
+| Domain applications (`dinext_projects`, etc.) | Their own DocTypes, workspaces and hub cards. Register contributions through `dinext_common.setup.hub_catalog`. |
+| ERPNext | Required dependency (`required_apps`). Chart of Accounts and Company are overridden only for the `Dinext` template. |
 
-Этот README — точка входа для установки и сопровождения. Общие agent-правила
-Dinext не копируются сюда: см. [AGENTS.md](AGENTS.md).
+This README is the entry point for installation and maintenance. Common Dinext agent rules
+are not copied here: see [AGENTS.md](AGENTS.md).
 
-## ✨ Возможности
+## ✨ Features
 
-- Общий брендинг Dinext для Desk и сайта через `app_logo_url`, `app_icon` и
-  `website_context` в `dinext_common/hooks.py`.
-- Настройка сайта через fixtures: `Website Settings`, `Navbar Settings`,
-  `Data Cleanup Rules`, контент главной страницы, включённые `Server Script`,
-  `Client Script`, `Custom Field` модуля `Dinext Common`, `Custom HTML Block`
-  (`Dinext Hub`, `Dinext Settings Hub`), `Holiday List` «Праздники и выходные РФ».
-- Курирование Desk workspace:
-  - публичные корневые workspace `Dinext` и `Settings`;
-  - скрытие public-workspace, не принадлежащих модулям `dinext_*`;
-  - ERPNext `Home` остаётся скрытой записью, но не показывается в меню Desk
-    (включая Workspace Manager) и не является landing: `/app/home` → `/app/dinext`;
-  - вложение `Users`, `Tools`, `Integrations`, `Build`, `Website` под `Settings`;
-  - назначение `Dinext` как `default_workspace` новым пользователям.
-- **Dinext Hub** на workspace `Dinext`: навигационные карточки, списки **Frequent
-  Pages** / **Recent Pages** над секциями и компактные персональные списки
+- Shared Dinext branding for Desk and the website through `app_logo_url`, `app_icon` and
+  `website_context` in `dinext_common/hooks.py`.
+- Site configuration through fixtures: `Website Settings`, `Navbar Settings`,
+  `Data Cleanup Rules`, homepage content, enabled `Server Script`,
+  `Client Script`, `Custom Field` records in the `Dinext Common` module, `Custom HTML Block`
+  (`Dinext Hub`, `Dinext Settings Hub`), `Holiday List` «Праздники и выходные РФ» (Russian Public Holidays and Weekends).
+- Desk workspace curation:
+  - public root workspaces `Dinext` and `Settings`;
+  - hiding public workspaces that do not belong to `dinext_*` modules;
+  - ERPNext `Home` remains a hidden record but is not shown in the Desk menu
+    (including Workspace Manager) and is not a landing page: `/app/home` → `/app/dinext`;
+  - nesting `Users`, `Tools`, `Integrations`, `Build`, `Website` under `Settings`;
+  - assigning `Dinext` as `default_workspace` for new users.
+- **Dinext Hub** on the `Dinext` workspace: navigation cards, **Frequent
+  Pages** / **Recent Pages** lists above sections, and compact personal lists of
   DocType (quick create, assigned, liked, attention).
-- **Settings Hub** на workspace `Settings` (роли `System Manager` /
-  `Workspace Manager`): дочерние workspace и карточки Configuration.
-- Регистрация карточек, лимитов секций и DocType-вкладов из domain-приложений
-  через `dinext_common.setup.hub_catalog`.
-- **Dinext News Feed**: DocType-публикатор, guest API и ежедневная синхронизация
-  local `Changelog Feed`; стандартная еженедельная загрузка changelog Frappe
-  отключается.
-- Глобальные улучшения Desk через `app_include_js` / `app_include_css`:
-  - `workspace_slug_redirects.js` — редирект старых RU-slug workspace и
-    `/app/home` → Dinext без boot-проверки цели (`set_route` в живом Desk);
+- **Settings Hub** on the `Settings` workspace (`System Manager` /
+  `Workspace Manager` roles): child workspaces and Configuration cards.
+- Registration of cards, section limits and DocType contributions from domain applications
+  through `dinext_common.setup.hub_catalog`.
+- **Dinext News Feed**: publisher DocType, guest API and daily synchronization
+  of the local `Changelog Feed`; the standard weekly Frappe changelog fetch
+  is disabled.
+- Global Desk improvements through `app_include_js` / `app_include_css`:
+  - `workspace_slug_redirects.js` redirects old Russian workspace slugs and
+    `/app/home` → Dinext without checking the target during boot (`set_route` in the live Desk);
   - `breadcrumbs_update.js`;
   - `listview_resize.js`;
   - `dinext-desk.js`;
   - `dashboard_filters_fix.js`;
-  - `workspace_sidebar_hover.js` + `workspace_sidebar_hover.css`;
-  - `workflow_approval.js` + `workflow_approval.css` — Desk-gate параллельного
-    согласования, если в boot включён `enable_parallel_workflow_approval`.
-- `sticky-datatable.js` только для DocType `Project` через `doctype_js`.
-- **Параллельное согласование Workflow**: политики `Any` / `All` / `Minimum`,
-  очередь `Workflow Task`, bulk-действия, signed email и retention терминальных
-  раундов. Workspace **«Мои согласования»** (`/app/мои-согласования`). Engine
-  выключен, пока в `site_config` нет `enable_parallel_workflow_approval`.
-- Стандартная тема сайта `Dinext Theme`.
-- Подключаемые frontend-библиотеки: **DinextTable** (AG Grid 35 Community),
+  - `workspace_sidebar_hover.js` + `workspace_sidebar_hover.css`.
+- `sticky-datatable.js` for the `Project` DocType only, through `doctype_js`.
+- Standard `Dinext Theme` site theme.
+- On-demand frontend libraries: **DinextTable** (AG Grid 35 Community),
   Form Conflict Merge, `DinextCharts`, Frappe DataTable, HyperList, Frappe Gantt,
   ECharts.
-- Страница Desk **Fixture Analysis** (`/app/fixture-analysis`).
-- Настраиваемая ежедневная очистка данных через `Data Cleanup Rules` и шесть
-  дочерних таблиц правил.
-- Шаблон плана счетов **Dinext**: override `Company` и методов ERPNext для
-  выбора CoA.
+- **Fixture Analysis** Desk page (`/app/fixture-analysis`).
+- Configurable daily data cleanup through `Data Cleanup Rules` and six
+  child rule tables.
+- **Dinext** chart of accounts template: overrides of `Company` and ERPNext methods
+  for CoA selection.
+- Shared `workflow_approval.js` and `workflow_approval.css` provide the parallel approval Desk gate when `enable_parallel_workflow_approval` is enabled in boot.
+- Parallel Workflow supports `Any` / `All` / `Minimum`, the `Workflow Task` queue, bulk actions, signed email and terminal-round retention. My Approvals opens at `/app/my-approvals`; the engine is off until enabled in `site_config`.
 
-## 🚀 Установка
+## 🚀 Installation
 
-Приложение устанавливается в существующий Bench с Frappe и ERPNext. Используйте
-фактический Git URL и ветку вашей поставки.
+The Workflow email/deadline features documented below are currently prepared on `feat/dinext_workflow`. For a disposable local acceptance bench, select that branch for Common, Projects and Timesheets with `bench get-app --branch feat/dinext_workflow <repository-url>`. The general installation commands below do not select this feature revision. Use an accepted release tag for deployment; this branch has not completed the develop → release → main route.
+
+
+The application is installed into an existing Bench with Frappe and ERPNext. Use
+the actual Git URL and branch of your distribution.
 
 ```bash
 cd /path/to/your/bench
@@ -120,81 +134,81 @@ bench --site your-site.local install-app dinext_common
 bench --site your-site.local migrate
 ```
 
-После установки или обновления пересоберите assets, чтобы применились Desk-ресурсы:
+After installation or an update, rebuild assets to apply Desk resources:
 
 ```bash
 bench build --app dinext_common
 bench --site your-site.local clear-cache
 ```
 
-После установки (`after_install`) и каждой миграции (`after_migrate`) приложение
-дополнительно:
+After installation (`after_install`) and every migration (`after_migrate`), the application
+also:
 
-- вызывает `configure_workspace_menu()` — создаёт/обновляет корни `Dinext` и
-  `Settings`, вкладывает дочерние Settings-workspace, подключает Custom HTML
-  Blocks хабов, создаёт стандартные записи `Dinext Workspace Settings`
-  (`Dinext`, `Settings`), мигрирует legacy `Настройки` → `Settings`;
-- запускает `setup_dinext_news_feed()` — отключает встроенный Frappe changelog
-  fetch и синхронизирует What's New.
+- calls `configure_workspace_menu()` — creates/updates the `Dinext` and
+  `Settings` roots, nests child Settings workspaces, attaches the hubs' Custom HTML
+  Blocks, creates standard `Dinext Workspace Settings` records
+  (`Dinext`, `Settings`), migrates legacy `Настройки` → `Settings`;
+- runs `setup_dinext_news_feed()` — disables the built-in Frappe changelog
+  fetch and synchronizes What's New.
 
-При создании нового пользователя без `default_workspace` hook
-`User.after_insert` назначает workspace `Dinext`. Маршруты `/app/home` и
-`/app/workspaces/home` открывают `Dinext` без boot-проверки `slug_exists`
-(в живом Desk через `frappe.set_route`, без перезагрузки страницы);
-существующие `default_workspace` не меняются.
+When a new user has no `default_workspace`, the
+`User.after_insert` hook assigns the `Dinext` workspace. The `/app/home` and
+`/app/workspaces/home` routes open `Dinext` without a boot-time `slug_exists` check
+(in the live Desk through `frappe.set_route`, without reloading the page);
+existing `default_workspace` values remain unchanged.
 
-Если в развёртывании ещё нет брендинговых файлов Dinext, перед `bench build`
-они должны лежать в `dinext_common/public/images/`:
+If the deployment does not yet have Dinext branding files, they must be present in
+`dinext_common/public/images/` before `bench build`:
 
 - `DI_SQ_NBG.png`
 - `DINEXT_2.png`
 - `DINEXT_FAVICON.ico`
 
-Если web-процесс запущен с Gunicorn `--preload`, после изменений Python
-перезапустите web worker, иначе Desk продолжит отдавать старый код.
+If the web process runs with Gunicorn `--preload`, restart the web worker after
+Python changes; otherwise Desk will continue serving the old code.
 
-## 🛠️ Использование
+## 🛠️ Usage
 
-### Брендинг и общий UI
+### Branding and shared UI
 
-После установки и миграции:
+After installation and migration:
 
-- в Desk используются логотип и favicon приложения Dinext из `hooks.py`;
-- на сайте — splash-изображение Dinext и тема `Dinext Theme`;
-- маршрут главной страницы задаётся fixture `Web Page` с route `homepage`;
-- в меню Help навбара доступна ссылка на документацию `https://docs.dinext.ru`.
+- Desk uses the Dinext application's logo and favicon from `hooks.py`;
+- the website uses the Dinext splash image and `Dinext Theme`;
+- the homepage route is defined by a `Web Page` fixture with route `homepage`;
+- the navbar's Help menu includes a documentation link to `https://docs.dinext.ru`.
 
-### Скрипты Desk
+### Desk scripts
 
-Приложение подключает общее поведение во все сессии Desk:
+The application adds shared behavior to all Desk sessions:
 
-- `workspace_slug_redirects.js` перенаправляет устаревшие RU-slug workspace
-  (например `/app/мои-задачи` → `/app/my-tasks`) после boot-проверки цели;
-  `/app/home` и `/app/workspaces/home` открывают `Dinext` без `slug_exists`
-  через `frappe.set_route` в живом Desk (без `location.replace`, чтобы
-  сохранить session `frappe.route_history` / Recent Pages);
-  `location.replace` только если `set_route` ещё нет;
-  правит `localStorage.current_page`;
-- `breadcrumbs_update.js` сохраняет контекст workspace в breadcrumbs и
-  поддерживает копирование последнего элемента;
-- `listview_resize.js` сохраняет ширины колонок списка в `localStorage`;
-- `dinext-desk.js` настраивает диалог About и показывает версии установленных
-  приложений;
-- `dashboard_filters_fix.js` улучшает динамическую фильтрацию дашборда для
-  `_assign` и `_liked_by`;
-- `workspace_sidebar_hover.js` — icon-rail workspace-меню на всём Desk: на
-  Workspaces кнопка sidebar переключает полный вид и полоску с иконками; на
-  List/Form/прочих экранах свёрнутый rail показывается принудительно. При
-  наведении меню временно открывается **поверх** контента (без сдвига основной
-  колонки). Состояние свёртки на Workspaces хранится в `localStorage`. DOM
-  меню всегда в `.row.layout-main > .layout-side-section` активной страницы.
+- `workspace_slug_redirects.js` redirects legacy Russian workspace slugs
+  (for example, `/app/мои-задачи` → `/app/my-tasks`) after checking the target during boot;
+  `/app/home` and `/app/workspaces/home` open `Dinext` without `slug_exists`
+  through `frappe.set_route` in the live Desk (without `location.replace`, to
+  preserve session `frappe.route_history` / Recent Pages);
+  `location.replace` is used only if `set_route` is not yet available;
+  updates `localStorage.current_page`;
+- `breadcrumbs_update.js` preserves workspace context in breadcrumbs and
+  supports copying the last item;
+- `listview_resize.js` saves list column widths in `localStorage`;
+- `dinext-desk.js` configures the About dialog and displays installed application
+  versions;
+- `dashboard_filters_fix.js` improves dynamic dashboard filtering for
+  `_assign` and `_liked_by`;
+- `workspace_sidebar_hover.js` provides a workspace menu icon rail throughout Desk: on
+  Workspaces, the sidebar button toggles the full view and icon strip; on
+  List/Form/other screens, the collapsed rail is forced. Hovering
+  temporarily opens the menu **over** the content (without moving the main
+  column). The collapsed state on Workspaces is stored in `localStorage`. The menu DOM
+  is always in the active page's `.row.layout-main > .layout-side-section`.
 
-Для DocType `Project` подключается `sticky-datatable.js` — виртуализированная
-таблица с закреплением строк на базе `frappe-datatable.min.js` и `hyperlist.js`.
+For the `Project` DocType, `sticky-datatable.js` provides a virtualized
+table with pinned rows, based on `frappe-datatable.min.js` and `hyperlist.js`.
 
 ### Workspace sidebar hover-expand
 
-По умолчанию функция **включена**. Отключение — через `site_config.json` сайта:
+The feature is **enabled** by default. Disable it through the site's `site_config.json`:
 
 ```json
 {
@@ -202,122 +216,122 @@ bench --site your-site.local clear-cache
 }
 ```
 
-Отсутствие ключа или значение `1` / `true` оставляет поведение включённым.
-После изменения конфига выполните `bench --site your-site.local clear-cache`
-и обновите Desk (или перелогиньтесь), чтобы подтянуть bootinfo.
+An absent key or a value of `1` / `true` keeps the behavior enabled.
+After changing the configuration, run `bench --site your-site.local clear-cache`
+and refresh Desk (or sign in again) to load updated bootinfo.
 
-Временное открытие по hover — fixed-overlay поверх рабочей области; ширина
-основного экрана не меняется. Полное разворачивание по кнопке toggle (только
-на Workspaces) по-прежнему занимает колонку в layout.
+Temporary opening on hover uses a fixed overlay over the work area; the main
+screen width does not change. Full expansion through the toggle button (on Workspaces
+only) still occupies a layout column.
 
-На Workspaces при свёрнутом sidebar к основной колонке добавляется небольшой
-left padding (`--dinext-ws-rail-pad-left`), чтобы контент не прилипал к
-icon-rail. На List/Form/Report и других экранах Desk свёрнутый workspace rail
-монтируется в `.layout-side-section` текущей страницы (при необходимости
-колонка создаётся). List/form sidebar остаётся рядом и не превращается в
-icon-rail; кнопка toggle страницы управляет ими, не workspace-меню. На Form
-сохранённого документа нативная form-sidebar открыта по умолчанию; у нового
-несохранённого документа Frappe по-прежнему скрывает её до Save.
+On Workspaces, when the sidebar is collapsed, a small left padding is added to the main
+column (`--dinext-ws-rail-pad-left`) so content does not touch the
+icon rail. On List/Form/Report and other Desk screens, the collapsed workspace rail
+mounts in the current page's `.layout-side-section` (creating the column if
+necessary). The list/form sidebar remains alongside it and does not become an
+icon rail; the page toggle button controls those sidebars, rather than the workspace menu. On the Form
+of a saved document, the native form sidebar is open by default; for a new,
+unsaved document, Frappe continues to hide it until Save.
 
-На мобильной ширине остаётся стандартный overlay Frappe.
+The standard Frappe overlay remains at mobile widths.
 
-### Dinext Hub и Settings Hub
+### Dinext Hub and Settings Hub
 
-На workspace `Dinext` отображается блок **Dinext Hub**, на workspace
-`Settings` — **Dinext Settings Hub**. Оба блока — тонкие адаптеры: HTML задаёт
-`data-settings-name`, script загружает
-`/assets/dinext_common/js/workspace_hub.js` и вызывает
-`dinext_common.workspace_hub.mount(root_element)`. Стили инжектятся в shadow
-root из `/assets/dinext_common/css/workspace_hub.css`. Блоки подключаются при
-`configure_workspace_menu()` на install и migrate.
+The `Dinext` workspace displays **Dinext Hub**, while the
+`Settings` workspace displays **Dinext Settings Hub**. Both blocks are thin adapters: HTML sets
+`data-settings-name`, the script loads
+`/assets/dinext_common/js/workspace_hub.js` and calls
+`dinext_common.workspace_hub.mount(root_element)`. Styles are injected into the shadow
+root from `/assets/dinext_common/css/workspace_hub.css`. The blocks are attached during
+`configure_workspace_menu()` on install and migrate.
 
-Администраторы настраивают содержимое хаба через именованные записи DocType
-**Dinext Workspace Settings** (запись: роли `System Manager` /
-`Workspace Manager`; чтение хаба — для Desk User, если у записи не заданы
-ограничивающие `roles`):
+Administrators configure hub content through named **Dinext Workspace Settings** DocType
+records (write access: `System Manager` /
+`Workspace Manager`; hub reading is available to Desk User if the record has no
+restricting `roles`):
 
-| Поле / таблица | Назначение |
+| Field / table | Purpose |
 | --- | --- |
-| `settings_name` | Уникальный ключ записи (`Dinext`, `Settings` или ключ другого приложения). Имя документа совпадает с ключом. |
-| `show_frequent_pages` / `show_recent_pages` | Чекбоксы секции **Page Lists** (по умолчанию включены). На записи **`Settings`** оба флага принудительно выключены при configure. |
-| `roles` | Если заданы, API хаба отдаёт каталог только пользователям с одной из этих ролей. Для `Settings` по умолчанию: `System Manager`, `Workspace Manager`. |
-| `items` (`Dinext Workspace Settings Item`) | Навигационные карточки: секция, тип (`Workspace` / `DocType` / `Report` / `Page` / `URL`), target, label, description, icon, enabled, optional `required_role`. |
-| `sections` (`Dinext Workspace Settings Section`) | Лимит персональных списков (`list_limit`, по умолчанию **5**) и максимум колонок карточек (`card_columns`, по умолчанию **4**; seed записи `Settings`: секция Workspaces — **3** / **3**, Configuration — `card_columns` **5**). Если карточек меньше лимита, ряд занимает всю ширину. Уже сохранённые строки registration не перезаписывает. |
-| `doctype_items` (`Dinext Workspace Settings DocType`) | Вклады DocType в секцию: quick create, assigned, liked, attention, JSON `attention_filter` и общий JSON `list_filter` для assigned/liked. |
+| `settings_name` | Unique record key (`Dinext`, `Settings`, or another application's key). The document name matches the key. |
+| `show_frequent_pages` / `show_recent_pages` | **Page Lists** section checkboxes (enabled by default). On the **`Settings`** record, both flags are forcibly disabled during configuration. |
+| `roles` | When specified, the hub API returns the catalog only to users holding one of these roles. For `Settings`, defaults are `System Manager`, `Workspace Manager`. |
+| `items` (`Dinext Workspace Settings Item`) | Navigation cards: section, type (`Workspace` / `DocType` / `Report` / `Page` / `URL`), target, label, description, icon, enabled, optional `required_role`. |
+| `sections` (`Dinext Workspace Settings Section`) | Personal list limit (`list_limit`, default **5**) and maximum card columns (`card_columns`, default **4**; the seeded `Settings` record has **3** / **3** for Workspaces and `card_columns` **5** for Configuration). When there are fewer cards than the limit, the row fills the width. Registration does not overwrite previously saved rows. |
+| `doctype_items` (`Dinext Workspace Settings DocType`) | DocType contributions to a section: quick create, assigned, liked, attention, JSON `attention_filter` and shared JSON `list_filter` for assigned/liked. |
 
-Стандартные записи, создаваемые `dinext_common`:
+Standard records created by `dinext_common`:
 
-- **`Dinext`** — каталог Dinext Hub. Domain-приложения регистрируют сюда
-  карточки через `register_hub_*` (имя по умолчанию).
-- **`Settings`** — каталог Settings Hub: секции Workspaces (`Users`, `Tools`,
-  `Integrations`, `Build`, `Website`) и Configuration (пять Frappe core
+- **`Dinext`** — the Dinext Hub catalog. Domain applications register
+  cards here through `register_hub_*` (the default name).
+- **`Settings`** — the Settings Hub catalog: Workspaces (`Users`, `Tools`,
+  `Integrations`, `Build`, `Website`) and Configuration sections (five Frappe core
   Singles: System Settings, Session Default Settings, Document Naming
-  Settings, Log Settings, Global Search Settings). Frequent Pages и Recent
-  Pages на этой записи выключены.
+  Settings, Log Settings, Global Search Settings). Frequent Pages and Recent
+  Pages are disabled on this record.
 
-Другое приложение может:
+Another application can:
 
-- добавить строки в `Dinext` или `Settings` без нового Custom HTML Block —
-  соответствующий хаб подхватит их;
-- создать собственную именованную запись; чтобы показать её на Workspace,
-  нужен тонкий Custom HTML Block с `data-settings-name="<имя>"` и widget в
+- add rows to `Dinext` or `Settings` without a new Custom HTML Block —
+  the corresponding hub will pick them up;
+- create its own named record; displaying it on a Workspace
+  requires a thin Custom HTML Block with `data-settings-name="<name>"` and a widget in
   `Workspace.content`.
 
-**Общий API** (`dinext_common.workspace_hub.get_workspace_hub(settings_name)`):
+**Shared API** (`dinext_common.workspace_hub.get_workspace_hub(settings_name)`):
 
-- возвращает только включённые карточки выбранной записи, доступные текущему
-  пользователю по роли записи, `required_role` и правам на target;
-- корневые поля `show_frequent_pages`, `show_recent_pages`, `page_list_limit`
-  (сейчас **5**);
-- под каждой секцией может показывать компактные персональные списки:
-  - **Quick Create** — если есть право `create` (кнопки, не строки списка);
-  - **Assigned** — открытые `ToDo`, назначенные пользователю, затем опциональный
+- returns only enabled cards for the selected record that are accessible to the current
+  user under record roles, `required_role` and target permissions;
+- root fields: `show_frequent_pages`, `show_recent_pages`, `page_list_limit`
+  (currently **5**);
+- each section can show compact personal lists:
+  - **Quick Create** — if the user has `create` permission (buttons, not list rows);
+  - **Assigned** — open `ToDo` records assigned to the user, followed by an optional
     `list_filter`;
-  - **Liked** — документы с `_liked_by` и тем же опциональным `list_filter`;
-  - **Attention** — `frappe.get_list` по JSON `attention_filter` (пустой фильтр = все
-    доступные документы в лимите). `list_filter` на Attention не действует.
+  - **Liked** — documents with `_liked_by` and the same optional `list_filter`;
+  - **Attention** — `frappe.get_list` using the JSON `attention_filter` (an empty filter means all
+    accessible documents within the limit). `list_filter` does not apply to Attention.
 
-Списки страниц **рисует клиент**, а не API:
+Page lists are **rendered by the client**, not the API:
 
-| Список | Источник | Поведение |
+| List | Source | Behavior |
 | --- | --- | --- |
-| Frequent Pages | `frappe.boot.frequently_visited_links` | До `page_list_limit` полезных маршрутов. |
-| Recent Pages | сессионный `frappe.route_history` | Новые сверху, без дублей, без текущей workspace-страницы. |
+| Frequent Pages | `frappe.boot.frequently_visited_links` | Up to `page_list_limit` useful routes. |
+| Recent Pages | Session `frappe.route_history` | Newest first, no duplicates, excluding the current workspace page. |
 
-Клиент рисует Frequent Pages и Recent Pages **двумя рядами pill-плашек**
-(иконка + текст; hover — обводка через CSS-переменные Desk). **Recent Pages**
-сверху, **Frequent Pages** ниже. Иконка Workspace берётся из
-`frappe.boot.allowed_workspaces` (не из `frappe.workspaces`, где после открытия
-Workspace поле `icon` пропадает). Подпись Workspace-плашки — только название
-рабочего пространства, без слова «Workspace». Подпись Form-плашки — `title_field` документа
-или `name` по Naming Rule, без префикса DocType; полный контекст остаётся в
-tooltip. В списки попадают маршруты `Form` / `List` / `Tree` / `Workspaces` /
-`query-report`. Пропускаются `setup-wizard`, `social`, `recorder` и формы
-`new-*`. Пустые группы не показываются. При возврате на Workspaces без полной
-перезагрузки хаб обновляется через `frappe.router.on("change")`. Списки не
-переживают полный reload Desk дальше того, что есть в boot и сессии.
+The client renders Frequent Pages and Recent Pages as **two rows of pills**
+(icon + text; hover outlines use Desk CSS variables). **Recent Pages** is
+at the top, **Frequent Pages** below. The Workspace icon comes from
+`frappe.boot.allowed_workspaces` (not `frappe.workspaces`, where the
+`icon` field disappears after opening a Workspace). A Workspace pill shows only the workspace
+name, without the word Workspace. A Form pill shows the document's `title_field`
+or `name` according to its Naming Rule, without a DocType prefix; full context remains in the
+tooltip. Lists include `Form` / `List` / `Tree` / `Workspaces` /
+`query-report` routes. `setup-wizard`, `social`, `recorder` and
+`new-*` forms are skipped. Empty groups are hidden. Returning to Workspaces without a full
+reload refreshes the hub through `frappe.router.on("change")`. Lists do not
+persist across a full Desk reload beyond the data available in boot and the session.
 
-Карточка типа **Report** открывается как
-`/app/query-report/{urlencoded имя отчёта}` (не slug): иначе Desk ищет
-документ Report по slug и не находит `Task Epic Burndown`.
+A **Report** card opens as
+`/app/query-report/{urlencoded report_name}` (not a slug); otherwise Desk looks up
+the Report document by slug and cannot find `Task Epic Burndown`.
 
-`get_dinext_hub` и `get_settings_hub` — совместимые обёртки для записей
-`Dinext` и `Settings`.
+`get_dinext_hub` and `get_settings_hub` are backward-compatible wrappers for the
+`Dinext` and `Settings` records.
 
-Whitelisted методы хаба:
+Whitelisted hub methods:
 
 - `dinext_common.workspace_hub.get_workspace_hub`
 - `dinext_common.workspace_hub.get_dinext_hub`
 - `dinext_common.workspace_hub.get_settings_hub`
 
-Колонки «Recently Opened» по DocType нет: Frappe не хранит Form-маршруты в
-DocType `Route History`. Поле `show_recently_opened` с child DocType удалено.
+There is no Recently Opened column by DocType: Frappe does not store Form routes in the
+`Route History` DocType. The `show_recently_opened` field and child DocType were removed.
 
-### Регистрация Hub-карт из domain-приложений
+### Registering Hub cards from domain applications
 
-Domain-приложения (`dinext_*`) регистрируют свои карточки и списки из
-`after_install` / `after_migrate`. `dinext_common` **не** сидирует доменные
-карточки — их добавляют владеющие apps.
+Domain applications (`dinext_*`) register their cards and lists from
+`after_install` / `after_migrate`. `dinext_common` does **not** seed domain
+cards — their owning apps add them.
 
 ```python
 from dinext_common.setup.hub_catalog import (
@@ -364,59 +378,59 @@ register_hub_doctype_items(
 )
 ```
 
-Контракт идемпотентности:
+Idempotency contract:
 
-- карточки: ключ `(element_type, target)` — существующие строки сохраняют
-  правки администратора (label, description, icon, section, enabled, role);
-  пустой icon может быть backfill'нут;
-- секции: ключ `section` — `list_limit` и `card_columns` администратора не
-  перезаписываются;
-- DocType-вклады: ключ `(section, document_type, source_app)` — непустой
-  `list_filter` и прочие флаги администратора не перезаписываются; пустой
-  `list_filter` дозаполняется из регистрации; `show_assigned` и
-  `show_quick_create` включаются односторонне (`0` → `1`), но не выключаются;
-- неизвестные ключи вроде legacy `show_recently_opened` / `recent`
-  игнорируются;
-- `relocate_hub_item_section(...)` меняет только `section` у существующей
-  карточки;
-- все `register_hub_*` принимают `settings_name` (по умолчанию `"Dinext"`);
-  ключи дедупликации действуют внутри выбранной записи.
+- cards: the `(element_type, target)` key — existing rows retain
+  administrator edits (label, description, icon, section, enabled, role);
+  an empty icon may be backfilled;
+- sections: the `section` key — administrator `list_limit` and `card_columns` values
+  are not overwritten;
+- DocType contributions: the `(section, document_type, source_app)` key — a nonempty
+  `list_filter` and other administrator flags are not overwritten; an empty
+  `list_filter` is populated from registration; `show_assigned` and
+  `show_quick_create` are enabled in one direction (`0` → `1`), never disabled;
+- unknown keys, such as legacy `show_recently_opened` / `recent`,
+  are ignored;
+- `relocate_hub_item_section(...)` changes only the `section` of an existing
+  card;
+- all `register_hub_*` methods accept `settings_name` (default `"Dinext"`);
+  deduplication keys apply within the selected record.
 
-Правила каталога Dinext Hub:
+Dinext Hub catalog rules:
 
-- **Project Management** — списки DocType только `Project` и
-  `Project Portfolio` (Task и Issue остаются в My Work). У обоих вкладов
-  включены Assigned и Quick Create. Gantt регистрирует карточку отчёта
-  Task Epic Burndown и не регистрирует Task в этой секции.
-- Стандартный `list_filter` (открытая работа, не Attention): Task —
-  `type != Issue` и `status not in Completed/Cancelled`; Issue —
+- **Project Management** — DocType lists contain only `Project` and
+  `Project Portfolio` (Task and Issue remain in My Work). Both contributions
+  enable Assigned and Quick Create. Gantt registers the
+  Task Epic Burndown report card and does not register Task in this section.
+- Standard `list_filter` (open work, not Attention): Task —
+  `type != Issue` and `status not in Completed/Cancelled`; Issue —
   `status in Open/Replied/On Hold`; Project — `status not in
-  Completed/Cancelled`; Project Portfolio — `status = Активный`.
-- **Scope & Governance** не наполняется: `dinext_project_scope`,
-  `dinext_risk_management` и `dinext_project_stage_gate` больше не
-  регистрируют карточки. Уже записанные ряды регистрация не удаляет.
+  Completed/Cancelled`; Project Portfolio — `status = Активный` (Active).
+- **Scope & Governance** is not populated: `dinext_project_scope`,
+  `dinext_risk_management` and `dinext_project_stage_gate` no longer
+  register cards. Registration does not delete rows already stored.
 
 ### Dinext News Feed / What's New
 
-Подсистема заменяет стандартную еженедельную агрегацию Frappe changelog
-собственной лентой Dinext.
+This subsystem replaces Frappe's standard weekly changelog aggregation
+with Dinext's own feed.
 
-**Publisher** (обычно сайт документации, где ведётся контент):
+**Publisher** (normally the documentation site where content is maintained):
 
 - DocType `Dinext News Feed`: `title`, `app_name`, `link`,
   `posting_timestamp`, `is_published`;
-- guest API `dinext_common.changelog_feed.get_published_feed` возвращает до 20
-  опубликованных записей новее `since`.
+- the guest API `dinext_common.changelog_feed.get_published_feed` returns up to 20
+  published records newer than `since`.
 
-**Consumer** (ERP/Desk сайты):
+**Consumer** (ERP/Desk sites):
 
 - hook `get_changelog_feed = dinext_common.changelog_feed.get_feed`;
-- ежедневный scheduler `dinext_common.changelog_feed.sync_dinext_news_feed`;
-- тот же setup вызывается из `after_install` и `after_migrate`;
-- при успехе local `Changelog Feed` полностью заменяется данными publisher;
-- при ошибке сети/HTTP local feed **не** очищается; ошибка пишется в Error Log.
+- daily scheduler `dinext_common.changelog_feed.sync_dinext_news_feed`;
+- the same setup runs from `after_install` and `after_migrate`;
+- on success, the local `Changelog Feed` is completely replaced with publisher data;
+- on network/HTTP errors, the local feed is **not** cleared; the error is written to Error Log.
 
-URL publisher задаётся в `site_config.json` (по умолчанию
+The publisher URL is set in `site_config.json` (default:
 `https://docs.dinext.ru`):
 
 ```json
@@ -425,138 +439,118 @@ URL publisher задаётся в `site_config.json` (по умолчанию
 }
 ```
 
-Для работы ежедневной синхронизации нужны scheduler, workers и сетевой доступ
-consumer-сайта к publisher URL.
+Daily synchronization requires the scheduler, workers and network access
+from the consumer site to the publisher URL.
 
 ### Fixture Analysis
 
-Страница **Fixture Analysis** помогает проверить расхождение fixtures перед
-импортом метаданных на сайт. Режим только чтения: база данных и fixture-файлы
-не изменяются.
+The **Fixture Analysis** page helps check fixture differences before
+importing metadata into the site. It is read-only: the database and fixture files
+are not modified.
 
-**Доступ:** роль `System Manager` (маршрут Desk `/app/fixture-analysis`). После
-установки или обновления приложения выполните
-`bench --site your-site.local migrate`, чтобы создался стандартный документ
-Page, затем `bench build --app dinext_common`.
+**Access:** the `System Manager` role (Desk route `/app/fixture-analysis`). After
+installing or updating the application, run
+`bench --site your-site.local migrate` to create the standard Page
+document, then `bench build --app dinext_common`.
 
-**Что сравнивается:**
+**What is compared:**
 
-- JSON fixtures в каждом установленном приложении (`hooks.fixtures` и
+- JSON fixtures in each installed application (`hooks.fixtures` and
   `fixtures/*.json`);
-- текущие записи в базе сайта с учётом фильтров fixtures, если они объявлены в
+- current records in the site database, respecting fixture filters if declared in
   `hooks.py`.
 
-**Интерфейс:**
+**Interface:**
 
-1. **Приложения и DocType** — сводные счётчики по приложению и DocType
+1. **Applications and DocTypes** — summary counts by application and DocType
    (`file_only`, `db_only`, `changed`, `equal`).
-2. **Записи** — фильтр по статусу и поиск по имени записи или изменённым путям
-   полей.
-3. **Детали** — diff по полям; для длинного текста (например, поле `script` в
-   `Client Script` / `Server Script`) — построчный diff с номерами строк и
-   контекстом.
+2. **Records** — status filter and search by record name or changed field
+   paths.
+3. **Details** — field-level diff; for long text (for example, `script` in
+   `Client Script` / `Server Script`), a line-by-line diff with line numbers and
+   context.
 
-**Статусы записей:**
+**Record statuses:**
 
-| Статус | Значение |
+| Status | Meaning |
 | --- | --- |
-| `file_only` | Есть в fixture-файле, нет в БД (будет добавлена при импорте). |
-| `db_only` | Есть в БД, нет в fixture-файле. |
-| `changed` | Запись есть с обеих сторон, но значения полей различаются. |
-| `equal` | Нет существенных отличий после игнорирования служебных полей метаданных. |
+| `file_only` | Present in the fixture file, absent from the database (will be added on import). |
+| `db_only` | Present in the database, absent from the fixture file. |
+| `changed` | The record exists on both sides, but field values differ. |
+| `equal` | No significant differences after ignoring internal metadata fields. |
 
-Для записей, которые есть в базе, используйте **Open in System**, чтобы перейти
-к соответствующей форме Frappe (включая Single DocType).
+For records that exist in the database, use **Open in System** to open
+the corresponding Frappe form (including Single DocTypes).
 
-**Whitelisted API** (используется страницей; та же роль `System Manager`):
+**Whitelisted API** (used by the page; the same `System Manager` role):
 
 - `dinext_common.fixture_analysis_api.get_fixture_analysis_overview`
 - `dinext_common.fixture_analysis_api.get_fixture_analysis_records`
 - `dinext_common.fixture_analysis_api.get_fixture_analysis_record_detail`
 
-Реализация: `dinext_common/fixture_analysis_api.py` и
+Implementation: `dinext_common/fixture_analysis_api.py` and
 `dinext_common/dinext_common/fixture_analysis/` (`discovery.py`,
 `diff_engine.py`, `service.py`, `formatters.py`).
 
-### Очистка данных
+### Data cleanup
 
-Подсистема очистки настраивается через единственный документ
-`Data Cleanup Rules`. Каждая дочерняя таблица задаёт, включена ли очистка,
-сколько дней истории хранить, и фильтры по типу правила.
+The cleanup subsystem is configured through the single
+`Data Cleanup Rules` document. Each child table defines whether cleanup is enabled,
+how many days of history to retain, and filters specific to the rule type.
 
-Типы правил:
+Rule types:
 
-- `Version Cleanup Rule`: по возрасту и опционально по reference DocType;
-- `Comment Cleanup Rule`: по возрасту, типу комментария и опционально по
+- `Version Cleanup Rule`: by age and optionally by reference DocType;
+- `Comment Cleanup Rule`: by age, comment type and optionally by
   reference DocType;
-- `File Cleanup Rule`: по возрасту, типу файла, видимости, папке, размеру,
-  привязанному DocType и полю;
-- `Communication Cleanup Rule`: по возрасту, типу коммуникации, каналу и
-  опционально по reference DocType;
-- `Event Cleanup Rule`: по возрасту, категории, типу и статусу события;
-- `Workflow Cleanup Rule`: по возрасту, опционально по reference DocType и
-  статусу workflow. Для параллельного согласования те же правила удаляют
-  терминальные раунды `Workflow Task` через
-  `dinext_common.workflow_approval.retention.cleanup_workflow_approval_rounds`
-  (делегирование ставится в live `Data Cleanup Daily`; fixture JSON сам по
-  себе может ещё содержать прежнюю секцию Workflow).
+- `File Cleanup Rule`: by age, file type, visibility, folder, size,
+  linked DocType and field;
+- `Communication Cleanup Rule`: by age, communication type, channel and
+  optionally by reference DocType;
+- `Event Cleanup Rule`: by age, category, type and event status;
+- `Workflow Cleanup Rule`: by age, optionally by reference DocType and
+  workflow status.
 
-Приложение также устанавливает из fixtures включённые Server Scripts:
+For parallel approval, the same rules remove terminal `Workflow Task` rounds through `dinext_common.workflow_approval.retention.cleanup_workflow_approval_rounds`. Migration installs delegation in live `Data Cleanup Daily`; old fixture JSON may retain the legacy Workflow section until re-exported.
 
-- `Data Cleanup Daily` — ежедневное `Scheduler Event`;
-- `Data Cleanup Version` — API-метод `dinext_common_data_cleanup_version`;
-- `Data Cleanup Comment` — API-метод `dinext_common_data_cleanup_comment`;
-- `Data Cleanup File` — API-метод `dinext_common_data_cleanup_file`;
-- `Data Cleanup Communication` — API-метод `dinext_common_data_cleanup_communication`;
-- `Data Cleanup Event` — API-метод `dinext_common_data_cleanup_event`;
-- `Data Cleanup Workflow` — API-метод `dinext_common_data_cleanup_workflow`.
+The application also installs enabled Server Scripts from fixtures:
 
-`Data Cleanup Daily` читает актуальный документ `Data Cleanup Rules` и ставит
-в очередь `long` по одной длительной задаче очистки на каждую включённую
-категорию. Скрипты очистки удаляют подходящие записи пакетами с периодическим
+- `Data Cleanup Daily` — daily `Scheduler Event`;
+- `Data Cleanup Version` — the `dinext_common_data_cleanup_version` API method;
+- `Data Cleanup Comment` — the `dinext_common_data_cleanup_comment` API method;
+- `Data Cleanup File` — the `dinext_common_data_cleanup_file` API method;
+- `Data Cleanup Communication` — the `dinext_common_data_cleanup_communication` API method;
+- `Data Cleanup Event` — the `dinext_common_data_cleanup_event` API method;
+- `Data Cleanup Workflow` — the `dinext_common_data_cleanup_workflow` API method.
+
+`Data Cleanup Daily` reads the current `Data Cleanup Rules` document and queues
+one long-running cleanup job in `long` for each enabled
+category. Cleanup scripts delete matching records in batches with periodic
 commit.
 
-### Параллельное согласование Workflow
+### Parallel Workflow approval
 
-Общий engine живёт в пакете `dinext_common.workflow_approval`. Он включается
-флагом `site_config` `enable_parallel_workflow_approval` (по умолчанию
-выключен). `extend_bootinfo` кладёт то же значение в
-`frappe.boot.enable_parallel_workflow_approval`; без флага Desk использует
-стандартный UI Frappe Workflow.
+The shared engine lives in `dinext_common.workflow_approval`. The `site_config` flag `enable_parallel_workflow_approval` enables it and defaults to off. `extend_bootinfo` exposes the same flag as `frappe.boot.enable_parallel_workflow_approval`; without it, Desk uses standard Frappe Workflow UI.
 
-Когда флаг включён:
+Several Workflows may be active for one document type. A positive unique `custom_selection_order` and `custom_activation_condition` select the first matching definition. The first accepted action pins the process to that definition. Successful entry into a terminal state completes the process and immediately prepares a new independent instance if its condition still wins; use a state-aware condition when the document must stop after approval. Scenario context is document-specific and preserves separate process history.
 
-- исходящие переходы Workflow с политикой `Any` / `All` / `Minimum` создают
-  раунд `Workflow Task` со снимком согласующих;
-- голос, bulk и финализация идут через overrides
-  `frappe.model.workflow.apply_workflow`, `bulk_workflow_approval`,
-  `get_transitions`, `get_common_transition_actions`;
-- signed-link confirm идёт через
-  `dinext_common.workflow_approval.signed_links`.
+When the flag is enabled:
 
-Workspace **«Мои согласования»** (`/app/мои-согласования`) показывает карточки
-`My open approvals`, `Новые сегодня`, `My completed approvals`,
-`Автоматически выполнено за 30 дней`, график `Pending approvals by document type`
-по отчёту `My Approvals` и ярлыки на `My Approvals`, `My Approval History`,
-`Approval Monitoring`. Ниже зона **Контроль**: карточки открытых раундов, сбоев,
-самого долгого ожидания и ручных решений за 30 дней, графики
-`Open tasks by approver`, `Open task age by approver`,
-`Open rounds by document type`, `Approval duration by document type`
-и ярлыки `Approval Load`, `Approval Duration`. Цифры контроля видны только
-по Workflow, которые пользователь наблюдает, и по документам, которые он
-может читать. Desk-записи (карточки, график, workspace, Email Template)
-создаёт `ensure_workflow_approval_desk_records` на migrate, а не `after_install`.
-Карточку хаба «Мои согласования» регистрирует `configure_workspace_menu`.
+- Outgoing Workflow transitions with `Any` / `All` / `Minimum` policies create a `Workflow Task` round with a snapshot of eligible approvers.
+- Votes, bulk actions and finalization use overrides for `frappe.model.workflow.apply_workflow`, `bulk_workflow_approval`, `get_transitions` and `get_common_transition_actions`.
+- Signed-link confirmation uses `dinext_common.workflow_approval.signed_links`.
 
-Отчёты модуля Dinext Common:
+The **My Approvals** workspace (`/app/my-approvals`) contains `My open approvals`, `Новые сегодня` (New today), `My completed approvals` and `Автоматически выполнено за 30 дней` (Automatically completed in 30 days), the `Pending approvals by document type` chart based on `My Approvals`, and links to `My Approvals`, `My Approval History` and `Approval Monitoring`. Its monitoring section includes open rounds, errors, longest waits and manual decisions in the last 30 days; charts include `Open tasks by approver`, `Open task age by approver`, `Open rounds by document type` and `Approval duration by document type`, with links to `Approval Load` and `Approval Duration`. Monitoring figures include only observable Workflows and readable source documents. `ensure_workflow_approval_desk_records` creates cards, charts, the workspace and Email Templates on migration; `configure_workspace_menu` registers the hub card.
 
-- `My Approvals` — персональная очередь;
-- `My Approval History` — история решений;
-- `Approval Monitoring` — контроль раундов для ролей мониторинга;
-- `Approval Load` — открытые задачи по согласующим;
-- `Approval Duration` — ручные сроки и открытые раунды по группе.
+Reports in the Dinext Common module:
 
-Ключевые whitelist (`dinext_common.workflow_approval.api`):
+- `My Approvals` — personal queue;
+- `My Approval History` — decision history;
+- `Approval Monitoring` — round monitoring for authorized roles;
+- `Approval Load` — open assignments by approver;
+- `Approval Duration` — manual approval duration and open rounds by group.
+
+Key whitelisted methods in `dinext_common.workflow_approval.api`:
 
 - `apply_workflow`, `vote`, `bulk_vote`, `bulk_task_vote`,
   `bulk_workflow_approval`;
@@ -570,29 +564,56 @@ Workspace **«Мои согласования»** (`/app/мои-согласов
   `get_monitored_tasks`;
 - `reset_round`, `retry_finalization` (System Manager).
 
-Email Template по умолчанию (если у Workflow нет своего):
+Default Email Templates, used when no applicable custom template is configured:
 
 - `Dinext Workflow Action`
 - `Dinext Workflow Correction`
 - `Dinext Workflow Digest`
 - `Dinext Timesheet Workflow Digest`
+- `Dinext Timesheet Workflow Correction`
+- `Dinext Workflow Deadline Digest`
+- `Dinext Timesheet Workflow Deadline Digest`
 
-Domain-приложения подключаются hooks `workflow_approval_lock_dependencies`,
-`workflow_approval_pending_approvers`, `workflow_approval_vote_completed`,
-`workflow_approval_digest_item`. AFL UX — в `dinext_projects`; оркестрация
-User Timesheet — действия workflow позиций в `dinext_timesheets.workflow_approval`.
+Domain applications integrate through `workflow_approval_lock_dependencies`, `workflow_approval_pending_approvers`, `workflow_approval_vote_completed` and `workflow_approval_digest_item`. AFL form behavior belongs to `dinext_projects`; User Timesheet position actions are orchestrated by `dinext_timesheets.workflow_approval`.
 
-Патч `cutover_parallel_workflow_approvals` — no-op, пока в `site_config` нет
-`run_parallel_workflow_cutover`. После успешного cutover флаг
-`enable_parallel_workflow_approval` становится `1`.
+The `cutover_parallel_workflow_approvals` patch is a no-op unless `site_config` contains `run_parallel_workflow_cutover`. Successful cutover sets `enable_parallel_workflow_approval` to `1`.
 
-### Подключаемые библиотеки
+### Workflow email profiles, deadlines and discipline
 
-Автоматически загружаются только библиотеки, нужные самому Dinext Common. Для
-остальных предпочтительна ленивая загрузка через `frappe.require()` из
-потребляющего приложения.
+`Send Email Alert` is the Workflow-wide master switch. Each state's `Send Email On State` independently permits delivery. An untouched state inherits the complete Workflow email profile. Changing mode, schedule, template or PDF creates a state override from the current inherited profile; **Use Workflow settings** restores inheritance without changing that state's permission flag. The form identifies inherited and state-owned settings. State overrides, including explicitly disabled grouping, take priority over Workflow defaults.
 
-**DinextTable** — editable-таблица на AG Grid 35 Community. Документация ядра:
+With `Group Workflow Action Emails`, configure a positive Hours/Days interval and a digest template. Days accepts multiple normalized local times, such as `08:00, 17:00`; Hours hides times. Without grouping, `Next Action Email Template` and optional PDF are available in **Workflow Approval Email**. Individual mail contains one personalized task with its permitted next actions; digests are separated by Workflow, state and recipient. Dispatch rechecks user activation, source/parent read access, Workflow subscription and current transition `Send Email To Creator` flags by UUID. Creator filtering never changes voting rights. Schedule changes re-anchor future delivery; retries and existing Email Queue entries protect against duplicate formation.
+
+The seven standard templates are `Dinext Workflow Digest`, `Dinext Workflow Action`, `Dinext Workflow Correction`, `Dinext Timesheet Workflow Digest`, `Dinext Timesheet Workflow Correction`, `Dinext Workflow Deadline Digest` and `Dinext Timesheet Workflow Deadline Digest`. Known stock versions are upgraded while customer edits are preserved. Subjects/body use the recipient's language with system fallback, business document titles and human names. A compact header, spaced content/actions and a full-width footer provide the Dinext logo, website and notification-settings links while retaining account signatures. Equivalent Any/threshold-one choices offered through multiple roles become one email button; distinct conditions, destinations and voting semantics stay separate.
+
+Correction mail shows the entry transition's author/comment and document link, with no transition buttons. Ordinary Timesheet digests retain authors, parent timesheets, canonical position numbers, **project — task — role**, and pending hours. Each position's total is followed by its nonzero dated hours/comments, for example `Hours: 8 (2 h — testing, 3.5 h — development, 2.5 h — documentation)`. Links lead to the parent timesheet. Manager overdue digests show only parent timesheets, responsible approvers and overdue information, with no positions, author sections or action buttons. Signed links open a preview; POST confirmation enforces live required-comment rules and single-use commands.
+
+Mandatory-target transitions may configure a positive deadline in Hours/Days, a user/role recipient, template and immediate or scheduled escalation. `workflow_deadline_extensions` adds DocType-specific interval, sending-cadence and recipient providers. `dinext_projects` supplies **Working Days** from the approver's Worker holiday calendar and the current **Worker Group Manager**. A short working date counts as one working day; this is a date-based policy. The approved UTP default is **3 Working Days**, with manager digests at `08:00, 17:00`. It is distinct from 24 working hours.
+
+`Approval Deadline Discipline` reports due-date cohorts; errors/unknown history do not improve percentages, and no observations produce a translated empty result. My Approvals includes deadline cards and a standard chart. `dinext_timesheets` owns submission/approval discipline and My Timesheets deadline controls. All rows and figures enforce source/task access. Standard diagnostic text is translated when displayed, preserving stored history.
+
+Task delivery snapshots retain the Action's delivery identity/state for projection recovery. Reconciliation repairs missing open ToDo/Action records without resetting an existing delivery decision. Migration copies legacy Action state; if both a legacy Action and its delivery evidence are already missing, historical immediate delivery remains explicitly unknown and is not invented. Future digest slots can include the restored current task. Retention is available only to System Manager, requires POST remotely, and preserves active work and reused history. A rejected removed-action vote does not commit the caller's unrelated transaction.
+
+### Workflow checks and acceptance scope
+
+Run server regressions on a dedicated local test site, for example:
+
+```bash
+bench --site your-test-site.local run-tests --module dinext_common.tests.test_workflow_standards
+bench --site your-test-site.local run-tests --module dinext_common.tests.test_workflow_approval_desk
+bench --site your-test-site.local run-tests --module dinext_common.tests.test_workflow_deadline_integration
+bench --site your-test-site.local run-ui-tests dinext_common --headless
+```
+
+UI acceptance covers Russian/English/system language, light/dark themes and mobile widths. The 11 November email acceptance confirmed 345 server tests, 6 Cypress scenarios and 14 selected SMTP messages by exact IMAP Message-ID; those figures belong to that recorded code revision, not every later commit. This audit records its own regression results separately in central `dinext-docs` under `process/development-management/acceptance/`. Actual installed Windows Outlook rendering remains unverified because the supported Windows bridge is unavailable; native MIME and browser checks cover the shared table row and footer width.
+
+### On-demand libraries
+
+Only libraries needed by Dinext Common itself are loaded automatically. For
+other libraries, lazy loading through `frappe.require()` from the
+consuming application is preferred.
+
+**DinextTable** — an editable table built on AG Grid 35 Community. Core documentation:
 [`dinext_common/public/js/table/README.md`](dinext_common/public/js/table/README.md).
 
 ```javascript
@@ -601,15 +622,15 @@ frappe.require(["dinext-table.bundle.js"], () => {
 });
 ```
 
-**Form Conflict Merge** подключается бандлом
-`form-conflict-merge.bundle.js`; исходники — в
-`dinext_common/public/js/form_conflict_merge/`. Потребляющее приложение
-вызывает `dinext_common.formConflictMerge.install(...)`.
+**Form Conflict Merge** is included through the
+`form-conflict-merge.bundle.js` bundle; sources are in
+`dinext_common/public/js/form_conflict_merge/`. The consuming application
+calls `dinext_common.formConflictMerge.install(...)`.
 
-**DinextCharts** (`dinext_common/public/js/charts/dinext-charts-core.js`) лениво
-загружает ECharts и даёт хелперы панелей, согласованных с темой Desk.
+**DinextCharts** (`dinext_common/public/js/charts/dinext-charts-core.js`) lazily
+loads ECharts and provides panel helpers consistent with the Desk theme.
 
-Прочие assets:
+Other assets:
 
 ```javascript
 frappe.require(
@@ -629,68 +650,49 @@ frappe.require(["/assets/dinext_common/js/echarts.min.js"], function () {
 });
 ```
 
-### План счетов Dinext
+### Dinext chart of accounts
 
-`override_doctype_class` для `Company` и `override_whitelisted_methods` для
-выбора CoA подставляют шаблон **Dinext** из
-`dinext_common/setup/data/coa_importer_template.xlsx`, если компания не
-копирует план счетов с существующей.
+`override_doctype_class` for `Company` and `override_whitelisted_methods` for
+CoA selection substitute the **Dinext** template from
+`dinext_common/setup/data/coa_importer_template.xlsx` if the company is not
+copying the chart of accounts from an existing company.
 
-## 📦 Технологии
+## 📦 Technologies
 
 - **Backend:** Python 3.10+, Frappe Framework, ERPNext.
-- **Frontend:** JavaScript для кастомизаций Desk; CSS/SCSS для общих стилей и
-  темы сайта.
-- **Таблицы:** AG Grid Community 35 (DinextTable).
-- **Данные:** MariaDB или PostgreSQL через Frappe ORM.
-- **Сборка пакета:** `flit_core` в `pyproject.toml`.
-- **Качество кода:** pre-commit (`ruff`, `eslint`, `prettier`,
+- **Frontend:** JavaScript for Desk customizations; CSS/SCSS for shared styles and
+  the website theme.
+- **Tables:** AG Grid Community 35 (DinextTable).
+- **Data:** MariaDB or PostgreSQL through the Frappe ORM.
+- **Package build:** `flit_core` in `pyproject.toml`.
+- **Code quality:** pre-commit (`ruff`, `eslint`, `prettier`,
   `pre-commit-hooks`).
 
-## 🔧 Конфигурация
+## 🔧 Configuration
 
-Основная конфигурация — в `dinext_common/hooks.py`.
+The main configuration is in `dinext_common/hooks.py`.
 
-Ключевые hooks и настройки:
+Key hooks and settings:
 
 - `app_logo_url = "/assets/dinext_common/images/DI_SQ_NBG.png"`
 - `app_icon = "/assets/dinext_common/images/DINEXT_FAVICON.ico"`
-- `website_context` задаёт favicon и splash для публичного сайта
-- `app_include_css` подключает `common.css`, `workspace_sidebar_hover.css` и
-  `workflow_approval.css`
-- `app_include_js` подключает общие скрипты Desk глобально (включая
-  `workspace_slug_redirects.js`, `workspace_sidebar_hover.js` и
-  `workflow_approval.js`)
-- `extend_bootinfo = ["dinext_common.boot.extend_bootinfo"]` — передаёт флаги
-  `dinext_workspace_sidebar_hover_expand` и
-  `enable_parallel_workflow_approval` из `site_config` в Desk и убирает
-  `Home` из `allowed_workspaces`
+- `website_context` provides the public website favicon and splash image.
+- `app_include_css` loads `common.css`, `workspace_sidebar_hover.css` and `workflow_approval.css`.
+- `app_include_js` loads shared Desk scripts globally, including `workspace_slug_redirects.js`, `workspace_sidebar_hover.js` and `workflow_approval.js`.
+- `extend_bootinfo = ["dinext_common.boot.extend_bootinfo"]` passes `dinext_workspace_sidebar_hover_expand` and `enable_parallel_workflow_approval` to Desk and removes `Home` from `allowed_workspaces`.
 - `after_install = "dinext_common.install.after_install"`
-- `after_migrate` — news feed setup и `configure_workspace_menu`
-- `doc_events.User.after_insert` →
-  `dinext_common.setup.workspace.set_default_workspace_for_new_user`
-- `scheduler_events.daily` →
-  `dinext_common.changelog_feed.sync_dinext_news_feed`
-- `scheduler_events.cron` `* * * * *` →
-  `workflow_approval.notifications.dispatch_due_notifications` и
-  `workflow_approval.finalization.repair_pending_finalizations`
+- `after_migrate` configures the news feed and workspace menu and ensures approval metadata and Desk records.
+- `doc_events.User.after_insert` calls `dinext_common.setup.workspace.set_default_workspace_for_new_user`.
+- The daily scheduler calls `dinext_common.changelog_feed.sync_dinext_news_feed`.
+- The `* * * * *` cron dispatches ordinary and deadline notifications and repairs pending finalizations.
 - `get_changelog_feed = "dinext_common.changelog_feed.get_feed"`
-- `doctype_js = {"Project": "public/js/sticky-datatable.js"}`
-- `has_permission` / `permission_query_conditions` для
-  `Dinext Workspace Settings`, `Workflow Task` и `Workflow Action`
-- `doc_events.Workflow.validate` →
-  `workflow_approval.metadata.validate_workflow_doc`
-- `doc_events["*"]` — lifecycle source-документов согласования
-- `override_doctype_class` / `override_whitelisted_methods` для CoA Dinext,
-  фильтра `Home` в `get_workspace_sidebar_items` и Workflow RPC
-  (`apply_workflow`, `bulk_workflow_approval`, `get_transitions`,
-  `get_common_transition_actions`, signed-link `apply_action` /
-  `confirm_action`)
-- патчи `patches/v1_0/generalize_parallel_workflow_approvals.py`,
-  `migrate_workflow_approval_assignees_v2.py`,
-  `cutover_parallel_workflow_approvals.py`
+- `doctype_js` scopes Project, Workflow, Workflow Action and Notification Settings scripts to their forms.
+- `has_permission` / `permission_query_conditions` protect `Dinext Workspace Settings`, `Workflow Task` and `Workflow Action`.
+- Workflow validation invokes `workflow_approval.metadata.validate_workflow_doc`; source document lifecycle hooks reconcile approval rounds.
+- Overrides cover the Dinext chart of accounts, the workspace sidebar and Workflow RPCs, including signed `apply_action` / `confirm_action`.
+- Migration patches are registered in `dinext_common/patches.txt`, including initial approval setup, assignee migration and guarded cutover.
 
-Опции `site_config.json`:
+`site_config.json` options:
 
 ```json
 {
@@ -701,307 +703,275 @@ frappe.require(["/assets/dinext_common/js/echarts.min.js"], function () {
 }
 ```
 
-- `dinext_workspace_sidebar_hover_expand` — включить/выключить hover-expand
-  sidebar (по умолчанию включено);
-- `dinext_news_feed_url` — base URL publisher News Feed; trailing slash
-  снимается; пустое значение = `https://docs.dinext.ru`.
-- `dinext_hidden_apps` — полный список имён приложений, скрываемых на странице
-  `/apps` и в API списка приложений. Если ключ отсутствует, скрываются
-  `erpnext` и `hrms`; значение `[]` не скрывает ни одного приложения. Имя
-  соответствует `app_name`, например `crm`, а не видимому заголовку плитки.
-- `enable_parallel_workflow_approval` — включить общий engine согласования.
-  Отсутствие ключа или `0` / `false` оставляет стандартный Frappe Workflow UI.
-  Cutover ставит `1`. После смены флага выполните `clear-cache` и обновите
-  Desk.
+- `dinext_workspace_sidebar_hover_expand` enables sidebar hover expansion; it defaults to enabled.
+- `dinext_news_feed_url` is the News Feed publisher base URL. The trailing slash is removed; an empty value means `https://docs.dinext.ru`.
+- `dinext_hidden_apps` is the complete list of application names hidden from `/apps` and its API. With no key, `erpnext` and `hrms` are hidden; `[]` hides none. Use `app_name`, such as `crm`, rather than a tile's visible title.
+- `enable_parallel_workflow_approval` enables the shared approval engine. Missing, `0` or `false` keeps standard Frappe Workflow UI. Cutover sets it to `1`. Clear the site cache and refresh Desk after changing it.
 
-После изменения `dinext_hidden_apps` выполните
-`bench --site your-site.local migrate` — это назначит `dinext_common`
-системным и пользовательским default app, если прежний default пуст или стал
-скрытым. Затем выполните `bench --site your-site.local clear-cache` и
-перезагрузите Desk. Явный default видимого приложения не перезаписывается.
-При Gunicorn с `--preload` перезапустите web worker.
+After changing `dinext_hidden_apps`, run
+`bench --site your-site.local migrate` — this assigns `dinext_common`
+as the system and user default app if the previous default is empty or has become
+hidden. Then run `bench --site your-site.local clear-cache` and
+reload Desk. An explicit default pointing to a visible application is not overwritten.
+With Gunicorn `--preload`, restart the web worker.
 
-Этот репозиторий не объявляет собственных переменных окружения: параметры
-сайта задаются стандартным механизмом Bench/Frappe.
+This repository declares no environment variables of its own: site parameters
+use the standard Bench/Frappe mechanism.
 
-Fixtures, экспортируемые приложением:
+Fixtures exported by the application:
 
 - `Website Settings`
 - `Navbar Settings`
 - `Data Cleanup Rules`
-- записи `Web Page` с фильтром по модулю `Dinext Common`
-- записи `Client Script` с фильтром по модулю `Dinext Common`
-- записи `Server Script` с фильтром по модулю `Dinext Common` и `disabled = 0`
-- записи `Custom Field` с фильтром по модулю `Dinext Common`
-- `Custom HTML Block` с именами `Dinext Hub`, `Dinext Settings Hub`
-- `Holiday List` с именем `Праздники и выходные РФ`
+- `Web Page` records filtered by the `Dinext Common` module
+- `Client Script` records filtered by the `Dinext Common` module
+- `Server Script` records filtered by the `Dinext Common` module and `disabled = 0`
+- `Custom Field` records filtered by the `Dinext Common` module
+- `Custom HTML Block` records named `Dinext Hub`, `Dinext Settings Hub`
+- `Holiday List` named `Праздники и выходные РФ`
 
-Поведение fixtures:
+Fixture behavior:
 
-- `Website Settings` задаёт публичное имя приложения `Dinext`,
-  `home_page` = `homepage`, отключает регистрацию, баннер и ссылку на
+- `Website Settings` sets the public application name to `Dinext`,
+  `home_page` = `homepage`, and disables registration, the banner and the link to
   `Dinext Theme`;
-- `Navbar Settings` задаёт логотип и пункты меню: `Documentation`, `About`,
-  `Мои замещения`;
-- `Web Page` публикует динамическую главную по маршруту `homepage`;
-- `Custom HTML Block` — тонкие адаптеры хабов Dinext / Settings
-  (`data-settings-name` + `frappe.require` общего renderer);
-- `Data Cleanup Rules` поставляется с правилами хранения по умолчанию: 90 дней
-  для version, communication, event, file и workflow, 45 дней для
-  специализированных правил comment.
+- `Navbar Settings` sets the logo and menu items: `Documentation`, `About`,
+  `Мои замещения` (My Delegations);
+- `Web Page` publishes the dynamic homepage at the `homepage` route;
+- `Custom HTML Block` provides thin adapters for the Dinext / Settings hubs
+  (`data-settings-name` + `frappe.require` of the shared renderer);
+- `Data Cleanup Rules` is supplied with default retention rules: 90 days
+  for version, communication, event, file and workflow, and 45 days for
+  specialized comment rules.
 
-Замечания по совместимости:
+Compatibility notes:
 
-- приложение меняет глобальные объекты сайта (`Navbar Settings`,
+- the application changes global site objects (`Navbar Settings`,
   `Website Settings`);
-- подключает JS в каждую сессию Desk;
-- курирует public workspace menu и может скрывать workspace сторонних модулей;
-- если другое приложение управляет теми же Single DocType или переопределяет
-  то же поведение Desk, согласуйте владение fixtures и порядок загрузки assets.
+- includes JS in every Desk session;
+- curates the public workspace menu and may hide workspaces from third-party modules;
+- if another application manages the same Single DocTypes or overrides
+  the same Desk behavior, coordinate fixture ownership and asset loading order.
 
-После изменения workspace/feed-логики выполните
-`bench --site your-site.local migrate`. После правок frontend assets —
-`bench build --app dinext_common` и
-`bench --site your-site.local clear-cache`. После изменения metadata
-экспортируйте fixtures:
+After changing workspace/feed logic, run
+`bench --site your-site.local migrate`. After frontend asset changes, run
+`bench build --app dinext_common` and
+`bench --site your-site.local clear-cache`. After metadata changes,
+export fixtures:
 
 ```bash
 bench --site your-site.local export-fixtures
 ```
 
-## ✅ Требования
+### Workflow integration references
 
-- [Bench](https://github.com/frappe/bench) с установленным Frappe.
-- Зависимость `required_apps = ["erpnext"]`.
-- Python `>=3.10` (закреплено в `pyproject.toml`).
-- Совместимые версии Frappe/ERPNext для используемой поставки Dinext.
-- Node.js для `bench build`.
-- Сайт, на котором можно установить `dinext_common`.
-- Включённые scheduler и workers, если нужна автоматическая ежедневная очистка
-  и синхронизация News Feed.
-- Сетевой доступ consumer-сайта к URL publisher (`dinext_news_feed_url`) для
+The Workflow integration is registered through `scheduler_events.daily`, `scheduler_events.cron`, `doc_events.Workflow.validate` and `doc_events["*"]`. Cron calls `workflow_approval.notifications.dispatch_due_notifications`, `workflow_approval.deadlines.delivery.dispatch_due_deadlines` and `workflow_approval.finalization.repair_pending_finalizations`. Project's existing scoped asset is `doctype_js = {"Project": "public/js/sticky-datatable.js"}`; other form-specific hooks are listed in `hooks.py`. Workspace sidebar overrides include `get_workspace_sidebar_items`. Initial migrations include `patches/v1_0/generalize_parallel_workflow_approvals.py`, `migrate_workflow_approval_assignees_v2.py` and `cutover_parallel_workflow_approvals.py`; the full list is `dinext_common/patches.txt`. Run `clear-cache` after updates. Workspace/report definitions live in `dinext_common/dinext_common/workspace/my_approvals/` and `dinext_common/dinext_common/report/my_approvals/`, with `my_approval_history/` and `approval_monitoring/`.
+
+## ✅ Requirements
+
+- [Bench](https://github.com/frappe/bench) with Frappe installed.
+- The `required_apps = ["erpnext"]` dependency.
+- Python `>=3.10` (declared in `pyproject.toml`).
+- Frappe/ERPNext versions compatible with your Dinext distribution.
+- Node.js for `bench build`.
+- A site where `dinext_common` can be installed.
+- Enabled scheduler and workers if automatic daily cleanup
+  and News Feed synchronization are needed.
+- Network access from the consumer site to the publisher URL (`dinext_news_feed_url`) for
   What's New.
-- Для локальных проверок: pre-commit; для JS-тестов таблиц — Node.js.
+- For local checks: pre-commit; for table JS tests: Node.js.
 
-Для подсистемы очистки убедитесь, что очередь `long` обслуживается worker:
-`Data Cleanup Daily` ставит все задачи очистки в `queue="long"`.
+For the cleanup subsystem, make sure a worker serves the `long` queue:
+`Data Cleanup Daily` places all cleanup jobs in `queue="long"`.
 
-## 🤝 Разработка и сопровождение
+## 🤝 Development and maintenance
 
-Перед любым изменением пройдите обязательный OpenSpec lifecycle из
-[AGENTS.md](AGENTS.md). Proposal, design, specs и tasks хранятся в central
-Store `dinext-docs` (`openspec/config.yaml` указывает `store: dinext-docs`).
-Локальные `openspec/specs` и `openspec/changes` в этом репозитории не
-создаются.
+Before any change, follow the mandatory OpenSpec lifecycle in [AGENTS.md](AGENTS.md). Proposal, design, specs and tasks live in the central `dinext-docs` Store; `openspec/config.yaml` declares `store: dinext-docs`. Do not create local `openspec/specs` or `openspec/changes` in this repository.
 
-Перед коммитами установите и включите pre-commit:
+Before committing, install and enable pre-commit:
 
 ```bash
 cd apps/dinext_common
 pre-commit install
 ```
 
-В репозитории настроены проверки:
+The repository is configured with these checks:
 
-- валидность JSON, TOML и YAML;
-- порядок импортов и форматирование Python через `ruff`;
-- форматирование JavaScript через `prettier`;
-- линтинг JavaScript через `eslint`;
-- базовая гигиена: конфликты слияния, отладочные операторы и т.п.
+- JSON, TOML and YAML validity;
+- Python import ordering and formatting through `ruff`;
+- JavaScript formatting through `prettier`;
+- JavaScript linting through `eslint`;
+- basic hygiene: merge conflicts, debug statements, etc.
 
-Дополнительные JS-тесты из корня приложения:
+Additional JS tests from the application root:
 
 ```bash
 npm run test:dinext-table
 npm run test:form-conflict-merge
 ```
 
-Python-тесты workspace, news feed, boot, CoA, Fixture Analysis и
-`workflow_approval` лежат в `dinext_common/tests/`.
+Python tests for workspaces, the news feed, boot, chart of accounts, Fixture Analysis and `workflow_approval` live in `dinext_common/tests/`.
 
-## 📄 Документация
+## 📄 Documentation
 
-- Документация продукта и платформы: [docs.dinext.ru](https://docs.dinext.ru)
-- Navigation stub для агентов: [AGENTS.md](AGENTS.md)
-- Точка входа конфигурации приложения: `dinext_common/hooks.py`
-- Установка и post-install: `dinext_common/install.py`
+- Product and platform documentation: [docs.dinext.ru](https://docs.dinext.ru)
+- Agent navigation stub: [AGENTS.md](AGENTS.md)
+- Application configuration entry point: `dinext_common/hooks.py`
+- Installation and post-install: `dinext_common/install.py`
 - Bootinfo Desk: `dinext_common/boot.py`
-- Параллельное согласование: `dinext_common/workflow_approval/`
-- Desk JS согласования: `dinext_common/public/js/workflow_approval.js`
-- Workspace «Мои согласования»:
-  `dinext_common/dinext_common/workspace/мои_согласования/`
-- Отчёты согласования: `dinext_common/dinext_common/report/my_approvals/`,
-  `my_approval_history/`, `approval_monitoring/`
-- Курирование workspace: `dinext_common/setup/workspace.py`
-- Регистрация Hub из domain apps: `dinext_common/setup/hub_catalog.py`
-- API хабов: `dinext_common/workspace_hub.py`,
+- Workspace curation: `dinext_common/setup/workspace.py`
+- Hub registration from domain apps: `dinext_common/setup/hub_catalog.py`
+- Hub APIs: `dinext_common/workspace_hub.py`,
   `dinext_common/workspace_hub_lists.py`,
   `dinext_common/workspace_hub_models.py`
 - News Feed publisher/consumer: `dinext_common/changelog_feed.py`
-- DocType настроек хаба:
+- Hub settings DocType:
   `dinext_common/dinext_common/doctype/dinext_workspace_settings/`
-- DocType новостей: `dinext_common/dinext_common/doctype/dinext_news_feed/`
-- Custom HTML Blocks хабов: `dinext_common/fixtures/custom_html_block.json`
-- Страница Desk Fixture Analysis:
+- News DocType: `dinext_common/dinext_common/doctype/dinext_news_feed/`
+- Hub Custom HTML Blocks: `dinext_common/fixtures/custom_html_block.json`
+- Fixture Analysis Desk page:
   `dinext_common/dinext_common/page/fixture_analysis/`
 - Backend Fixture Analysis: `dinext_common/dinext_common/fixture_analysis/`
-- Схема DocType очистки:
+- Cleanup DocType schema:
   `dinext_common/dinext_common/doctype/data_cleanup_rules/`
-- Определение темы сайта:
+- Website theme definition:
   `dinext_common/dinext_common/website_theme/dinext_theme/`
 - DinextTable: `dinext_common/public/js/table/README.md`
-- Переводы: `dinext_common/translations/ru.csv`
-- Тесты: `dinext_common/tests/`
+- Translations: `dinext_common/translations/ru.csv`
+- Tests: `dinext_common/tests/`
+- Parallel approval: `dinext_common/workflow_approval/`.
+- Approval Desk script: `dinext_common/public/js/workflow_approval.js`.
+- Approval workspace and reports: `dinext_common/dinext_common/workspace/` and `dinext_common/dinext_common/report/`.
 
-## ❤️ Благодарности
+## 📝 Changelog
 
-- Dinext — брендинг платформы, общие UX-соглашения и сценарии очистки
-- Frappe Framework — платформа приложений, fixtures, hooks Desk и планировщик
-- ERPNext — Company / Chart of Accounts, на которые опирается шаблон Dinext
-- Встроенные библиотеки: AG Grid Community, Frappe DataTable, HyperList,
-  Frappe Gantt, ECharts
-
-## 📝 История изменений
-
-Краткая сводка по текущему состоянию репозитория и недавним коммитам. Полный
-журнал — в истории Git конкретной ветки.
+A brief summary of the current repository state and recent commits. The full
+log is in the specific branch's Git history.
 
 ### 2026-09-10
 
-- Seed секции Workspaces записи `Settings`: `list_limit` 3 и `card_columns` 3;
-  Configuration по-прежнему `card_columns` 5. Существующие строки не
-  перезаписываются.
-- Общий engine параллельного согласования в `dinext_common.workflow_approval`:
-  раунды `Workflow Task`, overrides Workflow RPC, signed email, cron
-  уведомлений и repair finalization.
-- Workspace «Мои согласования», карточки очереди/истории, отчёты
-  `My Approvals`, `My Approval History`, `Approval Monitoring`.
-- Флаг `enable_parallel_workflow_approval` в `site_config` и boot; retention
-  терминальных раундов через `cleanup_workflow_approval_rounds`.
-- Domain-адаптеры: AFL UX в `dinext_projects`, оркестрация UT в
-  `dinext_timesheets`.
+- The Settings Workspaces section defaults to `list_limit` 3 and `card_columns` 3; Configuration retains `card_columns` 5. Existing rows are preserved.
+- The shared `dinext_common.workflow_approval` engine adds Workflow Task rounds, Workflow RPC overrides, signed email, cron notifications and finalization repair.
+- My Approvals includes queue/history cards and `My Approvals`, `My Approval History`, `Approval Monitoring` reports.
+- `enable_parallel_workflow_approval` is exposed through site configuration and boot; `cleanup_workflow_approval_rounds` retains terminal audit rounds according to explicit rules.
+- AFL domain UX belongs to `dinext_projects`; UT orchestration belongs to `dinext_timesheets`.
 
 ### 2026-08-14
 
-- Desk landing: ERPNext `Home` скрыт и исключён из меню (включая Workspace
-  Manager); `/app/home` и `/app/workspaces/home` открывают `Dinext`.
-- Frequent / Recent Pages — два ряда pill-плашек, Recent сверху; иконки
-  Workspace из boot, подпись Workspace — только название; Form-подписи по
-  `title_field` или `name`. На записи `Settings` оба чекбокса выключены, на
-  `Dinext` остаются включёнными.
-- Report-карточки хаба ведут на `/app/query-report/{имя отчёта}`.
-- Каталог: Project Management без Task/Issue-списков от Gantt; Scope &
-  Governance больше не регистрируется.
-- Удалены DocType-колонка Recently Opened, поле `show_recently_opened` и
+- Desk landing: ERPNext `Home` is hidden and excluded from the menu (including Workspace
+  Manager); `/app/home` and `/app/workspaces/home` open `Dinext`.
+- Frequent / Recent Pages use two rows of pills, with Recent at the top; Workspace
+  icons come from boot, Workspace labels show only the name, and Form labels use
+  `title_field` or `name`. On the `Settings` record, both checkboxes are disabled; on
+  `Dinext`, they remain enabled.
+- Hub Report cards link to `/app/query-report/{report_name}`.
+- Catalog: Project Management has no Task/Issue lists from Gantt; Scope &
+  Governance is no longer registered.
+- Removed the Recently Opened DocType column, the `show_recently_opened` field and
   whitelist `get_document_titles`.
-- Quick Create остаётся кнопками; записи секционных списков — компактными
-  строками.
+- Quick Create remains buttons; section list records are compact
+  rows.
 
 ### 2026-08-13
 
-- Секции хаба: `card_columns` — максимум колонок сетки карточек (по умолчанию
-  4, для `Settings` — 5); меньше карточек — ряд на всю ширину.
-- `Dinext Workspace Settings` — именованные записи `Dinext` и `Settings`
-  вместо Single; общий `get_workspace_hub` и renderer в
+- Hub sections: `card_columns` is the maximum number of card grid columns (default
+  4, or 5 for `Settings`); fewer cards produce a full-width row.
+- `Dinext Workspace Settings` uses named `Dinext` and `Settings` records
+  instead of a Single; shared `get_workspace_hub` and renderer in
   `public/js/workspace_hub.js`.
-- Settings Hub читает запись `Settings`; domain apps могут расширять
-  стандартные записи без нового блока.
-- `configure_workspace_menu` выполняется и на `after_migrate`.
+- Settings Hub reads the `Settings` record; domain apps can extend
+  standard records without a new block.
+- `configure_workspace_menu` also runs on `after_migrate`.
 
 ### 2026-08-11 — 2026-08-12
 
-- Workspace menu: корневые `Dinext` / `Settings`, скрытие non-Dinext public
-  workspace, вложение Settings-детей, `default_workspace` для новых
-  пользователей.
-- Dinext Hub и Settings Hub: bilingual Custom HTML Blocks и configurable
-  карточки через `Dinext Workspace Settings`.
-- UI sidebar: left padding основной колонки Workspaces при свёрнутом rail.
+- Workspace menu: `Dinext` / `Settings` roots, hiding non-Dinext public
+  workspaces, nesting Settings children, `default_workspace` for new
+  users.
+- Dinext Hub and Settings Hub: bilingual Custom HTML Blocks and configurable
+  cards through `Dinext Workspace Settings`.
+- Sidebar UI: left padding for the main Workspaces column when the rail is collapsed.
 - Dinext News Feed: publisher DocType + guest API, consumer sync What's New,
-  отключение встроенного Frappe changelog fetch.
-- Domain apps: идемпотентная регистрация карточек через `register_hub_items` /
+  disabling the built-in Frappe changelog fetch.
+- Domain apps: idempotent card registration through `register_hub_items` /
   `register_hub_sections` / `register_hub_doctype_items`.
-- Settings Hub: `Website` под Settings и секция Configuration.
-- Compact Hub lists: персональные quick-create / assigned / liked / attention
-  по секциям с лимитом.
+- Settings Hub: `Website` under Settings and a Configuration section.
+- Compact Hub lists: personal quick-create / assigned / liked / attention
+  lists by section, with a limit.
 
-## 🗂️ Структура репозитория
+## 🗂️ Repository structure
 
 ```text
 dinext_common/
 ├── AGENTS.md                         # Navigation stub → central dinext-docs
-├── README.md                         # Этот документ
-├── license.txt                       # Лицензия GPL-3
-├── pyproject.toml                    # Метаданные пакета, Python и ruff
-├── package.json                      # npm-скрипты тестов JS
-├── .pre-commit-config.yaml           # Локальные проверки
-├── openspec/config.yaml              # Указатель на Store dinext-docs
-├── scripts/                          # Сценарии Form Conflict Merge
+├── README.md                         # English documentation; full Russian version in README.ru.md
+├── license.txt                       # GPL-3 license
+├── pyproject.toml                    # Package metadata, Python and Ruff
+├── package.json                      # JavaScript test scripts
+├── .pre-commit-config.yaml           # Local checks
+├── openspec/config.yaml              # Pointer to the dinext-docs Store
+├── scripts/                          # Form Conflict Merge scenarios
 └── dinext_common/
     ├── hooks.py                      # App configuration, fixtures, Desk hooks
     ├── install.py                    # after_install
     ├── boot.py                       # Desk bootinfo
     ├── changelog_feed.py             # News Feed publisher/consumer
     ├── workflow_approval/            # Engine, API, notifications, retention
-    ├── workspace_hub.py              # Whitelisted API хабов
-    ├── workspace_hub_lists.py        # Персональные списки DocType
-    ├── workspace_hub_models.py       # TypedDict payload хаба
+    ├── workspace_hub.py              # Whitelisted hub API
+    ├── workspace_hub_lists.py        # Personal DocType lists
+    ├── workspace_hub_models.py       # TypedDict hub payload
     ├── fixture_analysis_api.py       # Whitelisted API Fixture Analysis
-    ├── modules.txt                   # Имя Desk-модуля
-    ├── patches.txt                   # Список миграционных патчей
-    ├── patches/                      # Workspace settings и workflow approval
-    ├── fixtures/                     # Экспортированные Frappe metadata
-    ├── translations/ru.csv           # Русские переводы
-    ├── public/css/                   # Общие стили, hub, sidebar, AG Grid
-    ├── public/js/                    # Desk JS, хаб, table, FCM, charts
-    ├── public/images/                # Брендинг Dinext
+    ├── modules.txt                   # Desk module name
+    ├── patches.txt                   # Migration patch list
+    ├── patches/                      # Workspace settings and Workflow approval
+    ├── fixtures/                     # Exported Frappe metadata
+    ├── translations/ru.csv           # Russian translations
+    ├── public/css/                   # Shared styles, hubs, sidebar and AG Grid
+    ├── public/js/                    # Desk JS, hubs, tables, FCM and charts
+    ├── public/images/                # Dinext branding
     ├── setup/                        # Workspace menu, hub catalog, CoA
-    ├── tests/                        # Python-тесты
+    ├── tests/                        # Python tests
     └── dinext_common/
         ├── doctype/                  # Settings, News Feed, cleanup, Workflow Task
-        ├── fixture_analysis/         # Discovery и diff fixtures
+        ├── fixture_analysis/         # Fixture discovery and comparison
         ├── page/fixture_analysis/    # Desk Page
         ├── report/                   # My Approvals, history, monitoring
-        ├── workspace/                # Dinext, Settings, Мои согласования
+        ├── workspace/                # Dinext, Settings and My Approvals
         └── website_theme/            # Dinext Theme
 ```
 
-Основные части:
+Main components:
 
-- `dinext_common/hooks.py` — метаданные приложения, экспорт fixtures, hooks
-  Desk, install/migrate, news feed, JS для Project, пути брендинга.
+- `dinext_common/hooks.py` — application metadata, fixture exports, Desk
+  hooks, install/migrate, news feed, Project JS, branding paths.
 - `dinext_common/install.py` — post-install: news feed + configure workspace
   menu.
-- `dinext_common/setup/workspace.py` — курирование workspace menu и подключение
+- `dinext_common/setup/workspace.py` — workspace menu curation and connection of
   hub blocks.
-- `dinext_common/setup/hub_catalog.py` — регистрация карточек/секций/DocType-вкладов.
-- `dinext_common/setup/company.py` и `chart_of_accounts.py` — шаблон CoA Dinext.
-- `dinext_common/workflow_approval/` — engine, API, permissions, notifications,
-  signed links, retention, migration.
-- `dinext_common/public/js/workflow_approval.js` — Desk-gate согласования.
-- `dinext_common/public/js/workspace_hub.js` — общий renderer хабов, включая
-  списки страниц.
-- `dinext_common/public/js/table/` — ядро DinextTable.
-- `dinext_common/public/js/form_conflict_merge/` — слияние конфликтов формы.
-- `openspec/config.yaml` — pointer на Store; не дублирует specs/changes.
+- `dinext_common/setup/hub_catalog.py` — registration of cards/sections/DocType contributions.
+- `dinext_common/setup/company.py` and `chart_of_accounts.py` — Dinext CoA template.
+- `dinext_common/public/js/workspace_hub.js` — shared hub renderer, including
+  page lists.
+- `dinext_common/public/js/table/` — DinextTable core.
+- `dinext_common/public/js/form_conflict_merge/` — form conflict merging.
+- `openspec/config.yaml` — Store pointer; does not duplicate specs/changes.
+- `dinext_common/workflow_approval/` owns the engine, API, permissions, notifications, signed links, retention and migration.
+- `dinext_common/public/js/workflow_approval.js` provides the shared approval Desk gate.
+- `openspec/config.yaml` points to the central Store; specs/changes are not duplicated here.
 
-Сгенерированные `public/dist/` в описание текущего устройства не входят.
+Generated `public/dist/` assets are not included in the current structure description.
 
-## 🔗 Схема взаимодействия
+## 🔗 Interaction diagram
 
-Bench загружает `hooks.py`. Fixtures формируют metadata сайта, `after_install`
-и `after_migrate` настраивают workspace-меню и News Feed. Domain-приложения
-регистрируют карточки хаба в именованных записях настроек. Renderer хаба
-добавляет списки страниц из boot и сессионной истории маршрутов. При
-включённом флаге `enable_parallel_workflow_approval` Desk и Workflow RPC
-идут через `dinext_common.workflow_approval`.
+Bench loads `hooks.py`. Fixtures form site metadata; `after_install` and `after_migrate` configure the workspace menu and News Feed. Domain applications register cards in named settings records. The hub renderer adds page lists from boot and session route history. When `enable_parallel_workflow_approval` is enabled, Desk and Workflow RPCs use `dinext_common.workflow_approval`.
 
-### Установка и миграция
+### Installation and migration
 
 ```mermaid
 flowchart LR
   getApp["bench get-app"] --> installApp["bench install-app dinext_common"]
   installApp --> migrate["bench migrate"]
-  migrate --> fixtures["Загрузка fixtures"]
+  migrate --> fixtures["Loading fixtures"]
   fixtures --> website["Website Settings"]
   fixtures --> navbar["Navbar Settings"]
   fixtures --> homepage["Web Page"]
@@ -1015,7 +985,7 @@ flowchart LR
   afterMigrate --> newsSetup
   afterMigrate --> workspaceMenu
   migrate --> build["bench build"]
-  build --> assets["Desk и website assets готовы"]
+  build --> assets["Desk and website assets ready"]
 ```
 
 ### Dinext Hub
@@ -1052,17 +1022,17 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  user["Открыть /app/fixture-analysis"] --> overview["get_fixture_analysis_overview"]
-  overview --> discover["Поиск приложений и fixture-записей"]
-  discover --> compare["Сравнение fixture JSON и БД"]
-  compare --> summary["Счётчики app / DocType / record"]
-  user --> records["Выбор DocType и фильтров"]
+  user["Open /app/fixture-analysis"] --> overview["get_fixture_analysis_overview"]
+  overview --> discover["Discover applications and fixture records"]
+  discover --> compare["Compare fixture JSON and database"]
+  compare --> summary["App / DocType / record counts"]
+  user --> records["Select DocType and filters"]
   records --> detail["get_fixture_analysis_record_detail"]
-  detail --> fieldDiff["Diff полей и текста"]
-  detail --> openForm["Open in System, если запись в БД"]
+  detail --> fieldDiff["Field and text diff"]
+  detail --> openForm["Open in System if record is in database"]
 ```
 
-### Параллельное согласование
+### Parallel approval
 
 ```mermaid
 flowchart LR
@@ -1071,39 +1041,36 @@ flowchart LR
   deskJs[workflow_approval.js] --> applyRpc[apply_workflow / vote]
   applyRpc --> engine
   engine --> tasks[Workflow Task rounds]
-  tasks --> desk[Workspace Мои согласования]
+  tasks --> desk[Workspace My Approvals]
   engine --> mail[Workflow Action email]
   domainHooks[workflow_approval_* hooks] --> engine
   dailyCleanup[Data Cleanup Daily] --> retention[cleanup_workflow_approval_rounds]
   retention --> tasks
 ```
 
-Source-документ и Desk-действие создают или закрывают раунд `Workflow Task`.
-Workspace и отчёты читают очередь через API. Domain-приложения добавляют
-lock/pending/digest через hooks. Retention удаляет только терминальные раунды
-по `Workflow Cleanup Rule`.
+Source documents and Desk actions create or close `Workflow Task` rounds. The workspace and reports read the queue through the API. Domain applications add locking, pending-approver and digest adapters through hooks. Retention removes only terminal rounds permitted by `Workflow Cleanup Rule`.
 
-### Ежедневная очистка
+### Daily cleanup
 
 ```mermaid
 flowchart LR
-  scheduler["Ежедневный scheduler"] --> dailyScript["Data Cleanup Daily"]
-  dailyScript --> rulesDoc["Чтение Data Cleanup Rules"]
-  rulesDoc --> versionJob["Очередь: version cleanup"]
-  rulesDoc --> commentJob["Очередь: comment cleanup"]
-  rulesDoc --> fileJob["Очередь: file cleanup"]
-  rulesDoc --> communicationJob["Очередь: communication cleanup"]
-  rulesDoc --> eventJob["Очередь: event cleanup"]
-  rulesDoc --> workflowJob["Очередь: workflow cleanup"]
-  versionJob --> longQueue["Worker очереди long"]
+  scheduler["Daily scheduler"] --> dailyScript["Data Cleanup Daily"]
+  dailyScript --> rulesDoc["Read Data Cleanup Rules"]
+  rulesDoc --> versionJob["Queue: version cleanup"]
+  rulesDoc --> commentJob["Queue: comment cleanup"]
+  rulesDoc --> fileJob["Queue: file cleanup"]
+  rulesDoc --> communicationJob["Queue: communication cleanup"]
+  rulesDoc --> eventJob["Queue: event cleanup"]
+  rulesDoc --> workflowJob["Queue: workflow cleanup"]
+  versionJob --> longQueue["Long queue worker"]
   commentJob --> longQueue
   fileJob --> longQueue
   communicationJob --> longQueue
   eventJob --> longQueue
   workflowJob --> longQueue
-  longQueue --> dataStore["Пакетное удаление старых записей"]
+  longQueue --> dataStore["Batch deletion of old records"]
 ```
 
-## 📜 Лицензия
+## 📜 License
 
-GNU GPL v3. Текст — в [license.txt](license.txt).
+GNU GPL v3. See [license.txt](license.txt) for the license text.
