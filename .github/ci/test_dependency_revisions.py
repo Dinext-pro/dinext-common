@@ -28,6 +28,10 @@ class TestDependencyRevisions(unittest.TestCase):
         result = self.select(self.catalog, self.order, 'dinext_projects', {})
         self.assertEqual(result, {'frappe': 'f' * 40, 'dinext_common': 'main'})
 
+    def test_bootstrap_frappe_is_selected_when_catalogue_dependencies_omit_it(self):
+        result = self.select(self.catalog, ['dinext_common', 'dinext_projects'], 'dinext_projects', {})
+        self.assertEqual(result, {'frappe': 'f' * 40, 'dinext_common': 'b' * 40})
+
     def test_own_app_and_unknown_dependency_cannot_be_overridden(self):
         for name in ['dinext_projects', 'unknown']:
             with self.subTest(name=name), self.assertRaises(ValueError):

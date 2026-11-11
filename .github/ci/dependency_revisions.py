@@ -5,6 +5,8 @@ import re
 def select_dependency_revisions(catalog, order, app, overrides):
     if not isinstance(overrides, dict):
         raise ValueError('dependency_revisions must map dependency names to full commit SHAs')
+    # The framework is bootstrapped separately, even if app metadata omits it.
+    order = list(dict.fromkeys(['frappe', *order]))
     dependencies = set(order) - {app}
     for name, revision in overrides.items():
         if name not in dependencies:
