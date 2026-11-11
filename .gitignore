@@ -11,3 +11,5 @@ fixtures/server_script.json
 public/dist/
 dist/
 build/
+/cypress/results/
+/cypress/screenshots/

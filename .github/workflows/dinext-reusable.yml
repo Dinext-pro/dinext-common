@@ -49,6 +49,9 @@ jobs:
     - name: Test development admission policy
       if: github.repository == 'Dinext-pro/dinext-common'
       run: python3 "$GITHUB_WORKSPACE/.github/ci/test_development_policy.py"
+    - name: Test dependency revision selection
+      if: github.repository == 'Dinext-pro/dinext-common'
+      run: python3 -m unittest discover -s .github/ci -p test_dependency_revisions.py
     - name: Test release gates and native workflow generation
       if: github.repository == 'Dinext-pro/dinext-common'
       run: |

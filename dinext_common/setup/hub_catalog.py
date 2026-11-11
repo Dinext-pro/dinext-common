@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Iterable, Mapping
 
 import frappe
@@ -18,6 +19,50 @@ SETTINGS_WORKSPACES_SECTION_CARD_COLUMNS = 3
 DINEXT_HUB_SETTINGS = "Dinext"
 SETTINGS_HUB_SETTINGS = "Settings"
 SETTINGS_ROLES = ("System Manager", "Workspace Manager")
+
+# Only new rows use this order. Existing administrator layouts are never sorted.
+_DINEXT_ROW_ORDER = {
+	"items": (
+		("Workspace", "Мои задачи"),
+		("Workspace", "Мои проекты"),
+		("DocType", "Project Portfolio"),
+		("Workspace", "Скоринг проектов"),
+		("Report", "Task Epic Burndown"),
+		("Workspace", "My Timesheets"),
+		("Workspace", "Разработки"),
+		("Workspace", "Моя доска"),
+		("URL", "https://docs.dinext.ru"),
+		("Workspace", "Goals"),
+	),
+	"sections": (("My Work",), ("Project Management",)),
+	"doctype_items": (
+		("My Work", "Issue"),
+		("My Work", "Task"),
+		("Project Management", "Project"),
+		("Project Management", "Project Portfolio"),
+	),
+}
+_ROW_KEY_FIELDS = {
+	"items": ("element_type", "target"),
+	"sections": ("section",),
+	"doctype_items": ("section", "document_type"),
+}
+
+
+def _insert_hub_row(settings, table: str, values: Mapping, settings_name: str):
+	"""Insert a new default before its next known neighbor, retaining existing order."""
+	position = -1
+	if settings_name == DINEXT_HUB_SETTINGS:
+		fields = _ROW_KEY_FIELDS[table]
+		ranks = {key: idx for idx, key in enumerate(_DINEXT_ROW_ORDER[table])}
+		rank = ranks.get(tuple(values.get(field) for field in fields))
+		if rank is not None:
+			for idx, row in enumerate(settings.get(table) or []):
+				next_rank = ranks.get(tuple(row.get(field) for field in fields))
+				if next_rank is not None and next_rank > rank:
+					position = idx
+					break
+	return settings.append(table, values, position=position)
 
 
 def ensure_workspace_settings(settings_name: str, *, roles: Iterable[str] | None = None):
@@ -104,7 +149,7 @@ def register_hub_items(
 		if raw.get("required_role"):
 			row_data["required_role"] = raw["required_role"]
 
-		settings.append("items", row_data)
+		existing[key] = _insert_hub_row(settings, "items", row_data, settings_name)
 		changed = True
 
 	if changed:
@@ -158,7 +203,7 @@ def register_hub_sections(
 		if source_app:
 			row_data["source_app"] = source_app
 
-		settings.append("sections", row_data)
+		existing[section] = _insert_hub_row(settings, "sections", row_data, settings_name)
 		changed = True
 
 	if changed:
@@ -179,6 +224,9 @@ def register_hub_doctype_items(
 	Empty ``list_filter`` is backfilled from the payload. ``show_assigned`` and
 	``show_quick_create`` are enabled one-way when the payload enables them.
 	Unknown keys such as legacy ``show_recently_opened`` / ``recent`` are ignored.
+	An optional ``fallback_source_app`` plus ``fallback_defaults`` adopts a matching
+	fallback row field-by-field. For these opt-in contributions existing owner rows
+	are preserved without legacy backfills, so adopted administrator edits persist.
 	"""
 	if not frappe.db.exists("DocType", "Dinext Workspace Settings DocType"):
 		return
@@ -202,45 +250,72 @@ def register_hub_doctype_items(
 
 		app_key = source_app or raw.get("source_app") or ""
 		key = (section, document_type, app_key)
-		attention_filter = _serialize_hub_filter(raw.get("attention_filter"))
-		list_filter = _serialize_hub_filter(raw.get("list_filter"))
-		show_quick_create = 1 if raw.get("show_quick_create") or raw.get("quick_create") else 0
-		show_assigned = 1 if raw.get("show_assigned") or raw.get("assigned") else 0
+		row_data = _doctype_values(raw, has_list_filter)
+		fallback_app = raw.get("fallback_source_app")
+		fallback_defaults = raw.get("fallback_defaults")
+		adopts_fallback = bool(fallback_app and isinstance(fallback_defaults, Mapping))
+		fallback_key = (section, document_type, fallback_app)
+		if adopts_fallback and key not in existing and fallback_key in existing:
+			row = existing.pop(fallback_key)
+			baseline = _doctype_values(fallback_defaults, has_list_filter)
+			for field, value in row_data.items():
+				if _same_hub_value(field, row.get(field), baseline.get(field)):
+					row.set(field, value)
+			row.source_app = app_key
+			existing[key] = row
+			changed = True
+			continue
 
 		if key in existing:
+			if adopts_fallback:
+				continue
 			row = existing[key]
+			list_filter = row_data.get("list_filter")
 			if has_list_filter and list_filter and not cstr(row.get("list_filter") or "").strip():
 				row.list_filter = list_filter
 				changed = True
-			if show_assigned and not row.get("show_assigned"):
+			if row_data["show_assigned"] and not row.get("show_assigned"):
 				row.show_assigned = 1
 				changed = True
-			if show_quick_create and not row.get("show_quick_create"):
+			if row_data["show_quick_create"] and not row.get("show_quick_create"):
 				row.show_quick_create = 1
 				changed = True
 			continue
 
-		row_data = {
-			"section": section,
-			"document_type": document_type,
-			"enabled": 1 if raw.get("enabled", 1) else 0,
-			"show_quick_create": show_quick_create,
-			"show_assigned": show_assigned,
-			"show_liked": 1 if raw.get("show_liked") or raw.get("liked") else 0,
-			"show_attention": 1 if raw.get("show_attention") or raw.get("attention") else 0,
-			"attention_filter": attention_filter,
-		}
-		if has_list_filter:
-			row_data["list_filter"] = list_filter
 		if app_key:
 			row_data["source_app"] = app_key
 
-		settings.append("doctype_items", row_data)
+		existing[key] = _insert_hub_row(settings, "doctype_items", row_data, settings_name)
 		changed = True
 
 	if changed:
 		settings.save(ignore_permissions=True)
 		frappe.clear_cache(doctype="Dinext Workspace Settings")
+
+
+def _doctype_values(raw: Mapping, has_list_filter: bool) -> dict:
+	values = {
+		"section": (raw.get("section") or "").strip(),
+		"document_type": raw.get("document_type") or raw.get("doctype"),
+		"enabled": 1 if raw.get("enabled", 1) else 0,
+		"show_quick_create": 1 if raw.get("show_quick_create") or raw.get("quick_create") else 0,
+		"show_assigned": 1 if raw.get("show_assigned") or raw.get("assigned") else 0,
+		"show_liked": 1 if raw.get("show_liked") or raw.get("liked") else 0,
+		"show_attention": 1 if raw.get("show_attention") or raw.get("attention") else 0,
+		"attention_filter": _serialize_hub_filter(raw.get("attention_filter")),
+	}
+	if has_list_filter:
+		values["list_filter"] = _serialize_hub_filter(raw.get("list_filter"))
+	return values
+
+
+def _same_hub_value(field: str, actual, baseline) -> bool:
+	if field in ("attention_filter", "list_filter"):
+		try:
+			return json.loads(actual or "[]") == json.loads(baseline or "[]")
+		except (TypeError, ValueError):
+			pass
+	return actual == baseline
 
 
 def relocate_hub_item_section(

@@ -7,6 +7,8 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
+from dependency_revisions import select_dependency_revisions
+
 support = Path(__file__).resolve().parent
 source = Path(sys.argv[1]).resolve()
 config = json.loads((source / '.github/dinext-ci.json').read_text())
@@ -40,12 +42,13 @@ for post in config.get('post_install', []):
     dependency_order(post, done=order)
 if config['mode'] == 'platform-smoke':
     dependency_order('erpnext', done=order)
+revisions = select_dependency_revisions(catalog, order, app, config.get('dependency_revisions', {}))
 def pinned_checkout(name):
     spec = catalog[name]
     destination = Path(os.environ['RUNNER_TEMP']) / 'dinext-ci-inputs' / name
     destination.mkdir(parents=True)
     run('git', 'init', str(destination), cwd=destination.parent)
-    revision = spec.get('ci_sha') or spec['branch']
+    revision = revisions[name]
     run('git', 'fetch', '--no-tags', '--depth=1', spec['repository'], revision, cwd=destination)
     run('git', 'checkout', '--detach', 'FETCH_HEAD', cwd=destination)
     run('git', 'update-ref', 'refs/heads/dinext-ci-pinned', 'HEAD', cwd=destination)

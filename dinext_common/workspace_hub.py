@@ -219,7 +219,11 @@ def _get_route(element_type: str, target: str) -> str | None:
 
 def _get_workspace_route(target: str) -> str | None:
 	if not frappe.db.exists("Workspace", target):
-		return None
+		# Older Timesheets releases keep the translated Workspace name.
+		legacy = {"My Timesheets": "Мои Таймшиты"}.get(target)
+		if not legacy or not frappe.db.exists("Workspace", legacy):
+			return None
+		target = legacy
 
 	workspace = frappe.get_doc("Workspace", target)
 	if workspace.is_hidden or not frappe.has_permission("Workspace", "read", workspace):

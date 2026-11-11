@@ -1,0 +1,182 @@
+{
+  "settings_name": "Dinext",
+  "show_frequent_pages": 1,
+  "show_recent_pages": 1,
+  "doctype_items": [
+    {
+      "section": "My Work",
+      "document_type": "Issue",
+      "enabled": 1,
+      "show_quick_create": 1,
+      "show_assigned": 1,
+      "show_liked": 1,
+      "show_attention": 1,
+      "attention_filter": "[\n [\n  \"Issue\",\n  \"status\",\n  \"in\",\n  [\n   \"Open\",\n   \"Replied\",\n   \"On Hold\"\n  ],\n  false\n ],\n [\n  \"Issue\",\n  \"custom_is_overdue\",\n  \"=\",\n  1,\n  false\n ]\n]",
+      "list_filter": "[\n [\n  \"Issue\",\n  \"status\",\n  \"in\",\n  [\n   \"Open\",\n   \"Replied\",\n   \"On Hold\"\n  ],\n  false\n ]\n]",
+      "source_app": "dinext_projects"
+    },
+    {
+      "section": "My Work",
+      "document_type": "Task",
+      "enabled": 1,
+      "show_quick_create": 1,
+      "show_assigned": 1,
+      "show_liked": 1,
+      "show_attention": 1,
+      "attention_filter": "[\n [\n  \"Task\",\n  \"status\",\n  \"=\",\n  \"Overdue\",\n  false\n ],\n [\n  \"Task\",\n  \"type\",\n  \"!=\",\n  \"Issue\",\n  false\n ]\n]",
+      "list_filter": "[\n [\n  \"Task\",\n  \"type\",\n  \"!=\",\n  \"Issue\",\n  false\n ],\n [\n  \"Task\",\n  \"status\",\n  \"not in\",\n  [\n   \"Completed\",\n   \"Cancelled\"\n  ],\n  false\n ]\n]",
+      "source_app": "dinext_projects"
+    },
+    {
+      "section": "Project Management",
+      "document_type": "Project",
+      "enabled": 1,
+      "show_quick_create": 1,
+      "show_assigned": 1,
+      "show_liked": 0,
+      "show_attention": 1,
+      "attention_filter": "[\n [\n  \"Project\",\n  \"workflow_state\",\n  \"=\",\n  \"\\u041d\\u0430 \\u0441\\u043e\\u0433\\u043b\\u0430\\u0441\\u043e\\u0432\\u0430\\u043d\\u0438\\u0438\",\n  false\n ]\n]",
+      "list_filter": "[\n [\n  \"Project\",\n  \"status\",\n  \"not in\",\n  [\n   \"Completed\",\n   \"Cancelled\"\n  ],\n  false\n ]\n]",
+      "source_app": "dinext_projects"
+    },
+    {
+      "section": "Project Management",
+      "document_type": "Project Portfolio",
+      "enabled": 1,
+      "show_quick_create": 1,
+      "show_assigned": 1,
+      "show_liked": 0,
+      "show_attention": 0,
+      "attention_filter": "[]",
+      "list_filter": "[\n [\n  \"Project Portfolio\",\n  \"status\",\n  \"=\",\n  \"\\u0410\\u043a\\u0442\\u0438\\u0432\\u043d\\u044b\\u0439\",\n  false\n ]\n]",
+      "source_app": "dinext_projects"
+    }
+  ],
+  "sections": [
+    {
+      "section": "My Work",
+      "list_limit": 5,
+      "card_columns": 3,
+      "source_app": "dinext_projects"
+    },
+    {
+      "section": "Project Management",
+      "list_limit": 8,
+      "card_columns": 4,
+      "source_app": "dinext_projects"
+    }
+  ],
+  "items": [
+    {
+      "section": "My Work",
+      "element_type": "Workspace",
+      "target": "Мои задачи",
+      "label": "My Tasks",
+      "icon": "assign",
+      "description": "Personal dashboard for your Issues and Tasks: assigned, overdue, and paused items, milestone quick lists, and shortcuts to create new requests.",
+      "required_role": null,
+      "enabled": 1,
+      "source_app": "dinext_projects"
+    },
+    {
+      "section": "Project Management",
+      "element_type": "Workspace",
+      "target": "Мои проекты",
+      "label": "My Projects",
+      "icon": "project",
+      "description": "Portfolio overview, project directories, status breakdowns, workload and budget reports, and cost-center allocation links.",
+      "required_role": null,
+      "enabled": 1,
+      "source_app": "dinext_projects"
+    },
+    {
+      "section": "Project Management",
+      "element_type": "DocType",
+      "target": "Project Portfolio",
+      "label": "Project Portfolio",
+      "icon": "organization",
+      "description": "Groups related projects into portfolios for portfolio-level tracking and scoring.",
+      "required_role": null,
+      "enabled": 1,
+      "source_app": "dinext_projects"
+    },
+    {
+      "section": "Project Management",
+      "element_type": "Workspace",
+      "target": "Скоринг проектов",
+      "label": "Project Scoring",
+      "icon": "quality",
+      "description": "Project evaluation hub: scorecards in progress, review or approval, gate failures, scoring profiles, and portfolio reporting.",
+      "required_role": null,
+      "enabled": 1,
+      "source_app": "dinext_project_evaluation"
+    },
+    {
+      "section": "Project Management",
+      "element_type": "Report",
+      "target": "Task Epic Burndown",
+      "label": "Task Burndown",
+      "icon": "chart",
+      "description": "Burndown chart for project task progress.",
+      "required_role": null,
+      "enabled": 1,
+      "source_app": "dinext_project_tasks_gantt"
+    },
+    {
+      "section": "My Work",
+      "element_type": "Workspace",
+      "target": "My Timesheets",
+      "label": "My Timesheets",
+      "icon": "hr",
+      "description": "Personal time-tracking hub: your timesheets, leave and expense requests, pending approvals, utilization reports, and related settings.",
+      "required_role": null,
+      "enabled": 1,
+      "source_app": "dinext_timesheets"
+    },
+    {
+      "section": "My Work",
+      "element_type": "Workspace",
+      "target": "Разработки",
+      "label": "Development",
+      "icon": "stock",
+      "description": "GitLab-linked development operations: task and issue status, discrepancies, pipeline failures, traceability exceptions, releases, and artifacts.",
+      "required_role": null,
+      "enabled": 1,
+      "source_app": "dinext_git"
+    },
+    {
+      "section": "My Work",
+      "element_type": "Workspace",
+      "target": "Моя доска",
+      "label": "My Board",
+      "icon": "kanban",
+      "description": "Personal Kanban workspace with the My Kanban board for tracking your work visually.",
+      "required_role": null,
+      "enabled": 1,
+      "source_app": "dinext_kanban"
+    },
+    {
+      "section": "Help",
+      "element_type": "URL",
+      "target": "https://docs.dinext.ru",
+      "label": "Documentation",
+      "icon": "help",
+      "description": "Guides and reference material for working with Dinext.",
+      "required_role": null,
+      "enabled": 1,
+      "source_app": "dinext_common"
+    },
+    {
+      "section": "My Work",
+      "element_type": "Workspace",
+      "target": "Goals",
+      "label": "Goals",
+      "icon": "arrow-up-right",
+      "description": "Goal dashboard: counts, my progress and goals at risk.",
+      "required_role": null,
+      "enabled": 1,
+      "source_app": "dinext_goals"
+    }
+  ],
+  "roles": []
+}
