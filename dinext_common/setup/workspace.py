@@ -41,13 +41,14 @@ DINEXT_DOCUMENTATION_CARD = {
 	"icon": "help",
 }
 MY_APPROVALS_WORKSPACE = "My Approvals"
+MY_APPROVALS_ICON = "es-line-success"
 MY_APPROVALS_CARD = {
 	"section": "My Work",
 	"element_type": "Workspace",
 	"target": MY_APPROVALS_WORKSPACE,
 	"label": MY_APPROVALS_WORKSPACE,
 	"description": "Personal queue, history and approval monitoring.",
-	"icon": "task-checked",
+	"icon": MY_APPROVALS_ICON,
 }
 
 
@@ -319,8 +320,9 @@ def ensure_default_dinext_hub_settings() -> None:
 	if not frappe.db.exists("DocType", "Dinext Workspace Settings"):
 		return
 
-	ensure_workspace_settings(DINEXT_HUB_SETTINGS)
+	settings = ensure_workspace_settings(DINEXT_HUB_SETTINGS)
 	ensure_workspace_settings(SETTINGS_HUB_SETTINGS, roles=SETTINGS_ROLES)
+	_update_my_approvals_icon(settings)
 	register_hub_items(
 		[DINEXT_DOCUMENTATION_CARD, MY_APPROVALS_CARD],
 		source_app="dinext_common",
@@ -347,6 +349,22 @@ def ensure_default_dinext_hub_settings() -> None:
 		settings_name=SETTINGS_HUB_SETTINGS,
 	)
 	_disable_settings_hub_page_lists()
+
+
+def _update_my_approvals_icon(settings) -> None:
+	"""Replace the unsupported previous defaults without resetting custom icons."""
+	if frappe.db.get_value("Workspace", MY_APPROVALS_WORKSPACE, "icon") == "task-checked":
+		frappe.db.set_value("Workspace", MY_APPROVALS_WORKSPACE, "icon", MY_APPROVALS_ICON)
+
+	for row in settings.items:
+		if (
+			row.element_type == "Workspace"
+			and row.target == MY_APPROVALS_WORKSPACE
+			and row.icon == "task-checked"
+			and (not row.source_app or row.source_app == "dinext_common")
+		):
+			row.db_set("icon", MY_APPROVALS_ICON)
+			frappe.clear_document_cache(settings.doctype, settings.name)
 
 
 def _disable_settings_hub_page_lists() -> None:
