@@ -26,9 +26,12 @@ def get_required_state_pending_tasks(
 			"status": "Working",
 			"round_status": "Open",
 		},
-		fields=["name", "workflow", "approver", "approval_round_id", "workflow_state", "reference_name"],
+		fields=["name", "workflow", "approver", "approval_round_id", "workflow_state", "reference_name",
+			"reference_doctype", "source_created_at", "workflow_process", "round_status"],
 		order_by="approver asc, reference_name asc, name asc",
 	)
+	from dinext_common.workflow_approval.scenarios.service import current_task_rows
+	tasks = current_task_rows(tasks)
 	tasks = [task for task in tasks if task.approver and task.workflow]
 	selected = required_target_task_names(tasks)
 	return [

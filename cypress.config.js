@@ -1,4 +1,5 @@
 module.exports = {
+	trashAssetsBeforeRuns: false,
 	includeShadowDom: true,
 	defaultCommandTimeout: 120000,
 	pageLoadTimeout: 120000,
@@ -33,6 +34,12 @@ module.exports = {
 				return run(`dinext_common.tests.${module}.${method}`);
 			};
 			on("task", {
+				scenarioSeed: () => runFixture("seed", "workflow_scenario_ui"),
+				scenarioCleanup: () => runFixture("cleanup", "workflow_scenario_ui"),
+				scenarioProgressSeed: () => runFixture("seed_progress_user", "workflow_scenario_ui"),
+				scenarioProgressCleanup: () => runFixture("cleanup_progress_user", "workflow_scenario_ui"),
+				scenarioTimesheetSeed: () => runFixture("seed", "workflow_scenario_timesheet_ui"),
+				scenarioTimesheetCleanup: () => runFixture("cleanup", "workflow_scenario_timesheet_ui"),
 				emailLayoutSeed: () => runFixture("seed", "workflow_email_refinement_ui"),
 				emailLayoutCleanup: () => runFixture("cleanup", "workflow_email_refinement_ui"),
 				emailLayoutPreviews: () => runFixture("previews", "workflow_email_refinement_ui"),

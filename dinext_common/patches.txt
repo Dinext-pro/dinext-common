@@ -16,3 +16,5 @@ dinext_common.patches.v1_0.add_workflow_fingerprint_settings
 dinext_common.patches.v1_0.add_workflow_state_email_profiles
 dinext_common.patches.v1_0.add_workflow_deadlines
 dinext_common.patches.v1_0.refine_deadline_chart
+
+dinext_common.patches.v1_0.enable_workflow_scenarios

@@ -141,7 +141,8 @@ app_include_js = [
     "/assets/dinext_common/js/dinext-desk.js",
     "/assets/dinext_common/js/dashboard_filters_fix.js",
     "/assets/dinext_common/js/workspace_sidebar_hover.js",
-    "/assets/dinext_common/js/workflow_approval.js?v=20261107-7",
+    "/assets/dinext_common/js/workflow_scenarios.js?v=20261111-1",
+    "/assets/dinext_common/js/workflow_approval.js?v=20261111-1",
 ]
 
 # Expose site_config flags to Desk bootinfo
@@ -165,7 +166,7 @@ web_include_css = ["/assets/dinext_common/css/public_auth_header.css"]
 
 # include js in doctype views
 doctype_js = {
-	"Workflow": ["public/js/workflow_fingerprint_settings.js", "public/js/workflow_email_settings.js", "public/js/workflow_deadlines.js"],
+	"Workflow": ["public/js/workflow_scenario_settings.js", "public/js/workflow_fingerprint_settings.js", "public/js/workflow_email_settings.js", "public/js/workflow_deadlines.js"],
 	"Project": "public/js/sticky-datatable.js",
 	"Workflow Action": "public/js/workflow_action_desk.js",
 }
@@ -212,8 +213,14 @@ doctype_list_js = {
 # before_install = "dinext_common.install.before_install"
 after_install = "dinext_common.install.after_install"
 after_sync = ["dinext_common.workflow_approval.email_preferences.migrate_preferences"]
-before_migrate = ["dinext_common.workflow_approval.localization.guard_label_migration"]
+before_migrate = [
+	"dinext_common.workflow_approval.scenarios.compat.initialize",
+	"dinext_common.workflow_approval.scenarios.metadata.ensure_fields",
+	"dinext_common.workflow_approval.scenarios.migration.assign_selection_orders",
+	"dinext_common.workflow_approval.localization.guard_label_migration",
+]
 after_migrate = [
+	"dinext_common.workflow_approval.scenarios.migration.execute",
 	"dinext_common.workflow_approval.deadlines.metadata.ensure_metadata",
 	"dinext_common.workflow_approval.email_preferences.ensure_type",
 	"dinext_common.workflow_approval.email_metadata.ensure_workflow_email_fields",
@@ -268,10 +275,14 @@ permission_query_conditions = {
 }
 
 final_permission_query_conditions = {
+	"Workflow Process": "dinext_common.workflow_approval.scenarios.records.process_query_conditions",
+	"Workflow Document Context": "dinext_common.workflow_approval.scenarios.records.context_query_conditions",
 	"Workflow Task": "dinext_common.workflow_approval.permissions.get_workflow_task_permission_query_conditions",
 }
 
 has_permission = {
+	"Workflow Process": "dinext_common.workflow_approval.scenarios.records.has_record_permission",
+	"Workflow Document Context": "dinext_common.workflow_approval.scenarios.records.has_record_permission",
 	"Workflow Task": "dinext_common.workflow_approval.permissions.has_workflow_task_permission",
 	"Dinext Workspace Settings": (
 		"dinext_common.dinext_common.doctype.dinext_workspace_settings"
@@ -285,6 +296,7 @@ has_permission = {
 # Override standard doctype classes
 
 override_doctype_class = {
+	"Workflow": "dinext_common.workflow_approval.scenarios.workflow.DinextWorkflow",
 	"Scheduled Job Type": "dinext_common.overrides.scheduled_job_type.DinextScheduledJobType",
 	"Company": "dinext_common.setup.company.DinextCompany",
 }
@@ -304,6 +316,7 @@ doc_events = {
 	"Email Template": {"before_import": "dinext_common.workflow_approval.email_import.preserve_email_template"},
 	"Workflow": {
 		"before_import": [
+			"dinext_common.workflow_approval.scenarios.metadata.preserve_fixture_settings",
 			"dinext_common.workflow_approval.exclusions.preserve_fixture_exclusions",
 			"dinext_common.workflow_approval.localization.preserve_fixture_transition_ids",
 			"dinext_common.workflow_approval.deadlines.fixtures.preserve_deadline_settings",
@@ -314,14 +327,22 @@ doc_events = {
 		],
 	},
 	"*": {
+		"before_validate": ["dinext_common.workflow_approval.scenarios.service.prepare_source"],
+		"onload": ["dinext_common.workflow_approval.scenarios.api.onload"],
 		"validate": ["dinext_common.workflow_approval.lifecycle.validate_source"],
 		"after_insert": ["dinext_common.workflow_approval.lifecycle.after_source_insert"],
-		"on_update": ["dinext_common.workflow_approval.lifecycle.on_source_update"],
+		"on_update": [
+			"dinext_common.workflow_approval.lifecycle.on_source_update",
+			"dinext_common.workflow_approval.scenarios.compat.native_submission_completed",
+		],
 		"on_update_after_submit": [
-			"dinext_common.workflow_approval.lifecycle.on_source_update_after_submit"
+			"dinext_common.workflow_approval.lifecycle.on_source_update_after_submit",
+			"dinext_common.workflow_approval.scenarios.compat.native_submission_completed",
 		],
 		"on_cancel": ["dinext_common.workflow_approval.lifecycle.on_source_cancel"],
 		"on_trash": ["dinext_common.workflow_approval.lifecycle.on_source_trash"],
+		"before_rename": ["dinext_common.workflow_approval.scenarios.service.before_source_rename"],
+		"after_rename": ["dinext_common.workflow_approval.scenarios.service.after_source_rename"],
 	},
 }
 
@@ -353,6 +374,12 @@ get_changelog_feed = "dinext_common.changelog_feed.get_feed"
 # ------------------------------
 #
 override_whitelisted_methods = {
+	"dinext_timesheets.workflow_approval.get_timesheet_position_actions": (
+		"dinext_common.workflow_approval.scenarios.timesheet_actions.get_timesheet_position_actions"
+	),
+	"dinext_timesheets.workflow_approval.apply_timesheet_position_action": (
+		"dinext_common.workflow_approval.scenarios.timesheet_actions.apply_timesheet_position_action"
+	),
 	"frappe.apps.get_apps": "dinext_common.apps.get_apps",
 	"frappe.model.workflow.apply_workflow": (
 		"dinext_common.workflow_approval.api.apply_workflow"
@@ -395,7 +422,7 @@ override_whitelisted_methods = {
 # Ignore links to specified DocTypes when deleting documents
 # -----------------------------------------------------------
 
-ignore_links_on_delete = ["Workflow Task"]
+ignore_links_on_delete = ["Workflow Task", "Workflow Process", "Workflow Document Context"]
 
 # Request Events
 # ----------------
@@ -445,3 +472,10 @@ ignore_links_on_delete = ["Workflow Task"]
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+
+# Install compatibility once, with request/job-local document selection.
+before_request = ["dinext_common.workflow_approval.scenarios.compat.initialize"]
+after_request = ["dinext_common.workflow_approval.scenarios.compat.cleanup"]
+before_job = ["dinext_common.workflow_approval.scenarios.compat.initialize"]
+after_job = ["dinext_common.workflow_approval.scenarios.compat.cleanup"]
+before_tests = "dinext_common.workflow_approval.scenarios.compat.initialize"

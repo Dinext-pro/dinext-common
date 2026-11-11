@@ -25,8 +25,10 @@ def get_latest_round_comments(doctype: str, names: list[str]) -> list[WorkflowCo
 	if not names:
 		return []
 	task = DocType("Workflow Task")
+	source = DocType(doctype)
 	latest = (
 		frappe.qb.from_(task)
+		.inner_join(source).on((task.reference_name == source.name) & (task.source_created_at == source.creation))
 		.select(
 			task.reference_name,
 			task.approval_round_id,

@@ -265,13 +265,20 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 			/ "user_timesheet"
 			/ "data.js"
 		).read_text()
-		self.assertIn("get_timesheet_context", form_script)
-		context_api = (
-			Path(__file__).resolve().parents[3]
-			/ "dinext_timesheets" / "dinext_timesheets" / "dinext_timesheets"
-			/ "user_timesheet" / "api.py"
-		).read_text().split("def get_timesheet_context(", 1)[1].split("@frappe.whitelist()", 1)[0]
-		self.assertIn('parent.check_permission("read")', context_api)
+		if "get_timesheet_context" in form_script:
+			context_api = (
+				Path(__file__).resolve().parents[3]
+				/ "dinext_timesheets" / "dinext_timesheets" / "dinext_timesheets"
+				/ "user_timesheet" / "api.py"
+			).read_text().split("def get_timesheet_context(", 1)[1].split("@frappe.whitelist()", 1)[0]
+			self.assertIn('parent.check_permission("read")', context_api)
+		else:
+			# The current Timesheets form uses the standard permission-filtered list API.
+			self.assertIn("frappe.desk.reportview.get_list", form_script)
+			adapter = (APP_ROOT / "public" / "js" / "workflow_scenarios.js").read_text()
+			self.assertIn("patchTimesheetData", adapter)
+			self.assertIn("get_workflow_contexts", adapter)
+
 		banner = (APP_ROOT / "public" / "js" / "workflow_approval.js").read_text()
 		paint = banner.split("const paintApprovalBanner =", 1)[1].split("const scheduleBanner =", 1)[0]
 		self.assertIn("get_form_approval_banner", paint)

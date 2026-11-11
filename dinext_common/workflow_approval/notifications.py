@@ -119,6 +119,9 @@ def notification_transitions(task: object, workflow: object) -> list:
 
 
 def recipient_can_read(task: object, source: object, recipient: str) -> bool:
+	from dinext_common.workflow_approval.scenarios import service
+	if service.is_ready() and not service.task_is_current(source, task):
+		return False
 	"""Adapters may require access to a parent used in an email link."""
 	from dinext_common.workflow_approval.engine import _has_source_read_permission
 

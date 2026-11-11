@@ -66,6 +66,7 @@ const frappe = {
     icon: (name) => `<svg data-icon="${name}"><use href="#icon-${name}"></use></svg>`,
   },
   session: { user: "reviewer@example.com" },
+  get_route_str: () => "Form/Example/EX-1",
   user_roles: ["Manager"],
   ui: { form: { States, on() {} } },
   views: { ListView },
@@ -178,7 +179,7 @@ transitions = [
 ];
 const state = new States();
 state.frm = {
-  doc: { owner: "other@example.com" },
+  doc: { doctype: "Example", name: "EX-1", owner: "other@example.com" },
   page: {
     clear_actions_menu: () => labels.splice(0),
     add_action_item: (text, callback) => labels.push({ text, callback }),
@@ -200,6 +201,16 @@ await Promise.resolve();
 assert.match(labels[0].text, /data-workflow-style="danger"/);
 assert.equal(new ListView().get_workflow_action_menu_items().length, 0,
   "parallel workflow actions must not be created before looking up the selection");
+const originalGetTransitions = frappe.workflow.get_transitions;
+let resolveFormTransitions;
+frappe.workflow.get_transitions = () => new Promise(resolve => { resolveFormTransitions = resolve; });
+state.show_actions();
+state.frm.doc = { ...state.frm.doc, name: "EX-2" };
+resolveFormTransitions([{ action: "Reject", next_state: "Red" }]);
+await Promise.resolve();
+assert.match(labels[0].text, /Approve/, "A late form response must not repaint the next document's actions");
+state.frm.doc.name = "EX-1";
+frappe.workflow.get_transitions = originalGetTransitions;
 
 const actions = [];
 const lookup = [];

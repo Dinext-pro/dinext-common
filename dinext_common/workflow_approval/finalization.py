@@ -35,13 +35,27 @@ def repair_round(round_id: str) -> None:
 		engine._cancel_round(round_id, _("Source document was deleted during finalization"))
 		return
 	engine._lock_domain_dependencies(task.reference_doctype, task.reference_name)
-	task = frappe.get_doc("Workflow Task", names[0])
 	source = frappe.get_doc(task.reference_doctype, task.reference_name, for_update=True)
+	task = frappe.get_doc("Workflow Task", names[0], for_update=True)
+	if task.round_status != "Finalizing":
+		return
+	from dinext_common.workflow_approval.scenarios import service
+	from frappe.utils import get_datetime
+	if service.is_ready():
+		service.ensure_context(source,persist_state=True,strict=False)
+		task.reload()
+		selected = service.get_context(source)
+		if (selected["process_id"] != task.get("workflow_process") or selected["workflow"] != task.workflow
+			or not task.source_created_at or get_datetime(task.source_created_at) != get_datetime(source.creation)):
+			engine._mark_conflicted(round_id, _("The Workflow process has changed. Refresh the document before acting."))
+			return
 	context = engine._workflow_context(source)
 	if context and context[3] == winner["next_state"]:
 		from dinext_common.workflow_approval.email_context import entry_context_for_round
 		entry = entry_context_for_round(round_id, winner)
 		engine._finish_round(round_id, winner)
+		from dinext_common.workflow_approval.scenarios import service
+		service.finish_transition(source, task.workflow, task.get("workflow_process"))
 		engine.reconcile_source(source, entry_context=entry)
 		return
 	if task.submission_queue:

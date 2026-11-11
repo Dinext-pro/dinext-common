@@ -8,6 +8,7 @@
 
 	// Use the underlying request promise so all HTTP and connection failures settle.
 	const workflowRequest = async (method, args) => {
+		args = frappe.dinext?.prepareWorkflowRequest?.(method, args) || args;
 		const response = await frappe.call({ method, args, silent: workflowBusy });
 		return response.message;
 	};
@@ -279,8 +280,10 @@
 
 	const withWorkflowComment = (transition, submit) => {
 		if (workflowBusy) return;
+		const execute = (comment) => frappe.dinext?.withWorkflowTargets
+			? frappe.dinext.withWorkflowTargets(transition, () => submit(comment)) : submit(comment);
 		if (!(transition.comment_is_required ?? transition.custom_comment_is_required))
-			return submit("");
+			return execute("");
 		let validation;
 		const dialog = new frappe.ui.Dialog({
 			title: frappe.utils.escape_html(__("Comment required for {0}", [__(transition.action)])),
@@ -290,7 +293,7 @@
 				if (!validation.validate()) return;
 				validation.setSubmitting(true);
 				try {
-					const result = await submit(dialog.get_value("comment"));
+					const result = await execute(dialog.get_value("comment"));
 					dialog.hide();
 					return result;
 				} finally {
@@ -332,7 +335,7 @@
 	const workflowTransitionStyle = (transition) => {
 		const targets = transition.next_state
 			? [transition.next_state]
-			: (transition.positions || []).map((row) => row.next_state);
+			: (transition.targets || transition.positions || []).map((row) => row.next_state);
 		const styles = targets.map((state) => {
 			const local = frappe.get_doc("Workflow State", state);
 			const value = local ? local.style : frappe.boot?.workflow_state_styles?.[state];
@@ -576,8 +579,12 @@
 					if (!target.isCurrent()) return;
 					const args = { doc: frm.doc, action: transition.action };
 					if (enabled()) {
+						const context = transition.workflow
+							? transition : frappe.dinext.getWorkflowContext?.(frm.doc);
 						Object.assign(args, {
 							transition_uuid: transition.custom_transition_uuid,
+							...(context?.workflow ? { workflow: context.workflow, process_id: context.process_id } : {}),
+							...(transition.task_name ? { task_name: transition.task_name } : {}),
 							comment,
 							request_id: requestId(),
 						});
@@ -639,9 +646,18 @@
 		frappe.ui.form.States.prototype.show_actions = function () {
 			if (!enabled()) return showStandardActions.call(this);
 			if (this.frm.doc.__unsaved === 1) return;
+			const target = captureWorkflowForm(this.frm);
+			const generation = this._dinext_actions_generation = (this._dinext_actions_generation || 0) + 1;
+			const context = frappe.dinext.getWorkflowContext?.(this.frm.doc);
+			const processId = context?.process_id;
 			frappe.workflow.get_transitions(this.frm.doc).then((transitions) => {
+				if (!target.isCurrent() || generation !== this._dinext_actions_generation ||
+					processId !== frappe.dinext.getWorkflowContext?.(this.frm.doc)?.process_id) return;
 				this.frm.page.clear_actions_menu();
 				transitions.forEach((transition) => {
+					if (context?.workflow) transition = { ...transition,
+						workflow: transition.workflow || context.workflow,
+						process_id: transition.process_id || context.process_id };
 					this.frm.page.add_action_item(transitionLabel(transition, transitions), () => {
 						const target = captureWorkflowForm(this.frm);
 						return withWorkflowComment(transition, (comment) =>
@@ -749,6 +765,7 @@
 								doctype: listview.doctype,
 								action: transition.action,
 								transition_uuid: transition.transition_uuid,
+								targets: transition.targets,
 								comment,
 								request_id: id,
 								track_progress: names.length > 1,
@@ -915,6 +932,8 @@
 		if (!enabled()) return;
 		const doctypes = new Set([
 			...Object.keys(frappe.workflow?.workflows || {}),
+			...Object.values(typeof locals !== "undefined" ? locals.Workflow || {} : {})
+				.map((workflow) => workflow.document_type).filter(Boolean),
 			"Application For Leave",
 		]);
 		doctypes.delete("User Timesheet");

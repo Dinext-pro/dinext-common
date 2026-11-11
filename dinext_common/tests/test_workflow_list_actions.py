@@ -62,7 +62,7 @@ class TestWorkflowListActions(unittest.TestCase):
 			],
 		)
 		self.assertEqual(
-			result,
+			[{key: value for key, value in row.items() if key != "targets"} for row in result],
 			[{
 				"transition_uuid": "both",
 				"action": "Approve",
@@ -71,6 +71,7 @@ class TestWorkflowListActions(unittest.TestCase):
 				"comment_is_required": True,
 			}],
 		)
+		self.assertEqual([target["task_name"] for target in result[0]["targets"]], ["TASK-1", "TASK-2"])
 		self.assertEqual(get_all.call_count, 2)
 		self.assertEqual(
 			get_all.call_args.kwargs["filters"]["parent"], ("in", ["TASK-1", "TASK-2"])

@@ -101,7 +101,7 @@ def is_workflow_monitor(task: object, user: str | None = None) -> bool:
 def get_monitorable_workflows(user: str | None = None) -> list[str]:
 	user = user or frappe.session.user
 	if _is_system_manager(user):
-		return frappe.get_all("Workflow", filters={"is_active": 1}, pluck="name")
+		return frappe.get_all("Workflow", pluck="name")
 	roles = frappe.get_roles(user)
 	if not roles:
 		return []

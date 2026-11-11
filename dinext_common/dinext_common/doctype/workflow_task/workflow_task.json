@@ -15,6 +15,7 @@
   "finalization_status",
   "column_break_wm1u",
   "workflow",
+  "workflow_process",
   "workflow_state",
   "approval_round_id",
   "approver",
@@ -61,7 +62,8 @@
   "deadline_interval_value",
   "deadline_timezone",
   "deadline_error",
-  "deadline_candidates"
+  "deadline_candidates",
+  "notification_delivery_snapshot"
  ],
  "fields": [
   {
@@ -180,6 +182,14 @@
    "fieldtype": "Link",
    "label": "Workflow",
    "options": "Workflow",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "workflow_process",
+   "fieldtype": "Link",
+   "label": "Workflow Process",
+   "options": "Workflow Process",
    "read_only": 1,
    "search_index": 1
   },
@@ -458,6 +468,15 @@
    "fieldtype": "Long Text",
    "hidden": 1,
    "label": "Deadline Policy Snapshot",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notification_delivery_snapshot",
+   "fieldtype": "Code",
+   "label": "Notification Delivery Snapshot",
+   "options": "JSON",
+   "hidden": 1,
+   "no_copy": 1,
    "read_only": 1
   }
  ],

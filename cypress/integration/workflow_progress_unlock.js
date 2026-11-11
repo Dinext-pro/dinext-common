@@ -1,6 +1,14 @@
 context("Workflow progress releases Desk interaction", () => {
+	let fixture;
+	before(() => {
+		if (Cypress.env("workflowScenariosPrivate"))
+			cy.task("scenarioProgressSeed").then(value => { fixture = value; });
+	});
+	after(() => {
+		if (fixture) cy.task("scenarioProgressCleanup");
+	});
 	beforeEach(() => {
-		cy.login();
+		cy.login(fixture?.user, fixture?.password);
 		cy.openDesk("/app");
 		cy.get("#freeze").should("not.exist");
 		cy.window().should((win) => expect(win.frappe.dom.freeze_count).to.eq(0));

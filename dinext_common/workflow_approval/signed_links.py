@@ -147,6 +147,7 @@ def _render_preview(
 			frappe.session.user != "Guest"
 			and frappe.session.user != user
 		)
+		or not _scenario_task_current(source, task)
 		or task.status != "Working"
 		or task.round_status != "Open"
 		or not _actor_can_read_task(task, user)
@@ -304,7 +305,7 @@ def apply_action(
 
 	if not verify_request():
 		return
-	workflow = get_workflow_name(doctype)
+	workflow = _source_workflow(doctype, docname)
 	action = localization.action_name(workflow, action)
 	current_state = localization.state_name(workflow, current_state)
 	if not is_engine_enabled():
@@ -326,6 +327,9 @@ def apply_action(
 
 	task_name = _find_task_for_action(doctype, docname, action, user)
 	task = frappe.get_doc("Workflow Task", task_name)
+	if not _legacy_task_is_eligible(task):
+		return_link_expired_page(frappe.get_doc(doctype, docname), task.workflow_state)
+		return
 	transition = next(
 		row for row in task.available_workflow_transitions if row.action == action
 	)
@@ -357,7 +361,7 @@ def confirm_legacy_action(
 
 	if not verify_request():
 		return
-	action = localization.action_name(get_workflow_name(doctype), action)
+	action = localization.action_name(_source_workflow(doctype, docname), action)
 	if not is_engine_enabled():
 		from frappe.workflow.doctype.workflow_action.workflow_action import (
 			confirm_action as core_confirm_action,
@@ -368,6 +372,10 @@ def confirm_legacy_action(
 	from dinext_common.workflow_approval.api import _find_task_for_action
 
 	task_name = _find_task_for_action(doctype, docname, action, user)
+	task = frappe.get_doc("Workflow Task", task_name)
+	if not _legacy_task_is_eligible(task):
+		return_link_expired_page(frappe.get_doc(doctype, docname), task.workflow_state)
+		return
 	task = frappe.get_doc("Workflow Task", task_name)
 	transition = next(
 		row for row in task.available_workflow_transitions if row.action == action
@@ -388,3 +396,29 @@ def confirm_legacy_action(
 		),
 		workflow_action.custom_delivery_key if workflow_action else "",
 	)
+
+
+def _source_workflow(doctype: str, name: str) -> str | None:
+	from dinext_common.workflow_approval.scenarios import service
+	if service.is_ready():
+		return service.get_context(frappe.get_doc(doctype, name))["workflow"]
+	return get_workflow_name(doctype)
+
+
+def _scenario_task_current(source, task) -> bool:
+	from dinext_common.workflow_approval.scenarios.service import task_is_current
+	return task_is_current(source, task)
+
+
+def _legacy_task_is_eligible(task) -> bool:
+	"""A document/action URL predates per-task URLs; bind it to migrated task IDs."""
+	from dinext_common.workflow_approval.scenarios import service
+	if not service.is_ready():
+		return True
+	if not task.get("workflow_process"):
+		return False
+	process = frappe.get_doc("Workflow Process",task.workflow_process)
+	try:
+		return task.name in json.loads(process.get("legacy_task_names") or "[]")
+	except (TypeError,ValueError):
+		return False

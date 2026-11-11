@@ -7,6 +7,8 @@ from dinext_common.setup.workspace import configure_workspace_menu
 
 
 def after_install() -> None:
+	from dinext_common.workflow_approval.scenarios.migration import execute as enable_workflow_scenarios
+	enable_workflow_scenarios()
 	from dinext_common.workflow_approval.deadlines.metadata import ensure_metadata
 	from dinext_common.workflow_approval.email_preferences import ensure_type
 	ensure_metadata()

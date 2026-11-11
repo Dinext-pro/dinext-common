@@ -68,11 +68,14 @@ class VoteResult(TypedDict):
 @dataclass
 class AutomationCycleGuard:
 	max_transitions: int = MAX_AUTOMATIC_TRANSITIONS
-	visited: set[tuple[str, str, str]] = field(default_factory=set)
+	visited: set[tuple[str, str, str, str]] = field(default_factory=set)
 	transition_count: int = 0
 
-	def visit(self, workflow: str, state: str, content_fingerprint: str) -> None:
-		key = (workflow, state, content_fingerprint)
+	def permits(self, workflow: str, state: str, content_fingerprint: str, process_id: str = "") -> bool:
+		return (process_id, workflow, state, content_fingerprint) not in self.visited and self.transition_count < self.max_transitions
+
+	def visit(self, workflow: str, state: str, content_fingerprint: str, process_id: str = "") -> None:
+		key = (process_id, workflow, state, content_fingerprint)
 		if key in self.visited:
 			raise AutomationCycleError("Automatic workflow approval cycle detected")
 		if self.transition_count >= self.max_transitions:
@@ -233,6 +236,9 @@ def _transition_dict(transition: object) -> dict[str, Any]:
 
 
 def _workflow_context(doc: object) -> tuple[str, object, str, str] | None:
+	from dinext_common.workflow_approval.scenarios import service
+	if service.is_ready():
+		return service.workflow_context(doc)
 	workflow_name = get_workflow_name(_value(doc, "doctype"))
 	if not workflow_name:
 		return None
@@ -518,6 +524,8 @@ def _insert_round_tasks(
 	tasks = []
 	from dinext_common.workflow_approval.deadlines.lifecycle import prepare_task, snapshot as deadline_snapshot
 	workflow_doc = frappe.get_doc("Workflow", workflow_name)
+	from dinext_common.workflow_approval.scenarios import service
+	scenario_process_id = service.get_context(doc)["process_id"] if service.is_ready() else None
 	deadline_assignments = manifest.setdefault("deadline_assignments", {})
 	from dinext_common.workflow_approval.policy import make_task_name
 
@@ -536,6 +544,7 @@ def _insert_round_tasks(
 				"round_status": "Open",
 				"finalization_status": "Not Required",
 				"workflow": workflow_name,
+				"workflow_process": scenario_process_id,
 				"workflow_state": state,
 				"state": state,
 				"approval_round_id": round_id,
@@ -1055,6 +1064,9 @@ def reconcile_source(
 		return []
 	_lock_domain_dependencies(doctype, name)
 	doc = frappe.get_doc(doctype, name, for_update=True)
+	from dinext_common.workflow_approval.scenarios import service
+	if service.is_ready():
+		service.ensure_context(doc, persist_state=True, strict=False)
 	context = _workflow_context(doc)
 	if not context:
 		return []
@@ -1068,7 +1080,7 @@ def reconcile_source(
 		round_id = active.approval_round_id
 		if active.round_status == "Finalizing":
 			return active_names
-		if active.workflow_state != state:
+		if active.workflow != workflow_name or active.workflow_state != state:
 			_cancel_round(round_id, _("Source workflow state changed"))
 		else:
 			active_manifest = _parse_manifest(active)
@@ -1115,11 +1127,20 @@ def reconcile_source(
 		task_transitions,
 		fingerprint,
 	)
+	process_id = service.get_context(doc)["process_id"] if service.is_ready() else ""
+	guard = cycle_guard or AutomationCycleGuard()
+	may_automate = guard.permits(workflow_name, state, fingerprint.digest, process_id or "")
+	if service.is_ready():
+		may_automate = may_automate and service.automation_budget_available(doc, state_key=serialize_manifest([workflow_name, state, fingerprint.digest]))
 	winner = (
 		_apply_automatic_votes(doc, tasks, manifest, fingerprint)
-		if apply_automatic
-		else None
+		if apply_automatic and may_automate else None
 	)
+	if apply_automatic and not may_automate:
+		message = _("Automatic Workflow processing paused. A new user action is required.")
+		_set_round_values(round_id, {"failure_metadata": serialize_manifest({
+			"reason": "automation_paused", "message": message})})
+		doc.add_comment("Workflow", message)
 	from dinext_common.workflow_approval.projections import create_round_projections
 
 	if not winner:
@@ -1132,8 +1153,9 @@ def reconcile_source(
 			],
 		)
 	if winner:
-		guard = cycle_guard or AutomationCycleGuard()
-		guard.visit(workflow_name, state, fingerprint.digest)
+		guard.visit(workflow_name, state, fingerprint.digest, process_id or "")
+		if service.is_ready():
+			service.consume_automatic_transition(doc, state_key=serialize_manifest([workflow_name, state, fingerprint.digest]))
 		_finalize_round(doc, round_id, winner, cycle_guard=guard)
 	return _round_task_names(round_id)
 
@@ -1223,6 +1245,9 @@ def _apply_automatic_votes(
 		if frappe.db.get_value("Workflow Task", task.name, "status") == "Completed":
 			continue
 		transition = current[0]
+		from dinext_common.workflow_approval.scenarios import service
+		if service.is_ready():
+			service.pin_process(doc, task.get("workflow_process"))
 		complete_task(
 			task,
 			transition,
@@ -1376,11 +1401,16 @@ def cast_vote(
 		raise frappe.PermissionError(_("Only the snapshotted approver can complete this task"))
 	if not frappe.db.get_value("User", task.approver, "enabled"):
 		raise frappe.PermissionError(_("The snapshotted approver is disabled"))
+	from frappe.utils import get_datetime
+	if task.source_created_at and get_datetime(task.source_created_at) != get_datetime(source.creation):
+		raise WorkflowApprovalConflictError(_("The Workflow Task belongs to another document instance"))
 	if task.status == "Completed" and request_id and task.correlation_id == request_id:
 		return _vote_result(task, source, transitioned=task.round_status == "Transitioned")
 	if task.status != "Working" or task.round_status != "Open":
 		raise WorkflowApprovalConflictError(_("Workflow Task is no longer active"))
 
+	from dinext_common.workflow_approval.scenarios import service
+	service.validate_task(source, task)
 	context = _workflow_context(source)
 	if not context:
 		raise WorkflowApprovalConflictError(_("The source document has no active Workflow"))
@@ -1422,6 +1452,9 @@ def cast_vote(
 		required=current_comment_required(task, transition.transition_uuid, workflow=workflow),
 	)
 	fingerprint = get_content_fingerprint(source, workflow)
+	if service.is_ready():
+		service.start_cascade(source, manual=True)
+		service.pin_process(source, task.get("workflow_process"))
 	complete_task(
 		task,
 		transition,
@@ -1494,29 +1527,12 @@ def _vote_result(task: object, source: object, *, transitioned: bool) -> VoteRes
 
 
 def _apply_winning_transition(source: object, action: str) -> None:
-	"""Apply the winning transition without requiring write on the source.
+	"""Apply a reached decision with source-specific, operation-local authority."""
+	from dinext_common.workflow_approval.scenarios.compat import authorized_finalization, install
 
-	Core ``Document.save`` checks ``doc.flags.ignore_permissions`` and reloads
-	the document, so the site flag alone does not cross that boundary. The
-	permission hook is limited to this call. The session user stays the voter.
-	"""
-	from frappe.model.document import Document
-
-	previous_ignore = bool(getattr(frappe.flags, "ignore_permissions", False))
-	original_has_permission = Document.has_permission
-
-	def has_permission(self, permtype="read", *, debug=False, user=None):
-		if getattr(frappe.flags, "ignore_permissions", False):
-			return True
-		return original_has_permission(self, permtype, debug=debug, user=user)
-
-	frappe.flags.ignore_permissions = True
-	Document.has_permission = has_permission
-	try:
+	install()
+	with authorized_finalization(source):
 		core_apply_workflow(source, action)
-	finally:
-		Document.has_permission = original_has_permission
-		frappe.flags.ignore_permissions = previous_ignore
 
 
 def _finalization_actor(round_id: str, winner: dict[str, Any]) -> str:
@@ -1574,6 +1590,17 @@ def _finalize_round(
 	*,
 	cycle_guard: AutomationCycleGuard | None = None,
 ) -> bool:
+	names = _round_task_names(round_id)
+	if not names:
+		return False
+	sample = frappe.get_doc("Workflow Task", names[0], for_update=True)
+	if sample.round_status not in {"Open", "Stalled", "Finalizing"}:
+		return False
+	from dinext_common.workflow_approval.scenarios import service
+	if service.is_ready():
+		context = service.get_context(source)
+		if context["process_id"] != sample.get("workflow_process") or context["workflow"] != sample.workflow:
+			return False
 	actor = _finalization_actor(round_id, winner)
 	_set_round_values(
 		round_id,
@@ -1639,6 +1666,8 @@ def _finalize_round(
 		from dinext_common.workflow_approval.email_context import entry_context_for_round
 		entry = entry_context_for_round(round_id, winner)
 		_finish_round(round_id, winner)
+		from dinext_common.workflow_approval.scenarios import service
+		service.finish_transition(refreshed)
 		reconcile_source(refreshed, cycle_guard=cycle_guard, entry_context=entry)
 		return True
 
@@ -1704,6 +1733,10 @@ def validate_source_change(doc: object) -> None:
 	if not before:
 		return
 	current_state = _value(before, state_field)
+	if (getattr(doc.flags, "workflow_scenario_prepared", False)
+		and getattr(doc.flags, "workflow_scenario_prepared_workflow", None) == _workflow_name
+		and next_state == _workflow.states[0].state):
+		return
 	if current_state == next_state:
 		return
 	finalizing = frappe.get_all(
@@ -1740,6 +1773,8 @@ def validate_source_change(doc: object) -> None:
 
 def archive_source(doc: object) -> None:
 	"""Keep task history while severing links and cancelling active work."""
+	from dinext_common.workflow_approval.scenarios import service
+	service.archive_source(doc)
 	from frappe.workflow.doctype.workflow_action.workflow_action import clear_workflow_actions
 
 	from dinext_common.workflow_approval.projections import close_round_projections, close_task_projection
@@ -1799,6 +1834,9 @@ def apply_domain_transition(
 	"""Apply one trusted producer cascade through a real configured transition."""
 	_lock_domain_dependencies(doctype, name)
 	source = frappe.get_doc(doctype, name, for_update=True)
+	from dinext_common.workflow_approval.scenarios import service
+	if service.is_ready():
+		service.ensure_context(source, persist_state=True)
 	context = _workflow_context(source)
 	if not context:
 		raise WorkflowApprovalConflictError(_("The source document has no active Workflow"))
@@ -1829,6 +1867,12 @@ def apply_domain_transition(
 			)
 		)
 	transition, actors = candidates[0]
+	if service.is_ready():
+		if not service.automation_budget_available(source):
+			reconcile_source(source, apply_automatic=False)
+			return source
+		service.pin_process(source)
+		service.consume_automatic_transition(source)
 	actor = actor or actors[0]
 	active_rounds = {
 		frappe.db.get_value("Workflow Task", task_name, "approval_round_id")
@@ -1860,6 +1904,7 @@ def apply_domain_transition(
 		)
 	refreshed = frappe.get_doc(doctype, name)
 	refreshed.add_comment("Workflow", reason)
+	service.finish_transition(refreshed)
 	reconcile_source(refreshed, entry_context={
 		"kind": "domain", "round_id": round_id, "action": transition.action,
 		"next_state": next_state, "actor": actor,

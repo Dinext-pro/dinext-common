@@ -35,6 +35,7 @@ QUEUE_FIELDS = [
 	"source_created_at",
 	"source_owner",
 	"workflow",
+	"workflow_process",
 	"workflow_state",
 	"approval_round_id",
 	"status",
@@ -57,6 +58,9 @@ QUEUE_FIELDS = [
 
 
 TASK_ACCESS_FIELDS = (
+	"workflow_process",
+	"source_created_at",
+	"round_status",
 	"workflow",
 	"approver",
 	"user",
@@ -164,22 +168,32 @@ def _vote_source_action(
 	comment: object = None,
 	request_id: str | None = None,
 	completion_source: str = "Manual",
+	workflow: str | None = None,
+	process_id: str | None = None,
+	task_name: str | None = None,
 ) -> engine.VoteResult:
-	task_name = _find_task_for_action(
-		doctype,
-		name,
-		action,
-		frappe.session.user,
-		transition_uuid=transition_uuid,
+	explicit_task_name = task_name
+	# A retry may arrive after terminal completion prepared another identical
+	# process. Resolve the original request before looking for a Working task.
+	if request_id and not task_name:
+		task_name = frappe.db.get_value("Workflow Task", {
+			"reference_doctype": doctype, "reference_name": name,
+			"approver": frappe.session.user, "status": "Completed", "correlation_id": request_id,
+		}, "name")
+	task_name = task_name or _find_task_for_action(
+		doctype, name, action, frappe.session.user, transition_uuid=transition_uuid,
 		require_unique_task=completion_source == "Bulk",
 	)
+	if workflow or process_id or explicit_task_name:
+		pointer = frappe.db.get_value("Workflow Task", task_name,
+			["reference_doctype", "reference_name", "workflow", "workflow_process"], as_dict=True)
+		if not pointer or pointer.reference_doctype != doctype or pointer.reference_name != name:
+			raise engine.WorkflowApprovalConflictError(_("The Workflow target no longer matches the selected document"))
+		if (workflow and pointer.workflow != workflow) or (process_id and pointer.workflow_process != process_id):
+			raise engine.WorkflowApprovalConflictError(_("The Workflow process has changed. Refresh the document before acting."))
 	return engine.cast_vote(
-		task_name,
-		transition_uuid=transition_uuid,
-		action=action,
-		comment=comment,
-		request_id=request_id,
-		completion_source=completion_source,
+		task_name, transition_uuid=transition_uuid, action=action, comment=comment,
+		request_id=request_id, completion_source=completion_source,
 	)
 
 
@@ -209,6 +223,9 @@ def apply_workflow(
 	comment: object = None,
 	request_id: str | None = None,
 	transition_uuid: str | None = None,
+	workflow: str | None = None,
+	process_id: str | None = None,
+	task_name: str | None = None,
 ) -> engine.VoteResult:
 	"""Replace direct Frappe apply_workflow with one task vote."""
 	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
@@ -228,6 +245,7 @@ def apply_workflow(
 		transition_uuid=transition_uuid,
 		comment=comment,
 		request_id=request_id,
+		workflow=workflow, process_id=process_id, task_name=task_name,
 	)
 
 
@@ -241,6 +259,19 @@ def publish_workflow_progress(request_id: str, count: int, total: int) -> None:
 	)
 
 
+def _parse_bulk_targets(targets: str | list[dict[str, Any]] | None, names: list[str]) -> dict[str, dict[str, Any]]:
+	if targets is None:
+		return {}
+	rows = _as_list(targets)
+	required = ("name", "workflow", "process_id", "task_name", "transition_uuid")
+	if any(not isinstance(row, dict) or any(not isinstance(row.get(field), str) or not row[field] for field in required) for row in rows):
+		raise frappe.ValidationError(_("Each Workflow target must specify document, Workflow, process, task and transition"))
+	by_name = {row["name"]: row for row in rows}
+	if len(by_name) != len(rows) or set(by_name) != set(names):
+		raise frappe.ValidationError(_("Workflow targets do not match the selected documents"))
+	return by_name
+
+
 @frappe.whitelist(methods=["POST"])
 def bulk_vote(
 	doctype: str,
@@ -250,6 +281,7 @@ def bulk_vote(
 	request_id: str | None = None,
 	transition_uuid: str | None = None,
 	track_progress: bool = False,
+	targets: str | list[dict[str, Any]] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
 	"""Commit each successful vote and return itemized outcomes."""
 	from frappe.model.workflow import show_progress
@@ -258,6 +290,7 @@ def bulk_vote(
 	docnames = list(dict.fromkeys(str(name) for name in _as_list(names)))
 	if len(docnames) > MAX_BULK_DOCUMENTS:
 		raise frappe.ValidationError(_("Bulk approval supports at most 500 documents"))
+	target_by_name = _parse_bulk_targets(targets, docnames)
 	track_progress = str(track_progress).lower() in {"1", "true"}
 	report_progress = track_progress and bool(request_id) and len(docnames) > 1
 	result: dict[str, list[dict[str, Any]]] = {"succeeded": [], "failed": []}
@@ -266,11 +299,14 @@ def bulk_vote(
 			show_progress(docnames, _("Applying: {0}").format(action), index, name)
 		message_count = len(frappe.local.message_log or [])
 		try:
+			target = target_by_name.get(name, {})
 			vote_result = _vote_source_action(
 				doctype,
 				name,
 				action,
-				transition_uuid=transition_uuid,
+				transition_uuid=target.get("transition_uuid") or transition_uuid,
+				workflow=target.get("workflow"), process_id=target.get("process_id"),
+				task_name=target.get("task_name"),
 				comment=comment,
 				request_id=f"{request_id}:{name}" if request_id else None,
 				completion_source="Bulk",
@@ -376,6 +412,7 @@ def bulk_workflow_approval(
 	request_id: str | None = None,
 	transition_uuid: str | None = None,
 	track_progress: bool = False,
+	targets: str | list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
 	"""Apply a small selection inline or return its background job token."""
 	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
@@ -390,6 +427,7 @@ def bulk_workflow_approval(
 			_("Bulk approval only supports up to 500 documents."),
 			title=_("Too Many Documents"),
 		)
+	_parse_bulk_targets(targets, names)
 	track_progress = str(track_progress).lower() in {"1", "true"}
 	args = {
 		"doctype": doctype,
@@ -399,6 +437,7 @@ def bulk_workflow_approval(
 		"request_id": request_id,
 		"transition_uuid": transition_uuid,
 		"track_progress": track_progress,
+		"targets": targets,
 	}
 	if len(names) < 20:
 		return bulk_vote(**args)
@@ -466,7 +505,9 @@ def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monit
 			limit_start=start,
 			limit_page_length=page_size,
 		)
-		selected = [row for row in rows if predicate(row)] if predicate else rows
+		from dinext_common.workflow_approval.scenarios.service import current_task_rows
+		selected = current_task_rows(rows)
+		selected = [row for row in selected if predicate(row)] if predicate else selected
 		prepare_source_permissions(selected, user, source_permissions)
 		result.extend(row for row in selected if can_read(row))
 		if limit and len(result) >= limit:
@@ -555,6 +596,28 @@ def get_my_queue(limit: int = 500) -> list[dict[str, Any]]:
 	return get_personal_queue(limit=int(limit), include_transitions=True)
 
 
+@frappe.whitelist()
+def get_my_source_transitions(doctype: str, names: str | list[str]) -> dict[str, list[dict[str, Any]]]:
+	"""Return exact personal transitions in one permission-filtered task/child batch."""
+	docnames = list(dict.fromkeys(_as_list(names)))
+	if not doctype or any(not isinstance(name, str) or not name for name in docnames):
+		frappe.throw(_("Expected a source type and a list of document names"), frappe.ValidationError)
+	if len(docnames) > MAX_BULK_DOCUMENTS:
+		raise frappe.ValidationError(_("Bulk approval supports at most 500 documents"))
+	if not docnames:
+		return {}
+	rows = _select_task_rows({"reference_doctype": doctype, "reference_name": ("in", docnames),
+		"approver": frappe.session.user, "status": "Working", "round_status": "Open",
+		"source_deleted_at": ("is", "not set")},
+		fields=["name", "reference_name", "workflow", "workflow_process"], order_by="name asc", limit=None)
+	transitions = _available_task_transitions([row.name for row in rows])
+	groups = defaultdict(list)
+	for row in rows:
+		groups[row.reference_name].append(row)
+	return {name: _common_transition_targets(tasks, transitions)
+		for name, tasks in groups.items() if len(tasks) == 1}
+
+
 def get_personal_history(filters=None, *, limit=None, include_transitions=False, fields=QUEUE_FIELDS):
 	values = frappe._dict(filters or {})
 	task_filters = {
@@ -587,6 +650,7 @@ def get_source_approval_history(
 		filters={
 			"reference_doctype": doctype,
 			"reference_name": name,
+			"source_created_at": source.creation,
 			"status": ("in", ("Completed", "Cancelled")),
 		},
 		fields=QUEUE_FIELDS + ["cancelled_at", "cancellation_reason"],
@@ -847,15 +911,21 @@ def get_transitions(
 	doctype, name = _source_identity(doc)
 	if not doctype or not name:
 		return []
+	filters = {
+		"reference_doctype": doctype, "reference_name": name, "approver": frappe.session.user,
+		"status": "Working", "round_status": "Open",
+	}
+	from dinext_common.workflow_approval.scenarios import service
+	if service.is_ready():
+		source = frappe.get_doc(doctype,name)
+		source.check_permission("read")
+		context = service.get_context(source)
+		if not context["process_id"]:
+			return []
+		filters.update(workflow=context["workflow"], workflow_process=context["process_id"], source_created_at=source.creation)
 	task_names = frappe.get_all(
 		"Workflow Task",
-		filters={
-			"reference_doctype": doctype,
-			"reference_name": name,
-			"approver": frappe.session.user,
-			"status": "Working",
-			"round_status": "Open",
-		},
+		filters=filters,
 		pluck="name",
 		limit=2,
 	)
@@ -873,9 +943,55 @@ def get_transitions(
 			"allowed": row.allowed_role,
 			"custom_transition_uuid": row.transition_uuid,
 			"custom_comment_is_required": row.comment_is_required,
+			"workflow": task.workflow, "process_id": task.get("workflow_process"), "task_name": task.name,
 		}
 		for row in task.available_workflow_transitions
 	]
+
+
+class WorkflowTransitionTarget(TypedDict):
+	name: str
+	workflow: str
+	process_id: str | None
+	task_name: str
+	transition_uuid: str
+	next_state: str
+
+
+def _common_transition_targets(tasks: list[Any], transitions: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+	"""Preserve UUID intersection within a schema; mixed schemas match one action."""
+	if not tasks:
+		return []
+	mixed = len({task.get("workflow") for task in tasks}) > 1
+	maps = []
+	for task in tasks:
+		by_key: dict[str, list[dict[str, Any]]] = defaultdict(list)
+		for row in transitions.get(task.name, []):
+			if row.get("transition_uuid") and row.get("action") and row.get("next_state"):
+				by_key[row["action"] if mixed else row["transition_uuid"]].append(row)
+		maps.append({key: rows[0] for key, rows in by_key.items() if len(rows) == 1})
+	keys = set(maps[0])
+	for item in maps[1:]:
+		keys.intersection_update(item)
+	result = []
+	for key in maps[0]:
+		if key not in keys:
+			continue
+		rows = [mapping[key] for mapping in maps]
+		if len({row["action"] for row in rows}) != 1 or (not mixed and len({row["next_state"] for row in rows}) != 1):
+			continue
+		targets: list[WorkflowTransitionTarget] = [{
+			"name": task.reference_name, "workflow": task.get("workflow"),
+			"process_id": task.get("workflow_process"), "task_name": task.name,
+			"transition_uuid": row["transition_uuid"], "next_state": row["next_state"],
+		} for task, row in zip(tasks, rows)]
+		combined = {"action": rows[0]["action"],
+			"comment_is_required": any(row.get("comment_is_required") for row in rows), "targets": targets}
+		for field in ("transition_uuid", "next_state", "allowed"):
+			values = {row.get(field) for row in rows}
+			combined[field] = next(iter(values)) if len(values) == 1 else None
+		result.append(combined)
+	return result
 
 
 @frappe.whitelist()
@@ -900,7 +1016,7 @@ def get_common_list_transitions(doctype: str, names: str | list[str]) -> list[di
 			"status": "Working",
 			"source_deleted_at": ("is", "not set"),
 		},
-		fields=["name", "reference_name"],
+		fields=["name", "reference_name", "workflow", "workflow_process"],
 		order_by="name asc",
 		limit=None,
 	)
@@ -909,29 +1025,8 @@ def get_common_list_transitions(doctype: str, names: str | list[str]) -> list[di
 		return []
 
 	transitions = _available_task_transitions([task_by_source[name] for name in docnames])
-	common = None
-	for name in docnames:
-		by_uuid = {}
-		for row in transitions[task_by_source[name]]:
-			uuid = row["transition_uuid"]
-			if uuid and row["action"] and row["next_state"]:
-				by_uuid[uuid] = row if uuid not in by_uuid else None
-		if common is None:
-			common = {uuid: row for uuid, row in by_uuid.items() if row}
-		else:
-			for uuid, row in list(common.items()):
-				candidate = by_uuid.get(uuid)
-				if (
-					not candidate
-					or row["action"] != candidate["action"]
-					or row["next_state"] != candidate["next_state"]
-				):
-					del common[uuid]
-				else:
-					row["comment_is_required"] |= candidate["comment_is_required"]
-		if not common:
-			return []
-	return list(common.values())
+	by_name = {row.reference_name: row for row in rows}
+	return _common_transition_targets([by_name[name] for name in docnames], transitions)
 
 
 @frappe.whitelist()
@@ -948,15 +1043,10 @@ def get_common_transition_actions(
 
 		return core_get_common_transition_actions(docs, doctype)
 	documents = _as_list(docs)
-	common: set[str] | None = None
-	for document in documents:
-		if isinstance(document, dict) and not document.get("doctype"):
-			document = {**document, "doctype": doctype}
-		actions = {row["action"] for row in get_transitions(document)}
-		common = actions if common is None else common.intersection(actions)
-		if not common:
-			return []
-	return sorted(common or [])
+	names = [str(document.get("name") or "") for document in documents if isinstance(document, dict)]
+	if len(names) != len(documents) or any(not name for name in names):
+		return []
+	return sorted({row["action"] for row in get_common_list_transitions(doctype, names)})
 
 
 @frappe.whitelist(methods=["POST"])
@@ -982,6 +1072,9 @@ def _reset_round(round_id: str, normalized_reason: str) -> dict[str, Any]:
 		for_update=True,
 	)
 	task = frappe.get_doc("Workflow Task", task_names[0], for_update=True)
+	from dinext_common.workflow_approval.scenarios import service
+	if service.is_ready():
+		service.start_cascade(source, manual=True)
 	if task.round_status not in {"Stalled", "Conflicted", "Open"}:
 		raise engine.WorkflowApprovalConflictError(_("Approval round cannot be reset"))
 	reset_reason = _("{0} Reset by {1}: {2}").format(

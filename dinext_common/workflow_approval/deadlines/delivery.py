@@ -84,7 +84,7 @@ def delivery_slot(task, policy, recipient, now):
 
 
 def _eligible(task, workflow, recipient, now):
-	if not checked(workflow.send_email_alert) or not workflow.is_active or not email_allowed(recipient):
+	if not checked(workflow.send_email_alert) or not email_allowed(recipient):
 		return False
 	if (
 		task.status != "Working"
@@ -106,10 +106,13 @@ def _eligible(task, workflow, recipient, now):
 		return False
 	if task.source_created_at and get_datetime(source.creation) != get_datetime(task.source_created_at):
 		return False
+	from dinext_common.workflow_approval.scenarios import service
+	if service.is_ready():
+		return service.task_is_current(source, task) and mail.recipient_can_read(task, source, recipient)
 	from frappe.model.workflow import get_workflow_name
 
 	return (
-		get_workflow_name(source.doctype) == workflow.name
+		workflow.is_active and get_workflow_name(source.doctype) == workflow.name
 		and source.get(workflow.workflow_state_field) == task.workflow_state
 		and mail.recipient_can_read(task, source, recipient)
 	)

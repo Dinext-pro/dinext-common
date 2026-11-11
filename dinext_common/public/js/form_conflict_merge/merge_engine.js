@@ -398,7 +398,8 @@ export function confirm_conflicts(frm, conflicts, cfg) {
 export function fetch_server_doc(frm) {
 	return new Promise((resolve, reject) => {
 		frappe.call({
-			method: "frappe.client.get",
+			method: frappe.boot?.enable_parallel_workflow_approval
+				? "dinext_common.workflow_approval.scenarios.api.get_workflow_document" : "frappe.client.get",
 			type: "GET",
 			args: {
 				doctype: frm.doctype,

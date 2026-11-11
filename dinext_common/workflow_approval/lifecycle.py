@@ -7,6 +7,8 @@ from typing import Any
 import frappe
 
 SERVICE_DOCTYPES = {
+	"Workflow Document Context",
+	"Workflow Process",
 	"Workflow Task",
 	"Workflow Action",
 	"ToDo",
@@ -24,13 +26,17 @@ def _should_handle(doc: Any) -> bool:
 	doctype = getattr(doc, "doctype", None)
 	if (
 		not is_engine_enabled()
+		or getattr(frappe.flags, "in_migrate", False)
+		or getattr(frappe.flags, "in_install", False)
 		or not doctype
 		or doctype in SERVICE_DOCTYPES
 		or getattr(frappe.flags, "in_dinext_workflow_finalization", False)
 	):
 		return False
+	from dinext_common.workflow_approval.scenarios import service
+	if service.is_ready():
+		return service.supports_doctype(doctype)
 	from frappe.model.workflow import get_workflow_name
-
 	return bool(get_workflow_name(doctype))
 
 
