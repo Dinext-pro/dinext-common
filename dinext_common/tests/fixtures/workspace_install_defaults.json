@@ -171,7 +171,7 @@
       "element_type": "Workspace",
       "target": "Goals",
       "label": "Goals",
-      "icon": "target",
+      "icon": "arrow-up-right",
       "description": "Goal dashboard: counts, my progress and goals at risk.",
       "required_role": null,
       "enabled": 1,
