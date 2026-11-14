@@ -104,6 +104,23 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 		self.assertEqual(get_all.call_args.kwargs["order_by"], "idx asc")
 		get_doc.assert_not_called()
 
+
+	def test_personal_queue_binds_each_row_action_to_its_process_and_task(self):
+		api = self.api()
+		task = api.frappe._dict(name="WT-1", reference_name="Source",
+			workflow="Review", workflow_process="PR-1", status="Working", round_status="Open")
+		transition = {"action": "Approve", "transition_uuid": "TR-1", "next_state": "Done"}
+		with (
+			patch.object(api, "_select_task_rows", return_value=[task]),
+			patch.object(api, "_available_task_transitions", return_value={task.name: [transition]}),
+		):
+			rows = api._filtered_tasks({}, include_transitions=True)
+		self.assertEqual(rows[0]["available_transitions"][0]["targets"], [{
+			"name": "Source", "workflow": "Review", "process_id": "PR-1",
+			"task_name": "WT-1", "transition_uuid": "TR-1", "next_state": "Done",
+		}])
+
+
 	def test_bulk_returns_itemized_success_and_failure(self):
 		api = self.api()
 		with (

@@ -1395,6 +1395,13 @@ def _vote_parameters(task_name, transition_uuid, action, comment):
 	return [task_name, transition_uuid, action, normalize_comment(comment, required=False)]
 
 
+def _reserve_vote_response(task, source, request_id, parameters):
+	target = request_receipts.target(source, task.name)
+	target["workflow"] = task.workflow
+	target["process_id"] = task.get("workflow_process")
+	return request_receipts.reserve("Vote", request_id, parameters, [target])
+
+
 def cast_vote(
 	task_name: str,
 	*,
@@ -1469,14 +1476,6 @@ def _cast_locked_vote(
 	if task.status != "Working" or task.round_status != "Open":
 		raise WorkflowApprovalConflictError(_("Workflow Task is no longer active"))
 
-	if record_vote_response:
-		target = request_receipts.target(source, task.name)
-		target["workflow"] = task.workflow
-		target["process_id"] = task.get("workflow_process")
-		receipt = request_receipts.reserve("Vote", request_id, parameters, [target])
-		if receipt.response is not None:
-			return request_receipts.replay(receipt, parameters)
-
 	from dinext_common.workflow_approval.scenarios import service
 	service.validate_task(source, task)
 	context = _workflow_context(source)
@@ -1502,6 +1501,8 @@ def _cast_locked_vote(
 		source.reload()
 		if finalized or task.status != "Working" or task.round_status != "Open":
 			result = _vote_result(task, source, transitioned=task.round_status == "Transitioned")
+			if record_vote_response:
+				receipt = _reserve_vote_response(task, source, request_id, parameters)
 			if request_id and (receipt or receipt_managed) and not task.correlation_id:
 				_set_task_values(task.name, {"correlation_id": request_id, "request_receipt_recorded": 1})
 			if receipt:
@@ -1519,6 +1520,10 @@ def _cast_locked_vote(
 		comment,
 		required=current_comment_required(task, transition.transition_uuid, workflow=workflow),
 	)
+	if record_vote_response:
+		receipt = _reserve_vote_response(task, source, request_id, parameters)
+		if receipt.response is not None:
+			return request_receipts.replay(receipt, parameters)
 	fingerprint = get_content_fingerprint(source, workflow)
 	if service.is_ready():
 		service.start_cascade(source, manual=True)

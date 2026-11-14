@@ -128,6 +128,7 @@ class TestWorkflowListActions(unittest.TestCase):
 		with (
 			patch.object(frappe, "db", db),
 			patch.object(frappe, "session", frappe._dict(user=USER)),
+			patch.object(api, "_reserve_source_batch", return_value=None),
 			patch.object(api, "_require_post"),
 			patch.object(api, "_", side_effect=lambda message: message),
 			patch.object(
@@ -169,13 +170,12 @@ class TestWorkflowListActions(unittest.TestCase):
 		token = "1" * 32
 		result = {"succeeded": [], "failed": []}
 		job = Mock(
-			kwargs={"user": USER, "site": "test", "method": "dinext_common.workflow_approval.api.bulk_vote"}
+			kwargs={"user": USER, "site": getattr(frappe.local, "site", None), "method": "dinext_common.workflow_approval.api.bulk_vote"}
 		)
 		job.get_status.return_value = "finished"
 		job.return_value.return_value = result
 		with (
 			patch.object(frappe, "session", frappe._dict(user=USER)),
-			patch.object(frappe.local, "site", "test", create=True),
 			patch("frappe.utils.background_jobs.get_job", return_value=job),
 		):
 			self.assertEqual(api.get_bulk_workflow_job(token), {"status": "finished", "result": result})

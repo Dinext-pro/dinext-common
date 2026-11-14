@@ -119,12 +119,14 @@ def replay(receipt, parameters: object):
 
 
 def finish(key: str, response: object, *, failed: bool = False) -> None:
-	frappe.db.set_value(DOCTYPE, key, {
+	values = {
 		"status": "Failed" if failed else "Completed",
 		"completed_at": now_datetime(),
 		"response": json.dumps(response, ensure_ascii=False),
-		"item_results": None,
-	})
+	}
+	if not failed:
+		values["item_results"] = None
+	frappe.db.set_value(DOCTYPE, key, values)
 
 
 def register_log_settings() -> None:

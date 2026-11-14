@@ -458,7 +458,7 @@ class TestWorkflowApprovalProcessConcurrency(FrappeTestCase):
 		first_result = api.vote(
 			first_task.name,
 			transition_uuid=first_task.available_workflow_transitions[0].transition_uuid,
-			request_id="process-initial-vote",
+			request_id=f"process-initial-vote-{first_task.name}",
 		)
 		self.assertFalse(first_result["transitioned"])
 		frappe.db.commit()

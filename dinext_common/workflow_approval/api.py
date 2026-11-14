@@ -751,6 +751,25 @@ def _available_task_transitions(task_names: list[str]) -> dict[str, list[dict[st
 	return transitions
 
 
+def _transition_target(task, transition) -> WorkflowTransitionTarget:
+	return {
+		"name": task.reference_name, "workflow": task.get("workflow"),
+		"process_id": task.get("workflow_process"), "task_name": task.name,
+		"transition_uuid": transition["transition_uuid"], "next_state": transition["next_state"],
+	}
+
+
+def _queue_transition_targets(task, transitions):
+	if task.get("status") != "Working" or task.get("round_status") != "Open":
+		return transitions
+	if not task.get("workflow") or not task.get("workflow_process"):
+		return transitions
+	return [
+		{**row, "targets": [_transition_target(task, row)]} if row["transition_uuid"] else row
+		for row in transitions
+	]
+
+
 def _filtered_tasks(filters, *, limit=None, include_transitions=False, predicate=None, fields=QUEUE_FIELDS):
 	rows = _select_task_rows(
 		filters, fields=fields, order_by=PERSONAL_TASK_ORDER, limit=limit, predicate=predicate
@@ -763,7 +782,7 @@ def _filtered_tasks(filters, *, limit=None, include_transitions=False, predicate
 	return [
 		frappe._dict(
 			{field: row.get(field) for field in QUEUE_FIELDS},
-			available_transitions=transitions[row["name"]],
+			available_transitions=_queue_transition_targets(row, transitions[row["name"]]),
 		)
 		for row in rows
 	]
@@ -1189,11 +1208,7 @@ def _common_transition_targets(tasks: list[Any], transitions: dict[str, list[dic
 		rows = [mapping[key] for mapping in maps]
 		if len({row["action"] for row in rows}) != 1 or (not mixed and len({row["next_state"] for row in rows}) != 1):
 			continue
-		targets: list[WorkflowTransitionTarget] = [{
-			"name": task.reference_name, "workflow": task.get("workflow"),
-			"process_id": task.get("workflow_process"), "task_name": task.name,
-			"transition_uuid": row["transition_uuid"], "next_state": row["next_state"],
-		} for task, row in zip(tasks, rows)]
+		targets = [_transition_target(task, row) for task, row in zip(tasks, rows)]
 		combined = {"action": rows[0]["action"],
 			"comment_is_required": any(row.get("comment_is_required") for row in rows), "targets": targets}
 		for field in ("transition_uuid", "next_state", "allowed"):

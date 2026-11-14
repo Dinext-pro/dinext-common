@@ -9,7 +9,7 @@ from frappe.utils.password import update_password
 CACHE = "workflow_scenario_timesheet_ui_fixture"
 POSITION = "User Timesheet Position"
 READ_DOCTYPES = ("User Timesheet", POSITION, "Worker", "Timesheet Template", "Working Hours On Date",
-	"Holiday List", "Timesheet Settings", "User Group", "Report", "Application For Leave", "Comment", "User")
+	"Holiday List", "Timesheet Settings", "User Group", "Report", "Kanban Board", "Application For Leave", "Comment", "User")
 
 
 def _guard():
