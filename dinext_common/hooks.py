@@ -1,3 +1,6 @@
+from dinext_common.workflow_approval.request_receipts import DEFAULT_RETENTION_DAYS as _receipt_retention_days
+
+
 app_name = "dinext_common"
 app_title = "Dinext Common"
 app_publisher = "Dinext"
@@ -212,7 +215,10 @@ doctype_list_js = {
 
 # before_install = "dinext_common.install.before_install"
 after_install = "dinext_common.install.after_install"
-after_sync = ["dinext_common.workflow_approval.email_preferences.migrate_preferences"]
+after_sync = [
+	"dinext_common.workflow_approval.email_preferences.migrate_preferences",
+	"dinext_common.workflow_approval.request_receipts.register_log_settings",
+]
 before_migrate = [
 	"dinext_common.workflow_approval.scenarios.compat.initialize",
 	"dinext_common.workflow_approval.scenarios.metadata.ensure_fields",
@@ -220,6 +226,7 @@ before_migrate = [
 	"dinext_common.workflow_approval.localization.guard_label_migration",
 ]
 after_migrate = [
+	"dinext_common.workflow_approval.request_receipts.register_log_settings",
 	"dinext_common.workflow_approval.scenarios.migration.execute",
 	"dinext_common.workflow_approval.deadlines.metadata.ensure_metadata",
 	"dinext_common.workflow_approval.email_preferences.ensure_type",
@@ -471,9 +478,7 @@ ignore_links_on_delete = ["Workflow Task", "Workflow Process", "Workflow Documen
 # Automatically update python controller files with type annotations for this app.
 # export_python_type_annotations = True
 
-# default_log_clearing_doctypes = {
-# 	"Logging DocType Name": 30  # days to retain logs
-# }
+default_log_clearing_doctypes = {"Workflow Request Receipt": _receipt_retention_days}
 
 
 # Install compatibility once, with request/job-local document selection.

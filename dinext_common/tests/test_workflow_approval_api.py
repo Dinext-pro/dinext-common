@@ -121,7 +121,6 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 				"Example",
 				["EX-1", "EX-2"],
 				"Approve",
-				request_id="bulk-1",
 			)
 
 		self.assertEqual(result["succeeded"][0]["name"], "EX-1")
@@ -143,7 +142,7 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 			) as cast_vote,
 			patch.object(api.frappe.db, "commit") as commit,
 		):
-			result = api.bulk_task_vote(items, request_id="bulk-1")
+			result = api.bulk_task_vote(items)
 
 		self.assertEqual(len(result["succeeded"]), 1)
 		cast_vote.assert_called_once()

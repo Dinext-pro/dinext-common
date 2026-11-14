@@ -4,11 +4,19 @@ const parentApply = "dinext_timesheets.workflow_approval.apply_timesheet_positio
 const contextMethod = "dinext_common.workflow_approval.scenarios.api.get_workflow_context";
 const personalTransitions = "dinext_common.workflow_approval.api.get_my_source_transitions";
 const bulkVote = "dinext_common.workflow_approval.api.bulk_vote";
+const helper = "dinext_common.tests.workflow_scenario_timesheet_ui";
 
 context("mixed Workflow scenarios in Timesheets", () => {
-	before(() => cy.task("scenarioTimesheetSeed", null, { timeout: 120000 })
-		.then(data => Cypress.env("workflowScenarioTimesheet", data)));
-	after(() => cy.task("scenarioTimesheetCleanup", null, { timeout: 120000 }));
+	beforeEach(() => {
+		cy.login();
+		cy.openDesk();
+		cy.call(`${helper}.seed`, {}).its("body.message").then(data => Cypress.env("workflowScenarioTimesheet", data));
+	});
+	afterEach(() => {
+		cy.login();
+		cy.openDesk();
+		cy.call(`${helper}.cleanup`, {});
+	});
 
 	it("keeps exact child targets, quorum, progress and pending names on the real parent and list", () => {
 		const data = fixture();
@@ -130,5 +138,63 @@ context("mixed Workflow scenarios in Timesheets", () => {
 		});
 		cy.get(".modal:visible, .modal-backdrop, #freeze").should("not.exist");
 		cy.noPermissionDialog();
+	});
+
+	it("checks filling for the configured timesheet status and restores input after a failure", () => {
+		const data = fixture();
+		const parentRoute = `/app/user-timesheet/${encodeURIComponent(data.parent)}`;
+		const group = ".page-container:visible .inner-group-button[data-label='Workflow']";
+		const comment = "Review the synthetic timesheet rule";
+		const configureCheck = (status) => {
+			cy.login();
+			cy.openDesk();
+			cy.call(`${helper}.set_check_status`, { status }).its("body.message.check_status").should("equal", status);
+			cy.login(data.actor, data.password);
+			cy.openDesk(parentRoute);
+			cy.window().should((win) => {
+				expect(win.cur_frm?.doc?.name).to.equal(data.parent);
+				expect(win.cur_frm.ut?.table).to.exist;
+			});
+		};
+		const chooseReject = () => {
+			cy.get(`${group} > button`).should("be.visible").click();
+			cy.contains(`${group} .dropdown-item`, data.action).should("be.visible").click();
+			cy.get(".modal:visible textarea[data-fieldname='comment']").type(comment).blur();
+			cy.get(".modal:visible .btn-primary").should("not.be.disabled").click();
+		};
+
+		configureCheck("Rejected");
+		cy.intercept("POST", `**/api/method/${parentApply}`).as("timesheetApply");
+		chooseReject();
+		cy.contains(".modal:visible .modal-title", "Timesheet Validation Errors").should("be.visible");
+		cy.get("@timesheetApply.all").should("have.length", 0);
+		cy.get(".modal:visible .btn-primary").click();
+		cy.window().should((win) => {
+			expect(win.cur_frm.doc.ut_status).to.equal("Pending Approval");
+			expect(win.cur_frm.page.wrapper[0].inert).to.equal(false);
+		});
+
+		// List rows use this server method directly, without the tabular filling hint.
+		cy.call(bulkVote, {
+			doctype: "User Timesheet Position",
+			names: [data.positions[1]],
+			action: data.action,
+			transition_uuid: data.uuids[1],
+			comment,
+		}).then((response) => {
+			expect(response.body.message.succeeded).to.deep.equal([]);
+			expect(response.body.message.failed.map((row) => row.name)).to.deep.equal([data.positions[1]]);
+		});
+		cy.call(contextMethod, { doctype: "User Timesheet Position", name: data.positions[1] })
+			.its("body.message.context.state").should("equal", data.initial_state);
+
+		configureCheck(null);
+		chooseReject();
+		cy.wait("@timesheetApply").its("response.statusCode").should("equal", 200);
+		cy.window().should((win) => {
+			expect(win.cur_frm.doc.ut_status).to.equal("Rejected");
+			expect(win.cur_frm.page.wrapper[0].inert).to.equal(false);
+		});
+		cy.get(".modal:visible, .modal-backdrop, #freeze").should("not.exist");
 	});
 });

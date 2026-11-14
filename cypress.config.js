@@ -12,9 +12,6 @@ module.exports = {
 		runMode: 0,
 		openMode: 0,
 	},
-	env: {
-		adminPassword: "admin",
-	},
 	e2e: {
 		setupNodeEvents(on, config) {
 			const { execFileSync } = require("node:child_process");
@@ -34,12 +31,6 @@ module.exports = {
 				return run(`dinext_common.tests.${module}.${method}`);
 			};
 			on("task", {
-				scenarioSeed: () => runFixture("seed", "workflow_scenario_ui"),
-				scenarioCleanup: () => runFixture("cleanup", "workflow_scenario_ui"),
-				scenarioProgressSeed: () => runFixture("seed_progress_user", "workflow_scenario_ui"),
-				scenarioProgressCleanup: () => runFixture("cleanup_progress_user", "workflow_scenario_ui"),
-				scenarioTimesheetSeed: () => runFixture("seed", "workflow_scenario_timesheet_ui"),
-				scenarioTimesheetCleanup: () => runFixture("cleanup", "workflow_scenario_timesheet_ui"),
 				emailLayoutSeed: () => runFixture("seed", "workflow_email_refinement_ui"),
 				emailLayoutCleanup: () => runFixture("cleanup", "workflow_email_refinement_ui"),
 				emailLayoutPreviews: () => runFixture("previews", "workflow_email_refinement_ui"),

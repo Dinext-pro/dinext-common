@@ -1,0 +1,87 @@
+{
+ "actions": [],
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "operation",
+  "initiator",
+  "request_digest",
+  "status",
+  "targets",
+  "item_results",
+  "response",
+  "job_id",
+  "completed_at"
+ ],
+ "fields": [
+  {
+   "fieldname": "operation",
+   "fieldtype": "Data",
+   "label": "Operation",
+   "reqd": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "initiator",
+   "fieldtype": "Data",
+   "label": "Initiator",
+   "reqd": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "request_digest",
+   "fieldtype": "Data",
+   "label": "Request Digest",
+   "reqd": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Working\nCompleted\nFailed",
+   "default": "Working",
+   "reqd": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "targets",
+   "fieldtype": "Long Text",
+   "label": "Request Targets",
+   "read_only": 1
+  },
+  {
+   "fieldname": "item_results",
+   "fieldtype": "Long Text",
+   "label": "Item Results",
+   "read_only": 1
+  },
+  {
+   "fieldname": "response",
+   "fieldtype": "Long Text",
+   "label": "Response",
+   "read_only": 1
+  },
+  {
+   "fieldname": "job_id",
+   "fieldtype": "Data",
+   "label": "Job ID",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "completed_at",
+   "fieldtype": "Datetime",
+   "label": "Completed At",
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "links": [],
+ "module": "Dinext Common",
+ "name": "Workflow Request Receipt",
+ "permissions": [],
+ "sort_field": "completed_at",
+ "sort_order": "DESC",
+ "states": []
+}

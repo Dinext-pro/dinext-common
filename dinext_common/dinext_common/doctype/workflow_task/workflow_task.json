@@ -50,6 +50,7 @@
   "submission_queue",
   "failure_metadata",
   "correlation_id",
+  "request_receipt_recorded",
   "section_break_8nqw",
   "available_workflow_transitions",
   "deadline_section",
@@ -395,6 +396,15 @@
    "fieldtype": "Data",
    "hidden": 1,
    "label": "Correlation ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "request_receipt_recorded",
+   "fieldtype": "Check",
+   "label": "Request Receipt Recorded",
+   "default": "0",
+   "hidden": 1,
+   "no_copy": 1,
    "read_only": 1
   },
   {

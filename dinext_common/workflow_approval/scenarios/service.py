@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import defaultdict
 from typing import Any, TypedDict
 
 import frappe
 from frappe import _
+from frappe.model.document import Document
 from frappe.utils import get_datetime, now_datetime
+
+from dinext_common.workflow_approval.scenarios.read import load_documents
 
 CONTEXT = "Workflow Document Context"
 PROCESS = "Workflow Process"
@@ -52,6 +56,12 @@ class WorkflowContext(TypedDict):
 	process_id: str | None
 	process_status: str | None
 	definition_revision: str | None
+
+
+class ReadWorkflowContext(TypedDict):
+	context: WorkflowContext
+	workflow: Document | None
+	error: str | None
 
 
 def is_ready() -> bool:
@@ -106,12 +116,16 @@ def _definitions(doctype: str) -> list[Any]:
 
 def select_workflow(doc: Any) -> Any | None:
 	"""Stop on a broken higher-priority expression, rather than silently falling through."""
-	from frappe.model.workflow import get_workflow_safe_globals
-
-	for workflow in sorted(
+	return _match_workflow(doc, sorted(
 		_definitions(doc.get("doctype")),
 		key=lambda row: (int(row.get("custom_selection_order") or 0), row.name),
-	):
+	))
+
+
+def _match_workflow(doc: Any, workflows: list[Any]) -> Any | None:
+	from frappe.model.workflow import get_workflow_safe_globals
+
+	for workflow in workflows:
 		condition = str(workflow.get("custom_activation_condition") or "").strip()
 		try:
 			matches = not condition or bool(
@@ -209,6 +223,12 @@ def _selected(doc: Any) -> tuple[Any | None, Any | None]:
 
 
 def get_context(doc: Any) -> WorkflowContext:
+	if not is_ready() or doc.get("doctype") in SERVICE_DOCTYPES:
+		return _context_values(doc)
+	return _context_values(doc, *_selected(doc))
+
+
+def _context_values(doc: Any, workflow=None, process=None) -> WorkflowContext:
 	result: WorkflowContext = {
 		"workflow": None,
 		"state_field": None,
@@ -217,9 +237,6 @@ def get_context(doc: Any) -> WorkflowContext:
 		"process_status": None,
 		"definition_revision": None,
 	}
-	if not is_ready() or doc.get("doctype") in SERVICE_DOCTYPES:
-		return result
-	workflow, process = _selected(doc)
 	if workflow:
 		field = workflow.workflow_state_field
 		result.update(
@@ -232,6 +249,97 @@ def get_context(doc: Any) -> WorkflowContext:
 		)
 	return result
 
+
+
+def workflow_records(doctype: str) -> list[Document]:
+	"""Read the DocType's workflow catalog and its child rows once."""
+	names = frappe.get_all(
+		"Workflow", filters={"document_type": doctype}, pluck="name",
+		order_by="custom_selection_order asc, name asc",
+	)
+	records = load_documents("Workflow", names)
+	return [records[name] for name in names if name in records]
+
+
+def _legacy_workflow_names(doctype: str, documents: list[Document]) -> dict[str, set[str]]:
+	if not documents:
+		return {}
+	keys_by_name = {doc.name: source_key(doc) for doc in documents}
+	names_by_source = defaultdict(set)
+	for row in frappe.get_all(
+		"Workflow Task",
+		filters={
+			"reference_doctype": doctype,
+			"reference_name": ("in", list(keys_by_name)),
+			"source_created_at": ("is", "set"),
+			"workflow_process": ("is", "not set"),
+			"round_status": ("in", ("Open", "Stalled", "Finalizing", "Conflicted")),
+		},
+		fields=["reference_name", "source_created_at", "workflow"],
+		distinct=True,
+	):
+		key = source_key(
+			{"doctype": doctype, "name": row.reference_name, "creation": row.source_created_at}
+		)
+		if keys_by_name.get(row.reference_name) == key:
+			names_by_source[key].add(row.workflow)
+	return names_by_source
+
+
+def read_contexts(
+	doctype: str, documents: dict[str, Document]
+) -> tuple[bool, dict[str, ReadWorkflowContext]]:
+	"""Resolve already authorized documents without per-source routing lookups."""
+	if not supports_doctype(doctype):
+		return False, {
+			name: {"context": _context_values(doc), "workflow": None, "error": None}
+			for name, doc in documents.items()
+		}
+
+	sources = {name: source_key(doc) for name, doc in documents.items() if doc.get("creation")}
+	contexts = {
+		row.name: row for row in frappe.get_all(
+			CONTEXT, filters={"name": ("in", list(sources.values()))},
+			fields=["name", "active_process", "routing_error"],
+		)
+	} if sources else {}
+	process_ids = {row.active_process for row in contexts.values() if row.active_process}
+	processes = {
+		row.source_key: row for row in frappe.get_all(
+			PROCESS, filters={"name": ("in", sorted(process_ids)), "status": ("in", ACTIVE)},
+			fields=["name", "source_key", "workflow", "status"],
+		)
+		if contexts.get(row.source_key) and contexts[row.source_key].active_process == row.name
+	} if process_ids else {}
+	legacy = _legacy_workflow_names(doctype, [
+		documents[name] for name, key in sources.items()
+		if key not in processes and not (contexts.get(key) and contexts[key].routing_error)
+	])
+	workflows = workflow_records(doctype)
+	by_name = {workflow.name: workflow for workflow in workflows}
+	active = [workflow for workflow in workflows if workflow.is_active]
+
+	result: dict[str, ReadWorkflowContext] = {}
+	for name, doc in documents.items():
+		key = sources.get(name)
+		context = contexts.get(key)
+		process = processes.get(key)
+		error = context.routing_error if context else None
+		workflow = None
+		if process and (process.status == "Running" or not error):
+			workflow = by_name.get(process.workflow)
+		elif not error:
+			legacy_names = legacy.get(key) or set()
+			if len(legacy_names) == 1:
+				workflow = by_name.get(next(iter(legacy_names)))
+			if not workflow or not workflow.workflow_state_field:
+				workflow = _match_workflow(doc, active)
+		result[name] = {
+			"context": _context_values(doc, workflow, process),
+			"workflow": workflow,
+			"error": error,
+		}
+	return True, result
 
 def workflow_context(doc: Any) -> tuple[str, Any, str, str] | None:
 	if not is_ready() or doc.get("doctype") in SERVICE_DOCTYPES:

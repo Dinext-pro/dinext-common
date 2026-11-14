@@ -617,3 +617,6 @@ Notification Delivery Snapshot,Снимок доставки уведомлен�
 Workflow notification history is incomplete,История доставки уведомлений процесса неполная
 Delivery evidence is missing for {0} legacy tasks; historical immediate mail was skipped.,Для прежних заданий ({0}) нет сведений о доставке; исторические отдельные письма не отправлялись.
 Digest send time is required for daily delivery,Укажите время отправки ежедневной сводки
+Workflow Request Receipt,Результат запроса Workflow,
+This Workflow request was already used with different parameters,Этот запрос Workflow уже выполнен с другими параметрами,
+The Workflow request has expired. Refresh the document before acting.,Срок хранения результата запроса Workflow истёк. Обновите документ перед действием.,

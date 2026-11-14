@@ -8,7 +8,7 @@ from unittest.mock import patch
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
-from dinext_common.workflow_approval import api
+from dinext_common.workflow_approval import api, request_receipts
 from dinext_common.workflow_approval.scenarios import service, timesheet_actions
 from dinext_common.workflow_approval.scenarios.metadata import next_selection_order
 
@@ -34,9 +34,12 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		frappe.db.commit()
 
 	def setUp(self):
-		frappe.set_user("Administrator")
+		if frappe.session.user != "Administrator":
+			frappe.set_user("Administrator")
 		self.previous_engine = frappe.conf.get("enable_parallel_workflow_approval")
 		self.previous_mute = frappe.flags.get("mute_emails")
+		self.previous_finalization_errors = frappe.flags.workflow_finalization_errors
+		frappe.flags.workflow_finalization_errors = []
 		self.previous_after_commit = tuple(frappe.db.after_commit._functions)
 		frappe.conf.enable_parallel_workflow_approval = True
 		frappe.flags.mute_emails = True
@@ -112,6 +115,7 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 			frappe.db.after_commit.add(callback)
 		frappe.conf.enable_parallel_workflow_approval = self.previous_engine
 		frappe.flags.mute_emails = self.previous_mute
+		frappe.flags.workflow_finalization_errors = self.previous_finalization_errors
 		frappe.local.workflow_scenario_cascade = None
 		frappe.clear_cache(doctype=POSITION)
 
@@ -175,7 +179,7 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 				comment="Synthetic mixed-schema review", request_id=self.marker, track_progress=True,
 				targets=chosen["targets"])
 		self.assertEqual((result["processed"], result["total"]), (2, 2))
-		self.assertEqual([row["transitioned"] for row in result["results"]], [False, True])
+		self.assertEqual([row["transitioned"] for row in result["results"]], [False, True], result["messages"])
 		progress = [data["count"] for event, data in events if event == "dinext_workflow_progress"]
 		self.assertEqual(progress, [1, 2])
 		a, b = [doc.reload() for doc in self.positions]
@@ -191,7 +195,14 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 			"reference_name": ("in", [a.name, b.name]), "status": "Completed"})
 		replayed = timesheet_actions.apply_timesheet_position_action(self.parent.name, self.action,
 			comment="Synthetic mixed-schema review", request_id=self.marker, targets=chosen["targets"])
-		self.assertEqual(replayed["results"], result["results"])
+		self.assertEqual(replayed, result)
+		with self.assertRaises(frappe.ValidationError):
+			timesheet_actions.apply_timesheet_position_action(self.parent.name, self.action,
+				comment="A different comment", request_id=self.marker, targets=chosen["targets"])
+		frappe.db.delete(request_receipts.DOCTYPE, {"name": request_receipts.request_key("Timesheet", self.marker)})
+		with self.assertRaises(frappe.ValidationError):
+			timesheet_actions.apply_timesheet_position_action(self.parent.name, self.action,
+				comment="Synthetic mixed-schema review", request_id=self.marker, targets=chosen["targets"])
 		self.assertEqual(frappe.db.count("Workflow Task", {"reference_doctype": POSITION,
 			"reference_name": ("in", [a.name, b.name]), "status": "Completed"}), before)
 		remaining = api.get_pending_approvers("User Timesheet", self.parent.name)
@@ -210,9 +221,205 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 			"reference_name": source.name, "approver": self.reviewer,
 			"status": "Working", "round_status": "Open"}, "name")
 		result = api.vote(task, transition_uuid=self.marker + "-B", comment="Individual selected-field vote")
-		self.assertTrue(result["transitioned"])
+		self.assertTrue(result["transitioned"], frappe.flags.workflow_finalization_errors)
 		source.reload()
 		self.assertEqual(source.get(FIELDS[1]), "Rejected")
 		self.assertEqual(source.status, "Pending Approval")
 		self.assertEqual(source.workflow_state, "Pending Approval")
 		self.assertEqual(self.parent.reload().ut_status, "Rejected")
+
+	def _set_rules(self, *rows):
+		settings = frappe.get_single("Timesheet Settings")
+		settings.set("position_rules", [
+			{
+				"position_status": position,
+				"timesheet_status": timesheet,
+				"threshold": threshold,
+				"check_timesheet": check,
+				"move_all_positions": move,
+			}
+			for position, timesheet, threshold, check, move in rows
+		])
+		settings.update_child_table("position_rules")
+
+	def _task_for(self, position, approver):
+		return frappe.db.get_value("Workflow Task", {
+			"reference_doctype": POSITION,
+			"reference_name": position.name,
+			"approver": approver,
+			"status": "Working",
+			"round_status": "Open",
+		}, "name")
+
+	def _state_of_task(self, task_name):
+		return tuple(frappe.db.get_value("Workflow Task", task_name, ["status", "round_status"]))
+
+	def _workflow_comments(self, *positions):
+		return frappe.db.count("Comment", {
+			"reference_doctype": POSITION,
+			"reference_name": ("in", [position.name for position in positions]),
+			"comment_type": "Workflow",
+		})
+
+	def _reject(self, position, task_name, suffix):
+		return api.apply_workflow(
+			{"doctype": POSITION, "name": position.name},
+			self.action,
+			transition_uuid=self.marker + "-" + suffix,
+			task_name=task_name,
+			comment="Reject this synthetic position",
+		)
+
+	def test_vote_waiting_for_quorum_does_not_claim_it_will_check_timesheet(self):
+		self._set_rules(("Rejected", "Rejected", "Any", 1, 0))
+		frappe.set_user(self.other)
+
+		actions = timesheet_actions.get_timesheet_position_actions(self.parent.name)["actions"]
+		reject = next(row for row in actions if row["action"] == self.action)
+
+		self.assertEqual([target["name"] for target in reject["targets"]], [self.positions[0].name])
+		self.assertFalse(reject["runs_timesheet_checks"])
+
+	def test_actual_status_check_reverts_only_vote_that_reaches_quorum(self):
+		first, second = self.positions
+		self._set_rules(("Rejected", "Rejected", "All", 1, 0))
+		first_vote = self._task_for(first, self.other)
+		final_vote = self._task_for(first, self.reviewer)
+		second_rejection = self._task_for(second, self.reviewer)
+
+		frappe.set_user(self.other)
+		self.assertFalse(self._reject(first, first_vote, "A")["transitioned"])
+		frappe.set_user(self.reviewer)
+		self.assertTrue(
+			self._reject(second, second_rejection, "B")["transitioned"],
+			frappe.flags.workflow_finalization_errors,
+		)
+		self.assertEqual(self.parent.reload().ut_status, "Pending Approval")
+		comment_count = self._workflow_comments(first, second)
+		callbacks = tuple(frappe.db.after_commit._functions)
+		actions = timesheet_actions.get_timesheet_position_actions(self.parent.name)["actions"]
+		self.assertTrue(next(row for row in actions if row["action"] == self.action)["runs_timesheet_checks"])
+
+		with self.assertRaises(frappe.ValidationError):
+			self._reject(first, final_vote, "A")
+
+		self.assertEqual(tuple(frappe.db.after_commit._functions), callbacks)
+		self.assertEqual(self._workflow_comments(first, second), comment_count)
+		self.assertEqual(self._state_of_task(first_vote), ("Completed", "Open"))
+		self.assertEqual(self._state_of_task(final_vote), ("Working", "Open"))
+		self.assertEqual(self._state_of_task(second_rejection), ("Completed", "Transitioned"))
+		self.assertEqual(self.parent.reload().ut_status, "Pending Approval")
+		self.assertEqual(first.reload().get(FIELDS[0]), "Pending Approval")
+		self.assertEqual(second.reload().get(FIELDS[1]), "Rejected")
+
+		self._set_rules(("Rejected", "Rejected", "All", 0, 0))
+		self.assertTrue(self._reject(first, final_vote, "A")["transitioned"])
+		self.assertEqual(self.parent.reload().ut_status, "Rejected")
+
+	def test_failed_status_check_rolls_back_every_vote_in_parent_operation(self):
+		self._set_rules(("Rejected", "Rejected", "Any", 1, 0))
+		first, second = self.positions
+		task_names = [self._task_for(position, self.reviewer) for position in self.positions]
+		comments = self._workflow_comments(first, second)
+		frappe.set_user(self.reviewer)
+
+		with self.assertRaises(frappe.ValidationError):
+			timesheet_actions.apply_timesheet_position_action(
+				self.parent.name, self.action, comment="Act on both synthetic positions"
+			)
+
+		self.assertEqual([self._state_of_task(name) for name in task_names], [("Working", "Open")] * 2)
+		self.assertEqual(self._workflow_comments(first, second), comments)
+		self.assertEqual(self.parent.reload().ut_status, "Pending Approval")
+		self.assertEqual(first.reload().get(FIELDS[0]), "Pending Approval")
+		self.assertEqual(second.reload().get(FIELDS[1]), "Pending Approval")
+
+	def _add_edit_transition(self, index, suffix, action):
+		workflow = self.workflows[index]
+		role = self.roles[index]
+		workflow.append("states", {
+			"state": "Editing",
+			"doc_status": "0",
+			"allow_edit": role,
+			"update_field": "status",
+			"update_value": "Editing",
+		})
+		workflow.append("transitions", {
+			"state": "Pending Approval",
+			"action": action,
+			"next_state": "Editing",
+			"allowed": role,
+			"allow_self_approval": 1,
+			"custom_transition_uuid": self.marker + "-edit-" + suffix,
+			"custom_parallel_approval_policy": "Any",
+		})
+		workflow.append("transitions", {
+			"state": "Editing",
+			"action": self.reopen,
+			"next_state": "Pending Approval",
+			"allowed": role,
+			"allow_self_approval": 1,
+			"custom_transition_uuid": self.marker + "-resubmit-" + suffix,
+		})
+		workflow.save(ignore_permissions=True)
+
+	def test_rework_cascade_rolls_back_when_sibling_cannot_enter_editing(self):
+		action = self.marker + " Edit"
+		self._master("Workflow State", "Editing", {"workflow_state_name": "Editing"})
+		self._master("Workflow Action Master", action, {"workflow_action_name": action})
+		self._add_edit_transition(0, "A", action)
+		self._set_rules(("Editing", "Rework", "Any", 0, 1))
+		first, second = self.positions
+		task_name = self._task_for(first, self.reviewer)
+		sibling_task = self._task_for(second, self.reviewer)
+		comments = self._workflow_comments(first, second)
+		frappe.set_user(self.reviewer)
+
+		with self.assertRaises(frappe.ValidationError):
+			api.vote(task_name, transition_uuid=self.marker + "-edit-A")
+
+		self.assertEqual(self._state_of_task(task_name), ("Working", "Open"))
+		self.assertEqual(self._state_of_task(sibling_task), ("Working", "Open"))
+		self.assertEqual(self._workflow_comments(first, second), comments)
+		self.assertEqual(self.parent.reload().ut_status, "Pending Approval")
+		self.assertEqual(first.reload().get(FIELDS[0]), "Pending Approval")
+		self.assertEqual(second.reload().get(FIELDS[1]), "Pending Approval")
+
+		self._set_rules(("Editing", "Rework", "Any", 0, 0))
+		self.assertTrue(api.vote(task_name, transition_uuid=self.marker + "-edit-A")["transitioned"])
+		self.assertEqual(self.parent.reload().ut_status, "Rework")
+		self.assertEqual(first.reload().get(FIELDS[0]), "Editing")
+		self.assertEqual(second.reload().get(FIELDS[1]), "Pending Approval")
+		self.assertEqual(self._state_of_task(sibling_task), ("Working", "Open"))
+
+	def test_rework_cascade_follows_each_siblings_selected_state_field(self):
+		action = self.marker + " Edit"
+		self._master("Workflow State", "Editing", {"workflow_state_name": "Editing"})
+		self._master("Workflow Action Master", action, {"workflow_action_name": action})
+		self._add_edit_transition(0, "A", action)
+		self._add_edit_transition(1, "B", action)
+		self._set_rules(("Editing", "Rework", "Any", 0, 1))
+		first, second = self.positions
+		task_name = self._task_for(first, self.reviewer)
+		sibling_task = self._task_for(second, self.reviewer)
+		frappe.set_user(self.reviewer)
+
+		result = api.vote(task_name, transition_uuid=self.marker + "-edit-A")
+
+		self.assertTrue(result["transitioned"], frappe.flags.workflow_finalization_errors)
+		self.assertEqual(self.parent.reload().ut_status, "Rework")
+		self.assertEqual(first.reload().get(FIELDS[0]), "Editing")
+		self.assertEqual(second.reload().get(FIELDS[1]), "Editing")
+		self.assertEqual(second.workflow_state, "Pending Approval")
+		self.assertEqual(self._state_of_task(sibling_task), ("Cancelled", "Cancelled"))
+
+	def test_ordinary_save_cannot_apply_a_scenario_transition(self):
+		source = self.positions[0]
+		frappe.set_user(self.reviewer)
+		source.set(FIELDS[0], "Rejected")
+
+		with self.assertRaises((frappe.ValidationError, frappe.PermissionError)):
+			source.save()
+
+		self.assertEqual(source.reload().get(FIELDS[0]), "Pending Approval")
+		self.assertEqual(source.status, "Pending Approval")

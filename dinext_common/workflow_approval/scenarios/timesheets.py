@@ -6,8 +6,39 @@ import importlib
 from functools import wraps
 
 import frappe
+from frappe import _
 
 _installed = False
+
+
+def _wrap_source_before_save(original, event):
+	@wraps(original)
+	def before_save(doc, method=None):
+		from dinext_common.workflow_approval.scenarios import compat
+
+		before = doc.get_doc_before_save()
+		if not before or doc.flags.ignore_permissions or not compat.is_authorized_finalization(doc):
+			return original(doc, method)
+		field = compat._service().get_context(doc).get("state_field")
+		if not field or field == "workflow_state" or before.get(field) == doc.get(field):
+			return original(doc, method)
+		if any(doc.get(key) != before.get(key) for key in ("user_timesheet", "user", "user_group")):
+			frappe.throw(_("The position must belong to the timesheet worker"), frappe.PermissionError)
+		if any(row.next_state == doc.get(field) for row in event.timesheet_management_transitions(before)):
+			parent = frappe.get_doc("User Timesheet", doc.user_timesheet)
+			if not event.has_worker_scope(parent.timesheet_from, parent.ts_valid_for) or not frappe.has_permission(
+				before, "write", ignore_share_permissions=True
+			):
+				frappe.throw(_("Not permitted to edit this timesheet"), frappe.PermissionError)
+		# Keep the producer's position processing while substituting the selected field for its legacy gate.
+		previous = doc.flags.ignore_permissions
+		doc.flags.ignore_permissions = True
+		try:
+			return original(doc, method)
+		finally:
+			doc.flags.ignore_permissions = previous
+
+	return before_save
 
 
 def _wrap_source_update(original, producer):
@@ -84,6 +115,10 @@ def install() -> None:
 		return task_no_longer_matches_source(task_name)
 
 	compat.replace_function(original, matches)
+	event = importlib.import_module(
+		"dinext_timesheets.dinext_timesheets.user_timesheet.events.user_timesheet_position"
+	)
+	compat.replace_function(event.before_save, _wrap_source_before_save(event.before_save, event))
 	bridge = importlib.import_module(
 		"dinext_timesheets.dinext_timesheets.user_timesheet.events.workflow_tasks"
 	)

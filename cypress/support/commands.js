@@ -19,16 +19,20 @@ Cypress.Commands.add("login", (email, password) => {
 	if (!email) {
 		email = "Administrator";
 	}
-	if (!password) {
+	if (!password && email === "Administrator") {
 		password = Cypress.env("adminPassword");
 	}
+	if (!password) {
+		throw new Error(`Cypress requires credentials for ${email} on the test site`);
+	}
 	return cy.session(
-		[email, password],
+		[email, "password"],
 		() => {
 			cy.request({
 				url: "/api/method/login",
 				method: "POST",
 				body: { usr: email, pwd: password },
+				log: false,
 			});
 		},
 		{

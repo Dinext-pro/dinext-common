@@ -1,5 +1,6 @@
 const fixture = () => Cypress.env("workflowScenarios");
 const contextMethod = "dinext_common.workflow_approval.scenarios.api.get_workflow_context";
+const helper = "dinext_common.tests.workflow_scenario_ui";
 
 const openSource = (name) => {
 	cy.window().then(win => win.frappe.set_route("Form", fixture().doctype, name));
@@ -10,8 +11,16 @@ const openSource = (name) => {
 };
 
 context("multiple active workflow scenarios", () => {
-	before(() => cy.task("scenarioSeed").then(data => Cypress.env("workflowScenarios", data)));
-	after(() => cy.task("scenarioCleanup"));
+	before(() => {
+		cy.login();
+		cy.openDesk();
+		cy.call(`${helper}.seed`, {}).its("body.message").then(data => Cypress.env("workflowScenarios", data));
+	});
+	after(() => {
+		cy.login();
+		cy.openDesk();
+		cy.call(`${helper}.cleanup`, {});
+	});
 	beforeEach(() => {
 		cy.login(fixture().user, fixture().password);
 		cy.openDesk(`/app/cypress-scenario-source/${fixture().documents.a_form}`);

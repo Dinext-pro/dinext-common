@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import frappe
+from frappe.tests.ui_test_helpers import whitelist_for_tests
 
 from dinext_common.tests.ui_test_helpers import (
 	PASSWORD,
@@ -31,10 +32,11 @@ STATES = ("Scenario Waiting A", "Scenario Done A", "Scenario Waiting B", "Scenar
 
 def _guard():
 	frappe.only_for("System Manager")
-	if not frappe.conf.get("workflow_scenarios_test_site"):
-		raise frappe.PermissionError("Workflow scenario fixtures require an isolated test site")
+	if not (getattr(frappe.local, "dev_server", False) and frappe.conf.get("workflow_scenarios_test_site")):
+		raise frappe.PermissionError("Workflow scenario fixtures require an isolated development test site")
 
 
+@whitelist_for_tests(methods=["POST"])
 def cleanup():
 	_guard()
 	names = frappe.get_all(SOURCE, pluck="name") if frappe.db.exists("DocType", SOURCE) else []
@@ -69,6 +71,7 @@ def cleanup():
 	return {"cleaned": True}
 
 
+@whitelist_for_tests(methods=["POST"])
 def seed():
 	_guard()
 	cleanup()
@@ -124,12 +127,14 @@ def seed():
 		"workflows": [PREFIX + " A", PREFIX + " B"], "uuids": ["cypress-scenario-a", "cypress-scenario-b"]}
 
 
+@whitelist_for_tests(methods=["POST"])
 def seed_progress_user():
 	_guard()
 	_ensure_user(PROGRESS_USER, "Scenario Progress Reviewer", ["System Manager", "Desk User"])
 	return {"user": PROGRESS_USER, "password": PASSWORD}
 
 
+@whitelist_for_tests(methods=["POST"])
 def cleanup_progress_user():
 	_guard()
 	if frappe.db.exists("User", PROGRESS_USER):

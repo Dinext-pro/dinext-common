@@ -1,5 +1,6 @@
 import importlib
 import unittest
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -59,12 +60,13 @@ class TestWorkflowScenarioTimesheets(unittest.TestCase):
 
 	def test_parent_request_replay_uses_completed_task_before_discovering_a_repeated_process(self):
 		adapter = self.adapter()
-		self.assertTrue(callable(getattr(adapter, "_replay_parent_action", None)), "Parent replay guard is missing")
-		parent = SimpleNamespace(name="UT-1", creation="2026-11-01", check_permission=lambda permission: None)
+		self.assertTrue(callable(getattr(adapter, "_replay_legacy_parent_action", None)), "Parent replay guard is missing")
+		parent = SimpleNamespace(doctype="User Timesheet", name="UT-1", creation="2026-11-01", check_permission=lambda permission: None)
 		source = SimpleNamespace(name="A", creation="2026-11-02", check_permission=lambda permission: None)
 		task = frappe._dict(name="TASK-A", reference_name="A", workflow="Alpha", workflow_process="P-A",
 			transition_uuid="UUID-A", correlation_id="request-1:0", action="Approve", source_created_at="2026-11-02")
 		with (
+			patch.object(adapter.request_receipts, "get", return_value=None),
 			patch.object(adapter, "_enabled", return_value=True),
 			patch.object(adapter, "_producer", return_value=SimpleNamespace()),
 			patch.object(frappe, "cache", SimpleNamespace(get_value=lambda key: None)),
@@ -84,22 +86,28 @@ class TestWorkflowScenarioTimesheets(unittest.TestCase):
 		adapter = self.adapter()
 		self.assertTrue(callable(getattr(adapter, "recalculate_parent", None)), "Context-aware rollup is missing")
 		parent = SimpleNamespace(name="UT-1", ut_status="Approved", ut_approval_date="old", save=lambda **kw: None)
-		sibling = SimpleNamespace(name="B", doctype=adapter.POSITION, custom_state="Waiting", workflow_state="Editing")
-		changed = SimpleNamespace(name="A", doctype=adapter.POSITION, custom_state="Editing")
+		sibling = frappe._dict(name="B", doctype=adapter.POSITION, custom_state="Waiting", workflow_state="Editing")
+		changed = frappe._dict(name="A", doctype=adapter.POSITION, custom_state="Editing")
 		producer = SimpleNamespace(_note_timesheet_transition_message=lambda message: None)
+
 		def apply(doctype, name, state, **kwargs):
 			sibling.custom_state = state
+			return sibling
+
 		with (
 			patch.object(adapter, "_enabled", return_value=True),
 			patch.object(adapter, "_producer", return_value=producer),
-			patch.object(adapter, "_position_status_counts", return_value={"Editing": 1, "Waiting": 1}),
+			patch.object(adapter, "atomic_timesheet_transition", side_effect=nullcontext),
 			patch.object(adapter, "_rollup_settings", return_value=(lambda counts: {
 				"timesheet_status": "Rework", "position_status": "Editing", "move_all_positions": 1}, lambda: None)),
-			patch.object(frappe, "get_all", return_value=["B"]),
+			patch.object(frappe.local, "db", SimpleNamespace(get_values=lambda *args, **kwargs: ["A", "B"]), create=True),
+			patch.object(frappe.local, "message_log", [], create=True),
 			patch.object(frappe, "get_doc", return_value=sibling),
 			patch.object(frappe.local, "flags", frappe._dict(in_timesheet_approval_cascade=False), create=True),
 			patch.object(frappe, "session", frappe._dict(user="approver@example.com")),
-			patch.object(adapter.service, "get_context", return_value={"workflow": "Beta", "state": "Waiting"}),
+			patch.object(adapter.service, "get_context", side_effect=lambda doc: {
+				"workflow": "Beta", "state": doc.custom_state, "state_field": "custom_state",
+			}),
 			patch.object(adapter.engine, "apply_domain_transition", side_effect=apply),
 		):
 			adapter.recalculate_parent(parent, changed, "Approved")

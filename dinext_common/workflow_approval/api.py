@@ -11,7 +11,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, get_datetime, getdate, now_datetime
 
-from dinext_common.workflow_approval import engine
+from dinext_common.workflow_approval import engine, request_receipts
 from dinext_common.workflow_approval.comments import WorkflowCommentResponse, get_latest_round_comments
 from dinext_common.workflow_approval.validation import discard_collected_comment_messages
 from dinext_common.workflow_approval.pending import (
@@ -81,6 +81,7 @@ MONITORED_TASK_FIELDS = (
 )
 PERSONAL_TASK_ORDER = "modified desc, name asc"
 BULK_VOTE_METHOD = "dinext_common.workflow_approval.api.bulk_vote"
+BULK_JOB_METHOD = "dinext_common.workflow_approval.api.run_background_bulk"
 BULK_PROGRESS_EVENT = "dinext_workflow_progress"
 MAX_BULK_DOCUMENTS = 500
 
@@ -159,6 +160,16 @@ def _find_task_for_action(
 	return matches[0]
 
 
+def _prior_task_for_request(doctype: str, name: str, request_id: str) -> str | None:
+	row = frappe.db.get_value("Workflow Task", {
+		"reference_doctype": doctype, "reference_name": name,
+		"approver": frappe.session.user, "correlation_id": request_id,
+	}, ["name", "status", "request_receipt_recorded"], as_dict=True)
+	if row and (row.status == "Completed" or row.request_receipt_recorded):
+		return row.name
+	return None
+
+
 def _vote_source_action(
 	doctype: str,
 	name: str,
@@ -171,15 +182,28 @@ def _vote_source_action(
 	workflow: str | None = None,
 	process_id: str | None = None,
 	task_name: str | None = None,
+	receipt_managed: bool = False,
+	expected_creation: str | None = None,
 ) -> engine.VoteResult:
+	if request_id and not receipt_managed:
+		receipt = request_receipts.get(request_receipts.request_key("Vote", request_id))
+		if receipt:
+			target = json.loads(receipt.targets)[0]
+			if (
+				target["doctype"] != doctype or target["name"] != name
+				or (task_name and target["task_name"] != task_name)
+				or (workflow and target.get("workflow") != workflow)
+				or (process_id and target.get("process_id") != process_id)
+			):
+				raise engine.WorkflowApprovalConflictError(_("The Workflow target no longer matches the selected document"))
+			return engine.cast_vote(target["task_name"], transition_uuid=transition_uuid, action=action,
+				comment=comment, request_id=request_id, completion_source=completion_source)
+
 	explicit_task_name = task_name
 	# A retry may arrive after terminal completion prepared another identical
 	# process. Resolve the original request before looking for a Working task.
 	if request_id and not task_name:
-		task_name = frappe.db.get_value("Workflow Task", {
-			"reference_doctype": doctype, "reference_name": name,
-			"approver": frappe.session.user, "status": "Completed", "correlation_id": request_id,
-		}, "name")
+		task_name = _prior_task_for_request(doctype, name, request_id)
 	task_name = task_name or _find_task_for_action(
 		doctype, name, action, frappe.session.user, transition_uuid=transition_uuid,
 		require_unique_task=completion_source == "Bulk",
@@ -194,6 +218,7 @@ def _vote_source_action(
 	return engine.cast_vote(
 		task_name, transition_uuid=transition_uuid, action=action, comment=comment,
 		request_id=request_id, completion_source=completion_source,
+		receipt_managed=receipt_managed, expected_creation=expected_creation,
 	)
 
 
@@ -259,17 +284,175 @@ def publish_workflow_progress(request_id: str, count: int, total: int) -> None:
 	)
 
 
-def _parse_bulk_targets(targets: str | list[dict[str, Any]] | None, names: list[str]) -> dict[str, dict[str, Any]]:
+class BulkTargetFormInput(TypedDict):
+	name: str
+	workflow: str
+	process_id: str
+	task_name: str
+	transition_uuid: str
+
+
+class BulkTaskFormInput(TypedDict, total=False):
+	task_name: str
+	transition_uuid: str
+	action: str
+	comment: str
+
+
+class BulkItemResponse(TypedDict, total=False):
+	name: str
+	task_name: str
+	result: engine.VoteResult
+	error: str
+	error_type: str
+
+
+class BulkVoteResponse(TypedDict):
+	succeeded: list[BulkItemResponse]
+	failed: list[BulkItemResponse]
+
+
+class BulkJobResponse(TypedDict, total=False):
+	status: str
+	result: BulkVoteResponse
+
+
+class BulkJobToken(TypedDict):
+	job_id: str
+
+
+def _parse_bulk_targets(targets: str | list[dict[str, Any]] | None, names: list[str]) -> dict[str, BulkTargetFormInput]:
 	if targets is None:
 		return {}
 	rows = _as_list(targets)
 	required = ("name", "workflow", "process_id", "task_name", "transition_uuid")
 	if any(not isinstance(row, dict) or any(not isinstance(row.get(field), str) or not row[field] for field in required) for row in rows):
 		raise frappe.ValidationError(_("Each Workflow target must specify document, Workflow, process, task and transition"))
-	by_name = {row["name"]: row for row in rows}
+	by_name = {row["name"]: {field: row[field] for field in required} for row in rows}
 	if len(by_name) != len(rows) or set(by_name) != set(names):
 		raise frappe.ValidationError(_("Workflow targets do not match the selected documents"))
 	return by_name
+
+
+def _source_batch(doctype, names, action, comment, transition_uuid, targets):
+	docnames = list(dict.fromkeys(str(name) for name in _as_list(names)))
+	if len(docnames) > MAX_BULK_DOCUMENTS:
+		raise frappe.ValidationError(_("Bulk approval supports at most 500 documents"))
+	targets_by_name = _parse_bulk_targets(targets, docnames)
+	return docnames, targets_by_name, [
+		doctype, docnames, action, str(comment or ""),
+		transition_uuid, targets_by_name,
+	]
+
+
+def _read_batch_target(doctype, name, task_name) -> request_receipts.ReceiptTarget | None:
+	try:
+		source = frappe.get_doc(doctype, name)
+	except frappe.DoesNotExistError:
+		return None
+	if not source.has_permission("read"):
+		return None
+	return request_receipts.target(source, task_name)
+
+
+def _reserve_source_batch(doctype, names, action, transition_uuid, targets, request_id, parameters, *, job_id=None):
+	key = request_receipts.request_key("Bulk Vote", request_id)
+	receipt = request_receipts.get(key)
+	if receipt:
+		request_receipts.verify(receipt, parameters)
+		return receipt
+	if names and frappe.db.exists("Workflow Task", {
+		"reference_doctype": doctype, "reference_name": ("in", names), "approver": frappe.session.user,
+		"request_receipt_recorded": 1,
+		"correlation_id": ("in", [f"{request_id}:{name}" for name in names]),
+	}):
+		# An expired partial batch must never discover new tasks for its other positions.
+		raise engine.WorkflowApprovalConflictError(_("The Workflow request has expired. Refresh the document before acting."))
+	snapshot = []
+	for name in names:
+		item = targets.get(name, {})
+		task_name = item.get("task_name") or _prior_task_for_request(doctype, name, f"{request_id}:{name}")
+		if not task_name:
+			try:
+				task_name = _find_task_for_action(
+					doctype, name, action, frappe.session.user, item.get("transition_uuid") or transition_uuid,
+					require_unique_task=True,
+				)
+			except engine.WorkflowApprovalConflictError:
+				pass
+		snapshot.append(_read_batch_target(doctype, name, task_name))
+	return request_receipts.reserve(
+		"Bulk Vote", request_id, parameters, snapshot, item_results=[None] * len(names), job_id=job_id,
+	)
+
+
+def _bulk_failure(identity: BulkItemResponse, error: Exception) -> BulkItemResponse:
+	redacted = isinstance(error, (frappe.DoesNotExistError, frappe.PermissionError))
+	return {
+		**identity,
+		"error": _("The workflow item could not be processed") if redacted else str(error),
+		"error_type": "Unavailable" if redacted else error.__class__.__name__,
+	}
+
+
+def _run_bulk(items, apply, *, receipt=None, parameters=None, progress=None) -> BulkVoteResponse:
+	key = receipt.name if receipt else None
+	snapshot = json.loads(receipt.targets) if receipt else []
+	if receipt:
+		request_receipts.verify(receipt, parameters)
+		if receipt.status == "Failed":
+			raise engine.WorkflowApprovalConflictError(_("The background workflow operation failed"))
+		if receipt.response is not None:
+			return request_receipts.replay(receipt, parameters)
+		# Subsequent items each commit independently, so keep the envelope durable first.
+		frappe.db.commit()
+	results = []
+	for index, identity in enumerate(items):
+		if key:
+			receipt = request_receipts.lock(key)
+			if receipt.response is not None:
+				return request_receipts.replay(receipt, parameters)
+			stored = json.loads(receipt.item_results)
+			if stored[index] is not None:
+				results.append(stored[index])
+				continue
+		message_count = len(frappe.local.message_log or [])
+		try:
+			target = snapshot[index] if key else None
+			if key and target is None:
+				raise frappe.PermissionError
+			result = {**identity, "result": apply(index, target)}
+		except Exception as error:
+			frappe.db.rollback()
+			discard_collected_comment_messages(error, message_count)
+			result = _bulk_failure(identity, error)
+			if key:
+				receipt = request_receipts.lock(key)
+				if receipt.response is not None:
+					return request_receipts.replay(receipt, parameters)
+				stored = json.loads(receipt.item_results)
+				# A parallel retry can finish the item while this transaction rolls back.
+				result = stored[index] or result
+		if key:
+			stored[index] = result
+			frappe.db.set_value(request_receipts.DOCTYPE, key, "item_results", json.dumps(stored, ensure_ascii=False))
+		if key or "result" in result:
+			frappe.db.commit()
+		results.append(result)
+		if progress:
+			progress(index)
+	if key:
+		receipt = request_receipts.lock(key)
+		if receipt.response is not None:
+			return request_receipts.replay(receipt, parameters)
+		results = json.loads(receipt.item_results)
+	outcome = {
+		"succeeded": [row for row in results if "result" in row],
+		"failed": [row for row in results if "error" in row],
+	}
+	if key:
+		request_receipts.finish(key, outcome)
+	return outcome
 
 
 @frappe.whitelist(methods=["POST"])
@@ -282,62 +465,49 @@ def bulk_vote(
 	transition_uuid: str | None = None,
 	track_progress: bool = False,
 	targets: str | list[dict[str, Any]] | None = None,
-) -> dict[str, list[dict[str, Any]]]:
+) -> BulkVoteResponse:
 	"""Commit each successful vote and return itemized outcomes."""
+	_require_post()
+	docnames, target_by_name, parameters = _source_batch(doctype, names, action, comment, transition_uuid, targets)
+	track_progress = str(track_progress).lower() in {"1", "true"}
+	receipt = _reserve_source_batch(
+		doctype, docnames, action, transition_uuid, target_by_name, request_id, parameters,
+	) if request_id else None
+
+	return _execute_source_batch(
+		doctype, docnames, action, comment, request_id, transition_uuid,
+		track_progress, target_by_name, receipt, parameters,
+	)
+
+
+def _execute_source_batch(
+	doctype, docnames, action, comment, request_id, transition_uuid,
+	track_progress, target_by_name, receipt, parameters,
+) -> BulkVoteResponse:
 	from frappe.model.workflow import show_progress
 
-	_require_post()
-	docnames = list(dict.fromkeys(str(name) for name in _as_list(names)))
-	if len(docnames) > MAX_BULK_DOCUMENTS:
-		raise frappe.ValidationError(_("Bulk approval supports at most 500 documents"))
-	target_by_name = _parse_bulk_targets(targets, docnames)
-	track_progress = str(track_progress).lower() in {"1", "true"}
-	report_progress = track_progress and bool(request_id) and len(docnames) > 1
-	result: dict[str, list[dict[str, Any]]] = {"succeeded": [], "failed": []}
-	for index, name in enumerate(docnames, 1):
+	def apply(index, snapshot):
+		name = docnames[index]
 		if not track_progress:
-			show_progress(docnames, _("Applying: {0}").format(action), index, name)
-		message_count = len(frappe.local.message_log or [])
-		try:
-			target = target_by_name.get(name, {})
-			vote_result = _vote_source_action(
-				doctype,
-				name,
-				action,
-				transition_uuid=target.get("transition_uuid") or transition_uuid,
-				workflow=target.get("workflow"), process_id=target.get("process_id"),
-				task_name=target.get("task_name"),
-				comment=comment,
-				request_id=f"{request_id}:{name}" if request_id else None,
-				completion_source="Bulk",
-			)
-			frappe.db.commit()
-			result["succeeded"].append({"name": name, "result": vote_result})
-		except Exception as exc:
-			frappe.db.rollback()
-			discard_collected_comment_messages(exc, message_count)
-			redacted = isinstance(
-				exc,
-				(frappe.DoesNotExistError, frappe.PermissionError),
-			)
-			result["failed"].append(
-				{
-					"name": name,
-					"error": (
-						_("The workflow item could not be processed")
-						if redacted
-						else str(exc)
-					),
-					"error_type": (
-						"Unavailable"
-						if redacted
-						else exc.__class__.__name__
-					),
-				}
-			)
-		if report_progress:
-			publish_workflow_progress(request_id, index, len(docnames))
-	return result
+			show_progress(docnames, _("Applying: {0}").format(action), index + 1, name)
+		target = target_by_name.get(name, {})
+		if snapshot and not snapshot["task_name"]:
+			raise engine.WorkflowApprovalConflictError(_("No unique active Workflow Task is available for this action"))
+		return _vote_source_action(
+			doctype, name, action, transition_uuid=target.get("transition_uuid") or transition_uuid,
+			workflow=target.get("workflow"), process_id=target.get("process_id"),
+			task_name=snapshot["task_name"] if snapshot else target.get("task_name"), comment=comment,
+			request_id=f"{request_id}:{name}" if request_id else None, completion_source="Bulk",
+			receipt_managed=bool(receipt), expected_creation=snapshot["source_created_at"] if snapshot else None,
+		)
+
+	def progress(index):
+		publish_workflow_progress(request_id, index + 1, len(docnames))
+
+	return _run_bulk(
+		[{"name": name} for name in docnames], apply, receipt=receipt, parameters=parameters,
+		progress=progress if track_progress and request_id and len(docnames) > 1 else None,
+	)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -345,62 +515,86 @@ def bulk_task_vote(
 	items: str | list[dict[str, Any]],
 	comment: object = None,
 	request_id: str | None = None,
-) -> dict[str, list[dict[str, Any]]]:
+) -> BulkVoteResponse:
 	"""Vote checked report rows independently with permission-safe outcomes."""
 	_require_post()
 	parsed = _as_list(items)
 	if len(json.dumps(parsed, ensure_ascii=False)) > 1_000_000:
 		raise frappe.ValidationError(_("Bulk approval payload is too large"))
-	deduplicated: dict[tuple[str, str], dict[str, Any]] = {}
+	deduplicated: dict[tuple[str, str], BulkTaskFormInput] = {}
 	for item in parsed:
 		if not isinstance(item, dict):
 			raise frappe.ValidationError(_("Each bulk item must be an object"))
 		key = (str(item.get("task_name") or ""), str(item.get("transition_uuid") or ""))
 		if not all(key):
 			raise frappe.ValidationError(_("Task and transition are required"))
-		deduplicated.setdefault(key, item)
-	if len(deduplicated) > 500:
+		deduplicated.setdefault(key, {
+			"task_name": key[0], "transition_uuid": key[1], "action": item.get("action"),
+			"comment": str(item.get("comment", comment) or ""),
+		})
+	if len(deduplicated) > MAX_BULK_DOCUMENTS:
 		raise frappe.ValidationError(_("Bulk approval supports at most 500 tasks"))
+	rows = list(deduplicated.values())
+	receipt = None
+	if request_id:
+		receipt = request_receipts.get(request_receipts.request_key("Bulk Task Vote", request_id))
+		if not receipt:
+			snapshot = []
+			for row in rows:
+				task = frappe.db.get_value("Workflow Task", row["task_name"],
+					["reference_doctype", "reference_name"], as_dict=True)
+				snapshot.append(_read_batch_target(task.reference_doctype, task.reference_name, row["task_name"]) if task else None)
+			receipt = request_receipts.reserve("Bulk Task Vote", request_id, rows, snapshot, item_results=[None] * len(rows))
 
-	result: dict[str, list[dict[str, Any]]] = {"succeeded": [], "failed": []}
-	for index, ((task_name, transition_uuid), item) in enumerate(deduplicated.items()):
-		message_count = len(frappe.local.message_log or [])
-		try:
-			vote_result = engine.cast_vote(
-				task_name,
-				transition_uuid=transition_uuid,
-				action=item.get("action"),
-				comment=item.get("comment", comment),
-				request_id=(
-					f"{request_id}:{index}" if request_id else None
-				),
-				completion_source="Bulk",
-			)
-			result["succeeded"].append({"task_name": task_name, "result": vote_result})
+	def apply(index, snapshot):
+		row = rows[index]
+		return engine.cast_vote(
+			row["task_name"], transition_uuid=row["transition_uuid"],
+			action=row["action"], comment=row["comment"],
+			request_id=f"{request_id}:{index}" if request_id else None, completion_source="Bulk",
+			receipt_managed=bool(receipt), expected_creation=snapshot["source_created_at"] if snapshot else None,
+		)
+
+	return _run_bulk([{"task_name": row["task_name"]} for row in rows], apply, receipt=receipt, parameters=rows)
+
+
+def run_background_bulk(*, receipt_key=None, initiator=None, **arguments) -> BulkVoteResponse:
+	"""Run a reserved job as its original initiator, including Frappe worker retries."""
+	if not receipt_key:
+		return bulk_vote(**arguments)
+	previous_user = frappe.session.user
+	if previous_user != initiator:
+		frappe.set_user(initiator)
+	try:
+		return _run_reserved_source_batch(receipt_key, arguments)
+	except Exception:
+		frappe.db.rollback()
+		receipt = request_receipts.get(receipt_key, for_update=True)
+		if receipt and receipt.status == "Working" and receipt.initiator == frappe.session.user:
+			request_receipts.finish(receipt_key, None, failed=True)
 			frappe.db.commit()
-		except Exception as exc:
-			frappe.db.rollback()
-			discard_collected_comment_messages(exc, message_count)
-			redacted = isinstance(
-				exc,
-				(frappe.DoesNotExistError, frappe.PermissionError),
-			)
-			result["failed"].append(
-				{
-					"task_name": task_name,
-					"error": (
-						_("The workflow item could not be processed")
-						if redacted
-						else str(exc)
-					),
-					"error_type": (
-						"Unavailable"
-						if redacted
-						else exc.__class__.__name__
-					),
-				}
-			)
-	return result
+		raise
+	finally:
+		if previous_user != initiator:
+			frappe.set_user(previous_user)
+
+
+def _run_reserved_source_batch(key, arguments) -> BulkVoteResponse:
+	request_id = arguments["request_id"]
+	receipt = request_receipts.get(key)
+	if not receipt or not receipt.job_id or request_receipts.request_key("Bulk Vote", request_id) != key:
+		raise engine.WorkflowApprovalConflictError(_("The Workflow request has expired. Refresh the document before acting."))
+	if not frappe.db.get_value("User", frappe.session.user, "enabled"):
+		raise frappe.PermissionError
+	doctype, action = arguments["doctype"], arguments["action"]
+	comment, transition_uuid = arguments["comment"], arguments["transition_uuid"]
+	names, targets, parameters = _source_batch(
+		doctype, arguments["names"], action, comment, transition_uuid, arguments["targets"],
+	)
+	return _execute_source_batch(
+		doctype, names, action, comment, request_id, transition_uuid, arguments["track_progress"],
+		targets, receipt, parameters,
+	)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -413,39 +607,43 @@ def bulk_workflow_approval(
 	transition_uuid: str | None = None,
 	track_progress: bool = False,
 	targets: str | list[dict[str, Any]] | None = None,
-) -> dict[str, Any] | None:
+) -> BulkVoteResponse | BulkJobToken | None:
 	"""Apply a small selection inline or return its background job token."""
+	from frappe.utils.background_jobs import get_job
+
 	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
 
 	if not is_engine_enabled():
 		from frappe.model.workflow import bulk_workflow_approval as core_bulk_workflow_approval
 
 		return core_bulk_workflow_approval(docnames, doctype, action)
-	names = list(dict.fromkeys(str(name) for name in _as_list(docnames)))
-	if len(names) > MAX_BULK_DOCUMENTS:
-		frappe.throw(
-			_("Bulk approval only supports up to 500 documents."),
-			title=_("Too Many Documents"),
-		)
-	_parse_bulk_targets(targets, names)
+	_require_post()
+	names, target_by_name, parameters = _source_batch(doctype, docnames, action, comment, transition_uuid, targets)
 	track_progress = str(track_progress).lower() in {"1", "true"}
 	args = {
-		"doctype": doctype,
-		"names": names,
-		"action": action,
-		"comment": comment,
-		"request_id": request_id,
-		"transition_uuid": transition_uuid,
-		"track_progress": track_progress,
-		"targets": targets,
+		"doctype": doctype, "names": names, "action": action, "comment": comment,
+		"request_id": request_id, "transition_uuid": transition_uuid,
+		"track_progress": track_progress, "targets": targets,
 	}
 	if len(names) < 20:
 		return bulk_vote(**args)
 
 	job_id = uuid4().hex
-	job = frappe.enqueue(BULK_VOTE_METHOD, queue="short", timeout=1000, job_id=job_id, **args)
+	if request_id:
+		receipt = _reserve_source_batch(
+			doctype, names, action, transition_uuid, target_by_name, request_id, parameters, job_id=job_id,
+		)
+		request_receipts.verify(receipt, parameters)
+		if not receipt.job_id:
+			raise engine.WorkflowApprovalConflictError(_("This Workflow request was already used with different parameters"))
+		job_id = receipt.job_id
+		frappe.db.commit()
+		receipt = request_receipts.lock(receipt.name)
+		if receipt.status != "Working" or get_job(job_id):
+			return {"job_id": job_id}
+		args.update(receipt_key=receipt.name, initiator=receipt.initiator)
+	job = frappe.enqueue(BULK_JOB_METHOD, queue="short", timeout=1000, job_id=job_id, **args)
 	if isinstance(job, dict):
-		# Frappe can execute inline when the queue is unavailable during migration.
 		return job
 	if not track_progress:
 		frappe.msgprint(_("Bulk {0} is enqueued in background.").format(action), alert=True)
@@ -453,16 +651,28 @@ def bulk_workflow_approval(
 
 
 @frappe.whitelist()
-def get_bulk_workflow_job(job_id: str) -> dict[str, Any]:
+def get_bulk_workflow_job(job_id: str) -> BulkJobResponse:
 	"""Expose only the requesting user's bulk approval result on this site."""
 	from frappe.utils.background_jobs import get_job
 
 	if len(job_id) != 32 or any(char not in "0123456789abcdef" for char in job_id):
 		return {"status": "unavailable"}
+	receipt = frappe.db.get_value(request_receipts.DOCTYPE, {"job_id": job_id},
+		["initiator", "status", "response", "targets"], as_dict=True)
+	if receipt:
+		if receipt.initiator != frappe.session.user:
+			return {"status": "unavailable"}
+		request_receipts.check_targets(json.loads(receipt.targets))
+		if receipt.status == "Completed":
+			return {"status": "finished", "result": json.loads(receipt.response)}
+		if receipt.status == "Failed":
+			return {"status": "failed"}
+
 	job = get_job(job_id)
 	if (
 		not job
-		or job.kwargs.get("method") != BULK_VOTE_METHOD
+		or job.kwargs.get("method") not in (BULK_VOTE_METHOD, BULK_JOB_METHOD)
+		or (not receipt and job.kwargs.get("method") == BULK_JOB_METHOD and job.kwargs.get("kwargs", {}).get("request_id"))
 		or job.kwargs.get("user") != frappe.session.user
 		or job.kwargs.get("site") != frappe.local.site
 	):
@@ -477,7 +687,6 @@ def get_bulk_workflow_job(job_id: str) -> dict[str, Any]:
 	if status in {"failed", "stopped", "canceled"}:
 		return {"status": "failed"}
 	return {"status": "pending"}
-
 
 def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monitored_only=False):
 	fields = list(dict.fromkeys((*fields, *TASK_ACCESS_FIELDS)))

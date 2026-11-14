@@ -115,7 +115,7 @@ class TestWorkflowScenarioLifecycle(unittest.TestCase):
 		return workflow.insert(ignore_permissions=True)
 
 	def source(self, title):
-		return frappe.get_doc(
+		source = frappe.get_doc(
 			dict(
 				doctype="Note",
 				title=title + " " + frappe.generate_hash(length=8),
@@ -123,6 +123,9 @@ class TestWorkflowScenarioLifecycle(unittest.TestCase):
 				content="Test content",
 			)
 		).insert(ignore_permissions=True)
+		for user in (self.first_user, self.user):
+			frappe.share.add(source.doctype, source.name, user, read=1)
+		return source
 
 	def tasks(self, source):
 		return frappe.get_all(
@@ -240,6 +243,123 @@ class TestWorkflowScenarioLifecycle(unittest.TestCase):
 		self.assertTrue(result["transitioned"])
 		self.assertEqual(service.get_context(source)["process_id"], process)
 		self.assertEqual([row.name for row in self.tasks(source)], [row.name for row in new_tasks])
+
+
+	def test_replay_preserves_an_open_vote_after_the_process_has_repeated(self):
+		source = self.source("A lost response")
+		initial_process = service.get_context(source)["process_id"]
+		task = next(row for row in self.tasks(source) if row.approver == self.first_user)
+		frappe.set_user(self.first_user)
+		args = {"task_name": task.name, "transition_uuid": "scenario-A",
+			"request_id": frappe.generate_hash(length=32), "comment": "Original vote"}
+		original = api.vote(**args)
+		self.assertEqual(original["round_status"], "Open")
+		self.assertFalse(original["transitioned"])
+		self.vote(source, user=self.user)
+		self.assertNotEqual(service.get_context(source.reload())["process_id"], initial_process)
+		frappe.clear_cache(doctype=source.doctype)
+		frappe.set_user(self.first_user)
+		self.assertEqual(api.vote(**args), original)
+		with self.assertRaises(engine.WorkflowApprovalConflictError):
+			api.vote(**{**args, "comment": "A different vote"})
+		from dinext_common.workflow_approval import request_receipts
+
+		receipt_key = request_receipts.request_key("Vote", args["request_id"])
+		frappe.db.delete(request_receipts.DOCTYPE, {"name": receipt_key})
+		with self.assertRaises(engine.WorkflowApprovalConflictError):
+			api.vote(**args)
+
+
+
+	def test_bulk_replay_keeps_original_partial_result(self):
+		from unittest.mock import patch
+
+		source = self.source("A batch lost response")
+		task = next(row for row in self.tasks(source) if row.approver == self.first_user)
+		args = {
+			"items": [
+				{"task_name": task.name, "transition_uuid": "scenario-A"},
+				{"task_name": "missing-task", "transition_uuid": "scenario-A"},
+			],
+			"request_id": frappe.generate_hash(length=32),
+		}
+		frappe.set_user(self.first_user)
+		# Keep the fixture in its savepoint while exercising the itemized API.
+		with patch.object(frappe.db, "commit"), patch.object(frappe.db, "rollback"):
+			result = api.bulk_task_vote(**args)
+			self.assertEqual(len(result["succeeded"]), 1)
+			self.assertEqual(len(result["failed"]), 1)
+			self.vote(source, user=self.user)
+			frappe.set_user(self.first_user)
+			self.assertEqual(api.bulk_task_vote(**args), result)
+			with self.assertRaises(engine.WorkflowApprovalConflictError):
+				api.bulk_task_vote(**{**args, "comment": "Changed request"})
+
+
+
+
+	def test_expired_partial_batch_does_not_vote_on_a_newly_available_target(self):
+		from unittest.mock import patch
+
+		from dinext_common.workflow_approval import request_receipts
+
+		first = self.source("A open for a vote")
+		later = self.source("Unmatched during the first request")
+		request_id = frappe.generate_hash(length=32)
+		frappe.set_user(self.first_user)
+		with (
+			patch.object(frappe.db, "commit"), patch.object(frappe.db, "rollback"),
+			patch.object(api, "publish_workflow_progress"),
+		):
+			outcome = api.bulk_vote("Note", [first.name, later.name], "Approve", request_id=request_id, track_progress=True)
+			self.assertEqual(len(outcome["succeeded"]), 1)
+			self.assertEqual(len(outcome["failed"]), 1)
+			frappe.db.delete(request_receipts.DOCTYPE, {"name": request_receipts.request_key("Bulk Vote", request_id)})
+			frappe.set_user("Administrator")
+			later.title = "A now eligible"
+			later.save(ignore_permissions=True)
+			frappe.set_user(self.first_user)
+			with self.assertRaises(engine.WorkflowApprovalConflictError):
+				api.bulk_vote("Note", [first.name, later.name], "Approve", request_id=request_id, track_progress=True)
+		self.assertEqual(len(self.tasks(later)), 2)
+
+
+	def test_background_request_retries_with_same_token_and_durable_result(self):
+		from unittest.mock import patch
+
+		source = self.source("A background retry")
+		args = {
+			"docnames": [source.name, *(f"missing-source-{index}" for index in range(19))],
+			"doctype": "Note", "action": "Approve", "track_progress": True,
+			"request_id": frappe.generate_hash(length=32),
+		}
+		job = object()
+		frappe.set_user(self.first_user)
+		with (
+			patch.object(frappe.db, "commit"), patch.object(frappe.db, "rollback"),
+			patch("frappe.utils.background_jobs.get_job", side_effect=[None, job]),
+			patch.object(frappe, "enqueue", return_value=job) as enqueue,
+			patch.object(api, "publish_workflow_progress"),
+		):
+			first = api.bulk_workflow_approval(**args)
+			self.assertEqual(api.bulk_workflow_approval(**args), first)
+			enqueue.assert_called_once()
+			worker_args = {
+				key: value for key, value in enqueue.call_args.kwargs.items()
+				if key not in {"queue", "timeout", "job_id"}
+			}
+			# Frappe retries jobs without retaining its original user argument.
+			frappe.set_user("Administrator")
+			stored = api.run_background_bulk(**worker_args)
+			self.assertEqual(frappe.session.user, "Administrator")
+			self.assertEqual(len(stored["succeeded"]), 1)
+			self.assertEqual(len(stored["failed"]), 19)
+			frappe.set_user(self.first_user)
+		with patch("frappe.utils.background_jobs.get_job", return_value=None):
+			self.assertEqual(api.get_bulk_workflow_job(first["job_id"]), {"status": "finished", "result": stored})
+			frappe.set_user(self.user)
+			self.assertEqual(api.get_bulk_workflow_job(first["job_id"]), {"status": "unavailable"})
+
 
 	def test_automation_allows_repeats_but_pauses_after_twenty(self):
 		frappe.db.set_value(

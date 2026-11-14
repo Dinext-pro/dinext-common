@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, TypedDict
@@ -19,9 +20,10 @@ from frappe.model.workflow import (
 	has_approval_access,
 	is_transition_condition_satisfied,
 )
-from frappe.utils import now_datetime
+from frappe.utils import get_datetime, now_datetime
 from frappe.utils.user import get_users_with_role
 
+from dinext_common.workflow_approval import request_receipts
 from dinext_common.workflow_approval.fingerprint import (
 	ContentFingerprint,
 	fingerprint_document,
@@ -1351,6 +1353,7 @@ def complete_task(
 	content_fingerprint: ContentFingerprint,
 	request_id: str | None = None,
 	reused_from: str | None = None,
+	receipt_recorded: bool = False,
 ) -> None:
 	_set_task_values(
 		task.name,
@@ -1369,6 +1372,7 @@ def complete_task(
 			"content_fingerprint": content_fingerprint.digest,
 			"content_fingerprint_version": content_fingerprint.version,
 			"correlation_id": request_id,
+			"request_receipt_recorded": int(receipt_recorded),
 		},
 	)
 
@@ -1387,6 +1391,10 @@ def current_comment_required(task: object, transition_uuid: str, *, workflow=Non
 	return bool(transition.get("custom_comment_is_required"))
 
 
+def _vote_parameters(task_name, transition_uuid, action, comment):
+	return [task_name, transition_uuid, action, normalize_comment(comment, required=False)]
+
+
 def cast_vote(
 	task_name: str,
 	*,
@@ -1395,6 +1403,8 @@ def cast_vote(
 	comment: object = None,
 	request_id: str | None = None,
 	completion_source: str = "Manual",
+	receipt_managed: bool = False,
+	expected_creation: str | None = None,
 ) -> VoteResult:
 	"""Lock source then task, revalidate, record one vote, and finalize if reached."""
 	pointer = frappe.db.get_value(
@@ -1404,6 +1414,11 @@ def cast_vote(
 		as_dict=True,
 	)
 	if not pointer:
+		if request_id and not receipt_managed:
+			receipt = request_receipts.get(request_receipts.request_key("Vote", request_id))
+			if receipt:
+				parameters = _vote_parameters(task_name, transition_uuid, action, comment)
+				return request_receipts.replay(receipt, parameters)
 		raise frappe.DoesNotExistError(_("Workflow Task does not exist"))
 	_lock_domain_dependencies(pointer.reference_doctype, pointer.reference_name)
 	source = frappe.get_doc(
@@ -1414,17 +1429,53 @@ def cast_vote(
 	task = frappe.get_doc("Workflow Task", task_name, for_update=True)
 	task.check_permission("read")
 
+	if expected_creation and str(get_datetime(source.creation)) != expected_creation:
+		raise WorkflowApprovalConflictError(_("The Workflow target no longer matches the selected document"))
+	operation = nullcontext()
+	if source.doctype == "User Timesheet Position":
+		from dinext_common.workflow_approval.scenarios.timesheet_actions import atomic_timesheet_transition
+
+		operation = atomic_timesheet_transition()
+	with operation:
+		return _cast_locked_vote(
+			task, source, transition_uuid, action, comment, request_id, completion_source, receipt_managed
+		)
+
+
+def _cast_locked_vote(
+	task, source, transition_uuid, action, comment, request_id, completion_source, receipt_managed,
+) -> VoteResult:
 	if task.approver != frappe.session.user and frappe.session.user != "Administrator":
 		raise frappe.PermissionError(_("Only the snapshotted approver can complete this task"))
 	if not frappe.db.get_value("User", task.approver, "enabled"):
 		raise frappe.PermissionError(_("The snapshotted approver is disabled"))
-	from frappe.utils import get_datetime
 	if task.source_created_at and get_datetime(task.source_created_at) != get_datetime(source.creation):
 		raise WorkflowApprovalConflictError(_("The Workflow Task belongs to another document instance"))
-	if task.status == "Completed" and request_id and task.correlation_id == request_id:
-		return _vote_result(task, source, transitioned=task.round_status == "Transitioned")
+
+	receipt = None
+	record_vote_response = request_id and not receipt_managed
+	if record_vote_response:
+		parameters = _vote_parameters(task.name, transition_uuid, action, comment)
+		key = request_receipts.request_key("Vote", request_id)
+		receipt = request_receipts.get(key, for_update=task.status == "Completed")
+		if receipt:
+			return request_receipts.replay(receipt, parameters)
+
+	if request_id and task.correlation_id == request_id:
+		if task.get("request_receipt_recorded"):
+			raise WorkflowApprovalConflictError(_("The Workflow request has expired. Refresh the document before acting."))
+		if task.status == "Completed":
+			return _vote_result(task, source, transitioned=task.round_status == "Transitioned")
 	if task.status != "Working" or task.round_status != "Open":
 		raise WorkflowApprovalConflictError(_("Workflow Task is no longer active"))
+
+	if record_vote_response:
+		target = request_receipts.target(source, task.name)
+		target["workflow"] = task.workflow
+		target["process_id"] = task.get("workflow_process")
+		receipt = request_receipts.reserve("Vote", request_id, parameters, [target])
+		if receipt.response is not None:
+			return request_receipts.replay(receipt, parameters)
 
 	from dinext_common.workflow_approval.scenarios import service
 	service.validate_task(source, task)
@@ -1450,11 +1501,12 @@ def cast_vote(
 		task.reload()
 		source.reload()
 		if finalized or task.status != "Working" or task.round_status != "Open":
-			return _vote_result(
-				task,
-				source,
-				transitioned=task.round_status == "Transitioned",
-			)
+			result = _vote_result(task, source, transitioned=task.round_status == "Transitioned")
+			if request_id and (receipt or receipt_managed) and not task.correlation_id:
+				_set_task_values(task.name, {"correlation_id": request_id, "request_receipt_recorded": 1})
+			if receipt:
+				request_receipts.finish(receipt.name, result)
+			return result
 		manifest = _parse_manifest(task)
 		try:
 			transition = _task_transition(task, transition_uuid, action)
@@ -1478,6 +1530,7 @@ def cast_vote(
 		completion_source=completion_source,
 		content_fingerprint=fingerprint,
 		request_id=request_id,
+		receipt_recorded=bool(receipt or receipt_managed),
 	)
 	task.reload()
 	_dispatch_vote_completed(task, source, transition)
@@ -1526,7 +1579,10 @@ def cast_vote(
 		)
 	refreshed_task = frappe.get_doc("Workflow Task", task.name)
 	refreshed_source = frappe.get_doc(source.doctype, source.name)
-	return _vote_result(refreshed_task, refreshed_source, transitioned=transitioned)
+	result = _vote_result(refreshed_task, refreshed_source, transitioned=transitioned)
+	if receipt:
+		request_receipts.finish(receipt.name, result)
+	return result
 
 
 def _vote_result(task: object, source: object, *, transitioned: bool) -> VoteResult:
@@ -1645,16 +1701,21 @@ def _finalize_round(
 			frappe.session.user = actor
 		_apply_winning_transition(source, winner["action"])
 	except Exception as caught:
-		notes = getattr(frappe.flags, "workflow_finalization_errors", None)
-		if not isinstance(notes, list):
-			notes = []
-			frappe.flags.workflow_finalization_errors = notes
-		notes.append(str(caught))
 		frappe.db.rollback(save_point=savepoint)
 		frappe.db.release_savepoint(savepoint)
 		for manager, callbacks in callback_snapshots.items():
 			manager._functions.clear()
 			manager._functions.extend(callbacks)
+		if source.doctype == "User Timesheet Position":
+			from dinext_common.workflow_approval.scenarios.timesheet_actions import TimesheetTransitionError
+
+			if isinstance(caught, TimesheetTransitionError):
+				raise
+		notes = getattr(frappe.flags, "workflow_finalization_errors", None)
+		if not isinstance(notes, list):
+			notes = []
+			frappe.flags.workflow_finalization_errors = notes
+		notes.append(str(caught))
 		_mark_conflicted(
 			round_id,
 			_("Workflow core validation rejected the winning transition"),
@@ -1856,7 +1917,7 @@ def apply_domain_transition(
 	context = _workflow_context(source)
 	if not context:
 		raise WorkflowApprovalConflictError(_("The source document has no active Workflow"))
-	_workflow_name, workflow, _state_field, state = context
+	_workflow_name, workflow, state_field, state = context
 	if state == next_state:
 		return source
 	matching = []
@@ -1907,7 +1968,10 @@ def apply_domain_transition(
 	try:
 		frappe.flags.in_dinext_workflow_finalization = True
 		frappe.session.user = actor
-		core_apply_workflow(source, transition.action)
+		if doctype == "User Timesheet Position" and state_field != "workflow_state":
+			_apply_winning_transition(source, transition.action)
+		else:
+			core_apply_workflow(source, transition.action)
 	finally:
 		frappe.session.user = previous_user
 		frappe.flags.in_dinext_workflow_finalization = previous_flag

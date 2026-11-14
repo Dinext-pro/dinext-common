@@ -1,5 +1,6 @@
 import json
 import unittest
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from unittest.mock import patch
 
@@ -954,10 +955,11 @@ class TestWorkflowApprovalDesk(FrappeTestCase):
 			user.append("roles", {"role": "System Manager"})
 			for role in extra_roles or []:
 				user.append("roles", {"role": role})
-			with patch(
+			raven_hook = patch(
 				"raven.raven.doctype.raven_user.raven_user.add_user_to_raven",
 				return_value=None,
-			):
+			) if "raven" in frappe.get_installed_apps() else nullcontext()
+			with raven_hook:
 				user.insert(ignore_permissions=True)
 		return email
 

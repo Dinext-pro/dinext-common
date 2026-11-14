@@ -367,24 +367,9 @@ def _wrap_catalog(original):
 	def load_workflows(self):
 		if not _ready() or not _service().supports_doctype(self.name):
 			return original(self)
-		names = frappe.get_all(
-			"Workflow", filters={"document_type": self.name}, pluck="name",
-			order_by="custom_selection_order asc, name asc",
-		)
-		workflows = [frappe.get_doc("Workflow", name) for name in names]
-		state_names = {row.state for workflow in workflows for row in workflow.get("states") or [] if row.state}
-		existing_states = set(frappe.get_all("Workflow State", filters={"name": ["in", list(state_names)]}, pluck="name")) if state_names else set()
-		documents, seen_states = [], set()
-		for workflow in workflows:
-			documents.append(workflow)
-			for row in workflow.get("states") or []:
-				if row.state and row.state not in seen_states:
-					seen_states.add(row.state)
-					# Historical inactive definitions can outlive their styling master.
-					# Keep their catalog entry without creating data or blocking another form.
-					documents.append(frappe.get_doc("Workflow State", row.state) if row.state in existing_states else
-						frappe.get_doc({"doctype": "Workflow State", "name": row.state, "workflow_state_name": row.state}))
-		self.set("__workflow_docs", documents)
+		from dinext_common.workflow_approval.scenarios.api import workflow_catalog
+
+		self.set("__workflow_docs", workflow_catalog(self.name))
 
 	return load_workflows
 

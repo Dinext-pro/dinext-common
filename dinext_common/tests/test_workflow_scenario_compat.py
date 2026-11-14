@@ -253,20 +253,39 @@ class TestWorkflowScenarioCompatibility(unittest.TestCase):
 
 	def test_form_catalog_contains_both_schemas_and_deduplicates_states(self):
 		from frappe.desk.form.meta import FormMeta
+		from frappe.utils.response import json_handler
 
 		workflows = {
-			"ONE": frappe._dict(doctype="Workflow", name="ONE", states=[frappe._dict(state="Review")]),
+			"ONE": frappe._dict(doctype="Workflow", name="ONE", is_active=1,
+				custom_activation_condition="private route", send_email_alert=1, workflow_data="private graph",
+				states=[frappe._dict(state="Review", name="REVIEW-1", allow_edit="Employee",
+					custom_workflow_email_profiles="private message")],
+				transitions=[frappe._dict(name="TRANSITION-1", state="Review", action="Approve",
+					next_state="Done", condition="private expression", custom_approval_threshold=42)]),
 			"TWO": frappe._dict(doctype="Workflow", name="TWO", states=[frappe._dict(state="Review"), frappe._dict(state="Done")]),
 		}
 		catalog = SimpleNamespace(name="Issue")
 		catalog.set = lambda field, value: setattr(catalog, field, value)
-		def load(doctype, name):
-			return workflows[name] if doctype == "Workflow" else frappe._dict(doctype=doctype, name=name)
-		with patch.object(frappe, "get_all", side_effect=lambda doctype, **kwargs: ["ONE", "TWO"] if doctype == "Workflow" else ["Review", "Done"]), patch.object(frappe, "get_doc", side_effect=load):
+		with (
+			patch.object(frappe, "get_all",
+				return_value=[frappe._dict(name="Review", style="Primary", owner="private-user")]),
+			patch("dinext_common.workflow_approval.scenarios.service.workflow_records",
+				return_value=list(workflows.values())),
+		):
 			FormMeta.load_workflows(catalog)
 		self.assertEqual([(row.doctype, row.name) for row in getattr(catalog, "__workflow_docs")], [
 			("Workflow", "ONE"), ("Workflow State", "Review"), ("Workflow", "TWO"), ("Workflow State", "Done"),
 		])
+		values = json.loads(json.dumps(getattr(catalog, "__workflow_docs"), default=json_handler))
+		definition, state = values[:2]
+		self.assertEqual(definition["is_active"], 1)
+		self.assertEqual(definition["states"][0]["parentfield"], "states")
+		self.assertEqual(definition["states"][0]["allow_edit"], "Employee")
+		self.assertEqual(definition["transitions"][0]["action"], "Approve")
+		self.assertFalse(set(definition) & {"custom_activation_condition", "send_email_alert", "workflow_data"})
+		self.assertNotIn("custom_workflow_email_profiles", definition["states"][0])
+		self.assertFalse(set(definition["transitions"][0]) & {"condition", "custom_approval_threshold"})
+		self.assertEqual(state, {"doctype": "Workflow State", "name": "Review", "style": "Primary"})
 
 	def test_unsupported_doctype_retains_its_native_catalog(self):
 		catalog = SimpleNamespace(name="ToDo")
@@ -280,13 +299,10 @@ class TestWorkflowScenarioCompatibility(unittest.TestCase):
 		catalog = SimpleNamespace(name="Issue")
 		catalog.set = lambda field, value: setattr(catalog, field, value)
 		workflow = frappe._dict(doctype="Workflow", name="LEGACY", states=[frappe._dict(state="Deleted Demo State")])
-		def load(doctype, name=None):
-			if isinstance(doctype, dict):
-				return SimpleNamespace(**doctype, get=doctype.get, as_dict=lambda: doctype.copy())
-			if doctype == "Workflow":
-				return workflow
-			raise frappe.DoesNotExistError("Deleted Workflow State")
-		with patch.object(frappe, "get_all", side_effect=lambda doctype, **kwargs: ["LEGACY"] if doctype == "Workflow" else []), patch.object(frappe, "get_doc", side_effect=load):
+		with (
+			patch("dinext_common.workflow_approval.scenarios.service.workflow_records", return_value=[workflow]),
+			patch.object(frappe, "get_all", return_value=[]),
+		):
 			compat._wrap_catalog(lambda meta: None)(catalog)
 		self.assertEqual([(row.doctype, row.name) for row in getattr(catalog, "__workflow_docs")], [
 			("Workflow", "LEGACY"), ("Workflow State", "Deleted Demo State"),
@@ -472,10 +488,10 @@ class TestWorkflowScenarioCompatibilityIntegration(unittest.TestCase):
 		if form_load.add_comments.__module__.startswith("frappe_comment_xt"):
 			fixture = Path(frappe.get_app_path("frappe_comment_xt", "fixtures", "custom_field.json"))
 			comment_fields = [row for row in json.loads(fixture.read_text()) if row.get("dt") == "Comment"]
-			create_custom_fields({"Comment": comment_fields}, update=True)
+			create_custom_fields({"Comment": comment_fields}, update=False)
 			frappe.db.updatedb("Comment")
 		create_custom_fields({"Task": [{"fieldname": field, "fieldtype": "Data", "label": field,
-			"module": "Dinext Common"} for field in cls.fields]}, update=True)
+			"module": "Dinext Common"} for field in cls.fields]}, update=False)
 		frappe.get_doc({"doctype": "Role", "role_name": cls.role}).insert(ignore_permissions=True)
 		for index in (1, 2):
 			user = f"{cls.marker.lower()}-{index}@example.com"
@@ -545,6 +561,8 @@ class TestWorkflowScenarioCompatibilityIntegration(unittest.TestCase):
 			frappe.db.rollback()
 			raise
 		self.sources.append(doc.name)
+		for user in self.users[:2]:
+			frappe.share.add("Task", doc.name, user, read=1)
 		frappe.db.commit()
 		return doc
 
@@ -582,6 +600,79 @@ class TestWorkflowScenarioCompatibilityIntegration(unittest.TestCase):
 			frappe.get_doc(master).insert(ignore_permissions=True)
 			frappe.clear_cache(doctype="Task")
 			frappe.db.commit()
+
+	def test_http_catalog_exposes_only_the_safe_projection_to_source_reader(self):
+		from frappe.core.doctype.user.user import generate_keys
+
+		source = self.source("A")
+		hidden = self.source("B")
+		viewer = f"{self.marker.lower()}-catalog@example.com"
+		with patch("frappe.core.doctype.user.user.ask_pass_update"):
+			frappe.get_doc({
+				"doctype": "User", "email": viewer, "first_name": "Workflow catalog reader",
+				"send_welcome_email": 0, "roles": [{"role": "Employee"}],
+			}).insert(ignore_permissions=True)
+			keys = generate_keys(viewer)
+		self.users.append(viewer)
+		frappe.share.add("Task", source.name, viewer, read=1)
+		self.tokens[viewer] = f"token {keys['api_key']}:{keys['api_secret']}"
+
+		frappe.set_user(viewer)
+		try:
+			self.assertTrue(frappe.get_doc("Task", source.name).has_permission("read"))
+			self.assertFalse(frappe.get_doc("Task", hidden.name).has_permission("read"))
+			self.assertFalse(frappe.get_doc("Workflow", self.workflows["A"].name).has_permission("read"))
+		finally:
+			frappe.set_user("Administrator")
+
+		payload = self.request(
+			viewer, "frappe.desk.form.load.getdoctype", {"doctype": "Task"}, http_method="GET"
+		)
+		workflow = next(row for row in payload["docs"][0]["__workflow_docs"] if row["name"] == self.workflows["A"].name)
+		self.assertNotIn("custom_activation_condition", workflow)
+		self.assertNotIn("send_email_alert", workflow)
+		self.assertNotIn("condition", workflow["transitions"][0])
+		self.assertNotIn("custom_parallel_approval_policy", workflow["transitions"][0])
+		self.assertEqual(workflow["states"][0]["allow_edit"], "Projects User")
+		self.assertEqual(workflow["transitions"][0]["custom_transition_uuid"], self.marker + "-A")
+
+		args = {"doctype": "Task", "name": source.name}
+		single = self.request(viewer, "dinext_common.workflow_approval.scenarios.api.get_workflow_context", args,
+			http_method="GET")["message"]
+		batch = self.request(viewer, "dinext_common.workflow_approval.scenarios.api.get_workflow_contexts",
+			{"doctype": "Task", "names": [source.name, hidden.name]}, http_method="GET")["message"]
+		self.assertEqual(batch, {source.name: single})
+
+	def test_context_batch_reads_standard_records_and_routing_tables_in_bulk(self):
+		from dinext_common.workflow_approval.scenarios import api
+
+		names = [f"{self.marker}-bulk-{index}" for index in range(500)]
+		frappe.db.savepoint("workflow_context_batch")
+		try:
+			for name in names:
+				frappe.get_doc({
+					"doctype": "Task", "name": name, "subject": self.marker + "-A Batch",
+					"owner": "Administrator", "creation": datetime(2026, 5, 1), "status": "Open",
+					self.fields[0]: self.workflows["A"].states[0].state,
+				}).db_insert()
+
+			# Warm metadata once so the two measured runs use equal cache state.
+			api.get_workflow_contexts("Task", names[:1])
+
+			def measured(batch):
+				with patch.object(frappe.db, "sql", wraps=frappe.db.sql) as query:
+					result = api.get_workflow_contexts("Task", batch)
+				return result, query.call_count
+
+			single, single_queries = measured(names[:1])
+			bulk, bulk_queries = measured(names)
+			self.assertEqual(len(bulk), 500)
+			self.assertEqual(bulk[names[0]], single[names[0]])
+			self.assertEqual(bulk[names[-1]]["context"]["workflow"], self.workflows["A"].name)
+			self.assertGreater(single_queries, 0)
+			self.assertLessEqual(bulk_queries, single_queries + 2, (single_queries, bulk_queries))
+		finally:
+			frappe.db.rollback(save_point="workflow_context_batch")
 
 	def test_http_keeps_schema_fields_and_requires_both_personal_votes(self):
 		from dinext_common.workflow_approval.scenarios import service

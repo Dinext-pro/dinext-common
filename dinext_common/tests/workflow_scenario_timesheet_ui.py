@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import frappe
+from frappe.tests.ui_test_helpers import whitelist_for_tests
 from frappe.utils.password import update_password
 
 CACHE = "workflow_scenario_timesheet_ui_fixture"
@@ -12,9 +13,12 @@ READ_DOCTYPES = ("User Timesheet", POSITION, "Worker", "Timesheet Template", "Wo
 
 
 def _guard():
-	frappe.only_for("System Manager")
-	if not frappe.conf.get("workflow_scenarios_test_site"):
-		raise frappe.PermissionError("Timesheet scenario fixtures require an isolated test site")
+	if not (
+		frappe.session.user == "Administrator"
+		and getattr(frappe.local, "dev_server", False)
+		and frappe.conf.get("workflow_scenarios_test_site")
+	):
+		raise frappe.PermissionError("Timesheet scenario fixtures require an Administrator on an isolated development test site")
 
 
 def _restore_rules(rows, visible_rows=None):
@@ -26,6 +30,7 @@ def _restore_rules(rows, visible_rows=None):
 		settings.update_child_table("visible_list_statuses")
 
 
+@whitelist_for_tests(methods=["POST"])
 def cleanup():
 	_guard()
 	data = frappe.cache.get_value(CACHE)
@@ -79,6 +84,21 @@ def cleanup():
 		frappe.flags.in_workflow_task_retention = previous_retention
 
 
+@whitelist_for_tests(methods=["POST"])
+def set_check_status(status: str | None = None):
+	_guard()
+	if status not in {None, "Pending Approval", "Rejected"}:
+		raise frappe.ValidationError("Unknown status for the Timesheet Check fixture")
+	if not frappe.cache.get_value(CACHE):
+		raise frappe.ValidationError("Create the Timesheet fixture before changing its rules")
+	settings = frappe.get_single("Timesheet Settings")
+	for row in settings.position_rules:
+		row.check_timesheet = int(row.timesheet_status == status)
+	settings.update_child_table("position_rules")
+	return {"check_status": status}
+
+
+@whitelist_for_tests(methods=["POST"])
 def seed():
 	_guard()
 	cleanup()

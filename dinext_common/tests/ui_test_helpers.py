@@ -8,7 +8,7 @@ and they do not turn `enable_parallel_workflow_approval` off.
 from __future__ import annotations
 
 import json
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from unittest.mock import patch
 
 import frappe
@@ -129,10 +129,11 @@ def _ensure_user(email: str, first_name: str, roles: list[str], *, dark: bool = 
 		)
 		for role in roles:
 			user.append("roles", {"role": role})
-		with patch(
+		raven_hook = patch(
 			"raven.raven.doctype.raven_user.raven_user.add_user_to_raven",
 			return_value=None,
-		):
+		) if "raven" in frappe.get_installed_apps() else nullcontext()
+		with raven_hook:
 			user.insert(ignore_permissions=True)
 		update_password(email, PASSWORD)
 	existing = set(frappe.get_roles(email))
