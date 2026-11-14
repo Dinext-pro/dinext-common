@@ -148,7 +148,9 @@ context("mixed Workflow scenarios in Timesheets", () => {
 		const configureCheck = (status) => {
 			cy.login();
 			cy.openDesk();
-			cy.call(`${helper}.set_check_status`, { status }).its("body.message.check_status").should("equal", status);
+			cy.call(`${helper}.set_check_status`, { status }).then(({ body }) => {
+				expect(body.message.check_status).to.equal(status);
+			});
 			cy.login(data.actor, data.password);
 			cy.openDesk(parentRoute);
 			cy.window().should((win) => {
