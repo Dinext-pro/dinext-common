@@ -73,7 +73,7 @@ class TestWorkflowScenarioTimesheets(unittest.TestCase):
 			patch.object(frappe, "get_doc", side_effect=lambda doctype, *args, **kwargs: parent if doctype == "User Timesheet" else source),
 			patch.object(frappe, "get_all", side_effect=lambda doctype, **kwargs: ["A"] if doctype == adapter.POSITION else [task]),
 			patch.object(frappe, "session", frappe._dict(user="approver@example.com")),
-			patch.object(frappe.local, "flags", frappe._dict(in_test=True), create=True),
+			patch.object(frappe, "flags", frappe._dict(in_test=True)),
 			patch("dinext_common.workflow_approval.api._require_post"),
 			patch.object(adapter, "get_timesheet_position_actions", side_effect=AssertionError("Must not discover a new process")),
 			patch.object(adapter.engine, "cast_vote", return_value={"task": "TASK-A", "transitioned": True}),
@@ -100,10 +100,12 @@ class TestWorkflowScenarioTimesheets(unittest.TestCase):
 			patch.object(adapter, "atomic_timesheet_transition", side_effect=nullcontext),
 			patch.object(adapter, "_rollup_settings", return_value=(lambda counts: {
 				"timesheet_status": "Rework", "position_status": "Editing", "move_all_positions": 1}, lambda: None)),
-			patch.object(frappe.local, "db", SimpleNamespace(get_values=lambda *args, **kwargs: ["A", "B"]), create=True),
-			patch.object(frappe.local, "message_log", [], create=True),
+			patch.object(frappe, "db", SimpleNamespace(get_values=lambda *args, **kwargs: ["A", "B"])),
+			patch.object(
+				frappe.local, "message_log", [], create=not hasattr(frappe.local, "message_log")
+			),
 			patch.object(frappe, "get_doc", return_value=sibling),
-			patch.object(frappe.local, "flags", frappe._dict(in_timesheet_approval_cascade=False), create=True),
+			patch.object(frappe, "flags", frappe._dict(in_timesheet_approval_cascade=False)),
 			patch.object(frappe, "session", frappe._dict(user="approver@example.com")),
 			patch.object(adapter.service, "get_context", side_effect=lambda doc: {
 				"workflow": "Beta", "state": doc.custom_state, "state_field": "custom_state",
