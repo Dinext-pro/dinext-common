@@ -119,7 +119,7 @@ def get_workflow_approval_custom_fields() -> dict[str, list[dict[str, Any]]]:
 				"depends_on": EMAIL_ENABLED_CONDITION,
 				"fieldname": "custom_workflow_approval_email_section",
 				"fieldtype": "Section Break",
-				"insert_after": "send_email_alert",
+				"insert_after": "custom_activation_condition",
 				"label": "Workflow Approval Email",
 			},
 			{

@@ -22,7 +22,7 @@ def get_custom_fields() -> dict[str, list[dict[str, Any]]]:
 			{
 				"fieldname": "custom_workflow_scenario_section",
 				"fieldtype": "Section Break",
-				"insert_after": "workflow_state_field",
+				"insert_after": "send_email_alert",
 				"label": "Workflow Scenario",
 			},
 			{

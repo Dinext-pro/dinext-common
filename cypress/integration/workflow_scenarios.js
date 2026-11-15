@@ -160,4 +160,31 @@ context("multiple active workflow scenarios", () => {
 		});
 		cy.window().should(win => expect(win.cur_frm.doc.custom_selection_order).to.equal(27));
 	});
+
+	it("shows Workflow Scenario immediately before Workflow Approval Email", () => {
+		const data = fixture();
+		const name = data.workflows[0];
+		const scenario = "custom_workflow_scenario_section";
+		const email = "custom_workflow_approval_email_section";
+		const sections = ".page-container:visible .form-section";
+		cy.login(data.designer, data.password);
+		cy.openDesk(`/app/workflow/${encodeURIComponent(name)}`);
+		cy.window().should(win => expect(win.cur_frm?.doc?.name).to.equal(name));
+		cy.window().then(win => win.cur_frm.set_value("send_email_alert", 1));
+
+		for (const theme of ["light", "dark", "light"]) {
+			cy.window().then(win => win.frappe.ui.set_theme(theme));
+			cy.document().its("documentElement").invoke("attr", "data-theme").should("eq", theme);
+			cy.get(`${sections}:visible`).should($sections => {
+				const order = $sections.toArray().map(section => section.dataset.fieldname);
+				const index = order.indexOf(scenario);
+				expect(index).to.be.at.least(0);
+				expect(order[index + 1]).to.equal(email);
+			});
+			cy.get(`${sections}[data-fieldname="${scenario}"]`).within(() => {
+				cy.get('[data-fieldname="custom_selection_order"]').should("be.visible");
+				cy.get('[data-fieldname="custom_activation_condition"]').should("be.visible");
+			});
+		}
+	});
 });
