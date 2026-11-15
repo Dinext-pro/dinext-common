@@ -83,7 +83,7 @@ def seed():
 	_ensure_user(DESIGNER_USER, "Scenario Designer", [DESIGNER, "System Manager", "Desk User"])
 	frappe.get_doc({"doctype": "Custom DocPerm", "parent": "Workflow", "parenttype": "DocType",
 		"parentfield": "permissions", "role": DESIGNER, "permlevel": 0, "read": 1, "write": 1, "create": 1}).insert(ignore_permissions=True)
-	for doctype in ("Report", "Kanban Board"):
+	for doctype in ("Report", "Kanban Board", "Workflow Task"):
 		_ensure_read_perm(doctype, ROLE)
 	frappe.get_doc({"doctype": "DocType", "name": SOURCE, "module": "Dinext Common", "custom": 1,
 		"autoname": "hash", "title_field": "title", "track_changes": 0,
@@ -140,3 +140,16 @@ def cleanup_progress_user():
 	if frappe.db.exists("User", PROGRESS_USER):
 		frappe.delete_doc("User", PROGRESS_USER, force=True, ignore_permissions=True)
 	return {"cleaned": True}
+
+
+@whitelist_for_tests(methods=["POST"])
+def block_successor_round():
+	_guard()
+	workflow = frappe.get_doc("Workflow", PREFIX + " A")
+	_ensure_master("Workflow Action Master", "Reject", {"workflow_action_name": "Reject"})
+	workflow.append("transitions", {
+		"state": STATES[1], "action": "Reject", "next_state": STATES[0],
+		"allowed": ROLE, "condition": "False", "custom_transition_uuid": "cypress-blocked-successor",
+	})
+	workflow.save(ignore_permissions=True)
+	return {"blocked_state": STATES[1], "action": "Reject", "role": ROLE}

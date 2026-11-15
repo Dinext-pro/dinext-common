@@ -26,6 +26,18 @@ def repair_round(round_id: str) -> None:
 	task = frappe.get_doc("Workflow Task", names[0])
 	if task.round_status != "Finalizing":
 		return
+	from dinext_common.workflow_approval.queued_submission import pending
+	if pending(task):
+		if task.submission_queue and frappe.db.get_value("Submission Queue", task.submission_queue, "status") == "Failed":
+			engine._lock_domain_dependencies(task.reference_doctype, task.reference_name)
+			source = frappe.get_doc(task.reference_doctype, task.reference_name, for_update=True)
+			task = frappe.get_doc("Workflow Task", task.name, for_update=True)
+			if task.round_status == "Finalizing" and pending(task):
+				engine._set_round_values(round_id, {"round_status": "Stalled", "finalization_status": "Failed"})
+				from dinext_common.workflow_approval.projections import close_round_projections
+				close_round_projections(round_id)
+				engine._notify_stalled_monitors(source, task)
+		return
 	winner = _winner(task)
 	if not winner:
 		engine._mark_conflicted(round_id, _("Finalizing round no longer has a reached transition"))

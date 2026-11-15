@@ -142,7 +142,7 @@ app_include_js = [
     "/assets/dinext_common/js/dashboard_filters_fix.js",
     "/assets/dinext_common/js/workspace_sidebar_hover.js",
     "/assets/dinext_common/js/workflow_scenarios.js?v=20261111-1",
-    "/assets/dinext_common/js/workflow_approval.js?v=20261111-1",
+    "/assets/dinext_common/js/workflow_approval.js?v=20261115-2",
 ]
 
 # Expose site_config flags to Desk bootinfo
@@ -300,6 +300,7 @@ has_permission = {
 # Override standard doctype classes
 
 override_doctype_class = {
+	"Submission Queue": "dinext_common.workflow_approval.queued_submission.DinextSubmissionQueue",
 	"Workflow": "dinext_common.workflow_approval.scenarios.workflow.DinextWorkflow",
 	"Scheduled Job Type": "dinext_common.overrides.scheduled_job_type.DinextScheduledJobType",
 	"Company": "dinext_common.setup.company.DinextCompany",

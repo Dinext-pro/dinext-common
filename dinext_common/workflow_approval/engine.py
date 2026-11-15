@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
+from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 import frappe
 from frappe import _
@@ -53,11 +54,51 @@ class WorkflowApprovalConflictError(WorkflowApprovalError):
 	"""Raised when a vote no longer matches current source or workflow state."""
 
 
+class MissingApproverTransition(TypedDict):
+	transition_uuid: str
+	action: str
+	next_state: str
+	role: str
+
+
+class WorkflowRoundError(TypedDict):
+	code: Literal["no_eligible_approvers"]
+	doctype: str
+	name: str
+	workflow: str
+	state: str
+	transitions: list[MissingApproverTransition]
+
+
+def round_error_message(details: WorkflowRoundError) -> str:
+	transitions = ", ".join(
+		_("{0} → {1} (role {2})", context="Workflow").format(
+			_(row["action"], context="Workflow"), _(row["next_state"]), _(row["role"]),
+		)
+		for row in details["transitions"]
+	)
+	return _(
+		"Could not open an approval round for {0} {1} in Workflow {2} at {3}. "
+		"No eligible approvers for {4}."
+	).format(
+		_(details["doctype"]), details["name"], details["workflow"], _(details["state"]), transitions,
+	)
+
+
+class NoEligibleApproversError(WorkflowApprovalConflictError):
+	"""The configured round has outgoing transitions without eligible users."""
+
+	def __init__(self, details: WorkflowRoundError):
+		self.details = details
+		super().__init__(round_error_message(details))
+
+
 class AutomationCycleError(WorkflowApprovalError):
 	"""Raised when automatic approvals repeat a state or exceed their bound."""
 
 
 class VoteResult(TypedDict):
+	pending_submission: NotRequired[str]
 	task: str
 	status: str
 	round_status: str
@@ -139,6 +180,30 @@ def build_round_manifest(
 		for approver in approvers:
 			task_transitions.setdefault(approver, []).append(dict(snapshot))
 	return {"version": 1, "transitions": snapshots}, task_transitions
+
+
+def _round_manifest_for(doc, workflow, state: str, transitions):
+	ordered = sorted(transitions, key=lambda row: (int(row.get("idx") or 0), row.get("transition_uuid") or ""))
+	missing: list[MissingApproverTransition] = [
+		{
+			"transition_uuid": row.get("transition_uuid") or "",
+			"action": row.get("action") or "",
+			"next_state": row.get("next_state") or "",
+			"role": row.get("allowed") or "",
+		}
+		for row in ordered
+		if not row.get("eligible_approvers")
+	]
+	if missing:
+		raise NoEligibleApproversError({
+			"code": "no_eligible_approvers",
+			"doctype": doc.doctype,
+			"name": doc.name,
+			"workflow": workflow.name,
+			"state": state,
+			"transitions": missing,
+		})
+	return build_round_manifest(ordered)
 
 
 def manifest_matches_configuration(
@@ -868,12 +933,7 @@ def _amend_open_round(
 			)
 		if full is not None:
 			added.append(full)
-	try:
-		manifest, task_transitions = build_round_manifest([*classification["keep"], *added])
-	except ZeroEligibleApproversError:
-		raise WorkflowApprovalConflictError(
-			_("Workflow transition has no eligible approvers")
-		)
+	manifest, task_transitions = _round_manifest_for(doc, workflow, state, [*classification["keep"], *added])
 	if entry := _parse_manifest(active).get("entry_context"):
 		manifest["entry_context"] = entry
 	if deadlines := _parse_manifest(active).get("deadline_assignments"):
@@ -1136,12 +1196,7 @@ def reconcile_source(
 	current_rows = _current_transitions(doc, workflow, state)
 	if not current_rows:
 		return []
-	try:
-		manifest, task_transitions = build_round_manifest(current_rows)
-	except ZeroEligibleApproversError:
-		raise WorkflowApprovalConflictError(
-			_("Workflow transition has no eligible approvers")
-		)
+	manifest, task_transitions = _round_manifest_for(doc, workflow, state, current_rows)
 
 	if entry_context:
 		manifest["entry_context"] = entry_context
@@ -1161,7 +1216,7 @@ def reconcile_source(
 	if service.is_ready():
 		may_automate = may_automate and service.automation_budget_available(doc, state_key=serialize_manifest([workflow_name, state, fingerprint.digest]))
 	winner = (
-		_apply_automatic_votes(doc, tasks, manifest, fingerprint)
+		_apply_automatic_votes(doc, tasks, manifest, fingerprint, cycle_guard=guard)
 		if apply_automatic and may_automate else None
 	)
 	if apply_automatic and not may_automate:
@@ -1184,7 +1239,8 @@ def reconcile_source(
 		guard.visit(workflow_name, state, fingerprint.digest, process_id or "")
 		if service.is_ready():
 			service.consume_automatic_transition(doc, state_key=serialize_manifest([workflow_name, state, fingerprint.digest]))
-		_finalize_round(doc, round_id, winner, cycle_guard=guard)
+		if not winner.get("pending_submission"):
+			_finalize_round(doc, round_id, winner, cycle_guard=guard)
 	return _round_task_names(round_id)
 
 
@@ -1227,6 +1283,8 @@ def _apply_automatic_votes(
 	tasks: list[object],
 	manifest: dict[str, Any],
 	fingerprint: ContentFingerprint,
+	*,
+	cycle_guard: AutomationCycleGuard | None = None,
 ) -> dict[str, Any] | None:
 	eligible = [
 		task for task in tasks
@@ -1247,7 +1305,7 @@ def _apply_automatic_votes(
 			key = (row.parent, row.transition_uuid, row.transition_semantic_hash)
 			saved_flags[key].append(row.auto_complete_unchanged)
 
-	reused_times: dict[str, list[str]] = {}
+	candidates = []
 	for task in tasks:
 		reused = latest.get(task.approver)
 		if (
@@ -1273,6 +1331,23 @@ def _apply_automatic_votes(
 		if frappe.db.get_value("Workflow Task", task.name, "status") == "Completed":
 			continue
 		transition = current[0]
+		candidates.append((task, transition, reused))
+
+	reused_times: dict[str, list[str]] = {}
+	rows = _round_vote_counts(tasks[0].approval_round_id, manifest) if tasks else []
+	for task, transition, reused in candidates:
+		key = str(_value(transition, "transition_uuid"))
+		reused_times.setdefault(key, []).append(str(_value(reused, "completed_at") or ""))
+		for row in rows:
+			row["votes"] += int(row["transition_uuid"] == key)
+	for row in rows:
+		row["latest_reused_completed_at"] = max(reused_times.get(row["transition_uuid"], [""]))
+	winner = select_automatic_winner(rows)
+	from dinext_common.workflow_approval.queued_submission import stage_automatic
+	if pending_result := stage_automatic(doc, candidates, winner, cycle_guard=cycle_guard):
+		return {**winner, "pending_submission": pending_result["pending_submission"]}
+
+	for task, transition, reused in candidates:
 		from dinext_common.workflow_approval.scenarios import service
 		if service.is_ready():
 			service.pin_process(doc, task.get("workflow_process"))
@@ -1293,16 +1368,7 @@ def _apply_automatic_votes(
 				frappe.bold(frappe.utils.escape_html(_(transition.action))),
 			),
 		)
-		reused_times.setdefault(str(_value(transition, "transition_uuid")), []).append(
-			str(_value(reused, "completed_at") or "")
-		)
-
-	rows = _round_vote_counts(tasks[0].approval_round_id, manifest) if tasks else []
-	for row in rows:
-		row["latest_reused_completed_at"] = max(
-			reused_times.get(row["transition_uuid"], [""])
-		)
-	return select_automatic_winner(rows)
+	return winner
 
 
 def _round_vote_counts(round_id: str, manifest: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1411,6 +1477,43 @@ def _reserve_vote_response(task, source, request_id, parameters):
 	return request_receipts.reserve("Vote", request_id, parameters, [target])
 
 
+@contextmanager
+def _atomic_workflow_attempt():
+	"""Undo the current attempt when a successor round cannot be opened."""
+	savepoint = f"workflow_attempt_{frappe.generate_hash(length=12)}"
+	cascade = deepcopy(getattr(frappe.local, "workflow_scenario_cascade", None))
+	notes = deepcopy(getattr(frappe.flags, "workflow_finalization_errors", None))
+	message_count = len(frappe.local.message_log or [])
+	realtime_log = getattr(frappe.local, "_realtime_log", None)
+	realtime_count = len(realtime_log or [])
+	callbacks = (
+		frappe.db.before_commit, frappe.db.after_commit,
+		frappe.db.before_rollback, frappe.db.after_rollback,
+	)
+	saved_callbacks = [(manager, tuple(manager._functions)) for manager in callbacks]
+	frappe.db.savepoint(savepoint)
+	try:
+		yield
+	except NoEligibleApproversError:
+		frappe.db.rollback(save_point=savepoint)
+		for manager, previous in saved_callbacks:
+			manager.reset()
+			for callback in previous:
+				manager.add(callback)
+		# Frappe only registers its flush when creating the buffer.
+		if realtime_log is None:
+			frappe.realtime.clear_realtime_log()
+		else:
+			del realtime_log[realtime_count:]
+			frappe.local._realtime_log = realtime_log
+		frappe.local.workflow_scenario_cascade = cascade
+		frappe.flags.workflow_finalization_errors = notes
+		del (frappe.local.message_log or [])[message_count:]
+		raise
+	finally:
+		frappe.db.release_savepoint(savepoint)
+
+
 def cast_vote(
 	task_name: str,
 	*,
@@ -1448,7 +1551,7 @@ def cast_vote(
 	if expected_creation and str(get_datetime(source.creation)) != expected_creation:
 		raise WorkflowApprovalConflictError(_("The Workflow target no longer matches the selected document"))
 	operation = domain_handler(source.doctype, "vote_context")
-	with operation() if operation else nullcontext():
+	with _atomic_workflow_attempt(), operation() if operation else nullcontext():
 		return _cast_locked_vote(
 			task, source, transition_uuid, action, comment, request_id, completion_source, receipt_managed
 		)
@@ -1532,6 +1635,17 @@ def _cast_locked_vote(
 	validate_vote = domain_handler(source.doctype, "validate_vote")
 	if validate_vote:
 		validate_vote(source, transition.next_state)
+	from dinext_common.workflow_approval.queued_submission import stage
+	pending_result = stage(task, source, transition, workflow, comment=normalized_comment,
+		completion_source=completion_source, request_id=request_id,
+		receipt_recorded=bool(receipt or receipt_managed))
+	if pending_result:
+		if receipt:
+			request_receipts.finish(receipt.name, pending_result)
+		return pending_result
+	previous_failure = frappe.parse_json(task.failure_metadata or "{}")
+	if isinstance(previous_failure, dict) and previous_failure.get("reason") == "no_eligible_approvers":
+		_set_round_values(task.approval_round_id, {"failure_metadata": None})
 	fingerprint = get_content_fingerprint(source, workflow)
 	if service.is_ready():
 		service.start_cascade(source, manual=True)
@@ -1600,7 +1714,7 @@ def _cast_locked_vote(
 
 def _vote_result(task: object, source: object, *, transitioned: bool) -> VoteResult:
 	context = _workflow_context(source)
-	return {
+	result: VoteResult = {
 		"task": task.name,
 		"status": task.status,
 		"round_status": task.round_status,
@@ -1609,6 +1723,10 @@ def _vote_result(task: object, source: object, *, transitioned: bool) -> VoteRes
 		"reference_name": task.reference_name,
 		"workflow_state": context[3] if context else None,
 	}
+
+	if task.round_status == "Finalizing" and task.submission_queue:
+		result["pending_submission"] = task.submission_queue
+	return result
 
 
 def _apply_winning_transition(source: object, action: str) -> None:
@@ -1719,7 +1837,7 @@ def _finalize_round(
 		for manager, callbacks in callback_snapshots.items():
 			manager._functions.clear()
 			manager._functions.extend(callbacks)
-		if isinstance(caught, WorkflowDomainRollbackError):
+		if isinstance(caught, (WorkflowDomainRollbackError, NoEligibleApproversError)):
 			raise
 		notes = getattr(frappe.flags, "workflow_finalization_errors", None)
 		if not isinstance(notes, list):
@@ -1775,7 +1893,11 @@ def _finalize_round(
 		)
 		_set_round_values(round_id, {"finalization_status": "Failed"})
 		return False
-	_set_round_values(round_id, {"submission_queue": submission_queue})
+	# Completed/carried votes already belong to this round. Stage only the
+	# finalization so its successor is still admitted before native commit.
+	from dinext_common.workflow_approval.queued_submission import stage_existing_finalization
+	stage_existing_finalization(sample, winner, submission_queue, initiator=previous_user,
+		cycle_guard=cycle_guard)
 	return False
 
 
@@ -1910,6 +2032,7 @@ def archive_source(doc: object) -> None:
 	)
 
 
+@_atomic_workflow_attempt()
 def apply_domain_transition(
 	doctype: str,
 	name: str,

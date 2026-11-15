@@ -31,18 +31,22 @@ SPECS = {
     "dinext_common": (
         "approval_deadline_chart.js",
         "workflow_scenarios.js",
+        "workflow_round_errors.js",
         "workflow_scenario_timesheets.js",
         "workflow_progress_unlock.js",
         "workflow_request_receipts.js",
     ),
     "dinext_projects": ("workflow_comment_banner.js",),
-    "dinext_timesheets": ("timesheet_team_lead.js", "worker_calendar_deadlines.js"),
+    "dinext_timesheets": (
+        "timesheet_team_lead.js", "worker_calendar_deadlines.js", "ut_form_workflow_position_failures.js",
+    ),
 }
 SERVER_TESTS = {
     "dinext_common": {
         "test_workflow_request_receipt": (),
         "test_workflow_approval_api": (),
         "test_workflow_approval_integration": (),
+        "test_workflow_queued_round_failure": (),
         "test_workflow_approval_concurrency": (),
         "test_workflow_list_actions": (),
         "test_workflow_form_references": (),
@@ -66,6 +70,7 @@ SERVER_TESTS = {
         "test_timesheet_settings_refinements": (),
         "test_timesheet_team_lead_access": (),
         "test_workflow_email_ownership": (),
+        "test_workflow_position_batch_failures": (),
         "test_workflow_localization": (),
     },
 }

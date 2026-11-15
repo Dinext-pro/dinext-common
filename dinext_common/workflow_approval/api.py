@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from typing import Any, TypedDict
+from contextlib import contextmanager
+from typing import Any, NotRequired, TypedDict
 from uuid import uuid4
 
 import frappe
@@ -222,6 +223,21 @@ def _vote_source_action(
 	)
 
 
+@contextmanager
+def _round_error_response():
+	try:
+		yield
+	except engine.NoEligibleApproversError as error:
+		if getattr(frappe.local, "response", None) is not None:
+			frappe.local.response["workflow_error"] = error.details
+		frappe.msgprint(
+			frappe.utils.escape_html(str(error)),
+			title=_("Workflow action was not applied"),
+			indicator="red",
+		)
+		raise
+
+
 @frappe.whitelist(methods=["POST"])
 def vote(
 	task_name: str,
@@ -231,14 +247,15 @@ def vote(
 	request_id: str | None = None,
 ) -> engine.VoteResult:
 	_require_post()
-	return engine.cast_vote(
-		task_name,
-		transition_uuid=transition_uuid,
-		action=action,
-		comment=comment,
-		request_id=request_id,
-		completion_source="Manual",
-	)
+	with _round_error_response():
+		return engine.cast_vote(
+			task_name,
+			transition_uuid=transition_uuid,
+			action=action,
+			comment=comment,
+			request_id=request_id,
+			completion_source="Manual",
+		)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -263,15 +280,16 @@ def apply_workflow(
 	doctype, name = _source_identity(doc)
 	if not doctype or not name:
 		raise frappe.ValidationError(_("A persisted source document is required"))
-	return _vote_source_action(
-		doctype,
-		name,
-		action,
-		transition_uuid=transition_uuid,
-		comment=comment,
-		request_id=request_id,
-		workflow=workflow, process_id=process_id, task_name=task_name,
-	)
+	with _round_error_response():
+		return _vote_source_action(
+			doctype,
+			name,
+			action,
+			transition_uuid=transition_uuid,
+			comment=comment,
+			request_id=request_id,
+			workflow=workflow, process_id=process_id, task_name=task_name,
+		)
 
 
 def publish_workflow_progress(request_id: str, count: int, total: int) -> None:
@@ -305,6 +323,7 @@ class BulkItemResponse(TypedDict, total=False):
 	result: engine.VoteResult
 	error: str
 	error_type: str
+	workflow_error: NotRequired[engine.WorkflowRoundError]
 
 
 class BulkVoteResponse(TypedDict):
@@ -388,11 +407,14 @@ def _reserve_source_batch(doctype, names, action, transition_uuid, targets, requ
 
 def _bulk_failure(identity: BulkItemResponse, error: Exception) -> BulkItemResponse:
 	redacted = isinstance(error, (frappe.DoesNotExistError, frappe.PermissionError))
-	return {
+	result: BulkItemResponse = {
 		**identity,
 		"error": _("The workflow item could not be processed") if redacted else str(error),
 		"error_type": "Unavailable" if redacted else error.__class__.__name__,
 	}
+	if isinstance(error, engine.NoEligibleApproversError):
+		result["workflow_error"] = error.details
+	return result
 
 
 def _run_bulk(items, apply, *, receipt=None, parameters=None, progress=None) -> BulkVoteResponse:
@@ -1055,6 +1077,8 @@ def _active_round_rows(reference_doctype: str, reference_names: list[str]) -> li
 			"status",
 			"creation",
 			"failure_metadata",
+			"workflow_process",
+			"source_created_at",
 		],
 		order_by="creation desc, name desc",
 		limit=100,
@@ -1095,6 +1119,44 @@ def get_workflow_comments(doctype: str, name: str) -> list[WorkflowCommentRespon
 	return get_latest_round_comments(reference_doctype, readable)
 
 
+
+def _read_round_failure(value: str | None) -> dict | None:
+	try:
+		metadata = json.loads(value or "{}")
+	except (TypeError, ValueError):
+		return None
+	if not isinstance(metadata, dict) or metadata.get("reason") != "no_eligible_approvers":
+		return None
+	details = metadata.get("workflow_error")
+	if isinstance(details, dict) and details.get("code") == "no_eligible_approvers":
+		return metadata
+	return None
+
+
+def _queued_round_errors(source, rows) -> list[engine.WorkflowRoundError]:
+	from dinext_common.workflow_approval.scenarios import service
+
+	errors = {}
+	context = None
+	for row in rows:
+		if row.round_status not in {"Open", "Stalled"} or not (failure := _read_round_failure(row.get("failure_metadata"))):
+			continue
+		if failure.get("initiator") != frappe.session.user and not _caller_is_system_manager():
+			continue
+		details = failure["workflow_error"]
+		if details.get("doctype") != source.doctype or details.get("name") != source.name:
+			continue
+		if get_datetime(row.source_created_at) != get_datetime(source.creation):
+			continue
+		if service.is_ready():
+			if context is None:
+				context = service.get_context(source)
+			if row.workflow_process != context["process_id"]:
+				continue
+		errors[row.approval_round_id] = details
+	return list(errors.values())
+
+
 @frappe.whitelist()
 def get_form_approval_banner(doctype: str, name: str) -> dict[str, Any]:
 	"""Return pending approvers alongside any round rebuild indicators."""
@@ -1113,7 +1175,11 @@ def get_form_approval_banner(doctype: str, name: str) -> dict[str, Any]:
 	rows = _active_round_rows(reference_doctype, reference_names)
 	rounds = describe_rebuild_rounds(reference_doctype, reference_names)
 	pending = get_required_state_pending_tasks(reference_doctype, reference_names)
-	return _banner_from_rows(rows, rounds=rounds, pending=pending)
+	result = _banner_from_rows(rows, rounds=rounds, pending=pending)
+	if reference_doctype == doctype and reference_names == [name]:
+		if errors := _queued_round_errors(source, rows):
+			result["workflow_errors"] = errors
+	return result
 
 
 def _caller_is_system_manager() -> bool:

@@ -38,7 +38,25 @@
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		await frappe.after_ajax();
 	};
+	const formatWorkflowRoundError = (details) => {
+		if (details?.code !== "no_eligible_approvers" || !Array.isArray(details.transitions)) return "";
+		const transitions = details.transitions.map((row) =>
+			__("{0} → {1} (role {2})", [__(row.action, null, "Workflow"), __(row.next_state), __(row.role)], "Workflow")
+		).join(", ");
+		return __("Could not open an approval round for {0} {1} in Workflow {2} at {3}. No eligible approvers for {4}.", [
+			__(details.doctype), details.name, details.workflow, __(details.state), transitions,
+		]);
+	};
 	const reportWorkflowError = (error) => {
+		const roundError = formatWorkflowRoundError(error?.responseJSON?.workflow_error);
+		if (roundError) {
+			frappe.msgprint({
+				title: __("Workflow action was not applied"),
+				indicator: "red",
+				message: frappe.utils.escape_html(roundError),
+			});
+			return;
+		}
 		const serverMessages = error?.responseJSON?._server_messages;
 		if (serverMessages) {
 			try {
@@ -389,6 +407,18 @@
 		);
 		return messages.children(".form-message").last().addClass("dinext-pending-approvers");
 	};
+	const paintWorkflowRoundErrors = (frm, errors) => {
+		const messages = frm.layout?.message;
+		if (!messages?.length) return;
+		messages.children(".dinext-workflow-round-errors").remove();
+		const reasons = (errors || []).map(formatWorkflowRoundError).filter(Boolean);
+		if (!reasons.length) {
+			if (!messages.children().length) messages.addClass("hidden");
+			return;
+		}
+		frm.dashboard.add_comment(reasons.map((reason) => frappe.utils.escape_html(reason)).join("<br>"), "orange", true);
+		return messages.children(".form-message").last().addClass("dinext-workflow-round-errors");
+	};
 	const paintWorkflowComments = (frm, rows) => {
 		const messages = frm.layout?.message;
 		if (!messages?.length) return;
@@ -442,6 +472,7 @@
 		reloadWorkflowForm,
 		captureWorkflowForm,
 		reportWorkflowError,
+		paintWorkflowRoundErrors,
 		getPendingApproverNames,
 		paintPendingApprovers,
 		paintWorkflowComments,
@@ -607,7 +638,7 @@
 				}
 			});
 		} catch (error) {
-			reportWorkflowError(error);
+			if (target.isCurrent()) reportWorkflowError(error);
 		}
 	};
 
@@ -679,12 +710,12 @@
 				(row) =>
 					`<li><strong>${frappe.utils.escape_html(
 						row.name
-					)}</strong>: ${frappe.utils.escape_html(row.error)}</li>`
+					)}</strong>: ${frappe.utils.escape_html(formatWorkflowRoundError(row.workflow_error) || row.error)}</li>`
 			)
 			.join("");
 		frappe.msgprint({
 			title: __("Workflow result"),
-			indicator: failures ? "orange" : "green",
+			indicator: succeeded.length ? "orange" : "red",
 			message: `<p>${__("Succeeded")}: ${succeeded.length}</p>${
 				successItems ? `<details><summary>${__("Succeeded")}</summary><ul>${successItems}</ul></details>` : ""
 			}${failures ? `<p>${__("Failed")}:</p><ul>${failures}</ul>` : ""}`,
@@ -897,6 +928,7 @@
 		};
 		frappe.dinext.paintRebuildRounds(frm.dashboard, [], options);
 		paintPendingApprovers(frm, []);
+		paintWorkflowRoundErrors(frm, []);
 		if (frm.is_new()) return;
 		let banner;
 		try {
@@ -917,6 +949,7 @@
 		const rounds = banner.rounds || [];
 		frappe.dinext.paintRebuildRounds(frm.dashboard, rounds, options);
 		paintPendingApprovers(frm, banner.pending_approvers || []);
+		paintWorkflowRoundErrors(frm, banner.workflow_errors);
 	};
 	const scheduleBanner = (frm, attempt = 0) => {
 		if (!frm) return;

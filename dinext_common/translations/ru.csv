@@ -620,3 +620,8 @@ Digest send time is required for daily delivery,Укажите время отп
 Workflow Request Receipt,Результат запроса Workflow,
 This Workflow request was already used with different parameters,Этот запрос Workflow уже выполнен с другими параметрами,
 The Workflow request has expired. Refresh the document before acting.,Срок хранения результата запроса Workflow истёк. Обновите документ перед действием.,
+"Could not open an approval round for {0} {1} in Workflow {2} at {3}. No eligible approvers for {4}.","Не удалось открыть раунд согласования для {0} {1} в процессе {2} на этапе «{3}». Нет согласующих для переходов {4}.",""
+"{0} → {1} (role {2})","{0} → {1} (роль {2})","Workflow"
+"Workflow action was not applied","Действие согласования не выполнено",""
+"Workflow action queued","Действие поставлено в очередь",""
+"The vote will be recorded when background submission completes.","Голос будет записан после завершения фонового проведения.",""

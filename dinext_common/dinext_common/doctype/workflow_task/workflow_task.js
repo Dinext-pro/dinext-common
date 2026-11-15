@@ -41,6 +41,10 @@ frappe.ui.form.on("Workflow Task", {
 		if (conceal_workflow_task(frm)) {
 			return;
 		}
+		const failure = frappe.utils.parse_json(frm.doc.failure_metadata || "{}");
+		const roundErrors = ["Open", "Stalled"].includes(frm.doc.round_status) && failure?.task_name === frm.doc.name
+			? [failure.workflow_error] : [];
+		frappe.dinext.paintWorkflowRoundErrors(frm, roundErrors);
 		if (frm.doc.reference_doctype && frm.doc.reference_name && !frm.doc.source_deleted_at) {
 			frm.add_custom_button(__("Open source document"), () => {
 				frappe.set_route("Form", frm.doc.reference_doctype, frm.doc.reference_name);
@@ -88,7 +92,7 @@ function vote(frm, transition) {
 				if (target.isCurrent()) await reloadWorkflowForm(frm);
 			});
 		} catch (error) {
-			reportWorkflowError(error);
+			if (target.isCurrent()) reportWorkflowError(error);
 		}
 	});
 }

@@ -60,6 +60,9 @@ def after_source_insert(doc: Any, method: str | None = None) -> None:
 
 def on_source_update(doc: Any, method: str | None = None) -> None:
 	"""Reconcile active approval state after a normal save."""
+	from dinext_common.workflow_approval.queued_submission import complete_source
+	if complete_source(doc):
+		return
 	if not _should_handle(doc):
 		return
 	from dinext_common.workflow_approval.engine import reconcile_source

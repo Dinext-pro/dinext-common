@@ -87,20 +87,27 @@ class TestWorkflowApprovalIntegration(FrappeTestCase):
 			}
 		)
 		workflow.insert(ignore_permissions=True)
-		# Tests supply their own Issue access instead of relying on site role fixtures.
-		permission = frappe.db.get_value("Custom DocPerm", {"parent": "Issue", "role": "System Manager", "permlevel": 0})
-		if permission:
-			frappe.db.set_value("Custom DocPerm", permission, {"read": 1, "write": 1, "create": 1})
-		else:
-			frappe.get_doc({"doctype": "Custom DocPerm", "parent": "Issue", "role": "System Manager",
-				"permlevel": 0, "read": 1, "write": 1, "create": 1}).insert(ignore_permissions=True)
-		frappe.clear_cache(doctype="Issue")
+		# Keep the integration fixture independent of site-specific role permissions.
+		for doctype, access in (
+			("Issue", {"read": 1, "write": 1, "create": 1}),
+			("Workflow Task", {"read": 1}),
+		):
+			filters = {"parent": doctype, "role": "System Manager", "permlevel": 0}
+			if permission := frappe.db.get_value("Custom DocPerm", filters):
+				frappe.db.set_value("Custom DocPerm", permission, access)
+			else:
+				frappe.get_doc({
+					"doctype": "Custom DocPerm", "parenttype": "DocType", "parentfield": "permissions",
+					**filters, **access,
+				}).insert(ignore_permissions=True)
+			frappe.clear_cache(doctype=doctype)
 		frappe.conf.enable_parallel_workflow_approval = True
 
 	def tearDown(self):
 		frappe.set_user("Administrator")
 		frappe.conf.enable_parallel_workflow_approval = self.previous_flag
 		frappe.clear_cache(doctype="Issue")
+		frappe.clear_cache(doctype="Workflow Task")
 		super().tearDown()
 
 	def _ensure_master(self, doctype, name, values):
@@ -178,6 +185,96 @@ class TestWorkflowApprovalIntegration(FrappeTestCase):
 				},
 			)
 		)
+
+	def test_missing_successor_rolls_back_only_the_deciding_vote(self):
+		from dinext_common.workflow_approval import engine, request_receipts, signed_links
+
+		second = "parallel-deciding-approver@example.com"
+		if not frappe.db.exists("User", second):
+			frappe.get_doc({
+				"doctype": "User", "email": second, "first_name": "Deciding Approver",
+				"send_welcome_email": 0, "roles": [{"role": "System Manager"}],
+			}).insert(ignore_permissions=True)
+		workflow = frappe.get_doc("Workflow", self.workflow_name)
+		workflow.transitions[0].custom_parallel_approval_policy = "All"
+		workflow.transitions[0].condition = f"frappe.session.user in {[self.user, second]!r}"
+		workflow.transitions[1].condition = "False"
+		action = "_Test Hold"
+		self._ensure_master("Workflow Action Master", action, {"workflow_action_name": action})
+		self._ensure_master("Workflow State", "On Hold", {"workflow_state_name": "On Hold"})
+		workflow.append("states", {"state": "On Hold", "doc_status": "0", "allow_edit": "All", "is_optional_state": 1})
+		workflow.append("transitions", {
+			"state": "Closed", "action": action, "next_state": "On Hold", "allowed": "System Manager",
+			"condition": "False", "allow_self_approval": 1, "custom_transition_uuid": "_test-hold-transition",
+		})
+		workflow.save(ignore_permissions=True)
+
+		doc = frappe.get_doc({"doctype": "Issue", "subject": "Blocked successor round", "status": "Open"})
+		doc.insert(ignore_permissions=True)
+		scope = {"reference_doctype": doc.doctype, "reference_name": doc.name}
+		tasks = {r.approver: r.name for r in frappe.get_all("Workflow Task", filters=scope, fields=["approver", "name"])}
+		self.assertEqual(set(tasks), {self.user, second})
+		first = engine.cast_vote(tasks[self.user], action=self.action_name, comment="First accepted vote")
+		self.assertFalse(first["transitioned"])
+		first_task = frappe.get_doc("Workflow Task", tasks[self.user]).as_dict()
+		comment_filters = {"reference_doctype": doc.doctype, "reference_name": doc.name, "comment_type": "Workflow"}
+		comments = frappe.db.count("Comment", comment_filters)
+		frappe.publish_realtime("workflow_test_preserved", user="Administrator", after_commit=True)
+		callbacks = tuple(frappe.db.after_commit._functions)
+		events = list(frappe.local._realtime_log)
+
+		def notify(*_args):
+			frappe.publish_realtime("workflow_test_rolled_back", user="Administrator", after_commit=True)
+
+		request_id = frappe.generate_hash(length=20)
+		with (
+			patch.object(engine, "_dispatch_vote_completed", side_effect=notify),
+			self.assertRaises(engine.WorkflowApprovalConflictError) as caught,
+		):
+			engine.cast_vote(tasks[second], action=self.action_name, comment="Deciding vote", request_id=request_id)
+
+		self.assertEqual(doc.reload().status, "Open")
+		self.assertEqual(frappe.get_doc("Workflow Task", tasks[self.user]).as_dict(), first_task)
+		task = frappe.get_doc("Workflow Task", tasks[second])
+		self.assertEqual((task.status, task.round_status), ("Working", "Open"))
+		self.assertTrue(frappe.db.exists("Workflow Action", {"custom_workflow_task": task.name, "status": "Open"}))
+		self.assertEqual(frappe.db.count("Workflow Task", scope), 2)
+		self.assertEqual(frappe.db.count("Comment", comment_filters), comments)
+		self.assertEqual(tuple(frappe.db.after_commit._functions), callbacks)
+		self.assertEqual(frappe.local._realtime_log, events)
+		self.assertFalse(request_receipts.get(request_receipts.request_key("Vote", request_id)))
+		details = getattr(caught.exception, "details", {})
+		self.assertEqual(details.get("code"), "no_eligible_approvers")
+		self.assertEqual((details["workflow"], details["state"]), (workflow.name, "Closed"))
+		self.assertEqual(
+			[(row["action"], row["next_state"], row["role"]) for row in details["transitions"]],
+			[(self.reopen_action_name, "Open", "System Manager"), (action, "On Hold", "System Manager")],
+		)
+
+		link = signed_links._issue_command({
+			"task_name": task.name,
+			"transition_uuid": "_test-transition",
+			"user": second,
+			"delivery_key": signed_links._open_action(task.name).custom_delivery_key,
+		})
+		self.addCleanup(signed_links._consume_command, link)
+		frappe.set_user(second)
+		with patch.object(frappe, "respond_as_web_page") as response:
+			signed_links.confirm_action(link, comment="Same attempted vote from a link")
+		self.assertEqual(response.call_args.kwargs["http_status_code"], 409)
+		self.assertIn(action, response.call_args.args[1])
+		self.assertIsNotNone(signed_links._peek_command(link))
+		self.assertEqual(frappe.db.get_value("Workflow Task", task.name, "status"), "Working")
+		frappe.set_user("Administrator")
+
+		for row in workflow.transitions[1:]:
+			row.condition = "True"
+		workflow.save(ignore_permissions=True)
+		result = engine.cast_vote(tasks[second], action=self.action_name, comment="Deciding vote", request_id=request_id)
+		self.assertTrue(result["transitioned"])
+		self.assertEqual(doc.reload().status, "Closed")
+		self.assertEqual(frappe.db.get_value("Workflow Task", tasks[self.user], "completed_at"), first_task.completed_at)
+		self.assertTrue(frappe.db.exists("Workflow Task", {**scope, "workflow_state": "Closed", "status": "Working"}))
 
 	def test_direct_workflow_state_change_is_rejected(self):
 		source = frappe.get_doc(

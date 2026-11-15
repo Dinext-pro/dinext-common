@@ -271,6 +271,11 @@ def confirm_action(
 				indicator_color="orange",
 			)
 		return
+	from dinext_common.workflow_approval.api import _read_round_failure
+
+	failure = _read_round_failure(task.failure_metadata)
+	retry_from = failure.get("submission_queue") if failure and failure.get("task_name") == task.name else ""
+	attempt = hashlib.sha256(f"{command_token}:{retry_from}".encode()).hexdigest()
 	previous_user = frappe.session.user
 	try:
 		frappe.session.user = user
@@ -279,13 +284,27 @@ def confirm_action(
 			transition_uuid=transition_uuid,
 			comment=comment,
 			completion_source="Signed Link",
-			request_id=f"signed:{command_token}",
+			request_id=f"signed:{attempt}",
 		)
+		if result.get("pending_submission"):
+			frappe.respond_as_web_page(
+				_("Workflow action queued"),
+				_("The vote will be recorded when background submission completes."),
+				http_status_code=202,
+			)
+			return
 		# Invalid input/rollback leaves the command usable; the engine request ID
 		# makes a retry after commit idempotent even if Redis cleanup is delayed.
 		frappe.db.after_commit.add(lambda: _consume_command(command_token))
 		return_success_page(
 			frappe.get_doc(result["reference_doctype"], result["reference_name"])
+		)
+	except engine.NoEligibleApproversError as error:
+		frappe.respond_as_web_page(
+			_("Workflow action was not applied"),
+			frappe.utils.escape_html(str(error)),
+			http_status_code=409,
+			indicator_color="red",
 		)
 	finally:
 		frappe.session.user = previous_user
