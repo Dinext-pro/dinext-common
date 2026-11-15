@@ -33,3 +33,28 @@ jobs:
       support_ref: ${{ github.sha }}
       mode: frappe-app
       frontend_tests: false
+  acceptance-scope:
+    name: Detect sidebar changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.changed-files.outputs.run }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - id: changed-files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/ci/sidebar_acceptance_paths.py
+  acceptance:
+    name: Acceptance
+    needs: acceptance-scope
+    if: >-
+      ${{ github.event_name == 'pull_request' && !cancelled() &&
+      (needs.acceptance-scope.result != 'success' || needs.acceptance-scope.outputs.run != 'false') }}
+    uses: ./.github/workflows/dinext-acceptance.yml
