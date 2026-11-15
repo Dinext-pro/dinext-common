@@ -519,11 +519,10 @@ Page, затем `bench build --app dinext_common`.
   опционально по reference DocType;
 - `Event Cleanup Rule`: по возрасту, категории, типу и статусу события;
 - `Workflow Cleanup Rule`: по возрасту, опционально по reference DocType и
-  статусу workflow. Для параллельного согласования те же правила удаляют
-  терминальные раунды `Workflow Task` через
-  `dinext_common.workflow_approval.retention.cleanup_workflow_approval_rounds`
-  (делегирование ставится в live `Data Cleanup Daily`; fixture JSON сам по
-  себе может ещё содержать прежнюю секцию Workflow).
+  статусу workflow. Задача сначала очищает завершённые раунды согласования,
+  затем старые записи `Workflow Process` и контексты удалённых документов
+  `Workflow Document Context`. Контекст и последний процесс живого документа
+  сохраняются для продолжения автоматических переходов.
 
 Приложение также устанавливает из fixtures включённые Server Scripts:
 
@@ -1109,7 +1108,8 @@ flowchart LR
   tasks --> desk[Workspace Мои согласования]
   engine --> mail[Письмо Workflow Action]
   domainHooks[Хуки workflow_approval_*] --> engine
-  dailyCleanup[Data Cleanup Daily] --> retention[cleanup_workflow_approval_rounds]
+  dailyCleanup[Data Cleanup Daily] --> workflowWorker[Data Cleanup Workflow]
+  workflowWorker --> retention[cleanup_workflow_approval_rounds]
   retention --> tasks
 ```
 

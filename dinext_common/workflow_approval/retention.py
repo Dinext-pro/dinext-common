@@ -1,51 +1,41 @@
-"""Round-aware retention for the Workflow Task audit ledger."""
+"""Retention for workflow approval rounds and scenario history."""
 
 from __future__ import annotations
 
-from typing import Any
-
 import frappe
-from frappe.utils import add_days, getdate
+from frappe.utils import add_days, cint, get_datetime, getdate
 
 from dinext_common.workflow_approval import engine
+from dinext_common.workflow_approval.scenarios import service
 
 TERMINAL_ROUND_STATES = {"Transitioned", "Cancelled", "Conflicted"}
 TERMINAL_TASK_STATES = {"Completed", "Cancelled"}
 TERMINAL_DELIVERY_STATES = {"Enqueued", "Skipped", "Failed"}
-ROUND_BATCH_SIZE = 100
-LEGACY_SECTION_START = "\t# 6. Workflow Cleanup Rule"
-LEGACY_SECTION_END = '\n\tlog("Data Cleanup: finished'
+TERMINAL_PROCESS_STATES = ("Archived", "Cancelled", "Completed")
+TERMINAL_RULE_STATUSES = (None, "", "Completed")
+BATCH_SIZE = 100
 
 
-def _candidate_round_ids(rule: object, cutoff: object) -> list[str]:
-	filters: list[list[Any]] = [
-		["status", "in", sorted(TERMINAL_TASK_STATES)],
-		["round_status", "in", sorted(TERMINAL_ROUND_STATES)],
-	]
-	if rule.get("reference_doctype"):
-		filters.append(["reference_doctype", "=", rule.reference_doctype])
-	if rule.get("status") == "Open":
+def _candidate_round_ids(rule: object, cutoff: object, after: str = "") -> list[str]:
+	if rule.get("status") not in TERMINAL_RULE_STATUSES:
 		return []
-	rows = frappe.get_all(
-		"Workflow Task",
-		filters=filters,
-		or_filters=[
-			["completed_at", "<", cutoff],
-			["cancelled_at", "<", cutoff],
-			["source_deleted_at", "<", cutoff],
-		],
-		fields=["approval_round_id", "completed_at", "cancelled_at", "source_deleted_at"],
-		order_by="completed_at asc, cancelled_at asc, source_deleted_at asc, approval_round_id asc",
-		limit=ROUND_BATCH_SIZE * 5,
+	task = frappe.qb.DocType("Workflow Task")
+	query = (
+		frappe.qb.from_(task)
+		.select(task.approval_round_id)
+		.distinct()
+		.where(task.approval_round_id > after)
+		.where(task.status.isin(sorted(TERMINAL_TASK_STATES)))
+		.where(task.round_status.isin(sorted(TERMINAL_ROUND_STATES)))
+		.where(
+			(task.completed_at < cutoff) | (task.cancelled_at < cutoff) | (task.source_deleted_at < cutoff)
+		)
+		.orderby(task.approval_round_id)
+		.limit(BATCH_SIZE)
 	)
-	result: list[str] = []
-	for row in rows:
-		round_id = row.approval_round_id
-		if round_id and round_id not in result:
-			result.append(round_id)
-		if len(result) >= ROUND_BATCH_SIZE:
-			break
-	return result
+	if reference_doctype := rule.get("reference_doctype"):
+		query = query.where(task.reference_doctype == reference_doctype)
+	return query.run(pluck=True)
 
 
 def _round_is_protected(tasks: list[object]) -> bool:
@@ -73,16 +63,11 @@ def _round_is_protected(tasks: list[object]) -> bool:
 		],
 	)
 	if any(
-		action.status == "Open"
-		or action.custom_notification_status not in TERMINAL_DELIVERY_STATES
+		action.status == "Open" or action.custom_notification_status not in TERMINAL_DELIVERY_STATES
 		for action in actions
 	):
 		return True
-	delivery_keys = [
-		action.custom_delivery_key
-		for action in actions
-		if action.custom_delivery_key
-	]
+	delivery_keys = [action.custom_delivery_key for action in actions if action.custom_delivery_key]
 	return bool(
 		delivery_keys
 		and frappe.db.exists(
@@ -95,7 +80,7 @@ def _round_is_protected(tasks: list[object]) -> bool:
 	)
 
 
-def _delete_terminal_round(round_id: str) -> bool:
+def _delete_terminal_round(round_id: str, cutoff, reference_doctype=None) -> bool:
 	pointers = frappe.get_all(
 		"Workflow Task",
 		filters={"approval_round_id": round_id},
@@ -105,16 +90,20 @@ def _delete_terminal_round(round_id: str) -> bool:
 	if not pointers:
 		return False
 	first = pointers[0]
-	if (
-		frappe.db.exists("DocType", first.reference_doctype)
-		and frappe.db.exists(first.reference_doctype, first.reference_name)
+	if frappe.db.exists("DocType", first.reference_doctype) and frappe.db.exists(
+		first.reference_doctype, first.reference_name
 	):
 		engine._lock_domain_dependencies(first.reference_doctype, first.reference_name)
-	tasks = [
-		frappe.get_doc("Workflow Task", row.name, for_update=True)
-		for row in pointers
-	]
-	if _round_is_protected(tasks):
+		frappe.get_doc(first.reference_doctype, first.reference_name, for_update=True)
+	tasks = [frappe.get_doc("Workflow Task", row.name, for_update=True) for row in pointers]
+	if _round_is_protected(tasks) or any(
+		(reference_doctype and task.reference_doctype != reference_doctype)
+		or not any(
+			timestamp and get_datetime(timestamp) < get_datetime(cutoff)
+			for timestamp in (task.completed_at, task.cancelled_at, task.source_deleted_at)
+		)
+		for task in tasks
+	):
 		return False
 	names = [task.name for task in tasks]
 	action_names = frappe.get_all(
@@ -175,48 +164,242 @@ def _delete_terminal_round(round_id: str) -> bool:
 	return True
 
 
-@frappe.whitelist(methods=["POST"])
-def cleanup_workflow_approval_rounds() -> int:
-	"""Delete bounded terminal rounds only when an explicit rule permits it."""
-	frappe.only_for("System Manager")
-	if not frappe.db.table_exists("Data Cleanup Rules"):
-		return 0
-	rules = frappe.get_single("Data Cleanup Rules")
+def _rule_scope(rule):
+	if reference_doctype := rule.get("reference_doctype"):
+		return {"reference_doctype": reference_doctype}
+	return {}
+
+
+def _names_after(doctype, filters, after):
+	return frappe.get_all(
+		doctype,
+		filters={**filters, "name": (">", after)},
+		pluck="name",
+		order_by="name asc",
+		limit=BATCH_SIZE,
+	)
+
+
+def _run_batches(label, fetch, delete):
 	deleted = 0
-	for rule in rules.workflow_rules or []:
-		if not rule.enabled or not rule.days or rule.status == "Open":
-			continue
-		cutoff = add_days(getdate(), -int(rule.days))
-		for round_id in _candidate_round_ids(rule, cutoff):
+	after = ""
+	while candidates := fetch(after):
+		for name in candidates:
 			try:
-				if _delete_terminal_round(round_id):
-					frappe.db.commit()
-					deleted += 1
+				removed = delete(name)
+				frappe.db.commit()
 			except Exception:
 				frappe.db.rollback()
-				frappe.log_error(
-					title=f"Workflow approval retention failed: {round_id}"
-				)
+				frappe.logger("workflow_retention").exception("Failed to delete %s %s", label, name)
+				continue
+			deleted += int(removed)
+			if deleted == BATCH_SIZE:
+				return deleted
+		after = candidates[-1]
 	return deleted
 
 
-def install_cleanup_delegation() -> bool:
-	"""Replace only the legacy Workflow branch in the retained daily script."""
-	if not frappe.db.exists("Server Script", "Data Cleanup Daily"):
+def _delete_standalone_action(name, filters):
+	if not frappe.db.get_value("Workflow Action", {**filters, "name": name}, "name", for_update=True):
 		return False
-	script = frappe.get_doc("Server Script", "Data Cleanup Daily")
-	if "cleanup_workflow_approval_rounds" in script.script:
-		return False
-	start = script.script.find(LEGACY_SECTION_START)
-	end = script.script.find(LEGACY_SECTION_END)
-	if start < 0 or end <= start:
-		raise RuntimeError("Data Cleanup Daily Workflow section was not recognized")
-	delegation = (
-		'\tworkflow_rounds = frappe.call('
-		'"dinext_common.workflow_approval.retention.cleanup_workflow_approval_rounds"'
-		") or 0\n"
-		"\tdeleted_total += workflow_rounds\n"
-	)
-	script.script = script.script[:start] + delegation + script.script[end:]
-	script.save(ignore_permissions=True)
+	frappe.delete_doc("Workflow Action", name, force=True, ignore_permissions=True)
 	return True
+
+
+def _identity(row):
+	return row.reference_doctype, row.reference_name, row.source_created_at
+
+
+def _lock_source_instance(row):
+	doctype, name, created_at = _identity(row)
+	if not (doctype and name and created_at):
+		return True
+	if not frappe.db.exists("DocType", doctype):
+		return False
+	if frappe.get_meta(doctype).issingle:
+		return True
+	source = {"name": name}
+	if frappe.db.get_value(doctype, source, "name"):
+		engine._lock_domain_dependencies(doctype, name)
+	creation = frappe.db.get_value(doctype, source, "creation", for_update=True)
+	return bool(creation and get_datetime(creation) == get_datetime(created_at))
+
+
+def _linked_record_exists(doctype, filters):
+	return bool(frappe.db.get_value(doctype, filters, "name", for_update=True))
+
+
+def _delete_process(name, cutoff, reference_doctype):
+	pointer = frappe.db.get_value(
+		service.PROCESS,
+		name,
+		["reference_doctype", "reference_name", "source_created_at", "source_key"],
+		as_dict=True,
+	)
+	if not pointer:
+		return False
+	source_exists = _lock_source_instance(pointer)
+	context = (
+		frappe.db.get_value(
+			service.CONTEXT,
+			pointer.source_key,
+			["name", "last_process"],
+			as_dict=True,
+			for_update=True,
+		)
+		if pointer.source_key
+		else None
+	)
+	process = frappe.db.get_value(
+		service.PROCESS,
+		name,
+		[
+			"reference_doctype",
+			"reference_name",
+			"source_created_at",
+			"source_key",
+			"status",
+			"active_source_key",
+			"completed_at",
+		],
+		as_dict=True,
+		for_update=True,
+	)
+	if (
+		not process
+		or _identity(process) != _identity(pointer)
+		or process.source_key != pointer.source_key
+		or (reference_doctype and process.reference_doctype != reference_doctype)
+		or process.status not in TERMINAL_PROCESS_STATES
+		or process.active_source_key
+		or not process.completed_at
+		or get_datetime(process.completed_at) >= get_datetime(cutoff)
+	):
+		return False
+	is_last = context and context.last_process == name
+	if is_last and source_exists:
+		return False
+	if _linked_record_exists("Workflow Task", {"workflow_process": name}):
+		return False
+	if _linked_record_exists(service.CONTEXT, {"active_process": name}):
+		return False
+	if _linked_record_exists(
+		service.CONTEXT, {"last_process": name, "name": ("!=", pointer.source_key or "")}
+	):
+		return False
+	if is_last:
+		frappe.db.set_value(service.CONTEXT, context.name, "last_process", None, update_modified=False)
+	frappe.delete_doc(
+		service.PROCESS,
+		name,
+		ignore_permissions=True,
+		flags={"in_workflow_scenario_service": True},
+	)
+	return True
+
+
+def _delete_context(name, cutoff, reference_doctype):
+	identity_fields = ["reference_doctype", "reference_name", "source_created_at"]
+	pointer = frappe.db.get_value(service.CONTEXT, name, identity_fields, as_dict=True)
+	if not pointer or _lock_source_instance(pointer):
+		return False
+	context = frappe.db.get_value(
+		service.CONTEXT,
+		name,
+		[*identity_fields, "active_process", "last_process", "modified"],
+		as_dict=True,
+		for_update=True,
+	)
+	if (
+		not context
+		or _identity(context) != _identity(pointer)
+		or context.active_process
+		or (reference_doctype and context.reference_doctype != reference_doctype)
+		or not context.modified
+		or get_datetime(context.modified) >= get_datetime(cutoff)
+	):
+		return False
+	identity = {field: context.get(field) for field in identity_fields}
+	if (
+		_linked_record_exists(service.PROCESS, {"source_key": name})
+		or _linked_record_exists(service.PROCESS, identity)
+		or (context.last_process and _linked_record_exists(service.PROCESS, {"name": context.last_process}))
+		or _linked_record_exists("Workflow Task", identity)
+	):
+		return False
+	frappe.delete_doc(
+		service.CONTEXT,
+		name,
+		ignore_permissions=True,
+		flags={"in_workflow_scenario_service": True},
+	)
+	return True
+
+
+@frappe.whitelist(methods=["POST"])
+def cleanup_workflow_approval_rounds() -> int:
+	"""Run workflow retention and return the number of rounds deleted."""
+	frappe.only_for("System Manager")
+	request = getattr(frappe.local, "request", None)
+	if request is not None and request.method != "POST":
+		raise frappe.PermissionError
+	if not frappe.db.exists("DocType", "Data Cleanup Rules"):
+		return 0
+
+	today = getdate()
+	rules = [
+		(rule, add_days(today, -cint(rule.days)))
+		for rule in frappe.get_single("Data Cleanup Rules").workflow_rules or []
+		if rule.enabled and cint(rule.days) > 0
+	]
+	rounds = actions = processes = contexts = 0
+	terminal_rules = [(rule, cutoff) for rule, cutoff in rules if rule.status in TERMINAL_RULE_STATUSES]
+	if frappe.db.has_column("Workflow Task", "approval_round_id"):
+		for rule, cutoff in terminal_rules:
+			rounds += _run_batches(
+				"approval round",
+				lambda after: _candidate_round_ids(rule, cutoff, after),
+				lambda name: _delete_terminal_round(name, cutoff, rule.reference_doctype),
+			)
+	if frappe.db.has_column("Workflow Action", "custom_workflow_task"):
+		for rule, cutoff in rules:
+			filters = {
+				**_rule_scope(rule),
+				"modified": ("<", cutoff),
+				"custom_workflow_task": ("is", "not set"),
+			}
+			if rule.status:
+				filters["status"] = rule.status
+			actions += _run_batches(
+				"Workflow Action",
+				lambda after: _names_after("Workflow Action", filters, after),
+				lambda name: _delete_standalone_action(name, filters),
+			)
+
+	if service.is_ready():
+		for rule, cutoff in terminal_rules:
+			filters = {
+				**_rule_scope(rule),
+				"completed_at": ("<", cutoff),
+				"status": ("in", TERMINAL_PROCESS_STATES),
+			}
+			processes += _run_batches(
+				service.PROCESS,
+				lambda after: _names_after(service.PROCESS, filters, after),
+				lambda name: _delete_process(name, cutoff, rule.reference_doctype),
+			)
+		for rule, cutoff in terminal_rules:
+			filters = {**_rule_scope(rule), "modified": ("<", cutoff)}
+			contexts += _run_batches(
+				service.CONTEXT,
+				lambda after: _names_after(service.CONTEXT, filters, after),
+				lambda name: _delete_context(name, cutoff, rule.reference_doctype),
+			)
+	frappe.logger("workflow_retention").info(
+		"Workflow cleanup deleted %s rounds, %s standalone actions, %s processes and %s contexts",
+		rounds,
+		actions,
+		processes,
+		contexts,
+	)
+	return rounds

@@ -42,7 +42,7 @@ class TestWorkflowStandards(unittest.TestCase):
 	def test_cleanup_allows_manager_directly_and_only_post_over_http(self):
 		from dinext_common.workflow_approval import retention
 
-		with patch.object(frappe.db, "table_exists", return_value=False):
+		with patch.object(frappe.db, "exists", return_value=False):
 			self.assertEqual(retention.cleanup_workflow_approval_rounds(), 0)
 		method = retention.cleanup_workflow_approval_rounds
 		self.assertEqual(frappe.allowed_http_methods_for_whitelisted_func[method], ["POST"])

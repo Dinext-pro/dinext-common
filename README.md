@@ -511,7 +511,7 @@ Rule types:
 - `Workflow Cleanup Rule`: by age, optionally by reference DocType and
   workflow status.
 
-For parallel approval, the same rules remove terminal `Workflow Task` rounds through `dinext_common.workflow_approval.retention.cleanup_workflow_approval_rounds`. Migration installs delegation in live `Data Cleanup Daily`; old fixture JSON may retain the legacy Workflow section until re-exported.
+The workflow cleanup job removes eligible terminal approval rounds, then old `Workflow Process` records and obsolete `Workflow Document Context` records. The last process and the context of a live document are kept so the workflow engine can resume automatic transitions.
 
 The application also installs enabled Server Scripts from fixtures:
 
@@ -1044,7 +1044,8 @@ flowchart LR
   tasks --> desk[Workspace My Approvals]
   engine --> mail[Workflow Action email]
   domainHooks[workflow_approval_* hooks] --> engine
-  dailyCleanup[Data Cleanup Daily] --> retention[cleanup_workflow_approval_rounds]
+  dailyCleanup[Data Cleanup Daily] --> workflowWorker[Data Cleanup Workflow]
+  workflowWorker --> retention[cleanup_workflow_approval_rounds]
   retention --> tasks
 ```
 
