@@ -2,6 +2,7 @@
  "chart_name": "Approval Deadline Discipline Trend",
  "chart_type": "Report",
  "creation": "2026-11-09 02:49:02.494240",
+ "custom_options": "{\"lineOptions\": {\"showDots\": true}}",
  "docstatus": 0,
  "doctype": "Dashboard Chart",
  "filters_json": "{}",
