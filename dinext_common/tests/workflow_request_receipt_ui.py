@@ -23,7 +23,7 @@ def seed():
 	suffix = frappe.generate_hash(length=8)
 	names = {}
 	for label, status, days in (
-		("old", "Completed", 18),
+		("old", "Completed", 6),
 		("recent", "Completed", 1),
 		("running", "Working", None),
 	):

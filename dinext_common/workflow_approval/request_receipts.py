@@ -11,7 +11,7 @@ from frappe import _
 from frappe.utils import get_datetime, now_datetime
 
 DOCTYPE = "Workflow Request Receipt"
-DEFAULT_RETENTION_DAYS = 30
+DEFAULT_RETENTION_DAYS = 7
 RECEIPT_FIELDS = (
 	"name", "initiator", "request_digest", "status", "targets", "item_results", "response", "job_id",
 )
