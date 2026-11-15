@@ -6,7 +6,7 @@ from copy import deepcopy
 import frappe
 from frappe import _
 from frappe.core.doctype.submission_queue.submission_queue import SubmissionQueue
-from frappe.utils import get_datetime
+from frappe.utils import get_datetime, now_datetime
 
 from dinext_common.workflow_approval import engine
 
@@ -14,6 +14,64 @@ from dinext_common.workflow_approval import engine
 def pending(task):
 	data = frappe.parse_json(task.failure_metadata or "{}")
 	return data.get("pending_vote") if isinstance(data, dict) else None
+
+
+def queue_job_id(queue_name):
+	return f"workflow-submission:{queue_name}"
+
+
+def _matches_job(job, queue_name, source):
+	from rq.job import JobStatus
+
+	payload = job.kwargs
+	args = payload.get("kwargs") or {}
+	doc = args.get("to_be_queued_doc")
+	return (
+		payload.get("site") == frappe.local.site
+		and payload.get("method") == "frappe.model.document.execute_action"
+		and args.get("__doctype") == "Submission Queue"
+		and args.get("__name") == queue_name
+		and args.get("__action") == "background_submission"
+		and args.get("action_for_queuing") == "Submit"
+		and doc
+		and (doc.doctype, doc.name) == (source.doctype, source.name)
+		and doc.creation and get_datetime(doc.creation) == get_datetime(source.creation)
+		and job.get_status() in (JobStatus.QUEUED, JobStatus.STARTED, JobStatus.DEFERRED, JobStatus.SCHEDULED)
+	)
+
+
+def has_active_job(queue_name, source, *, job_id=None, named=False):
+	"""Inspect this site's native queue job. An unavailable Redis cannot prove loss."""
+	from frappe.utils.background_jobs import create_job_id, get_queue
+	from redis.exceptions import RedisError
+	from rq.exceptions import DeserializationError, NoSuchJobError
+
+	try:
+		queue = get_queue("default")
+		expected_id = create_job_id(queue_job_id(queue_name))
+		for candidate in dict.fromkeys(filter(None, (job_id, expected_id))):
+			try:
+				job = queue.job_class.fetch(candidate, connection=queue.connection, serializer=queue.serializer)
+			except NoSuchJobError:
+				continue
+			if job.origin == queue.name and _matches_job(job, queue_name, source):
+				return True
+		if named:
+			return False
+
+		# Older native jobs were assigned random IDs. Read queue indexes together
+		# because a worker can move a job from waiting to started during repair.
+		with queue.connection.pipeline() as indexes:
+			indexes.lrange(queue.key, 0, -1)
+			indexes.lrange(queue.intermediate_queue_key, 0, -1)
+			indexes.zrange(queue.started_job_registry.key, 0, -1)
+			indexes.zrange(queue.scheduled_job_registry.key, 0, -1)
+			indexes.zrange(queue.deferred_job_registry.key, 0, -1)
+			job_ids = {value.decode() for rows in indexes.execute() for value in rows}
+		jobs = queue.job_class.fetch_many(job_ids, connection=queue.connection, serializer=queue.serializer)
+		return any(job and job.origin == queue.name and _matches_job(job, queue_name, source) for job in jobs)
+	except (RedisError, DeserializationError):
+		return None
 
 
 def stage(task, source, transition, workflow, *, comment, completion_source, request_id, receipt_recorded):
@@ -29,15 +87,17 @@ def stage(task, source, transition, workflow, *, comment, completion_source, req
 		return None
 	vote = dict(task_name=task.name, transition_uuid=transition.transition_uuid, comment=comment,
 		completion_source=completion_source, request_id=request_id, receipt_recorded=receipt_recorded)
-	return _stage_votes(task, source, winner, [vote], actor=task.approver)
+	return _stage_votes(task, source, workflow, winner, [vote], actor=task.approver)
 
 
 def _can_queue(source, workflow, winner):
 	from frappe.utils.scheduler import is_scheduler_inactive
-	if not winner or source.docstatus != 0 or not source.meta.queue_in_background:
-		return False
-	target = next(row for row in workflow.states if row.state == winner["next_state"])
-	return int(target.doc_status or 0) == 1 and not is_scheduler_inactive()
+
+	return bool(
+		winner and source.docstatus == 0 and source.meta.queue_in_background
+		and engine._state_docstatus(workflow, winner["next_state"]) == 1
+		and not is_scheduler_inactive()
+	)
 
 
 def stage_automatic(source, candidates, winner, *, cycle_guard=None):
@@ -48,69 +108,108 @@ def stage_automatic(source, candidates, winner, *, cycle_guard=None):
 	workflow = frappe.get_doc("Workflow", task.workflow)
 	if not _can_queue(source, workflow, winner):
 		return None
-	actors = [task.approver for task, transition, reused in candidates
-		if transition.transition_uuid == winner["transition_uuid"]]
+	actors = [
+		task.approver for task, transition, _ in candidates
+		if transition.transition_uuid == winner["transition_uuid"]
+	]
 	actor = actors[-1] if actors else engine._finalization_actor(task.approval_round_id, winner)
 	votes = [dict(task_name=task.name, transition_uuid=transition.transition_uuid, comment="",
 		completion_source="Automatic Unchanged", request_id=None, receipt_recorded=False,
 		reused_from=reused.name) for task, transition, reused in candidates]
 	guard = deepcopy(cycle_guard) if cycle_guard else engine.AutomationCycleGuard()
 	guard.visit(task.workflow, task.workflow_state, task.entry_fingerprint, task.get("workflow_process") or "")
-	return _stage_votes(task, source, winner, votes, actor=actor, automatic=True, cycle_guard=guard)
+	return _stage_votes(task, source, workflow, winner, votes, actor=actor, automatic=True, cycle_guard=guard)
 
 
-def _stage_votes(task, source, winner, votes, *, actor, automatic=False, cycle_guard=None):
-	data = dict(task_name=task.name, initiator=frappe.session.user, winner=winner,
-		votes=votes, automatic=automatic)
+def _save_pending(task, queue, data):
+	data = {**data, "submission_queue": queue, "staged_at": str(now_datetime()), "named_rq_job": True}
+	engine._set_round_values(task.approval_round_id, {
+		"round_status": "Finalizing", "finalization_status": "Queued", "submission_queue": queue,
+		"failure_metadata": engine.serialize_manifest({"pending_vote": data}),
+	})
+
+
+def _pending_data(task, winner, votes, *, actor, initiator, cycle_guard, **flags):
+	data = dict(task_name=task.name, initiator=initiator, actor=actor, winner=winner, votes=votes, **flags)
 	if cycle_guard:
 		data["cycle_guard"] = dict(max_transitions=cycle_guard.max_transitions,
 			visited=list(cycle_guard.visited), transition_count=cycle_guard.transition_count)
-	engine._set_round_values(task.approval_round_id, {
-		"round_status": "Finalizing", "finalization_status": "Queued",
-		"failure_metadata": engine.serialize_manifest({"pending_vote": data}),
-	})
+	return data
+
+
+def _stage_votes(task, source, workflow, winner, votes, *, actor, automatic=False, cycle_guard=None):
+	data = _pending_data(
+		task, winner, votes, actor=actor, initiator=frappe.session.user,
+		cycle_guard=cycle_guard, automatic=automatic,
+	)
+	with engine._atomic_workflow_attempt(rollback_on=(Exception,)):
+		_enqueue_pending(task, source, workflow, data)
+	task.reload()
+	return engine._vote_result(task, frappe.get_doc(source.doctype, source.name), transitioned=False)
+
+
+def _enqueue_pending(task, source, workflow, data):
+	winner = data["winner"]
+	actor = data["actor"]
 	previous_user = frappe.session.user
 	previous_flag = frappe.flags.in_dinext_workflow_finalization
 	try:
 		frappe.flags.in_dinext_workflow_finalization = True
 		frappe.session.user = actor
 		engine._ensure_finalization_placeholder(source, task.approval_round_id, winner, actor)
-		engine._apply_winning_transition(source, winner["action"])
+		result, queue = engine._apply_winning_transition(source, workflow, winner)
 	finally:
 		frappe.session.user = previous_user
 		frappe.flags.in_dinext_workflow_finalization = previous_flag
-	queue = frappe.db.get_value("Submission Queue", {
-		"ref_doctype": source.doctype, "ref_docname": source.name, "status": "Queued"}, "name")
-	if not queue:
+	if result is not None or not queue:
 		raise engine.WorkflowApprovalConflictError(_("Workflow core did not create the expected Submission Queue"))
-	engine._set_round_values(task.approval_round_id, {"submission_queue": queue})
-	task.reload()
-	result = engine._vote_result(task, frappe.get_doc(source.doctype, source.name), transitioned=False)
-	return result
+	_save_pending(task, queue, data)
 
 
-def stage_existing_finalization(task, winner, queue, *, initiator, cycle_guard=None):
+def stage_existing_finalization(task, winner, queue, *, initiator, actor, cycle_guard=None):
 	"""Correlate a new native queue without changing already accepted votes."""
-	data = dict(task_name=task.name, initiator=initiator, winner=winner,
-		votes=[], preserve_completed=True)
-	if cycle_guard:
-		data["cycle_guard"] = dict(max_transitions=cycle_guard.max_transitions,
-			visited=list(cycle_guard.visited), transition_count=cycle_guard.transition_count)
-	engine._set_round_values(task.approval_round_id, {"submission_queue": queue,
-		"failure_metadata": engine.serialize_manifest({"pending_vote": data})})
+	data = _pending_data(
+		task, winner, [], actor=actor, initiator=initiator,
+		cycle_guard=cycle_guard, preserve_completed=True,
+	)
+	_save_pending(task, queue, data)
+
+
+def retry_pending(task, source, data):
+	workflow = frappe.get_doc("Workflow", task.workflow)
+	if not _can_queue(source, workflow, data["winner"]) or (
+		source.get(workflow.workflow_state_field) != task.workflow_state
+	):
+		raise engine.WorkflowApprovalConflictError(_("The source workflow state has changed"))
+	if not data.get("actor"):
+		# Existing persisted attempts predate the explicit actor. Their native
+		# queue owner or the decisive approver identifies that same actor.
+		actor = frappe.db.get_value("Submission Queue", task.submission_queue, "owner") if task.submission_queue else None
+		if not actor:
+			winning_uuid = data["winner"]["transition_uuid"]
+			winning_vote = next((vote for vote in reversed(data.get("votes", [data]))
+				if vote["transition_uuid"] == winning_uuid), None)
+			actor = (
+				frappe.db.get_value("Workflow Task", winning_vote["task_name"], "approver")
+				if winning_vote else engine._finalization_actor(task.approval_round_id, data["winner"])
+			)
+		data = {**data, "actor": actor}
+	_enqueue_pending(task, source, workflow, data)
 
 
 def complete_source(doc):
 	queue = frappe.flags.dinext_pending_submission
-	if not queue or (doc.doctype, doc.name) != (queue.ref_doctype, queue.ref_docname):
+	if not queue or not engine._round_matches_source(queue.pending_task, doc):
 		return False
 	if queue.vote_completed:
 		return True
 	try:
 		task, data = queue.pending_task, queue.pending_data
 		workflow = frappe.get_doc("Workflow", task.workflow)
-		persisted = frappe.db.get_value(doc.doctype, doc.name, [workflow.workflow_state_field, "docstatus"])
-		if persisted != (data["winner"]["next_state"], 1):
+		persisted = frappe.get_doc(doc.doctype, doc.name)
+		if not engine._round_matches_source(task, persisted) or not engine._source_at_workflow_state(
+			persisted, workflow, data["winner"]["next_state"],
+		) or persisted.docstatus != 1:
 			raise engine.WorkflowApprovalConflictError(_("The source workflow state has changed"))
 		from dinext_common.workflow_approval.scenarios import service
 		service.start_cascade(doc, manual=not (data.get("automatic") or data.get("preserve_completed")))
@@ -155,75 +254,151 @@ def complete_source(doc):
 	return True
 
 
+class _SubmissionNoLongerPending(Exception):
+	pass
+
+
 class DinextSubmissionQueue(SubmissionQueue):
+	def after_insert(self):
+		from dinext_common.workflow_approval.scenarios.compat import transition_execution
+
+		execution = transition_execution(self.queued_doc)
+		if not execution:
+			return super().after_insert()
+		self.queue_action(
+			"background_submission", to_be_queued_doc=self.queued_doc,
+			action_for_queuing=self.action_for_queuing, timeout=600,
+			enqueue_after_commit=True, job_id=queue_job_id(self.name),
+		)
+		execution.submission_queue = self.name
+
+	def unlock(self):
+		# A delayed worker for a definitively failed queue may arrive after retry.
+		if self.status == "Queued":
+			return super().unlock()
+
 	def background_submission(self, to_be_queued_doc, action_for_queuing):
 		if frappe.db.get_value("Submission Queue", self.name, "status") != "Queued":
 			return
-		names = frappe.get_all("Workflow Task", filters={"submission_queue": self.name,
-			}, pluck="name")
-		task = None
+		names = frappe.get_all("Workflow Task", filters={"submission_queue": self.name}, pluck="name")
 		for name in names:
-			candidate = frappe.get_doc("Workflow Task", name)
-			data = pending(candidate)
-			if data and data.get("task_name") == candidate.name:
-				task = candidate
-				break
-		if not task:
-			return super().background_submission(to_be_queued_doc, action_for_queuing)
-		# Native update_job_id commits; acquire all attempt locks after that boundary.
-		return self._run_pending(task, to_be_queued_doc, action_for_queuing)
+			task = frappe.get_doc("Workflow Task", name)
+			data = pending(task)
+			if data and data.get("task_name") == task.name:
+				return self._run_pending(task, to_be_queued_doc, action_for_queuing)
+		from frappe.utils.background_jobs import create_job_id
+		from rq import get_current_job
 
-	def update_job_id(self, job_id):
-		super().update_job_id(job_id)
-		if not getattr(self, "pending_task", None):
+		job = get_current_job()
+		if job and job.id == create_job_id(queue_job_id(self.name)):
 			return
+		if frappe.db.get_value("Submission Queue", self.name, "status", for_update=True) == "Queued":
+			return super().background_submission(to_be_queued_doc, action_for_queuing)
+
+	def _lock_attempt(self):
 		engine._lock_domain_dependencies(self.ref_doctype, self.ref_docname)
 		source = frappe.get_doc(self.ref_doctype, self.ref_docname, for_update=True)
 		task = frappe.get_doc("Workflow Task", self.pending_task.name, for_update=True)
-		if task.submission_queue != self.name or task.round_status != "Finalizing" or not pending(task):
-			raise engine.WorkflowApprovalConflictError(_("Workflow Task is no longer active"))
-		if get_datetime(task.source_created_at) != get_datetime(source.creation):
+		queue = frappe.db.get_value(
+			"Submission Queue", self.name, ["status", "job_id", "ref_doctype", "ref_docname"],
+			as_dict=True, for_update=True,
+		)
+		data = pending(task)
+		if (
+			not queue or queue.status != "Queued" or task.submission_queue != self.name
+			or task.round_status != "Finalizing" or not data
+			or data.get("submission_queue", self.name) != self.name
+		):
+			raise _SubmissionNoLongerPending
+		if (queue.ref_doctype, queue.ref_docname) != (source.doctype, source.name) or not engine._round_matches_source(task, source):
 			raise engine.WorkflowApprovalConflictError(_("The Workflow Task belongs to another document instance"))
-		from dinext_common.workflow_approval.scenarios import service
-		if service.is_ready():
-			context = service.get_context(source)
-			if context["process_id"] != task.get("workflow_process") or context["workflow"] != task.workflow:
-				raise engine.WorkflowApprovalConflictError(_("The Workflow process has changed. Refresh the document before acting."))
+		return source, task, data, queue
+
+	def update_job_id(self, job_id):
+		if not getattr(self, "pending_task", None):
+			return super().update_job_id(job_id)
+		# Keep native job-ID persistence. Recheck ownership and state after its commit.
+		self._lock_attempt()
+		super().update_job_id(job_id)
+		source, task, data, queue = self._lock_attempt()
+		if queue.job_id != job_id:
+			raise _SubmissionNoLongerPending
+		from frappe.model.workflow import get_transitions, has_approval_access
+
 		workflow = frappe.get_doc("Workflow", task.workflow)
-		if source.docstatus != 0 or source.get(workflow.workflow_state_field) != task.workflow_state:
+		winner = data["winner"]
+		doc = self.submission_document
+		if (
+			self.submission_action != "Submit" or not engine._round_matches_source(task, doc)
+			or source.get(workflow.workflow_state_field) != task.workflow_state or source.docstatus != 0
+			or doc.get(workflow.workflow_state_field) != winner["next_state"]
+			or engine._state_docstatus(workflow, winner["next_state"]) != 1
+		):
 			raise engine.WorkflowApprovalConflictError(_("The source workflow state has changed"))
-		self.pending_task = task
-		self.pending_data = pending(task)
-		self.vote_fingerprint = engine.get_content_fingerprint(source, frappe.get_doc("Workflow", task.workflow))
+		frappe.has_permission(source.doctype, doc=source.name, throw=True)
+		choices = get_transitions(source, workflow)
+		if not choices or not has_approval_access(frappe.session.user, source, choices[0]):
+			raise engine.WorkflowApprovalConflictError(_("Workflow core validation rejected the winning transition"))
+		self.pending_task, self.pending_data = task, data
+		self.vote_fingerprint = engine.get_content_fingerprint(source, workflow)
 
 	def _run_pending(self, task, doc, action):
 		self.pending_task, self.pending_data = task, pending(task)
+		self.submission_document, self.submission_action = doc, action
 		self.round_error, self.vote_completed = None, False
 		previous_cascade = deepcopy(getattr(frappe.local, "workflow_scenario_cascade", None))
+		previous_user = frappe.session.user
 		previous = frappe.flags.dinext_pending_submission
 		previous_flag = frappe.flags.in_dinext_workflow_finalization
 		frappe.flags.dinext_pending_submission = self
 		frappe.flags.in_dinext_workflow_finalization = True
+		frappe.session.user = self.pending_data.get("actor") or self.owner
 		try:
-			from dinext_common.workflow_approval.scenarios.compat import authorized_finalization
-			with authorized_finalization(doc):
-				return super().background_submission(doc, action)
+			from frappe.core.doctype.submission_queue.submission_queue import get_current_job
+			from frappe.monitor import add_data_to_monitor
+			from frappe.utils import now, time_diff_in_seconds
+
+			from dinext_common.workflow_approval.scenarios.compat import (
+				authorized_finalization,
+				exact_transition,
+			)
+
+			with exact_transition(doc, task.workflow, self.pending_data["winner"]), authorized_finalization(doc):
+				self.update_job_id(get_current_job().id)
+				# Native submit runs normal controllers and events. Retain the
+				# source locks when rolling back a failed save for its diagnostics.
+				with engine._atomic_workflow_attempt(rollback_on=(Exception,)):
+					doc.submit()
+					if not self.vote_completed:
+						raise engine.WorkflowApprovalConflictError(_("The source workflow state has changed"))
+					add_data_to_monitor(
+						doctype=doc.doctype, docname=doc.name, action="submit",
+						execution_time=time_diff_in_seconds(now(), self.created_at),
+						enqueued_by=self.enqueued_by,
+					)
+					frappe.db.set_value("Submission Queue", self.name, {
+						"status": "Finished", "ended_at": now_datetime(),
+					}, update_modified=False)
+		except _SubmissionNoLongerPending:
+			return
+		except (frappe.db.InternalError, frappe.QueryDeadlockError, frappe.QueryTimeoutError):
+			raise
 		except Exception:
-			# Native worker setup (including update_job_id) precedes its try/rollback.
-			traceback = frappe.get_traceback()
-			frappe.db.rollback()
-			queue = frappe.get_doc("Submission Queue", self.name, for_update=True)
-			if queue.status == "Queued":
+			if frappe.db.get_value("Submission Queue", self.name, "status", for_update=True) == "Queued":
 				frappe.db.set_value("Submission Queue", self.name, {
-					"status": "Failed", "exception": traceback, "ended_at": frappe.utils.now()}, update_modified=False)
+					"status": "Failed", "exception": frappe.get_traceback(), "ended_at": now_datetime(),
+				}, update_modified=False)
 				self.notify("Failed", action)
 		finally:
 			frappe.local.workflow_scenario_cascade = previous_cascade
+			frappe.session.user = previous_user
 			frappe.flags.dinext_pending_submission = previous
 			frappe.flags.in_dinext_workflow_finalization = previous_flag
 
 	def notify(self, submission_status, action):
 		if submission_status == "Finished" and getattr(self, "pending_task", None):
+			if not self.vote_completed:
+				raise engine.WorkflowApprovalConflictError(_("The source workflow state has changed"))
 			return
 		if submission_status != "Failed" or not getattr(self, "round_error", None):
 			return super().notify(submission_status, action)
@@ -253,11 +428,10 @@ class DinextSubmissionQueue(SubmissionQueue):
 		if data.get("preserve_completed"):
 			from dinext_common.workflow_approval.projections import close_round_projections
 			close_round_projections(task.approval_round_id)
-		if data.get("automatic"):
-			from dinext_common.workflow_approval.projections import create_round_projections
-			create_round_projections(source, [frappe.get_doc("Workflow Task", name)
-				for name in engine._round_task_names(task.approval_round_id)
-				if frappe.db.get_value("Workflow Task", name, "status") == "Working"])
+		else:
+			from dinext_common.workflow_approval.projections import repair_round_projections
+
+			repair_round_projections(source, task.approval_round_id)
 		message = frappe.utils.escape_html(engine.round_error_message(self.round_error))
 		frappe.publish_realtime("msgprint", {"message": message, "alert": True, "indicator": "red"},
 			user=data["initiator"], after_commit=True)

@@ -48,15 +48,30 @@ def _peek_command(token: str) -> dict[str, str] | None:
 	return json.loads(raw) if raw else None
 
 
-def _open_action(task_name: str, delivery_key: str | None = None) -> object | None:
-	filters = {
-		"custom_workflow_task": task_name,
-		"status": "Open",
-	}
+def _configuration_restored(task) -> bool:
+	return bool(json.loads(task.get("notification_delivery_snapshot") or "{}").get("configuration_restored"))
+
+
+def _link_delivery_key(action, task) -> str:
+	key = action.custom_delivery_key
+	if not key or not _configuration_restored(task):
+		return key
+	return hashlib.sha256(f"{action.name}\0{key}".encode()).hexdigest()
+
+
+def _open_action(task_name: str, delivery_key: str | None = None, *, locked_task=None) -> object | None:
+	lock = locked_task is not None
+	name = frappe.db.get_value(
+		"Workflow Action", {"custom_workflow_task": task_name, "status": "Open"}, for_update=lock,
+	)
+	if not name:
+		return None
+	action = frappe.get_doc("Workflow Action", name, for_update=lock)
 	if delivery_key:
-		filters["custom_delivery_key"] = delivery_key
-	name = frappe.db.get_value("Workflow Action", filters)
-	return frappe.get_doc("Workflow Action", name) if name else None
+		task = locked_task if lock else frappe.get_doc("Workflow Task", task_name)
+		if delivery_key != _link_delivery_key(action, task):
+			return None
+	return action
 
 
 def _actor_can_read_task(task: object, user: str) -> bool:
@@ -70,7 +85,7 @@ def _actor_can_read_task(task: object, user: str) -> bool:
 		frappe.session.user = previous_user
 
 
-def ensure_delivery_key(task_name: str) -> str:
+def _ensure_delivery_action(task_name: str) -> object:
 	action = _open_action(task_name)
 	if not action:
 		raise engine.WorkflowApprovalConflictError(_("Workflow Action is no longer open"))
@@ -88,11 +103,15 @@ def ensure_delivery_key(task_name: str) -> str:
 			action.name,
 			"custom_delivery_key",
 		)
-	return action.custom_delivery_key
+	return action
+
+
+def ensure_delivery_key(task_name: str) -> str:
+	return _ensure_delivery_action(task_name).custom_delivery_key
 
 
 def get_task_action_url(task: object, transition: object) -> str:
-	delivery_key = ensure_delivery_key(task.name)
+	action = _ensure_delivery_action(task.name)
 	params = {
 		"task_name": task.name,
 		"transition_uuid": transition.transition_uuid,
@@ -106,7 +125,7 @@ def get_task_action_url(task: object, transition: object) -> str:
 			)
 			or ""
 		),
-		"delivery_key": delivery_key,
+		"delivery_key": _link_delivery_key(action, task),
 	}
 	method = (
 		"/api/method/dinext_common.workflow_approval.signed_links.preview_action"
@@ -285,6 +304,7 @@ def confirm_action(
 			comment=comment,
 			completion_source="Signed Link",
 			request_id=f"signed:{attempt}",
+			expected_delivery_key=delivery_key,
 		)
 		if result.get("pending_submission"):
 			frappe.respond_as_web_page(
@@ -299,6 +319,8 @@ def confirm_action(
 		return_success_page(
 			frappe.get_doc(result["reference_doctype"], result["reference_name"])
 		)
+	except engine.ExpiredWorkflowActionError:
+		return_link_expired_page(frappe.get_doc(task.reference_doctype, task.reference_name), task.workflow_state)
 	except engine.NoEligibleApproversError as error:
 		frappe.respond_as_web_page(
 			_("Workflow action was not applied"),
@@ -431,6 +453,8 @@ def _scenario_task_current(source, task) -> bool:
 
 def _legacy_task_is_eligible(task) -> bool:
 	"""A document/action URL predates per-task URLs; bind it to migrated task IDs."""
+	if _configuration_restored(task):
+		return False
 	from dinext_common.workflow_approval.scenarios import service
 	if not service.is_ready():
 		return True

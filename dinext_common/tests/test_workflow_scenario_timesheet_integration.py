@@ -6,14 +6,12 @@ import unittest
 from unittest.mock import patch
 
 import frappe
-from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 from dinext_common.workflow_approval import api, request_receipts
 from dinext_common.workflow_approval.scenarios import service
 from dinext_common.workflow_approval.scenarios.metadata import next_selection_order
 
 POSITION = "User Timesheet Position"
-FIELDS = ("custom_timesheet_scenario_a", "custom_timesheet_scenario_b")
 
 
 class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
@@ -32,8 +30,6 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		):
 			if not frappe.db.exists("DocType", doctype):
 				frappe.reload_doc(module, "doctype", name)
-		create_custom_fields({POSITION: [{"fieldname": field, "fieldtype": "Data", "label": field,
-			"module": "Dinext Common"} for field in FIELDS]}, update=True)
 		frappe.db.commit()
 
 	def setUp(self):
@@ -103,7 +99,7 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		frappe.flags.in_test = False
 		try:
 			self.positions = [frappe.get_doc({"doctype": POSITION, "user_timesheet": self.parent.name,
-				"user": self.reviewer, "status": "Pending Approval", "workflow_state": "Pending Approval",
+				"user": self.reviewer, "status": "Pending Approval",
 				"custom_data": self.marker + "-" + suffix,
 			}).insert(ignore_permissions=True, set_name=self.marker + "-" + suffix) for suffix in ("A", "B")]
 		finally:
@@ -144,11 +140,13 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 
 	def _workflow(self, index, suffix):
 		return frappe.get_doc({"doctype": "Workflow", "workflow_name": self.marker + " " + suffix,
-			"document_type": POSITION, "workflow_state_field": FIELDS[index], "is_active": 1,
+			"document_type": POSITION, "workflow_state_field": "status", "is_active": 1,
 			"send_email_alert": 0, "custom_selection_order": next_selection_order(POSITION),
 			"custom_activation_condition": f"doc.custom_data == '{self.marker}-{suffix}'",
-			"states": [{"state": state, "doc_status": "0", "allow_edit": self.roles[index],
-				"update_field": "status", "update_value": state} for state in ("Pending Approval", "Rejected")],
+			"states": [
+				{"state": state, "doc_status": "0", "allow_edit": self.roles[index]}
+				for state in ("Pending Approval", "Rejected")
+			],
 			"transitions": [
 				{"state": "Pending Approval", "action": self.action, "next_state": "Rejected",
 					"allowed": self.roles[index], "allow_self_approval": 1,
@@ -162,7 +160,7 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 			],
 		}).insert(ignore_permissions=True)
 
-	def test_parent_exact_targets_keep_quorum_status_bridge_progress_and_pending_names(self):
+	def test_parent_exact_targets_keep_quorum_status_progress_and_pending_names(self):
 		frappe.set_user(self.reviewer)
 		pending = api.get_pending_approvers("User Timesheet", self.parent.name)
 		self.assertEqual({row["approver"] for row in pending}, {self.reviewer, self.other})
@@ -186,9 +184,7 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		progress = [data["count"] for event, data in events if event == "dinext_workflow_progress"]
 		self.assertEqual(progress, [1, 2])
 		a, b = [doc.reload() for doc in self.positions]
-		self.assertEqual((a.get(FIELDS[0]), b.get(FIELDS[1])), ("Pending Approval", "Rejected"))
 		self.assertEqual((a.status, b.status), ("Pending Approval", "Rejected"))
-		self.assertEqual(b.workflow_state, "Pending Approval")
 		self.assertEqual(self.parent.reload().ut_status, "Rejected")
 		self.assertEqual(service.get_context(a)["process_status"], "Running")
 		# A completed vote cannot reappear as a domain action while quorum waits.
@@ -211,13 +207,7 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		remaining = api.get_pending_approvers("User Timesheet", self.parent.name)
 		self.assertIn(self.other_name, {row["approver_name"] for row in remaining})
 
-	def test_individual_vote_rolls_up_parent_when_only_selected_field_changes(self):
-		workflow = self.workflows[1]
-		for row in workflow.states:
-			if row.state == "Rejected":
-				row.update_field = None
-				row.update_value = None
-		workflow.save(ignore_permissions=True)
+	def test_individual_vote_rolls_up_parent_from_position_status(self):
 		frappe.set_user(self.reviewer)
 		source = self.positions[1]
 		task = frappe.db.get_value("Workflow Task", {"reference_doctype": POSITION,
@@ -226,9 +216,8 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		result = api.vote(task, transition_uuid=self.marker + "-B", comment="Individual selected-field vote")
 		self.assertTrue(result["transitioned"], frappe.flags.workflow_finalization_errors)
 		source.reload()
-		self.assertEqual(source.get(FIELDS[1]), "Rejected")
-		self.assertEqual(source.status, "Pending Approval")
-		self.assertEqual(source.workflow_state, "Pending Approval")
+		self.assertEqual(source.status, "Rejected")
+		self.assertEqual(service.get_context(source)["state_field"], "status")
 		self.assertEqual(self.parent.reload().ut_status, "Rejected")
 
 	def _set_rules(self, *rows):
@@ -340,8 +329,8 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		self.assertEqual(self._state_of_task(final_vote), ("Working", "Open"))
 		self.assertEqual(self._state_of_task(second_rejection), ("Completed", "Transitioned"))
 		self.assertEqual(self.parent.reload().ut_status, "Pending Approval")
-		self.assertEqual(first.reload().get(FIELDS[0]), "Pending Approval")
-		self.assertEqual(second.reload().get(FIELDS[1]), "Rejected")
+		self.assertEqual(first.reload().status, "Pending Approval")
+		self.assertEqual(second.reload().status, "Rejected")
 
 		self._set_rules(("Rejected", "Rejected", "All", 0, 0))
 		self.assertTrue(self._reject(first, final_vote, "A")["transitioned"])
@@ -375,8 +364,8 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		self.assertEqual([self._state_of_task(name) for name in task_names], [("Working", "Open")] * 2)
 		self.assertEqual(self._workflow_comments(first, second), comments)
 		self.assertEqual(self.parent.reload().ut_status, "Pending Approval")
-		self.assertEqual(first.reload().get(FIELDS[0]), "Pending Approval")
-		self.assertEqual(second.reload().get(FIELDS[1]), "Pending Approval")
+		self.assertEqual(first.reload().status, "Pending Approval")
+		self.assertEqual(second.reload().status, "Pending Approval")
 
 	def _add_edit_transition(self, index, suffix, action):
 		workflow = self.workflows[index]
@@ -385,8 +374,6 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 			"state": "Editing",
 			"doc_status": "0",
 			"allow_edit": role,
-			"update_field": "status",
-			"update_value": "Editing",
 		})
 		workflow.append("transitions", {
 			"state": "Pending Approval",
@@ -426,17 +413,17 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		self.assertEqual(self._state_of_task(sibling_task), ("Working", "Open"))
 		self.assertEqual(self._workflow_comments(first, second), comments)
 		self.assertEqual(self.parent.reload().ut_status, "Pending Approval")
-		self.assertEqual(first.reload().get(FIELDS[0]), "Pending Approval")
-		self.assertEqual(second.reload().get(FIELDS[1]), "Pending Approval")
+		self.assertEqual(first.reload().status, "Pending Approval")
+		self.assertEqual(second.reload().status, "Pending Approval")
 
 		self._set_rules(("Editing", "Rework", "Any", 0, 0))
 		self.assertTrue(api.vote(task_name, transition_uuid=self.marker + "-edit-A")["transitioned"])
 		self.assertEqual(self.parent.reload().ut_status, "Rework")
-		self.assertEqual(first.reload().get(FIELDS[0]), "Editing")
-		self.assertEqual(second.reload().get(FIELDS[1]), "Pending Approval")
+		self.assertEqual(first.reload().status, "Editing")
+		self.assertEqual(second.reload().status, "Pending Approval")
 		self.assertEqual(self._state_of_task(sibling_task), ("Working", "Open"))
 
-	def test_rework_cascade_follows_each_siblings_selected_state_field(self):
+	def test_rework_cascade_follows_each_siblings_selected_workflow(self):
 		action = self.marker + " Edit"
 		self._master("Workflow State", "Editing", {"workflow_state_name": "Editing"})
 		self._master("Workflow Action Master", action, {"workflow_action_name": action})
@@ -452,18 +439,17 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 
 		self.assertTrue(result["transitioned"], frappe.flags.workflow_finalization_errors)
 		self.assertEqual(self.parent.reload().ut_status, "Rework")
-		self.assertEqual(first.reload().get(FIELDS[0]), "Editing")
-		self.assertEqual(second.reload().get(FIELDS[1]), "Editing")
-		self.assertEqual(second.workflow_state, "Pending Approval")
+		self.assertEqual(first.reload().status, "Editing")
+		self.assertEqual(second.reload().status, "Editing")
+		self.assertEqual(service.get_context(second)["workflow"], self.workflows[1].name)
 		self.assertEqual(self._state_of_task(sibling_task), ("Cancelled", "Cancelled"))
 
 	def test_ordinary_save_cannot_apply_a_scenario_transition(self):
 		source = self.positions[0]
 		frappe.set_user(self.reviewer)
-		source.set(FIELDS[0], "Rejected")
+		source.status = "Rejected"
 
 		with self.assertRaises((frappe.ValidationError, frappe.PermissionError)):
 			source.save()
 
-		self.assertEqual(source.reload().get(FIELDS[0]), "Pending Approval")
-		self.assertEqual(source.status, "Pending Approval")
+		self.assertEqual(source.reload().status, "Pending Approval")

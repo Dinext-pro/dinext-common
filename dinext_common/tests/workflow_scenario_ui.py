@@ -22,6 +22,7 @@ RUSSIAN_USER = "cy.workflow.scenarios.ru@example.com"
 DESIGNER_USER = "cy.workflow.scenarios.designer@example.com"
 PROGRESS_USER = "cy.workflow.scenarios.progress@example.com"
 ROLE = PREFIX + " Approver"
+EMPTY_ROLE = PREFIX + " Empty Reviewer Role"
 EDITOR = PREFIX + " Editor A"
 OTHER_EDITOR = PREFIX + " Editor B"
 DESIGNER = PREFIX + " Designer"
@@ -57,7 +58,7 @@ def cleanup():
 	for user in (USER, RUSSIAN_USER, DESIGNER_USER):
 		if frappe.db.exists("User", user):
 			frappe.delete_doc("User", user, force=True, ignore_permissions=True)
-	for role in (ROLE, EDITOR, OTHER_EDITOR, DESIGNER):
+	for role in (ROLE, EDITOR, OTHER_EDITOR, DESIGNER, EMPTY_ROLE):
 		for doctype in ("Custom DocPerm", "DocType Permission Condition"):
 			frappe.db.delete(doctype, {"role": role})
 		if frappe.db.exists("Role", role):
@@ -147,9 +148,10 @@ def block_successor_round():
 	_guard()
 	workflow = frappe.get_doc("Workflow", PREFIX + " A")
 	_ensure_master("Workflow Action Master", "Reject", {"workflow_action_name": "Reject"})
+	_ensure_master("Role", EMPTY_ROLE, {"role_name": EMPTY_ROLE})
 	workflow.append("transitions", {
 		"state": STATES[1], "action": "Reject", "next_state": STATES[0],
-		"allowed": ROLE, "condition": "False", "custom_transition_uuid": "cypress-blocked-successor",
+		"allowed": EMPTY_ROLE, "custom_transition_uuid": "cypress-blocked-successor",
 	})
 	workflow.save(ignore_permissions=True)
-	return {"blocked_state": STATES[1], "action": "Reject", "role": ROLE}
+	return {"blocked_state": STATES[1], "action": "Reject", "role": EMPTY_ROLE}

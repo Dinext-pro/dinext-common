@@ -6,11 +6,10 @@ import frappe
 
 
 def execute() -> None:
-	if frappe.conf.get("parallel_workflow_cutover_receipt"):
-		return
-	if not frappe.conf.get("run_parallel_workflow_cutover"):
+	from dinext_common.workflow_approval.migration import cutover_complete, execute_cutover
+
+	if not frappe.conf.get("run_parallel_workflow_cutover") or cutover_complete():
 		return
 
-	from dinext_common.workflow_approval.migration import execute_cutover
-
-	execute_cutover(frappe.conf.get("parallel_workflow_cutover_backup") or "")
+	prior_receipt = frappe.conf.get("parallel_workflow_cutover_receipt") or {}
+	execute_cutover(frappe.conf.get("parallel_workflow_cutover_backup") or prior_receipt.get("backup") or "")

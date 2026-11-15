@@ -143,6 +143,7 @@ class TestWorkflowApprovalProcessConcurrency(FrappeTestCase):
 		self.created_users = []
 		self.reference_names = []
 		frappe.conf.enable_parallel_workflow_approval = False
+		frappe.db.set_value("Workflow", {"document_type": "Issue"}, "is_active", 0)
 		self._delete_stale_test_workflow()
 		self._ensure_master("Workflow State", "Open", {"workflow_state_name": "Open"})
 		self._ensure_master("Workflow State", "Closed", {"workflow_state_name": "Closed"})

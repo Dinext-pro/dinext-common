@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager, nullcontext, suppress
 from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import partial
@@ -39,11 +39,11 @@ from dinext_common.workflow_approval.policy import (
 	required_approvals,
 	transition_semantic_hash,
 )
-
 from dinext_common.workflow_approval.validation import normalize_comment
 
 ACTIVE_ROUND_STATUSES = ("Open", "Stalled", "Finalizing", "Conflicted")
 MAX_AUTOMATIC_TRANSITIONS = 20
+CONFIGURATION_WITHDRAWAL_REASON = "Workflow transition configuration changed"
 
 
 class WorkflowApprovalError(frappe.ValidationError):
@@ -52,6 +52,10 @@ class WorkflowApprovalError(frappe.ValidationError):
 
 class WorkflowApprovalConflictError(WorkflowApprovalError):
 	"""Raised when a vote no longer matches current source or workflow state."""
+
+
+class ExpiredWorkflowActionError(WorkflowApprovalConflictError):
+	"""The signed confirmation no longer matches the current task projection."""
 
 
 class MissingApproverTransition(TypedDict):
@@ -344,26 +348,39 @@ def get_content_fingerprint(doc: object, workflow: object) -> ContentFingerprint
 	)
 
 
-def _eligible_approvers(doc: object, transition: object) -> list[str]:
+def _eligible_approvers(doc: object, transition: object) -> list[str] | None:
+	"""Return None when every eligible role member gets a false condition."""
 	role = str(_value(transition, "allowed") or "")
-	users = (frappe.get_all("User", filters={"enabled": 1, "user_type": "System User"}, pluck="name")
-		if role == "All" else get_users_with_role(role))
+	users = (
+		frappe.get_all("User", filters={"enabled": 1, "user_type": "System User"}, pluck="name")
+		if role == "All"
+		else get_users_with_role(role)
+	)
 	eligible = []
+	evaluated = False
+	evaluation_failed = False
+	previous_user = frappe.session.user
 	for user in sorted(set(users)):
-		previous_user = frappe.session.user
 		try:
-			if previous_user != user:
-				frappe.session.user = user
-			if not has_approval_access(user, doc, transition):
+			frappe.session.user = user
+			if not has_approval_access(user, doc, transition) or not _has_source_read_permission(doc, user):
 				continue
-			if not is_transition_condition_satisfied(transition, doc):
+			try:
+				satisfied = is_transition_condition_satisfied(transition, doc)
+			except (frappe.db.InternalError, frappe.QueryDeadlockError, frappe.QueryTimeoutError):
+				raise
+			except Exception:
+				evaluation_failed = True
 				continue
-			if not _has_source_read_permission(doc, user):
-				continue
-			eligible.append(user)
+			evaluated = True
+			if satisfied:
+				eligible.append(user)
 		finally:
-			if previous_user != user:
-				frappe.session.user = previous_user
+			frappe.session.user = previous_user
+	if evaluation_failed:
+		return []
+	if evaluated and not eligible:
+		return None
 	return eligible
 
 
@@ -395,9 +412,9 @@ def _current_transitions(doc: object, workflow: object, state: str) -> list[dict
 	for transition in workflow.transitions:
 		if _value(transition, "state") != state:
 			continue
-		row = _transition_dict(transition)
-		row["eligible_approvers"] = _eligible_approvers(doc, transition)
-		rows.append(row)
+		approvers = _eligible_approvers(doc, transition)
+		if approvers is not None:
+			rows.append({**_transition_dict(transition), "eligible_approvers": approvers})
 	return rows
 
 
@@ -598,7 +615,8 @@ def _insert_round_tasks(
 	manifest_json = serialize_manifest(manifest)
 	snapshot = source_snapshot or _source_snapshot(doc)
 	tasks = []
-	from dinext_common.workflow_approval.deadlines.lifecycle import prepare_task, snapshot as deadline_snapshot
+	from dinext_common.workflow_approval.deadlines.lifecycle import prepare_task
+	from dinext_common.workflow_approval.deadlines.lifecycle import snapshot as deadline_snapshot
 	workflow_doc = frappe.get_doc("Workflow", workflow_name)
 	from dinext_common.workflow_approval.scenarios import service
 	scenario_process_id = service.get_context(doc)["process_id"] if service.is_ready() else None
@@ -687,21 +705,25 @@ def _repair_open_round_tasks(
 	from dinext_common.workflow_approval.policy import make_task_name
 
 	task_transitions = _task_transitions_from_manifest(manifest)
-	existing_names = set(
-		frappe.db.get_values(
+	existing = {
+		row.name: row
+		for row in frappe.db.get_values(
 			"Workflow Task",
 			{"approval_round_id": active.approval_round_id},
-			"name",
+			["name", "status", "cancellation_reason"],
 			order_by="name asc",
 			for_update=True,
-			pluck=True,
+			as_dict=True,
 		)
-	)
-	missing_approvers = {
-		approver
-		for approver in task_transitions
-		if make_task_name(active.approval_round_id, approver) not in existing_names
 	}
+	missing_approvers = set()
+	for approver, transitions in task_transitions.items():
+		task_name = make_task_name(active.approval_round_id, approver)
+		task = existing.get(task_name)
+		if task is None:
+			missing_approvers.add(approver)
+		elif task.status == "Cancelled" and active.round_status == "Open":
+			_restore_withdrawn_task(task, transitions)
 	from dinext_common.workflow_approval.projections import repair_round_projections
 
 	repair_round_projections(doc, active.approval_round_id)
@@ -851,8 +873,8 @@ def _persist_round_configuration(round_id: str) -> None:
 				metadata=configuration_change_metadata(classification))
 			frappe.db.commit()
 		elif classification["dropped"] or classification["add"]:
-			_amend_open_round(source, task, workflow, state, classification)
-			frappe.db.commit()
+			if _amend_open_round(source, task, workflow, state, classification) is not None:
+				frappe.db.commit()
 	finally:
 		frappe.db.close()
 		frappe.local.db = previous_db
@@ -893,18 +915,47 @@ def _replace_available_transitions(task_name: str, transitions: list[dict[str, A
 		).insert(ignore_permissions=True)
 
 
-def _retire_working_task(task_name: str, reason: str) -> None:
+def _retire_working_task(task_name: str) -> None:
+	from dinext_common.workflow_approval.projections import close_task_projection, delivery_snapshot
+
+	task = frappe.get_doc("Workflow Task", task_name)
+	snapshot = delivery_snapshot(task) or {"legacy_unknown": True}
+	snapshot["configuration_withdrawn"] = True
 	_set_task_values(
 		task_name,
 		{
 			"status": "Cancelled",
 			"cancelled_at": now_datetime(),
-			"cancellation_reason": reason,
+			"cancellation_reason": _("Workflow transition configuration changed"),
+			"notification_delivery_snapshot": serialize_manifest(snapshot),
 		},
 	)
-	from dinext_common.workflow_approval.projections import close_task_projection
+	close_task_projection(task)
 
-	close_task_projection(frappe.get_doc("Workflow Task", task_name))
+
+def _restore_withdrawn_task(row: object, transitions: list[dict[str, Any]]) -> None:
+	from dinext_common.workflow_approval.projections import delivery_snapshot
+
+	task = frappe.get_doc("Workflow Task", row.name)
+	snapshot = delivery_snapshot(task)
+	legacy_reasons = {
+		CONFIGURATION_WITHDRAWAL_REASON,
+		_("Workflow transition configuration changed"),
+		_("Workflow transition configuration changed", lang="ru"),
+	}
+	if not snapshot.get("configuration_withdrawn") and row.cancellation_reason not in legacy_reasons:
+		return
+	if not snapshot:
+		snapshot = {"legacy_unknown": True}
+	snapshot.pop("configuration_withdrawn", None)
+	snapshot["configuration_restored"] = True
+	_replace_available_transitions(task.name, transitions)
+	_set_task_values(task.name, {
+		"status": "Working",
+		"cancelled_at": None,
+		"cancellation_reason": None,
+		"notification_delivery_snapshot": serialize_manifest(snapshot),
+	})
 
 
 def _amend_open_round(
@@ -913,8 +964,8 @@ def _amend_open_round(
 	workflow: object,
 	state: str,
 	classification: dict[str, list[dict[str, Any]]],
-) -> bool:
-	"""Update an open manifest. Returns whether the round then finalized."""
+) -> bool | None:
+	"""Return whether the amended round finalized, or None if no amendment applies."""
 	current_full = _current_transitions(doc, workflow, state)
 	full_by_uuid = {str(row.get("transition_uuid") or ""): row for row in current_full}
 	added: list[dict[str, Any]] = []
@@ -933,6 +984,8 @@ def _amend_open_round(
 			)
 		if full is not None:
 			added.append(full)
+	if not added and not classification["dropped"]:
+		return None
 	manifest, task_transitions = _round_manifest_for(doc, workflow, state, [*classification["keep"], *added])
 	if entry := _parse_manifest(active).get("entry_context"):
 		manifest["entry_context"] = entry
@@ -950,7 +1003,7 @@ def _amend_open_round(
 			continue
 		desired = task_transitions.get(task.approver, [])
 		if not desired:
-			_retire_working_task(task.name, _("Workflow transition configuration changed"))
+			_retire_working_task(task.name)
 			continue
 		_replace_available_transitions(task.name, desired)
 	_repair_open_round_tasks(doc, active, manifest)
@@ -1181,8 +1234,8 @@ def reconcile_source(
 				)
 				return active_names
 			if classification["dropped"] or classification["add"]:
-				_amend_open_round(doc, active, workflow, state, classification)
-				return _round_task_names(round_id)
+				if _amend_open_round(doc, active, workflow, state, classification) is not None:
+					return _round_task_names(round_id)
 			if active.entry_fingerprint != fingerprint.digest and any(
 				row.get("reset_on_change")
 				for row in active_manifest.get("transitions", [])
@@ -1210,6 +1263,8 @@ def reconcile_source(
 		task_transitions,
 		fingerprint,
 	)
+	for hook in frappe.get_hooks("workflow_approval_round_opened") or []:
+		frappe.get_attr(hook)(doc, round_id)
 	process_id = service.get_context(doc)["process_id"] if service.is_ready() else ""
 	guard = cycle_guard or AutomationCycleGuard()
 	may_automate = guard.permits(workflow_name, state, fingerprint.digest, process_id or "")
@@ -1478,14 +1533,16 @@ def _reserve_vote_response(task, source, request_id, parameters):
 
 
 @contextmanager
-def _atomic_workflow_attempt():
-	"""Undo the current attempt when a successor round cannot be opened."""
+def _atomic_workflow_attempt(*, rollback_on=(NoEligibleApproversError, WorkflowDomainRollbackError)):
+	"""Bound database changes, callbacks and file locks to a Workflow attempt."""
 	savepoint = f"workflow_attempt_{frappe.generate_hash(length=12)}"
 	cascade = deepcopy(getattr(frappe.local, "workflow_scenario_cascade", None))
 	notes = deepcopy(getattr(frappe.flags, "workflow_finalization_errors", None))
-	message_count = len(frappe.local.message_log or [])
+	messages = getattr(frappe.local, "message_log", None)
+	message_count = len(messages or [])
 	realtime_log = getattr(frappe.local, "_realtime_log", None)
 	realtime_count = len(realtime_log or [])
+	locked_documents = len(getattr(frappe.local, "locked_documents", ()))
 	callbacks = (
 		frappe.db.before_commit, frappe.db.after_commit,
 		frappe.db.before_rollback, frappe.db.after_rollback,
@@ -1494,23 +1551,33 @@ def _atomic_workflow_attempt():
 	frappe.db.savepoint(savepoint)
 	try:
 		yield
-	except NoEligibleApproversError:
-		frappe.db.rollback(save_point=savepoint)
-		for manager, previous in saved_callbacks:
-			manager.reset()
-			for callback in previous:
-				manager.add(callback)
-		# Frappe only registers its flush when creating the buffer.
-		if realtime_log is None:
-			frappe.realtime.clear_realtime_log()
-		else:
-			del realtime_log[realtime_count:]
-			frappe.local._realtime_log = realtime_log
-		frappe.local.workflow_scenario_cascade = cascade
-		frappe.flags.workflow_finalization_errors = notes
-		del (frappe.local.message_log or [])[message_count:]
+	except Exception as error:
+		if isinstance(error, rollback_on):
+			# A database error may already have invalidated the savepoint.
+			with suppress(Exception):
+				frappe.db.rollback(save_point=savepoint)
+			for manager, previous in saved_callbacks:
+				manager.reset()
+				for callback in previous:
+					manager.add(callback)
+			if realtime_log is None:
+				from frappe.realtime import clear_realtime_log
+
+				clear_realtime_log()
+			else:
+				del realtime_log[realtime_count:]
+				frappe.local._realtime_log = realtime_log
+			for doc in getattr(frappe.local, "locked_documents", ())[locked_documents:]:
+				with suppress(Exception):
+					doc.unlock()
+			frappe.local.workflow_scenario_cascade = cascade
+			frappe.flags.workflow_finalization_errors = notes
+			if messages is not None:
+				del messages[message_count:]
+		with suppress(Exception):
+			frappe.db.release_savepoint(savepoint)
 		raise
-	finally:
+	else:
 		frappe.db.release_savepoint(savepoint)
 
 
@@ -1524,6 +1591,7 @@ def cast_vote(
 	completion_source: str = "Manual",
 	receipt_managed: bool = False,
 	expected_creation: str | None = None,
+	expected_delivery_key: str | None = None,
 ) -> VoteResult:
 	"""Lock source then task, revalidate, record one vote, and finalize if reached."""
 	pointer = frappe.db.get_value(
@@ -1550,6 +1618,11 @@ def cast_vote(
 
 	if expected_creation and str(get_datetime(source.creation)) != expected_creation:
 		raise WorkflowApprovalConflictError(_("The Workflow target no longer matches the selected document"))
+	if expected_delivery_key:
+		from dinext_common.workflow_approval.signed_links import _open_action
+
+		if not _open_action(task.name, expected_delivery_key, locked_task=task):
+			raise ExpiredWorkflowActionError(_("Workflow Action is no longer open"))
 	operation = domain_handler(source.doctype, "vote_context")
 	with _atomic_workflow_attempt(), operation() if operation else nullcontext():
 		return _cast_locked_vote(
@@ -1628,21 +1701,28 @@ def _cast_locked_vote(
 		comment,
 		required=current_comment_required(task, transition.transition_uuid, workflow=workflow),
 	)
-	if record_vote_response:
-		receipt = _reserve_vote_response(task, source, request_id, parameters)
-		if receipt.response is not None:
-			return request_receipts.replay(receipt, parameters)
-	validate_vote = domain_handler(source.doctype, "validate_vote")
-	if validate_vote:
-		validate_vote(source, transition.next_state)
 	from dinext_common.workflow_approval.queued_submission import stage
-	pending_result = stage(task, source, transition, workflow, comment=normalized_comment,
-		completion_source=completion_source, request_id=request_id,
-		receipt_recorded=bool(receipt or receipt_managed))
-	if pending_result:
-		if receipt:
-			request_receipts.finish(receipt.name, pending_result)
-		return pending_result
+
+	staging_attempt = (
+		_atomic_workflow_attempt(rollback_on=(Exception,))
+		if source.docstatus == 0 and source.meta.queue_in_background
+		else nullcontext()
+	)
+	with staging_attempt:
+		if record_vote_response:
+			receipt = _reserve_vote_response(task, source, request_id, parameters)
+			if receipt.response is not None:
+				return request_receipts.replay(receipt, parameters)
+		validate_vote = domain_handler(source.doctype, "validate_vote")
+		if validate_vote:
+			validate_vote(source, transition.next_state)
+		pending_result = stage(task, source, transition, workflow, comment=normalized_comment,
+			completion_source=completion_source, request_id=request_id,
+			receipt_recorded=bool(receipt or receipt_managed))
+		if pending_result:
+			if receipt:
+				request_receipts.finish(receipt.name, pending_result)
+			return pending_result
 	previous_failure = frappe.parse_json(task.failure_metadata or "{}")
 	if isinstance(previous_failure, dict) and previous_failure.get("reason") == "no_eligible_approvers":
 		_set_round_values(task.approval_round_id, {"failure_metadata": None})
@@ -1729,13 +1809,49 @@ def _vote_result(task: object, source: object, *, transitioned: bool) -> VoteRes
 	return result
 
 
-def _apply_winning_transition(source: object, action: str) -> None:
-	"""Apply a reached decision with source-specific, operation-local authority."""
-	from dinext_common.workflow_approval.scenarios.compat import authorized_finalization, install
+def _apply_winning_transition(source, workflow, winner, *, authorize=True):
+	"""Run the exact transition through Frappe with the winning actor's access."""
+	from dinext_common.workflow_approval.scenarios.compat import (
+		authorized_finalization,
+		exact_transition,
+		install,
+	)
 
 	install()
-	with authorized_finalization(source):
-		core_apply_workflow(source, action)
+	frappe.has_permission(source.doctype, doc=source.name, throw=True)
+	authority = authorized_finalization(source) if authorize else nullcontext()
+	with exact_transition(source, workflow.name, winner) as execution, authority:
+		result = core_apply_workflow(source, winner["action"])
+	return result, execution.submission_queue
+
+
+def _state_docstatus(workflow, state: str) -> int:
+	target = next((row for row in workflow.states if row.state == state), None)
+	if target is None:
+		raise WorkflowApprovalConflictError(_("Workflow transition configuration changed"))
+	return int(target.doc_status or 0)
+
+
+def _source_at_workflow_state(source, workflow, state: str) -> bool:
+	return (
+		source.get(workflow.workflow_state_field) == state
+		and source.docstatus == _state_docstatus(workflow, state)
+	)
+
+
+def _round_matches_source(task, source) -> bool:
+	from dinext_common.workflow_approval.scenarios import service
+
+	if (
+		(task.reference_doctype, task.reference_name) != (source.doctype, source.name)
+		or not task.source_created_at
+		or get_datetime(task.source_created_at) != get_datetime(source.creation)
+	):
+		return False
+	if service.is_ready():
+		context = service.get_context(source)
+		return context["workflow"] == task.workflow and context["process_id"] == task.get("workflow_process")
+	return True
 
 
 def _finalization_actor(round_id: str, winner: dict[str, Any]) -> str:
@@ -1797,108 +1913,69 @@ def _finalize_round(
 	if not names:
 		return False
 	sample = frappe.get_doc("Workflow Task", names[0], for_update=True)
-	if sample.round_status not in {"Open", "Stalled", "Finalizing"}:
+	if sample.round_status not in {"Open", "Stalled", "Finalizing"} or not _round_matches_source(sample, source):
 		return False
 	from dinext_common.workflow_approval.scenarios import service
-	if service.is_ready():
-		context = service.get_context(source)
-		if context["process_id"] != sample.get("workflow_process") or context["workflow"] != sample.workflow:
-			return False
+
+	workflow = frappe.get_doc("Workflow", sample.workflow)
 	actor = _finalization_actor(round_id, winner)
-	_set_round_values(
-		round_id,
-		{
-			"round_status": "Finalizing",
-			"finalization_status": "Queued",
-		},
-	)
-	savepoint = f"workflow_finalize_{frappe.generate_hash(length=12)}"
-	frappe.db.savepoint(savepoint)
-	callback_managers = (
-		frappe.db.before_commit,
-		frappe.db.after_commit,
-		frappe.db.before_rollback,
-		frappe.db.after_rollback,
-	)
-	callback_snapshots = {
-		manager: list(manager._functions) for manager in callback_managers
-	}
 	previous_user = frappe.session.user
 	previous_flag = getattr(frappe.flags, "in_dinext_workflow_finalization", False)
 	try:
-		_ensure_finalization_placeholder(source, round_id, winner, actor)
-		frappe.flags.in_dinext_workflow_finalization = True
-		if actor != previous_user:
-			frappe.session.user = actor
-		_apply_winning_transition(source, winner["action"])
+		with _atomic_workflow_attempt(rollback_on=(Exception,)):
+			_set_round_values(round_id, {"round_status": "Finalizing", "finalization_status": "Queued"})
+			if source.get(workflow.workflow_state_field) != sample.workflow_state:
+				raise WorkflowApprovalConflictError(_("The source workflow state has changed"))
+			_ensure_finalization_placeholder(source, round_id, winner, actor)
+			try:
+				frappe.flags.in_dinext_workflow_finalization = True
+				frappe.session.user = actor
+				result, submission_queue = _apply_winning_transition(source, workflow, winner)
+			finally:
+				frappe.session.user = previous_user
+				frappe.flags.in_dinext_workflow_finalization = previous_flag
+			if submission_queue:
+				# Completed or carried votes already belong to this round.
+				from dinext_common.workflow_approval.queued_submission import stage_existing_finalization
+
+				stage_existing_finalization(
+					sample, winner, submission_queue, initiator=previous_user, actor=actor, cycle_guard=cycle_guard,
+				)
+				return False
+			if result is None:
+				raise WorkflowApprovalConflictError(_("Workflow core did not create the expected Submission Queue"))
+			refreshed = frappe.get_doc(source.doctype, source.name)
+			if not _round_matches_source(sample, refreshed) or not _source_at_workflow_state(
+				refreshed, workflow, winner["next_state"]
+			):
+				raise WorkflowApprovalConflictError(_("The source workflow state has changed"))
+			from dinext_common.workflow_approval.email_context import entry_context_for_round
+
+			entry = entry_context_for_round(round_id, winner)
+			_finish_round(round_id, winner)
+			service.finish_transition(refreshed, sample.workflow, sample.get("workflow_process"))
+			reconcile_source(refreshed, cycle_guard=cycle_guard, entry_context=entry)
+			return True
+	except (
+		WorkflowDomainRollbackError, NoEligibleApproversError,
+		frappe.db.InternalError, frappe.QueryDeadlockError, frappe.QueryTimeoutError,
+	):
+		raise
 	except Exception as caught:
-		frappe.db.rollback(save_point=savepoint)
-		frappe.db.release_savepoint(savepoint)
-		for manager, callbacks in callback_snapshots.items():
-			manager._functions.clear()
-			manager._functions.extend(callbacks)
-		if isinstance(caught, (WorkflowDomainRollbackError, NoEligibleApproversError)):
-			raise
 		notes = getattr(frappe.flags, "workflow_finalization_errors", None)
 		if not isinstance(notes, list):
 			notes = []
 			frappe.flags.workflow_finalization_errors = notes
 		notes.append(str(caught))
-		_mark_conflicted(
-			round_id,
-			_("Workflow core validation rejected the winning transition"),
-		)
+		_mark_conflicted(round_id, _("Workflow core validation rejected the winning transition"))
 		_set_round_values(round_id, {"finalization_status": "Failed"})
-		source.add_comment(
-			"Workflow",
-			_("Workflow finalization failed and requires a manager rebuild."),
-		)
+		source.add_comment("Workflow", _("Workflow finalization failed and requires a manager rebuild."))
 		frappe.log_error(
 			title=f"Workflow approval finalization failed: {round_id}",
 			reference_doctype=source.doctype,
 			reference_name=source.name,
 		)
 		return False
-	finally:
-		if actor != previous_user:
-			frappe.session.user = previous_user
-		frappe.flags.in_dinext_workflow_finalization = previous_flag
-	frappe.db.release_savepoint(savepoint)
-
-	refreshed = frappe.get_doc(source.doctype, source.name)
-	context = _workflow_context(refreshed)
-	if context and context[3] == winner["next_state"]:
-		from dinext_common.workflow_approval.email_context import entry_context_for_round
-		entry = entry_context_for_round(round_id, winner)
-		_finish_round(round_id, winner)
-		from dinext_common.workflow_approval.scenarios import service
-		service.finish_transition(refreshed)
-		reconcile_source(refreshed, cycle_guard=cycle_guard, entry_context=entry)
-		return True
-
-	submission_queue = frappe.db.get_value(
-		"Submission Queue",
-		{
-			"ref_doctype": source.doctype,
-			"ref_docname": source.name,
-			"status": "Queued",
-		},
-		"name",
-		order_by="creation desc",
-	)
-	if not submission_queue:
-		_mark_conflicted(
-			round_id,
-			_("Workflow core did not create the expected Submission Queue"),
-		)
-		_set_round_values(round_id, {"finalization_status": "Failed"})
-		return False
-	# Completed/carried votes already belong to this round. Stage only the
-	# finalization so its successor is still admitted before native commit.
-	from dinext_common.workflow_approval.queued_submission import stage_existing_finalization
-	stage_existing_finalization(sample, winner, submission_queue, initiator=previous_user,
-		cycle_guard=cycle_guard)
-	return False
 
 
 def _finish_round(round_id: str, winner: dict[str, Any]) -> None:
@@ -2062,6 +2139,8 @@ def apply_domain_transition(
 		):
 			continue
 		actors = _eligible_approvers(source, transition)
+		if actors is None:
+			continue
 		matching.append((transition, actors))
 		if actors and (not actor or actor in actors):
 			candidates.append((transition, actors))
@@ -2091,10 +2170,7 @@ def apply_domain_transition(
 	for active_round_id in filter(None, active_rounds):
 		_cancel_round(active_round_id, reason)
 	round_id = f"domain-{frappe.generate_hash(length=32)}"
-	winner = {
-		"action": transition.action,
-		"next_state": transition.next_state,
-	}
+	winner = _transition_dict(transition)
 	_ensure_finalization_placeholder(source, round_id, winner, actor)
 	previous_user = frappe.session.user
 	previous_flag = getattr(frappe.flags, "in_dinext_workflow_finalization", False)
@@ -2102,10 +2178,12 @@ def apply_domain_transition(
 		frappe.flags.in_dinext_workflow_finalization = True
 		frappe.session.user = actor
 		use_authorized_transition = domain_handler(doctype, "use_authorized_transition")
-		if use_authorized_transition and use_authorized_transition(state_field):
-			_apply_winning_transition(source, transition.action)
-		else:
-			core_apply_workflow(source, transition.action)
+		result, queue = _apply_winning_transition(
+			source, workflow, winner,
+			authorize=bool(use_authorized_transition and use_authorized_transition(state_field)),
+		)
+		if queue or result is None:
+			raise WorkflowDomainRollbackError(_("The source workflow state has changed"))
 	finally:
 		frappe.session.user = previous_user
 		frappe.flags.in_dinext_workflow_finalization = previous_flag
@@ -2117,6 +2195,8 @@ def apply_domain_transition(
 			},
 		)
 	refreshed = frappe.get_doc(doctype, name)
+	if not _source_at_workflow_state(refreshed, workflow, next_state):
+		raise WorkflowDomainRollbackError(_("The source workflow state has changed"))
 	refreshed.add_comment("Workflow", reason)
 	service.finish_transition(refreshed)
 	reconcile_source(refreshed, entry_context={

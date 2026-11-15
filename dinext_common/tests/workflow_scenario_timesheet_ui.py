@@ -103,7 +103,6 @@ def seed():
 	_guard()
 	cleanup()
 	from dinext_common.tests.test_workflow_scenario_timesheet_integration import (
-		FIELDS,
 		TestWorkflowScenarioTimesheetIntegration,
 	)
 	from dinext_common.tests.ui_test_helpers import PASSWORD, _ensure_read_perm
@@ -153,7 +152,7 @@ def seed():
 		fixture._cleanups.clear()
 		return {
 			"parent": fixture.parent.name, "positions": data["positions"], "workflows": data["workflows"],
-			"state_fields": list(FIELDS), "uuids": [fixture.marker + "-A", fixture.marker + "-B"],
+			"uuids": [fixture.marker + "-A", fixture.marker + "-B"],
 			"actor": fixture.reviewer, "user": fixture.reviewer, "password": PASSWORD,
 			"actor_name": fixture.reviewer_name, "other": fixture.other, "other_name": fixture.other_name,
 			"action": fixture.action, "reopen_action": fixture.reopen,

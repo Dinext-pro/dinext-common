@@ -186,6 +186,199 @@ class TestWorkflowApprovalIntegration(FrappeTestCase):
 			)
 		)
 
+	def test_same_action_uses_the_selected_transition_uuid(self):
+		from dinext_common.workflow_approval import engine
+
+		workflow = frappe.get_doc("Workflow", self.workflow_name)
+		workflow.append("transitions", {
+			"state": "Open", "action": self.action_name, "next_state": "Open",
+			"allowed": "System Manager", "allow_self_approval": 1,
+			"custom_transition_uuid": "_test-same-action",
+		})
+		workflow.save(ignore_permissions=True)
+		doc = frappe.get_doc({"doctype": "Issue", "subject": "Exact workflow choice", "status": "Open"}).insert()
+		task = frappe.get_doc("Workflow Task", {"reference_doctype": "Issue", "reference_name": doc.name, "approver": self.user})
+
+		frappe.set_user(self.user)
+		result = engine.cast_vote(task.name, transition_uuid="_test-transition")
+
+		self.assertTrue(result["transitioned"])
+		self.assertEqual((doc.reload().status, doc.docstatus), ("Closed", 0))
+		self.assertEqual(task.reload().transition_uuid, "_test-transition")
+
+	def test_finalizing_self_transition_applies_native_update_once(self):
+		from dinext_common.workflow_approval import engine, finalization
+
+		workflow = frappe.get_doc("Workflow", self.workflow_name)
+		workflow.transitions[0].next_state = "Open"
+		workflow.transitions[0].custom_auto_complete_unchanged = 0
+		workflow.save(ignore_permissions=True)
+		doc = frappe.get_doc({"doctype": "Issue", "subject": "Original subject", "status": "Open"}).insert()
+		task = frappe.get_doc("Workflow Task", {
+			"reference_doctype": "Issue", "reference_name": doc.name, "approver": self.user,
+		})
+		frappe.db.set_value(
+			"Workflow Document State", workflow.states[0].name,
+			{"update_field": "subject", "update_value": "Native self-transition applied"},
+		)
+		transition = task.available_workflow_transitions[0]
+		engine.complete_task(task, transition, comment="", completion_source="Manual",
+			content_fingerprint=engine.get_content_fingerprint(doc, workflow))
+		engine._set_round_values(task.approval_round_id, {"round_status": "Finalizing", "finalization_status": "Queued"})
+
+		finalization.repair_round(task.approval_round_id)
+		self.assertEqual((doc.reload().status, doc.docstatus, doc.subject), ("Open", 0, "Native self-transition applied"))
+		self.assertEqual(task.reload().round_status, "Transitioned")
+		count = frappe.db.count("Comment", {"reference_doctype": doc.doctype, "reference_name": doc.name})
+		finalization.repair_round(task.approval_round_id)
+		self.assertEqual(frappe.db.count("Comment", {"reference_doctype": doc.doctype, "reference_name": doc.name}), count)
+
+	def test_false_actions_do_not_block_and_availability_can_return_while_process_is_pinned(self):
+		from dinext_common.workflow_approval import engine
+		from dinext_common.workflow_approval.scenarios import service
+
+		workflow = frappe.get_doc("Workflow", self.workflow_name)
+		workflow.transitions[1].condition = 'doc.subject == "Reopen available"'
+		workflow.append("transitions", {
+			"state": "Open", "action": self.reopen_action_name, "next_state": "Open",
+			"allowed": "System Manager", "allow_self_approval": 1, "condition": "False",
+			"custom_transition_uuid": "_test-currently-inapplicable",
+		})
+		workflow.save(ignore_permissions=True)
+		doc = frappe.get_doc({"doctype": "Issue", "subject": "Reopen unavailable", "status": "Open"}).insert()
+		scope = {"reference_doctype": "Issue", "reference_name": doc.name, "approver": self.user}
+		task = frappe.get_doc("Workflow Task", scope)
+		self.assertEqual([row.transition_uuid for row in task.available_workflow_transitions], ["_test-transition"])
+		process_id = service.get_context(doc)["process_id"]
+
+		self.assertTrue(engine.cast_vote(task.name, transition_uuid="_test-transition")["transitioned"])
+		self.assertEqual(doc.reload().status, "Closed")
+		self.assertEqual(service.get_context(doc)["process_id"], process_id)
+		self.assertEqual(service.get_context(doc)["process_status"], "Running")
+		self.assertFalse(frappe.db.exists("Workflow Task", {**scope, "status": "Working"}))
+
+		doc.subject = "Reopen available"
+		doc.save()
+		new_task = frappe.get_doc("Workflow Task", {**scope, "status": "Working"})
+		self.assertEqual(new_task.workflow_process, process_id)
+		self.assertEqual([row.transition_uuid for row in new_task.available_workflow_transitions], ["_test-reopen-transition"])
+
+	def test_inapplicable_action_does_not_prevent_content_reset(self):
+		workflow = frappe.get_doc("Workflow", self.workflow_name)
+		workflow.transitions[0].custom_reset_on_change = 1
+		workflow.append("transitions", {
+			"state": "Open", "action": self.reopen_action_name, "next_state": "Open",
+			"allowed": "System Manager", "allow_self_approval": 1, "condition": "False",
+			"custom_transition_uuid": "_test-inapplicable-with-reset",
+		})
+		workflow.save(ignore_permissions=True)
+		doc = frappe.get_doc({"doctype": "Issue", "subject": "Original content", "status": "Open"}).insert()
+		scope = {"reference_doctype": doc.doctype, "reference_name": doc.name, "approver": self.user}
+		original = frappe.get_doc("Workflow Task", scope)
+
+		doc.subject = "Changed content"
+		doc.save()
+
+		self.assertEqual((original.reload().status, original.round_status), ("Cancelled", "Cancelled"))
+		replacement = frappe.get_doc("Workflow Task", {**scope, "status": "Working"})
+		self.assertNotEqual(replacement.approval_round_id, original.approval_round_id)
+
+	def test_condition_evaluation_failure_reports_the_blocked_transition(self):
+		from dinext_common.workflow_approval import engine
+
+		workflow = frappe.get_doc("Workflow", self.workflow_name)
+		# Runtime failure under a role member, after metadata validation has run.
+		frappe.db.set_value("Workflow Transition", workflow.transitions[0].name, "condition", "1 / 0")
+		doc = frappe.get_doc({"doctype": "Issue", "subject": "Condition evaluation failure", "status": "Open"})
+		with self.assertRaises(engine.NoEligibleApproversError) as caught:
+			doc.insert()
+		self.assertEqual(caught.exception.details["code"], "no_eligible_approvers")
+		self.assertEqual(caught.exception.details["transitions"], [{
+			"transition_uuid": "_test-transition", "action": self.action_name,
+			"next_state": "Closed", "role": workflow.transitions[0].allowed,
+		}])
+
+	def test_configuration_restores_a_withdrawn_assignment_and_expires_its_old_link(self):
+		from urllib.parse import parse_qs, urlsplit
+
+		from dinext_common.workflow_approval import engine, projections, signed_links
+
+		role = "_Test Restored Approver"
+		self._ensure_master("Role", role, {"role_name": role})
+		second = "workflow-restored-approver@example.com"
+		if not frappe.db.exists("User", second):
+			frappe.get_doc({
+				"doctype": "User", "email": second, "first_name": "Restored Approver",
+				"send_welcome_email": 0, "roles": [{"role": role}, {"role": "System Manager"}],
+			}).insert(ignore_permissions=True)
+		workflow = frappe.get_doc("Workflow", self.workflow_name)
+		workflow.transitions[0].condition = f"frappe.session.user == {self.user!r}"
+		workflow.append("transitions", {
+			"state": "Open", "action": self.reopen_action_name, "next_state": "Open",
+			"allowed": role, "allow_self_approval": 1, "custom_transition_uuid": "_test-withdrawn",
+		})
+		workflow.save(ignore_permissions=True)
+		doc = frappe.get_doc({"doctype": "Issue", "subject": "Restore withdrawn action", "status": "Open"}).insert()
+		task = frappe.get_doc("Workflow Task", {"reference_doctype": "Issue", "reference_name": doc.name, "approver": second})
+		old_action = signed_links._open_action(task.name)
+		old_key = signed_links.ensure_delivery_key(task.name)
+		old_action.db_set("custom_notification_status", "Enqueued", update_modified=False)
+		delivery = projections.delivery_snapshot(task.reload())
+		withdrawn = workflow.transitions[-1].as_dict()
+		workflow.remove(workflow.transitions[-1])
+		workflow.save(ignore_permissions=True)
+		engine.reconcile_source(doc)
+		self.assertEqual(task.reload().status, "Cancelled")
+
+		for key in ("name", "parent", "parenttype", "parentfield", "idx"):
+			withdrawn.pop(key, None)
+		workflow.append("transitions", withdrawn)
+		workflow.save(ignore_permissions=True)
+		engine.reconcile_source(doc)
+		engine.reconcile_source(doc)
+
+		self.assertEqual((task.reload().status, task.round_status), ("Working", "Open"))
+		self.assertEqual([row.transition_uuid for row in task.available_workflow_transitions], ["_test-withdrawn"])
+		self.assertEqual(frappe.db.count("Workflow Action", {"custom_workflow_task": task.name, "status": "Open"}), 1)
+		self.assertEqual(frappe.db.count("ToDo", {"reference_type": "Workflow Task", "reference_name": task.name, "status": "Open"}), 1)
+		self.assertIsNone(signed_links._open_action(task.name, old_key))
+		url = signed_links.get_task_action_url(task, task.available_workflow_transitions[0])
+		current_key = parse_qs(urlsplit(url).query)["delivery_key"][0]
+		self.assertNotEqual(current_key, old_key)
+		self.assertTrue(signed_links._open_action(task.name, current_key))
+		self.assertEqual(old_action.reload().custom_delivery_key, old_key)
+		self.assertEqual(projections.delivery_snapshot(task)["custom_notification_status"], delivery["custom_notification_status"])
+
+	def test_confirmation_rechecks_link_identity_after_locking_the_source(self):
+		from dinext_common.workflow_approval import engine, projections, signed_links
+
+		doc = frappe.get_doc({"doctype": "Issue", "subject": "Concurrent signed confirmation", "status": "Open"}).insert()
+		task = frappe.get_doc("Workflow Task", {
+			"reference_doctype": doc.doctype, "reference_name": doc.name, "approver": self.user,
+		})
+		key = signed_links.ensure_delivery_key(task.name)
+		command = {
+			"task_name": task.name, "transition_uuid": "_test-transition", "user": self.user, "delivery_key": key,
+		}
+		cast_vote = engine.cast_vote
+
+		def vote_after_configuration_changed(*args, **kwargs):
+			snapshot = projections.delivery_snapshot(task.reload())
+			snapshot["configuration_restored"] = True
+			engine._set_task_values(task.name, {"notification_delivery_snapshot": frappe.as_json(snapshot)})
+			return cast_vote(*args, **kwargs)
+
+		frappe.set_user(self.user)
+		with (
+			patch.object(signed_links, "_peek_command", return_value=command),
+			patch.object(engine, "cast_vote", side_effect=vote_after_configuration_changed),
+			patch.object(signed_links, "return_link_expired_page") as expired,
+		):
+			signed_links.confirm_action("already-issued-command")
+		expired.assert_called_once()
+		self.assertEqual(doc.reload().status, "Open")
+		self.assertEqual(task.reload().status, "Working")
+
 	def test_missing_successor_rolls_back_only_the_deciding_vote(self):
 		from dinext_common.workflow_approval import engine, request_receipts, signed_links
 
@@ -196,16 +389,19 @@ class TestWorkflowApprovalIntegration(FrappeTestCase):
 				"send_welcome_email": 0, "roles": [{"role": "System Manager"}],
 			}).insert(ignore_permissions=True)
 		workflow = frappe.get_doc("Workflow", self.workflow_name)
+		workflow.transitions[0].allowed = "System Manager"
 		workflow.transitions[0].custom_parallel_approval_policy = "All"
 		workflow.transitions[0].condition = f"frappe.session.user in {[self.user, second]!r}"
-		workflow.transitions[1].condition = "False"
+		role = "_Test Empty Workflow Approval"
+		self._ensure_master("Role", role, {"role_name": role})
+		workflow.transitions[1].allowed = role
 		action = "_Test Hold"
 		self._ensure_master("Workflow Action Master", action, {"workflow_action_name": action})
 		self._ensure_master("Workflow State", "On Hold", {"workflow_state_name": "On Hold"})
 		workflow.append("states", {"state": "On Hold", "doc_status": "0", "allow_edit": "All", "is_optional_state": 1})
 		workflow.append("transitions", {
-			"state": "Closed", "action": action, "next_state": "On Hold", "allowed": "System Manager",
-			"condition": "False", "allow_self_approval": 1, "custom_transition_uuid": "_test-hold-transition",
+			"state": "Closed", "action": action, "next_state": "On Hold", "allowed": role,
+			"condition": "True", "allow_self_approval": 1, "custom_transition_uuid": "_test-hold-transition",
 		})
 		workflow.save(ignore_permissions=True)
 
@@ -248,7 +444,7 @@ class TestWorkflowApprovalIntegration(FrappeTestCase):
 		self.assertEqual((details["workflow"], details["state"]), (workflow.name, "Closed"))
 		self.assertEqual(
 			[(row["action"], row["next_state"], row["role"]) for row in details["transitions"]],
-			[(self.reopen_action_name, "Open", "System Manager"), (action, "On Hold", "System Manager")],
+			[(self.reopen_action_name, "Open", role), (action, "On Hold", role)],
 		)
 
 		link = signed_links._issue_command({
@@ -268,7 +464,7 @@ class TestWorkflowApprovalIntegration(FrappeTestCase):
 		frappe.set_user("Administrator")
 
 		for row in workflow.transitions[1:]:
-			row.condition = "True"
+			row.allowed = "System Manager"
 		workflow.save(ignore_permissions=True)
 		result = engine.cast_vote(tasks[second], action=self.action_name, comment="Deciding vote", request_id=request_id)
 		self.assertTrue(result["transitioned"])

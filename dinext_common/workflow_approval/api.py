@@ -1444,31 +1444,9 @@ def retry_finalization(round_id: str) -> dict[str, Any]:
 	"""Audited System Manager retry for a failed durable finalization."""
 	_require_post()
 	_require_system_manager()
-	task_names = engine._round_task_names(round_id)
-	if not task_names:
-		raise frappe.DoesNotExistError(_("Approval round does not exist"))
-	task = frappe.get_doc("Workflow Task", task_names[0])
-	if task.finalization_status != "Failed":
-		raise engine.WorkflowApprovalConflictError(_("Finalization is not failed"))
-	engine._set_round_values(
-		round_id,
-		{
-			"round_status": "Finalizing",
-			"finalization_status": "Queued",
-			"failure_metadata": None,
-			"submission_queue": None,
-		},
-	)
-	source = frappe.get_doc(task.reference_doctype, task.reference_name)
-	source.add_comment(
-		"Workflow",
-		_("Approval finalization retried by {0}").format(
-			frappe.bold(frappe.utils.escape_html(frappe.session.user))
-		),
-	)
-	from dinext_common.workflow_approval.finalization import repair_round
+	from dinext_common.workflow_approval.finalization import retry_round
 
-	repair_round(round_id)
+	retry_round(round_id)
 	return {"round_id": round_id, "status": "retried"}
 
 

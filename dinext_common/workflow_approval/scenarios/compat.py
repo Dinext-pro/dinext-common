@@ -10,12 +10,12 @@ from dataclasses import dataclass
 from functools import wraps
 from threading import RLock
 from typing import Any
-from uuid import uuid4
 
 import frappe
 
 _STACK_KEY = "dinext_workflow_document_stack"
 _AUTHORITY_KEY = "dinext_workflow_finalization_stack"
+_TRANSITION_KEY = "dinext_workflow_transition_stack"
 _NATIVE_ACTION_KEY = "dinext_workflow_native_action_stack"
 _installed = False
 _installing = False
@@ -93,6 +93,62 @@ def authorized_finalization(doc):
 		setattr(frappe.local, _AUTHORITY_KEY, previous)
 
 
+@dataclass
+class TransitionExecution:
+	site: str | None
+	source: tuple[str, str, str]
+	actor: str | None
+	workflow: str
+	state: str
+	uuid: str
+	semantic_hash: str
+	submission_queue: str | None = None
+
+
+@contextmanager
+def exact_transition(doc, workflow, winner):
+	"""Limit native transition selection to the row represented by this decision."""
+	previous = getattr(frappe.local, _TRANSITION_KEY, ())
+	entry = TransitionExecution(
+		getattr(frappe.local, "site", None), _source_identity(doc), _current_user(),
+		workflow, winner["state"], winner["transition_uuid"], winner["transition_semantic_hash"],
+	)
+	setattr(frappe.local, _TRANSITION_KEY, (*previous, entry))
+	try:
+		with document_scope(doc):
+			yield entry
+	finally:
+		setattr(frappe.local, _TRANSITION_KEY, previous)
+
+
+def transition_execution(doc) -> TransitionExecution | None:
+	stack = getattr(frappe.local, _TRANSITION_KEY, ())
+	if stack:
+		entry = stack[-1]
+		if (entry.site, entry.source, entry.actor) == (
+			getattr(frappe.local, "site", None), _source_identity(doc), _current_user(),
+		):
+			return entry
+	return None
+
+
+def _scoped_workflow(workflow, execution):
+	from dinext_common.workflow_approval.engine import WorkflowApprovalConflictError, _transition_dict
+
+	matching = []
+	if workflow.name == execution.workflow:
+		for row in workflow.transitions:
+			if row.state != execution.state or row.custom_transition_uuid != execution.uuid:
+				continue
+			if _transition_dict(row)["transition_semantic_hash"] == execution.semantic_hash:
+				matching.append(row)
+	if len(matching) != 1:
+		raise WorkflowApprovalConflictError(frappe._("Workflow transition configuration changed"))
+	scoped = copy.copy(workflow)
+	scoped.transitions = matching
+	return scoped
+
+
 def is_authorized_finalization(doc, user=None) -> bool:
 	stack = getattr(frappe.local, _AUTHORITY_KEY, ())
 	actor = _current_user()
@@ -105,6 +161,7 @@ def clear_context(*args, **kwargs) -> None:
 	"""Clear a completed request/job boundary, including before metadata is installed."""
 	setattr(frappe.local, _STACK_KEY, ())
 	setattr(frappe.local, _AUTHORITY_KEY, ())
+	setattr(frappe.local, _TRANSITION_KEY, ())
 	setattr(frappe.local, _NATIVE_ACTION_KEY, ())
 
 
@@ -215,22 +272,26 @@ def _workflow(doctype):
 def _wrap_transitions(original):
 	@wraps(original)
 	def transitions(doc, workflow=None, raise_exception=False):
-		if not _ready():
+		ready = _ready()
+		if not ready and not getattr(frappe.local, _TRANSITION_KEY, ()):
 			return original(doc, workflow, raise_exception)
 		doc = _normalized_document(doc)
 		with document_scope(doc):
-			if not _service().supports_doctype(doc.doctype):
-				return original(doc, workflow, raise_exception)
-			context = _service().workflow_context(doc)
-			if not context:
-				return []
-			if workflow is not None and _value(workflow, "name") != context[0]:
-				if raise_exception:
-					from frappe.model.workflow import WorkflowTransitionError
+			if ready and _service().supports_doctype(doc.doctype):
+				context = _service().workflow_context(doc)
+				if not context:
+					return []
+				if workflow is not None and _value(workflow, "name") != context[0]:
+					if raise_exception:
+						from frappe.model.workflow import WorkflowTransitionError
 
-					raise WorkflowTransitionError
-				return []
-			workflow = workflow or context[1]
+						raise WorkflowTransitionError
+					return []
+				workflow = workflow or context[1]
+			if execution := transition_execution(doc):
+				workflow = workflow or _workflow(doc.doctype)
+				if doc.get(workflow.workflow_state_field) == execution.state:
+					workflow = _scoped_workflow(workflow, execution)
 			return original(doc, workflow, raise_exception)
 
 	return transitions
@@ -296,18 +357,15 @@ def _wrap_apply(original):
 			if not transition or not has_approval_access(frappe.session.user, doc, transition):
 				return original(doc, action)
 			process_id = service.get_context(doc).get("process_id")
-			savepoint = f"workflow_native_{uuid4().hex}"
-			frappe.db.savepoint(savepoint)
-			try:
+			from dinext_common.workflow_approval.engine import _atomic_workflow_attempt
+
+			with _atomic_workflow_attempt(rollback_on=(Exception,)):
 				service.start_cascade(doc, manual=True)
 				service.pin_process(doc, process_id=process_id)
 				with _native_action(doc):
 					result = original(doc, action)
 				if result is not None:
 					_complete_native_transition(result, context[0], process_id)
-			except Exception:
-				frappe.db.rollback(save_point=savepoint)
-				raise
 			return result
 
 	return apply

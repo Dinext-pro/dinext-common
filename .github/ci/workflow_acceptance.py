@@ -16,16 +16,16 @@ from xml.etree import ElementTree
 SITE = "ci.test"
 BASE_URL = "http://localhost:8000"
 DEPENDENCIES = {
-    "frappe": "743721925cc2a4479f68a8315f0bdbaec7dc9870",
+    "frappe": "12407fa94bb09168997169cdd3d68ef264c2bc01",
     "erpnext": "548e80297397ba5d3ca4fb111a923fe784a37f4e",
     "hrms": "b8cdb4431d6322477c4ed7c04d164fe00972298a",
     "doctype_permission": "43a18b9611d9a1fdf69a3c8d25bf953f468a146a",
     "frappe_comment_xt": "9b2e6b44a291f1cbdcf0808ffa34f250dbd0dfc6",
-    "dinext_projects": "1e2edd35b1173c101c74d15a61f2f952354fb43d",
+    "dinext_projects": "87748d8fb1389110be6066b6329a9c4f63e55b71",
     "dinext_projects_pl": "d3a6e0c6edad7267fe41dc6dbe7f923acd001df5",
-    "dinext_timesheets": "51c21dcf116bdfb92ed6163fbd1def43ac4cce18",
-    "project_workload_assignment": "e0689b7f8d0def8b1f6cf5bd7f766b0f604c1d06",
-    "dinext_project_tasks_gantt": "d5080b2d3d5bb9e492ced30eb0ded0767e030043",
+    "dinext_timesheets": "e897c88f63ddcd5b25aa5d50232ee158abcb1b7b",
+    "project_workload_assignment": "18a0845b25f3759a607760ca5aa6316e68f0f006",
+    "dinext_project_tasks_gantt": "c9650bf6986c8e276c1899139b2e90d1253bfc45",
 }
 SPECS = {
     "dinext_common": (
@@ -39,15 +39,21 @@ SPECS = {
     "dinext_projects": ("workflow_comment_banner.js",),
     "dinext_timesheets": (
         "timesheet_team_lead.js", "worker_calendar_deadlines.js", "ut_form_workflow_position_failures.js",
+        "ut_empty_approval.js",
     ),
+    "project_workload_assignment": ("workload_absence_navigation.js",),
 }
 SERVER_TESTS = {
     "dinext_common": {
         "test_workflow_request_receipt": (),
         "test_workflow_approval_api": (),
+        "test_workflow_approval_engine": (),
         "test_workflow_approval_integration": (),
+        "test_workflow_approval_migration": (),
         "test_workflow_queued_round_failure": (),
         "test_workflow_approval_concurrency": (),
+        "test_workflow_approval_signed_links": (),
+        "test_workflow_standards": (),
         "test_workflow_list_actions": (),
         "test_workflow_form_references": (),
         "test_workflow_localization": (),
@@ -69,10 +75,21 @@ SERVER_TESTS = {
         "test_deadlines": (),
         "test_timesheet_settings_refinements": (),
         "test_timesheet_team_lead_access": (),
+        "test_empty_timesheet_approval": (),
+        "test_approval_fingerprint_integration": (),
+        "test_utp_status_migration": (),
         "test_workflow_email_ownership": (),
+        "test_workflow_limit_notifications": (),
         "test_workflow_position_batch_failures": (),
         "test_workflow_localization": (),
+        "dinext_timesheets.dinext_timesheets.user_timesheet.test_status_rollup": (),
+        "dinext_timesheets.dinext_timesheets.user_timesheet.test_workflow_tasks_bridge": (),
     },
+    "project_workload_assignment": {
+        "project_workload_assignment.project_workload_assignment.tests.test_approval_compatibility": (),
+        "project_workload_assignment.project_workload_assignment.tests.test_plan_fact_adapter": (),
+    },
+    "dinext_project_tasks_gantt": {"test_timesheet_status_compatibility": ()},
 }
 
 
@@ -115,7 +132,7 @@ def run_server(bench, app, artifacts):
     failures = []
     for module, tests in SERVER_TESTS[app].items():
         report = artifacts / f"server-{module}.xml"
-        qualified = f"{app}.tests.{module}"
+        qualified = module if module.startswith(f"{app}.") else f"{app}.tests.{module}"
         result = subprocess.run([
             "bench", "--site", SITE, "run-tests", "--app", app, "--module", qualified,
             "--skip-test-records", f"--junit-xml-output={report}",
@@ -145,7 +162,11 @@ def run_browser(bench, app, artifacts):
         if not (app_root / spec).is_file():
             raise RuntimeError(f"Missing acceptance scenario {spec}")
 
-    with (artifacts / "web.log").open("w") as output:
+    config_args = (
+        ["--config-file", "cypress.bench.config.js"] if app == "project_workload_assignment" else []
+    )
+    report_prefix = f"browser-{app}-"
+    with (artifacts / f"{app}-web.log").open("w") as output:
         server = subprocess.Popen(
             ["bench", "--site", SITE, "serve", "--port", "8000", "--noreload"],
             cwd=bench, env=env, stdout=output, stderr=subprocess.STDOUT, start_new_session=True,
@@ -164,8 +185,8 @@ def run_browser(bench, app, artifacts):
                 raise RuntimeError("Disposable Desk server did not start")
             subprocess.run(
                 ["bench", "--site", SITE, "run-ui-tests", app, "--headless", "--browser",
-                    "electron", "--spec", ",".join(spec_paths), "--reporter", "junit",
-                    "--reporter-options", f"mochaFile={artifacts / 'browser-[hash].xml'}", "--config",
+                    "electron", *config_args, "--spec", ",".join(spec_paths), "--reporter", "junit",
+                    "--reporter-options", f"mochaFile={artifacts / (report_prefix + '[hash].xml')}", "--config",
                     f"screenshotsFolder={artifacts / 'screenshots'}"],
                 cwd=bench, env=env, check=True, timeout=1500,
             )
@@ -173,7 +194,7 @@ def run_browser(bench, app, artifacts):
             if server.poll() is None:
                 os.killpg(server.pid, signal.SIGTERM)
                 server.wait(timeout=30)
-    report_paths = list(artifacts.glob("browser-*.xml"))
+    report_paths = list(artifacts.glob(report_prefix + "*.xml"))
     if len(report_paths) < len(spec_paths):
         raise RuntimeError("Cypress did not report every selected spec")
     for path in report_paths:
@@ -208,9 +229,14 @@ def main():
         subprocess.run([sys.executable, runner, source], check=True)
     bench = runner_temp / "dinext-test-bench"
     failures = run_server(bench, app, artifacts)
+    if app == "dinext_common":
+        for consumer in ("project_workload_assignment", "dinext_project_tasks_gantt"):
+            failures.extend(run_server(bench, consumer, artifacts))
     if failures:
         print("Failing Workflow server suites: " + ", ".join(failures), flush=True)
     run_browser(bench, app, artifacts)
+    if app == "dinext_common":
+        run_browser(bench, "project_workload_assignment", artifacts)
     if failures:
         raise RuntimeError("One or more Workflow server suites failed")
 

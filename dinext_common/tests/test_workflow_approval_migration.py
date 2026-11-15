@@ -192,6 +192,135 @@ class TestWorkflowApprovalMigration(unittest.TestCase):
 			self.assertIn("smoke", receipt)
 			self.assertEqual(set(state["completed"]), set(migration.CUTOVER_PHASES))
 
+	def test_failed_smoke_does_not_publish_completion_receipt(self):
+		from unittest.mock import patch
+
+		migration = self.migration()
+		conf = migration.frappe._dict()
+		state = {
+			"version": 1,
+			"completed": ["preflight", "drain_queues", "migrate_settings",
+				"disable_retained_consumers", "delete_records"],
+			"receipt": {"delete_records": {}},
+		}
+
+		def store(value):
+			state.update(value)
+
+		with (
+			patch.object(migration.frappe.local, "conf", conf),
+			patch("frappe.installer.update_site_config", side_effect=conf.__setitem__),
+			patch.object(migration, "_require_cutover_operator"),
+			patch.object(migration, "_cutover_state", return_value=state),
+			patch.object(migration, "_store_cutover_state", side_effect=store),
+			patch.object(migration.frappe.db, "commit"),
+			patch.object(migration, "_phase_smoke", side_effect=[
+				migration.CutoverBlockedError("fixture drift"), {"remaining": {}},
+			]),
+		):
+			with self.assertRaisesRegex(migration.CutoverBlockedError, "fixture drift"):
+				migration.execute_cutover("backup-1")
+			self.assertFalse(conf.get("parallel_workflow_cutover_receipt"))
+			self.assertFalse(conf.get("enable_parallel_workflow_approval"))
+			self.assertNotIn("smoke", state["completed"])
+			migration.execute_cutover("backup-1")
+			self.assertTrue(conf.get("parallel_workflow_cutover_receipt"))
+			self.assertTrue(conf.get("enable_parallel_workflow_approval"))
+
+	def test_legacy_cutover_receipt_does_not_bypass_smoke(self):
+		from unittest.mock import patch
+
+		migration = self.migration()
+		from dinext_common.patches.v1_0 import cutover_parallel_workflow_approvals as entry
+
+		conf = migration.frappe._dict(run_parallel_workflow_cutover=True,
+			parallel_workflow_cutover_receipt={"backup": "backup-1"},
+			parallel_workflow_cutover_state={"completed": ["enable_engine"]})
+		with (
+			patch.object(migration.frappe.local, "conf", conf),
+			patch.object(migration, "execute_cutover") as execute,
+		):
+			entry.execute()
+			execute.assert_called_once_with("backup-1")
+
+	def test_old_checkpoint_revalidates_compatibility_and_migrates_position_status(self):
+		from unittest.mock import patch
+
+		migration = self.migration()
+		state = {
+			"completed": ["preflight", "drain_queues", "migrate_settings",
+				"disable_retained_consumers", "delete_records"],
+			"receipt": {"delete_records": {"Server Script": 1}},
+		}
+		executed = []
+
+		def run_phase(phase):
+			def run(_backup, _state):
+				executed.append(phase)
+				return {}
+
+			return run
+
+		with (
+			patch.object(migration, "_require_cutover_operator"),
+			patch.object(migration, "_cutover_state", return_value=state),
+			patch.object(migration, "_store_cutover_state", side_effect=state.update),
+			patch.object(migration.frappe.db, "commit"),
+			patch.dict(migration.PHASE_HANDLERS, {phase: run_phase(phase) for phase in migration.CUTOVER_PHASES}),
+		):
+			receipt = migration.execute_cutover("backup-1")
+			migration.execute_cutover("backup-1")
+
+		self.assertEqual(executed, list(migration.CUTOVER_PHASES))
+		self.assertEqual(receipt["previous_checkpoint"]["delete_records"], {"Server Script": 1})
+
+	def test_workflow_jobs_block_cutover_even_without_an_rq_job_table(self):
+		from unittest.mock import patch
+
+		migration = self.migration()
+		site = migration.frappe.local.site
+		with (
+			patch("frappe.utils.background_jobs.get_jobs", return_value={
+				site: ["dinext_common.workflow_approval.api.run_job"],
+			}),
+			patch.object(migration.frappe, "get_all", return_value=["Project"]),
+			patch.object(migration.frappe.db, "count", return_value=0),
+		):
+			with self.assertRaisesRegex(migration.CutoverBlockedError, "pending Workflow"):
+				migration._phase_drain_queues()
+
+	def test_scheduled_workflow_job_blocks_cutover_through_its_wrapper(self):
+		from unittest.mock import patch
+
+		migration = self.migration()
+		site = migration.frappe.local.site
+		methods = {
+			"method": ["frappe.core.doctype.scheduled_job_type.scheduled_job_type.run_scheduled_job"],
+			"job_type": ["dinext_common.workflow_approval.deadlines.scheduler.run_deadline_ticks"],
+		}
+		with (
+			patch("frappe.utils.background_jobs.get_jobs", side_effect=lambda *, site, key: {site: methods[key]}),
+			patch.object(migration.frappe, "get_all", return_value=[]),
+			patch.object(migration.frappe.db, "count", return_value=0),
+		):
+			with self.assertRaisesRegex(migration.CutoverBlockedError, '"rq_jobs": 1'):
+				migration._phase_drain_queues()
+
+	def test_live_script_must_match_the_reviewed_hash(self):
+		from unittest.mock import patch
+
+		migration = self.migration()
+		hashes = {"Client Script": {"AFL_Approval_V3": "reviewed"}}
+		conf = migration.frappe._dict(parallel_workflow_cutover_reviewed_hashes=hashes)
+		with (
+			patch.object(migration.frappe.local, "conf", conf),
+			patch.object(migration, "summarize_live_hashes", return_value={
+				"Client Script": {"AFL_Approval_V3": "changed"},
+			}),
+		):
+			with self.assertRaisesRegex(migration.CutoverBlockedError, "AFL_Approval_V3"):
+				migration._verify_reviewed_records()
+
 	def test_consumer_apps_have_no_classified_repository_leftovers(self):
 		from pathlib import Path
 

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -70,16 +70,19 @@ RETAINED_SYSTEM_RECORDS: dict[str, tuple[str, ...]] = {
 RETAINED_LIVE_CLIENT_SCRIPTS = (
 	"Custom_ListView_6",
 	"User_Timesheet_Position_to_User_Timesheet_form_integration_V10",
+	"ApFL_Status_Color",
 )
+RETAINED_DISABLED_SERVER_SCRIPTS = ("AFL_Calculate_Hours", "AFL_Projects")
 
+CUTOVER_STATE_VERSION = 1
 CUTOVER_PHASES = (
 	"preflight",
 	"drain_queues",
 	"migrate_settings",
 	"disable_retained_consumers",
 	"delete_records",
-	"enable_engine",
 	"smoke",
+	"enable_engine",
 )
 
 REPOSITORY_FIXTURE_FILES = (
@@ -383,10 +386,31 @@ def summarize_live_preflight() -> dict[str, Any]:
 
 def summarize_live_hashes() -> dict[str, dict[str, str]]:
 	report = collect_live_preflight()
-	return {
+	hashes = {
 		doctype: {row["name"]: row["hash"] for row in rows}
 		for doctype, rows in report["records"].items()
 	}
+	for doctype, names, disabled in (
+		("Client Script", RETAINED_LIVE_CLIENT_SCRIPTS, lambda row: not row.enabled),
+		("Server Script", RETAINED_DISABLED_SERVER_SCRIPTS, lambda row: row.disabled),
+	):
+		hashes.setdefault(doctype, {}).update(
+			{row.name: system_record_hash(row) for row in _live_records(doctype, names) if not disabled(row)}
+		)
+	return hashes
+
+
+def _verify_reviewed_records() -> None:
+	"""Require explicit behavioral evidence for records that are still to be changed."""
+	reviewed = frappe.conf.get("parallel_workflow_cutover_reviewed_hashes") or {}
+	drift = [
+		f"{doctype}: {name}"
+		for doctype, records in summarize_live_hashes().items()
+		for name, digest in records.items()
+		if reviewed.get(doctype, {}).get(name) != digest
+	]
+	if drift:
+		raise CutoverBlockedError("Unreviewed Workflow cutover records: " + ", ".join(drift))
 
 
 def collect_legacy_consumers() -> list[dict[str, str]]:
@@ -438,6 +462,7 @@ def _split_consumers(consumers: list[dict[str, str]]) -> tuple[list[dict[str, st
 def _cutover_state() -> dict[str, Any]:
 	state = frappe.conf.get("parallel_workflow_cutover_state") or {}
 	return {
+		"version": state.get("version"),
 		"completed": list(state.get("completed") or []),
 		"receipt": state.get("receipt") or {},
 	}
@@ -446,8 +471,9 @@ def _cutover_state() -> dict[str, Any]:
 def _store_cutover_state(state: Mapping[str, Any]) -> None:
 	from frappe.installer import update_site_config
 
-	update_site_config("parallel_workflow_cutover_state", dict(state))
-	frappe.local.conf.parallel_workflow_cutover_state = dict(state)
+	checkpoint = dict(state)
+	update_site_config("parallel_workflow_cutover_state", checkpoint)
+	frappe.local.conf.parallel_workflow_cutover_state = checkpoint
 
 
 def _require_cutover_operator() -> None:
@@ -459,12 +485,36 @@ def _require_cutover_operator() -> None:
 		)
 
 
+def assert_cutover_compatibility() -> None:
+	from frappe.model.db_query import DatabaseQuery
+
+	if getattr(DatabaseQuery, "final_permission_query_conditions_version", 0) < 1 or not callable(
+		getattr(DatabaseQuery, "get_final_permission_query_conditions", None)
+	):
+		raise CutoverBlockedError("Update Dinext Platform before enabling parallel Workflow approval")
+	apps = frappe.get_installed_apps()
+	for app in ("project_workload_assignment", "dinext_project_tasks_gantt"):
+		if app in apps and 1 not in frappe.get_hooks("workflow_approval_canonical_statuses", app_name=app):
+			raise CutoverBlockedError(f"Update {app} before enabling canonical approval statuses")
+
+
 def _phase_preflight() -> dict[str, Any]:
+	assert_cutover_compatibility()
 	report = collect_live_preflight()
 	blocking, retained = _split_consumers(report.get("legacy_consumers") or [])
 	report["legacy_consumers"] = blocking
 	report["disableable_consumers"] = retained
 	assert_cutover_ready(report)
+	_verify_reviewed_records()
+	apps = frappe.get_installed_apps()
+	if "project_workload_assignment" in apps:
+		from project_workload_assignment.legacy_absences import plan_legacy_absence_query
+
+		plan_legacy_absence_query()
+	if "dinext_timesheets" in apps:
+		from dinext_timesheets.patches.v1_0.unify_utp_workflow_status import preflight
+
+		preflight()
 	return {
 		"record_counts": {
 			doctype: len(rows) for doctype, rows in report["records"].items()
@@ -474,35 +524,34 @@ def _phase_preflight() -> dict[str, Any]:
 
 
 def _phase_drain_queues() -> dict[str, Any]:
+	from frappe.utils.background_jobs import get_jobs
+
+	doctypes = set(frappe.get_all("Workflow", filters={"is_active": 1}, pluck="document_type"))
+	doctypes.update(("User Timesheet", "User Timesheet Position", "Application For Leave"))
+	job_modules = (
+		"dinext_common.workflow_approval.",
+		"dinext_timesheets.workflow_approval.",
+		"dinext_timesheets.dinext_timesheets.user_timesheet.events.limits_notify.",
+	)
+	site = frappe.local.site
+	has_workflow_job = any(
+		(getattr(method, "__module__", "") + "." if callable(method) else str(method)).startswith(job_modules)
+		for key in ("method", "job_type")
+		for method in get_jobs(site=site, key=key).get(site, [])
+	)
 	queue_health = {
-		"rq_jobs": 0,
-		"email_queue": 0,
-		"submission_queue": 0,
+		"rq_jobs": int(has_workflow_job),
+		"email_queue": frappe.db.count("Email Queue", {
+			"status": ("in", ("Not Sent", "Sending", "Partially Sent")),
+			"reference_doctype": ("in", sorted(doctypes | {"Workflow Action", "Workflow Task"})),
+		}),
+		"submission_queue": frappe.db.count("Submission Queue", {
+			"status": "Queued", "ref_doctype": ("in", sorted(doctypes)),
+		}),
+		"finalizing_rounds": frappe.db.count("Workflow Task", {"round_status": "Finalizing"}),
 	}
-	if frappe.db.table_exists("RQ Job"):
-		queue_health["rq_jobs"] = len(
-			frappe.get_all(
-				"RQ Job",
-				filters={"status": ("in", ("queued", "started"))},
-				limit=20,
-			)
-		)
-	if frappe.db.table_exists("Email Queue"):
-		queue_health["email_queue"] = len(
-			frappe.get_all(
-				"Email Queue",
-				filters={"status": ("in", ("Not Sent", "Sending"))},
-				limit=20,
-			)
-		)
-	if frappe.db.table_exists("Submission Queue"):
-		queue_health["submission_queue"] = len(
-			frappe.get_all(
-				"Submission Queue",
-				filters={"status": ("in", ("Queued", "Failed"))},
-				limit=20,
-			)
-		)
+	if any(queue_health.values()):
+		raise CutoverBlockedError("Resolve pending Workflow work before cutover: " + json.dumps(queue_health))
 	return queue_health
 
 
@@ -520,16 +569,23 @@ def _phase_migrate_settings() -> dict[str, Any]:
 		from dinext_timesheets.patches.v1_0.configure_parallel_workflows_v2 import (
 			execute as configure_timesheet_workflows,
 		)
+		from dinext_timesheets.patches.v1_0.unify_utp_workflow_status import migrate
 
+		migrate()
 		configure_timesheet_workflows()
 	if "dinext_projects" in frappe.get_installed_apps():
 		from dinext_projects.application_for_leave import configure_application_for_leave
 
 		configure_application_for_leave()
+	if "project_workload_assignment" in frappe.get_installed_apps():
+		from project_workload_assignment.legacy_absences import migrate_legacy_absence_query
+
+		migrate_legacy_absence_query()
 	return {"configured": True}
 
 
 def _phase_disable_retained_consumers() -> dict[str, Any]:
+	_verify_reviewed_records()
 	disabled: list[str] = []
 	for name in RETAINED_LIVE_CLIENT_SCRIPTS:
 		if frappe.db.exists("Client Script", name):
@@ -541,10 +597,17 @@ def _phase_disable_retained_consumers() -> dict[str, Any]:
 				update_modified=False,
 			)
 			disabled.append(name)
+	for name in RETAINED_DISABLED_SERVER_SCRIPTS:
+		if frappe.db.exists("Server Script", name):
+			frappe.db.set_value("Server Script", name, "disabled", 1, update_modified=False)
+			disabled.append(name)
+	if disabled:
+		frappe.cache.delete_value("server_script_map")
 	return {"disabled": disabled}
 
 
 def _phase_delete_records() -> dict[str, int]:
+	_verify_reviewed_records()
 	deleted: dict[str, int] = {}
 	for doctype, names in LEGACY_DELETION_MANIFEST.items():
 		if doctype == "Legacy API":
@@ -588,6 +651,11 @@ def _phase_smoke() -> dict[str, Any]:
 	}
 	remaining = {key: value for key, value in remaining.items() if value}
 	consumers = collect_legacy_consumers()
+	if "dinext_timesheets" in frappe.get_installed_apps() and frappe.db.exists("Workflow", {
+		"document_type": "User Timesheet Position",
+		"workflow_state_field": ("!=", "status"),
+	}):
+		raise CutoverBlockedError("Timesheet positions still have a legacy Workflow state field")
 	if remaining or consumers:
 		raise CutoverBlockedError(
 			"Post-cutover smoke failed: "
@@ -614,32 +682,54 @@ PHASE_HANDLERS = {
 }
 
 
+def cutover_complete() -> bool:
+	state = _cutover_state()
+	return (
+		bool(frappe.conf.get("parallel_workflow_cutover_receipt"))
+		and state["version"] == CUTOVER_STATE_VERSION
+		and set(CUTOVER_PHASES).issubset(state["completed"])
+	)
+
+
 def execute_cutover(
 	backup_receipt: str,
 	*,
 	inject_fault: str | None = None,
 ) -> dict[str, Any]:
 	"""Run restartable cutover phases and enable the engine."""
+	from frappe.utils.synchronization import filelock
+
 	_require_cutover_operator()
 	if not str(backup_receipt or "").strip():
 		raise CutoverBlockedError("A database/files backup receipt is required")
 
+	with filelock("parallel_workflow_cutover", timeout=0):
+		return _resume_cutover(backup_receipt, inject_fault)
+
+
+def _resume_cutover(backup_receipt: str, inject_fault: str | None) -> dict[str, Any]:
 	state = _cutover_state()
 	completed = set(state["completed"])
 	receipt = dict(state.get("receipt") or {})
+	if state.get("version") != CUTOVER_STATE_VERSION and completed:
+		completed.clear()
+		receipt = {"previous_checkpoint": receipt}
 	receipt["backup"] = str(backup_receipt)
+
+	def checkpoint():
+		_store_cutover_state({"version": CUTOVER_STATE_VERSION, "completed": sorted(completed), "receipt": receipt})
 
 	for phase in CUTOVER_PHASES:
 		if phase in completed:
 			continue
 		if inject_fault == phase:
-			_store_cutover_state({"completed": sorted(completed), "receipt": receipt})
+			checkpoint()
 			raise CutoverBlockedError(f"Injected fault before phase {phase}")
 		receipt[phase] = PHASE_HANDLERS[phase](backup_receipt, {"receipt": receipt})
-		completed.add(phase)
-		_store_cutover_state({"completed": sorted(completed), "receipt": receipt})
-		if phase in {"delete_records", "enable_engine"}:
+		if phase in {"migrate_settings", "disable_retained_consumers", "delete_records"}:
 			frappe.db.commit()
+		completed.add(phase)
+		checkpoint()
 
 	frappe.db.commit()
 	return receipt

@@ -10,9 +10,10 @@ from frappe.translate import print_language
 
 class TestWorkflowStandards(unittest.TestCase):
 	def test_healthy_round_does_not_load_every_task_or_projection(self):
-		from dinext_common.workflow_approval.projections import repair_round_projections
+		from dinext_common.workflow_approval import projections
 
 		with (
+			patch.object(projections, "clear_doctype_notifications"),
 			patch.object(frappe, "get_all", side_effect=[
 				[frappe._dict(name="WT-1", approver="marina@example.com")],
 				["WT-1"],
@@ -20,7 +21,7 @@ class TestWorkflowStandards(unittest.TestCase):
 			]),
 			patch.object(frappe, "get_doc") as load,
 		):
-			repair_round_projections(object(), "round")
+			projections.repair_round_projections(object(), "round")
 		load.assert_not_called()
 
 	def test_cleanup_denies_non_manager_before_reading_rules(self):
@@ -79,6 +80,24 @@ class TestWorkflowStandards(unittest.TestCase):
 		with print_language("en"):
 			self.assertEqual(display_deadline_error(translated), "Original assignment time is unknown")
 			self.assertEqual(display_deadline_error("Custom provider: check 42"), "Custom provider: check 42")
+
+	def test_rollback_preserves_workflow_error_if_savepoint_was_already_lost(self):
+		from dinext_common.workflow_approval import engine
+
+		error = engine.NoEligibleApproversError({
+			"code": "no_eligible_approvers", "doctype": "Issue", "name": "test-source",
+			"workflow": "Test Workflow", "state": "Pending", "transitions": [],
+		})
+		with (
+			patch.object(frappe.db, "savepoint"),
+			patch.object(frappe.db, "rollback", side_effect=RuntimeError("Savepoint no longer exists")),
+			patch.object(frappe.db, "release_savepoint", side_effect=RuntimeError("Savepoint no longer exists")) as release,
+			self.assertRaises(engine.NoEligibleApproversError) as caught,
+		):
+			with engine._atomic_workflow_attempt():
+				raise error
+		self.assertIs(caught.exception, error)
+		release.assert_called_once()
 
 	def test_rejected_removed_choice_does_not_commit_callers_transaction(self):
 		from dinext_common.workflow_approval import engine

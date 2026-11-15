@@ -625,3 +625,4 @@ The Workflow request has expired. Refresh the document before acting.,Срок �
 "Workflow action was not applied","Действие согласования не выполнено",""
 "Workflow action queued","Действие поставлено в очередь",""
 "The vote will be recorded when background submission completes.","Голос будет записан после завершения фонового проведения.",""
+The background submission no longer has an active job.,Фоновое проведение больше не связано с активным заданием.

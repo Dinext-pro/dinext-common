@@ -80,7 +80,7 @@ context("mixed Workflow scenarios in Timesheets", () => {
 			comment: "Cypress mixed Timesheet decision", request_id: requestId, targets }));
 		for (let index = 0; index < data.positions.length; index += 1) {
 			cy.call(contextMethod, { doctype: "User Timesheet Position", name: data.positions[index] }).then(response => {
-				expect(response.body.message.context.state_field).to.equal(data.state_fields[index]);
+				expect(response.body.message.context.state_field).to.equal("status");
 				expect(response.body.message.context.state).to.equal(index ? data.target_state : data.initial_state);
 			});
 		}

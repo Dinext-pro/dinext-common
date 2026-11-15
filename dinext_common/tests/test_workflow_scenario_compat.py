@@ -394,9 +394,14 @@ class TestWorkflowScenarioCompatibility(unittest.TestCase):
 		self.service.start_cascade = lambda doc, **kwargs: events.append("cascade")
 		self.service.pin_process = lambda doc, **kwargs: events.append("pin")
 		self.service.finish_transition = lambda doc, **kwargs: (events.append("finish"), True)[1]
+		from frappe.utils import CallbackManager
+
 		db = SimpleNamespace(
 			savepoint=lambda point: events.append("savepoint"),
 			rollback=lambda **kwargs: events.append("rollback"),
+			release_savepoint=lambda point: events.append("release"),
+			before_commit=CallbackManager(), after_commit=CallbackManager(),
+			before_rollback=CallbackManager(), after_rollback=CallbackManager(),
 		)
 		def apply(doc, action):
 			events.append("apply")
@@ -405,14 +410,14 @@ class TestWorkflowScenarioCompatibility(unittest.TestCase):
 		with patch("dinext_common.workflow_approval.lifecycle.is_engine_enabled", return_value=False), patch.object(frappe, "db", db), patch.object(Document, "load_from_db", return_value=source), patch.dict(compat._originals, {"get_transitions": lambda *args: [frappe._dict(action="Approve", allow_self_approval=1)]}):
 			result = compat._wrap_apply(apply)(source, "Approve")
 			self.assertIs(result, source)
-			self.assertEqual(events, ["ensure", "savepoint", "cascade", "pin", "apply", "finish", "repeat"])
+			self.assertEqual(events, ["ensure", "savepoint", "cascade", "pin", "apply", "finish", "repeat", "release"])
 			events.clear()
 			def fail(doc, action):
 				events.append("apply")
 				raise RuntimeError("save failed")
 			with self.assertRaisesRegex(RuntimeError, "save failed"):
 				compat._wrap_apply(fail)(source, "Approve")
-			self.assertEqual(events, ["ensure", "savepoint", "cascade", "pin", "apply", "rollback"])
+			self.assertEqual(events, ["ensure", "savepoint", "cascade", "pin", "apply", "rollback", "release"])
 		self.assertIsNone(compat.current_document())
 
 	def test_imported_native_apply_waits_for_the_personal_vote_without_saving(self):
