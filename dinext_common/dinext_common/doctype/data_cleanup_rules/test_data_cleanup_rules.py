@@ -132,6 +132,27 @@ class TestDataCleanupRules(FrappeTestCase):
 				self._assert_deleted(*expired)
 				self._assert_present(*fresh, *boundary, *active)
 
+	def test_overlapping_rules_are_order_independent_at_the_batch_limit(self):
+		rules = [self._rule("ToDo", 90, ""), self._rule("ToDo", 30)]
+		for rows in (rules, list(reversed(rules))):
+			with self.subTest(rows=rows):
+				self._save_rules(rows)
+				old_process, _ = self._history(age=100)
+				eligible_process, _ = self._history(age=45)
+
+				with patch.object(retention, "BATCH_SIZE", 1):
+					self._cleanup()
+
+				self._assert_deleted(old_process, eligible_process)
+
+	def test_oversized_retention_does_not_block_other_rules(self):
+		self._save_rules([self._rule("ToDo", 2_147_483_647), self._rule("ToDo", 30)])
+		expired = self._history(age=45)
+
+		self._cleanup()
+
+		self._assert_deleted(*expired)
+
 	def test_default_rule_and_doctype_rule_both_apply(self):
 		self._save_rules([self._rule(days=90, status=""), self._rule("ToDo", 30)])
 		expired_todo = self._history("ToDo", 45, status="Archived")

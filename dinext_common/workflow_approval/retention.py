@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import frappe
 from frappe.utils import add_days, cint, get_datetime, getdate
 
@@ -347,11 +349,14 @@ def cleanup_workflow_approval_rounds() -> int:
 		return 0
 
 	today = getdate()
-	rules = [
-		(rule, add_days(today, -cint(rule.days)))
-		for rule in frappe.get_single("Data Cleanup Rules").workflow_rules or []
-		if rule.enabled and cint(rule.days) > 0
-	]
+	max_days = (today - date.min).days
+	rules = []
+	for rule in frappe.get_single("Data Cleanup Rules").workflow_rules or []:
+		days = cint(rule.days)
+		if rule.enabled and 0 < days <= max_days:
+			rules.append((rule, add_days(today, -days)))
+	# Let earlier cutoffs consume their own batches before the wider age ranges.
+	rules.sort(key=lambda item: (item[1], item[0].reference_doctype or "", item[0].status or ""))
 	rounds = actions = processes = contexts = 0
 	terminal_rules = [(rule, cutoff) for rule, cutoff in rules if rule.status in TERMINAL_RULE_STATUSES]
 	if frappe.db.has_column("Workflow Task", "approval_round_id"):
