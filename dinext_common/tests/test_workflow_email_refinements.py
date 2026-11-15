@@ -243,7 +243,7 @@ class TestWorkflowEmailRefinements(FrappeTestCase):
 			timesheet_period_to="2026-11-08",
 			position_label=context["rows"][0]["position_label"],
 		)
-		_subject, body = render_standard("Dinext Timesheet Workflow Correction", context, self.user)
+		_subject, body = render_standard("Dinext Workflow Correction", context, self.user)
 		self.assertIn("Таймшит: 1", BeautifulSoup(body, "html.parser").h1.find_parent("td").get_text())
 		self.assertNotIn("position-2", BeautifulSoup(body, "html.parser").get_text())
 

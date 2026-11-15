@@ -27,18 +27,12 @@ def previous_email_templates():
                 '{% for row in rows %}<li><a href="{{ row.link|e }}">{{ row.title|e }}</a>'
                 ' — {{ row.count }} {{ _("position(s)") }}</li>{% endfor %}</ul>'),
         },
-        "Dinext Timesheet Workflow Correction": {
-            "subject": '{{ _("Timesheet correction required") }}: {{ timesheet_title }} / {{ doc.name }}',
-            "response_html": ('<p>{{ _("Timesheet correction required") }}</p>'
-                '<p><a href="{{ timesheet_link|e }}">{{ timesheet_title|e }}</a></p>'
-                '<p>{{ _("Position") }}: <strong>{{ doc.name|e }}</strong> {{ position_label|e }}</p>' + comments),
-        },
     }
 
 
 def default_email_templates():
     names=("Dinext Workflow Action","Dinext Workflow Digest","Dinext Workflow Correction",
-        "Dinext Timesheet Workflow Digest","Dinext Timesheet Workflow Correction",
+        "Dinext Timesheet Workflow Digest",
         "Dinext Workflow Deadline Digest","Dinext Timesheet Workflow Deadline Digest")
     return {name:{"subject":('{{ header_title }}: {{ summary }}' if 'Digest' in name else
         '{{ header_title }}: {{ timesheet_title if is_timesheet else document_title|truncate(100) }}'),

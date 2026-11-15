@@ -602,7 +602,7 @@ Email Template по умолчанию (если у Workflow нет своего
 - `Dinext Workflow Correction`
 - `Dinext Workflow Digest`
 - `Dinext Timesheet Workflow Digest`
-- `Dinext Timesheet Workflow Correction`
+- `Dinext Timesheet Workflow Correction` (поставляет `dinext_timesheets`)
 - `Dinext Workflow Deadline Digest`
 - `Dinext Timesheet Workflow Deadline Digest`
 

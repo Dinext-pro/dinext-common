@@ -570,7 +570,7 @@ Default Email Templates, used when no applicable custom template is configured:
 - `Dinext Workflow Correction`
 - `Dinext Workflow Digest`
 - `Dinext Timesheet Workflow Digest`
-- `Dinext Timesheet Workflow Correction`
+- `Dinext Timesheet Workflow Correction` (provided by `dinext_timesheets`)
 - `Dinext Workflow Deadline Digest`
 - `Dinext Timesheet Workflow Deadline Digest`
 

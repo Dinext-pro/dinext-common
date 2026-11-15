@@ -67,7 +67,6 @@ fixtures = [
                 "Dinext Workflow Correction",
                 "Dinext Workflow Digest",
                 "Dinext Timesheet Workflow Digest",
-                "Dinext Timesheet Workflow Correction",
                 "Dinext Workflow Deadline Digest",
                 "Dinext Timesheet Workflow Deadline Digest",
             ]]
