@@ -75,6 +75,38 @@ class TestWorkflowApprovalPermissions(unittest.TestCase):
 				permissions.has_workflow_task_permission(task, "read", "alice@example.com")
 			)
 
+	def test_timesheet_role_overrides_restore_read_only_base_once(self):
+		permissions = self.permissions()
+		frappe = permissions.frappe
+		with (
+			patch.dict(frappe.conf, {"enable_parallel_workflow_approval": 1}),
+			patch.object(permissions, "supports_final_task_permission_queries", return_value=True),
+			patch.object(frappe.db, "exists", side_effect=[True, False, True, True]),
+			patch.object(frappe, "get_doc") as get_doc,
+			patch.object(frappe, "clear_cache") as clear_cache,
+		):
+			permissions.restore_workflow_task_base_read()
+			permissions.restore_workflow_task_base_read()
+
+		get_doc.assert_called_once_with({
+			"doctype": "Custom DocPerm", "parenttype": "DocType", "parentfield": "permissions",
+			"parent": "Workflow Task", "role": "All", "permlevel": 0, "if_owner": 0, "read": 1,
+		})
+		get_doc.return_value.insert.assert_called_once_with(ignore_permissions=True)
+		clear_cache.assert_called_once_with(doctype="Workflow Task")
+
+	def test_timesheet_role_overrides_are_retained_with_legacy_platform_or_engine(self):
+		permissions = self.permissions()
+		frappe = permissions.frappe
+		with (
+			patch.dict(frappe.conf, {"enable_parallel_workflow_approval": 0}),
+			patch.object(permissions, "supports_final_task_permission_queries", return_value=False),
+			patch.object(frappe.db, "exists") as exists,
+		):
+			permissions.restore_workflow_task_base_read()
+			permissions.restore_workflow_task_base_read(during_cutover=True)
+		exists.assert_not_called()
+
 	def test_direct_task_mutations_are_denied(self):
 		permissions = self.permissions()
 

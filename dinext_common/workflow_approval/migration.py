@@ -486,11 +486,9 @@ def _require_cutover_operator() -> None:
 
 
 def assert_cutover_compatibility() -> None:
-	from frappe.model.db_query import DatabaseQuery
+	from dinext_common.workflow_approval.permissions import supports_final_task_permission_queries
 
-	if getattr(DatabaseQuery, "final_permission_query_conditions_version", 0) < 1 or not callable(
-		getattr(DatabaseQuery, "get_final_permission_query_conditions", None)
-	):
+	if not supports_final_task_permission_queries():
 		raise CutoverBlockedError("Update Dinext Platform before enabling parallel Workflow approval")
 	apps = frappe.get_installed_apps()
 	for app in ("project_workload_assignment", "dinext_project_tasks_gantt"):
@@ -561,10 +559,12 @@ def _phase_migrate_settings() -> dict[str, Any]:
 		ensure_workflow_approval_desk_records,
 		ensure_workflow_approval_email_templates,
 	)
+	from dinext_common.workflow_approval.permissions import restore_workflow_task_base_read
 
 	ensure_workflow_approval_custom_fields()
 	ensure_workflow_approval_email_templates()
 	ensure_workflow_approval_desk_records()
+	restore_workflow_task_base_read(during_cutover=True)
 	if "dinext_timesheets" in frappe.get_installed_apps():
 		from dinext_timesheets.patches.v1_0.configure_parallel_workflows_v2 import (
 			execute as configure_timesheet_workflows,

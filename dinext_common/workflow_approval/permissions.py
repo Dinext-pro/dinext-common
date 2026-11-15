@@ -18,6 +18,33 @@ MUTATING_PERMISSION_TYPES = {"create", "write", "delete", "share", "submit", "ca
 _task_candidates = ContextVar("workflow_task_read_candidates", default=None)
 
 
+def supports_final_task_permission_queries() -> bool:
+	from frappe.model.db_query import DatabaseQuery
+
+	return getattr(DatabaseQuery, "final_permission_query_conditions_version", 0) >= 1 and callable(
+		getattr(DatabaseQuery, "get_final_permission_query_conditions", None)
+	)
+
+
+def restore_workflow_task_base_read(*, during_cutover: bool = False) -> None:
+	"""Keep standard document access when Timesheets installs its role overrides."""
+	if not during_cutover and not frappe.conf.get("enable_parallel_workflow_approval"):
+		return
+	if not supports_final_task_permission_queries():
+		return
+	doctype = "Workflow Task"
+	timesheet_roles = ("Dinext_User", "Dinext_UTP_Appoval", "Dinext_UT_Full_Access")
+	if not frappe.db.exists("Custom DocPerm", {"parent": doctype, "role": ("in", timesheet_roles)}):
+		return
+	base = {"parent": doctype, "role": "All", "permlevel": 0, "if_owner": 0}
+	if frappe.db.exists("Custom DocPerm", base):
+		return
+	frappe.get_doc({
+		"doctype": "Custom DocPerm", "parenttype": "DocType", "parentfield": "permissions", **base, "read": 1,
+	}).insert(ignore_permissions=True)
+	frappe.clear_cache(doctype=doctype)
+
+
 @contextmanager
 def task_read_candidates(rows, source_permissions):
 	"""Bound the existing final SQL permission hook to this read's candidates."""
@@ -260,11 +287,8 @@ def has_public_number_card_permission(doc, ptype="read", user=None, debug=False)
 def require_final_task_permission_queries(user: str | None = None) -> str:
 	"""Refuse standard Task lists on platforms that can widen policy via shares."""
 	from frappe import _
-	from frappe.model.db_query import DatabaseQuery
 
-	if getattr(DatabaseQuery, "final_permission_query_conditions_version", 0) < 1 or not callable(
-		getattr(DatabaseQuery, "get_final_permission_query_conditions", None)
-	):
+	if not supports_final_task_permission_queries():
 		frappe.throw(
 			_("Update Dinext Platform to support final permission query conditions before reading Workflow Tasks."),
 			frappe.PermissionError,

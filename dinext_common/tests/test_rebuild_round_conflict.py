@@ -97,6 +97,8 @@ class TestRebuildRoundConflict(unittest.TestCase):
 			patch.object(api.engine, "_round_task_names", return_value=["WT-1"]),
 			patch.object(api.frappe, "get_doc", side_effect=[task, source, task]),
 			patch.object(api.engine, "_lock_domain_dependencies"),
+			patch("dinext_common.workflow_approval.scenarios.service.is_ready", return_value=True),
+			patch("dinext_common.workflow_approval.scenarios.service.start_cascade") as start_cascade,
 			patch.object(api.engine, "configuration_metadata", return_value=None),
 			patch.object(
 				api.engine, "preview_configuration_conflict", return_value={"reason": "configuration_changed"}
@@ -110,6 +112,7 @@ class TestRebuildRoundConflict(unittest.TestCase):
 		):
 			result = api.reset_round("R1", "Reason")
 		self.assertEqual(result["new_tasks"], ["NEW"])
+		start_cascade.assert_called_once_with(source, manual=True)
 		rebuild.assert_called_once()
 		cancel.assert_not_called()
 

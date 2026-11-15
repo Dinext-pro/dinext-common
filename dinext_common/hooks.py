@@ -223,6 +223,7 @@ before_migrate = [
 	"dinext_common.workflow_approval.localization.guard_label_migration",
 ]
 after_migrate = [
+	"dinext_common.workflow_approval.permissions.restore_workflow_task_base_read",
 	"dinext_common.workflow_approval.request_receipts.register_log_settings",
 	"dinext_common.workflow_approval.scenarios.migration.execute",
 	"dinext_common.workflow_approval.deadlines.metadata.ensure_metadata",

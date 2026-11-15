@@ -49,10 +49,12 @@ SERVER_TESTS = {
         "test_workflow_approval_api": (),
         "test_workflow_approval_engine": (),
         "test_workflow_approval_integration": (),
+        "test_workflow_approval_permissions": (),
         "test_workflow_approval_migration": (),
         "test_workflow_queued_round_failure": (),
         "test_workflow_approval_concurrency": (),
         "test_workflow_approval_signed_links": (),
+        "test_rebuild_round_conflict": (),
         "test_workflow_standards": (),
         "test_workflow_list_actions": (),
         "test_workflow_form_references": (),
@@ -202,10 +204,12 @@ def run_browser(bench, app, artifacts):
 
 
 def check_report(path, *, reject_skipped=False):
-    suites = list(ElementTree.parse(path).iter("testsuite"))
+    report = ElementTree.parse(path)
+    suites = list(report.iter("testsuite"))
     total = sum(int(suite.get("tests", 0)) for suite in suites)
     unexpected = ("failures", "errors", "skipped") if reject_skipped else ("failures", "errors")
-    if not total or any(int(suite.get(key, 0)) for suite in suites for key in unexpected):
+    incomplete = reject_skipped and (len(report.findall(".//testcase")) != total or report.find(".//skipped") is not None)
+    if not total or incomplete or any(int(suite.get(key, 0)) for suite in suites for key in unexpected):
         raise RuntimeError(f"Acceptance test report is incomplete or failing: {path.name}")
 
 
