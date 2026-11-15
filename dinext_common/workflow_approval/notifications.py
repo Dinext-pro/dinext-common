@@ -17,10 +17,10 @@ from frappe.translate import get_user_lang, print_language
 from frappe.utils import get_datetime, get_system_timezone, get_url_to_form, now_datetime
 
 from dinext_common.workflow_approval.email_settings import checked, profile_for_state, value
+from dinext_common.workflow_approval.email_templates import domain_email_template
 
 DEFAULT_IMMEDIATE_TEMPLATE = "Dinext Workflow Action"
 DEFAULT_DIGEST_TEMPLATE = "Dinext Workflow Digest"
-DEFAULT_TIMESHEET_DIGEST_TEMPLATE = "Dinext Timesheet Workflow Digest"
 DEFAULT_MAX_DIGEST_BYTES = 10 * 1024 * 1024
 
 
@@ -527,14 +527,8 @@ def send_digest(
 	if not tasks:
 		return
 	rows = _digest_rows(tasks, permitted=permitted, workflow=workflow)
-	template_name = (
-		profile.digest_template
-		or (
-			DEFAULT_TIMESHEET_DIGEST_TEMPLATE
-			if any(task.reference_doctype == "User Timesheet Position" for task in tasks)
-			else DEFAULT_DIGEST_TEMPLATE
-		)
-	)
+	domain_template = domain_email_template(tasks, "digest_template")
+	template_name = profile.digest_template or domain_template or DEFAULT_DIGEST_TEMPLATE
 	context = {
 		"workflow": workflow.as_dict(),
 		"recipient": recipient,
@@ -544,9 +538,14 @@ def send_digest(
 		"workflow_state": state,
 	}
 	if not frappe.db.exists("Email Template", template_name):
-		template_name = DEFAULT_DIGEST_TEMPLATE
+		template_name = domain_template or DEFAULT_DIGEST_TEMPLATE
 	try:
-		subject, message = _template_message(template_name, context, recipient)
+		if template_name == domain_template and not frappe.db.exists("Email Template", template_name):
+			from dinext_common.workflow_approval.email_presentation import render_standard
+
+			subject, message = render_standard(template_name, context, recipient)
+		else:
+			subject, message = _template_message(template_name, context, recipient)
 	except Exception:
 		if template_name == DEFAULT_DIGEST_TEMPLATE:
 			raise

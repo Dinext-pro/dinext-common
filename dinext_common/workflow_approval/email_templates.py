@@ -21,22 +21,48 @@ def previous_email_templates():
             "subject": '{{ _("Pending workflow approvals") }}: {{ workflow_state }}',
             "response_html": digest,
         },
-        "Dinext Timesheet Workflow Digest": {
-            "subject": '{{ _("Timesheets awaiting approval") }}',
-            "response_html": ('<p>{{ _("Timesheets awaiting approval") }}</p><ul>'
-                '{% for row in rows %}<li><a href="{{ row.link|e }}">{{ row.title|e }}</a>'
-                ' — {{ row.count }} {{ _("position(s)") }}</li>{% endfor %}</ul>'),
-        },
     }
 
 
 def default_email_templates():
     names=("Dinext Workflow Action","Dinext Workflow Digest","Dinext Workflow Correction",
-        "Dinext Timesheet Workflow Digest",
-        "Dinext Workflow Deadline Digest","Dinext Timesheet Workflow Deadline Digest")
+        "Dinext Workflow Deadline Digest")
     return {name:{"subject":('{{ header_title }}: {{ summary }}' if 'Digest' in name else
         '{{ header_title }}: {{ timesheet_title if is_timesheet else document_title|truncate(100) }}'),
         "response_html":'{% include "templates/emails/dinext_workflow.html" %}'} for name in names}
+
+
+def _provided(hook):
+    import frappe
+
+    if not getattr(frappe.local, "site", None):
+        return {}
+    return {
+        key: value
+        for provider in frappe.get_hooks(hook)
+        for key, value in frappe.get_attr(provider)().items()
+    }
+
+
+def renderable_email_templates():
+    """Include defaults from installed apps without making them Common-owned seeds."""
+    return default_email_templates() | {
+        name: template["current"]
+        for name, template in _provided("workflow_approval_email_template_providers").items()
+    }
+
+
+def domain_email_profiles():
+    return _provided("workflow_approval_email_profile_providers")
+
+
+def domain_email_template(tasks, field):
+    profiles = domain_email_profiles()
+    for task in tasks:
+        template = profiles.get(task.reference_doctype, {}).get(field)
+        if template:
+            return template
+    return None
 
 
 def legacy_email_templates():
@@ -64,14 +90,6 @@ def legacy_email_templates():
 				"</li>{% endfor %}</ul>"
 			),
 		},
-		"Dinext Timesheet Workflow Digest": {
-			"subject": "Timesheets awaiting approval",
-			"response_html": (
-				"<p>Timesheets awaiting approval:</p><ul>"
-				"{% for row in rows %}<li><a href=\"{{ row.link }}\">"
-				"{{ row.title }}</a> — {{ row.count }} position(s)</li>{% endfor %}</ul>"
-			),
-		},
 	}
 	return templates
 
@@ -79,6 +97,12 @@ def legacy_email_templates():
 def is_known_default_template(name, existing):
     if not existing.get("use_html"):
         return False
+    provided = _provided("workflow_approval_email_template_providers").get(name)
+    if provided:
+        return any(
+            all(existing.get(field) == value for field, value in version.items())
+            for version in (provided["current"], *provided.get("previous", ()))
+        )
     current = default_email_templates().get(name)
     if not current:
         return False

@@ -601,10 +601,10 @@ Email Template по умолчанию (если у Workflow нет своего
 - `Dinext Workflow Action`
 - `Dinext Workflow Correction`
 - `Dinext Workflow Digest`
-- `Dinext Timesheet Workflow Digest`
+- `Dinext Timesheet Workflow Digest` (поставляет `dinext_timesheets`)
 - `Dinext Timesheet Workflow Correction` (поставляет `dinext_timesheets`)
 - `Dinext Workflow Deadline Digest`
-- `Dinext Timesheet Workflow Deadline Digest`
+- `Dinext Timesheet Workflow Deadline Digest` (поставляет `dinext_timesheets`)
 
 Domain-приложения подключаются hooks `workflow_approval_lock_dependencies`,
 `workflow_approval_pending_approvers`, `workflow_approval_vote_completed`,

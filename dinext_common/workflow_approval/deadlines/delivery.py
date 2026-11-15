@@ -11,6 +11,9 @@ from dinext_common.workflow_approval import notifications as mail
 from dinext_common.workflow_approval.deadlines.extensions import get_extensions
 from dinext_common.workflow_approval.email_preferences import email_allowed
 from dinext_common.workflow_approval.email_settings import checked, normalize_send_times
+from dinext_common.workflow_approval.email_templates import domain_email_template
+
+DEFAULT_DEADLINE_TEMPLATE = "Dinext Workflow Deadline Digest"
 
 
 def current_policy(task, workflow):
@@ -145,11 +148,8 @@ def send_group(*, workflow, recipient, task_names, slot, now=None):
 		tasks = [task for task in tasks if delivery_slot(task, policy, recipient, now) == slot]
 		if not tasks:
 			return
-	template = policy.custom_deadline_email_template or (
-		"Dinext Timesheet Workflow Deadline Digest"
-		if tasks[0].reference_doctype == "User Timesheet Position"
-		else "Dinext Workflow Deadline Digest"
-	)
+	default_template = domain_email_template(tasks, "deadline_template") or DEFAULT_DEADLINE_TEMPLATE
+	template = policy.custom_deadline_email_template or default_template
 	# Mutable template/schedule values must never alter an already-formed incident/slot key.
 	identity = slot.isoformat() + ":" + policy_id if slot else tasks[0].deadline_assignment_id
 	key = mail.make_delivery_key(
@@ -214,13 +214,7 @@ def send_group(*, workflow, recipient, task_names, slot, now=None):
 		else:
 			from dinext_common.workflow_approval.email_presentation import render_standard
 
-			subject, message = render_standard(
-				"Dinext Timesheet Workflow Deadline Digest"
-				if any(task.reference_doctype == "User Timesheet Position" for task in tasks)
-				else "Dinext Workflow Deadline Digest",
-				context,
-				recipient,
-			)
+			subject, message = render_standard(default_template, context, recipient)
 		mail._sendmail_for_user(
 			recipient,
 			recipients=[user.email],

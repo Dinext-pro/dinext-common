@@ -10,9 +10,11 @@ import frappe
 class TestWorkflowScenarioTimesheets(unittest.TestCase):
 	def adapter(self):
 		try:
-			return importlib.import_module("dinext_common.workflow_approval.scenarios.timesheet_actions")
-		except ImportError as error:
-			self.fail(f"Timesheet scenario adapter is missing: {error}")
+			return importlib.import_module("dinext_timesheets.workflow_scenario_actions")
+		except ModuleNotFoundError as error:
+			if error.name == "dinext_timesheets":
+				self.skipTest("The optional Timesheets app is not on this bench")
+			raise
 
 	def option(self, name, workflow, process, uuid, required=False):
 		return {"action": "Approve", "next_state": "Approved", "mode": "vote", "task": f"TASK-{name}",
@@ -67,7 +69,6 @@ class TestWorkflowScenarioTimesheets(unittest.TestCase):
 			transition_uuid="UUID-A", correlation_id="request-1:0", action="Approve", source_created_at="2026-11-02")
 		with (
 			patch.object(adapter.request_receipts, "get", return_value=None),
-			patch.object(adapter, "_enabled", return_value=True),
 			patch.object(adapter, "_producer", return_value=SimpleNamespace()),
 			patch.object(frappe, "cache", SimpleNamespace(get_value=lambda key: None)),
 			patch.object(frappe, "get_doc", side_effect=lambda doctype, *args, **kwargs: parent if doctype == "User Timesheet" else source),
@@ -95,7 +96,6 @@ class TestWorkflowScenarioTimesheets(unittest.TestCase):
 			return sibling
 
 		with (
-			patch.object(adapter, "_enabled", return_value=True),
 			patch.object(adapter, "_producer", return_value=producer),
 			patch.object(adapter, "atomic_timesheet_transition", side_effect=nullcontext),
 			patch.object(adapter, "_rollup_settings", return_value=(lambda counts: {

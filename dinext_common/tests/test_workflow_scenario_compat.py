@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import sys
 import types
@@ -310,8 +311,17 @@ class TestWorkflowScenarioCompatibility(unittest.TestCase):
 		self.assertIsNone(getattr(catalog, "__workflow_docs")[1].get("style"))
 		self.assertEqual(getattr(catalog, "__workflow_docs")[1].as_dict()["name"], "Deleted Demo State")
 
+	def _timesheets_module(self, name):
+		try:
+			return importlib.import_module(f"dinext_timesheets.{name}")
+		except ModuleNotFoundError as error:
+			if error.name == "dinext_timesheets":
+				self.skipTest("The optional Timesheets app is not on this bench")
+			raise
+
 	def test_timesheet_task_match_rejects_same_state_from_another_or_unlinked_process(self):
-		from dinext_common.workflow_approval.scenarios import service, timesheets
+		from dinext_common.workflow_approval.scenarios import service
+		timesheets = self._timesheets_module("workflow_scenario_positions")
 
 		source = self.source("SOURCE", "one")
 		source.creation = "2026-11-11 10:00:00"
@@ -348,7 +358,9 @@ class TestWorkflowScenarioCompatibility(unittest.TestCase):
 		self.assertEqual(doc.status, "Stale legacy state")
 
 	def test_timesheet_selected_field_change_rolls_up_once_without_rewriting_domain_status(self):
-		from dinext_common.workflow_approval.scenarios import timesheets
+		from dinext_common.workflow_approval.scenarios import service
+		workflow_approval = self._timesheets_module("workflow_approval")
+		timesheets = self._timesheets_module("workflow_scenario_positions")
 
 		source = self.source("SOURCE", "one")
 		before = self.source("SOURCE", "one")
@@ -356,23 +368,23 @@ class TestWorkflowScenarioCompatibility(unittest.TestCase):
 		source.status = before.status = "Pending Approval"
 		source.state_one = "Rejected"
 		source.user_timesheet = "PARENT"
-		self.service.get_context = lambda doc: {"state_field": "state_one"}
 		events = []
-		producer = SimpleNamespace(_enabled=lambda: True,
-			_recalculate_parent=lambda parent, doc, old: events.append("rollup"))
-		wrapped = timesheets._wrap_source_update(lambda *args: events.append("legacy"), producer)
-		with patch.object(frappe, "get_doc", return_value=SimpleNamespace(name="PARENT")):
-			wrapped(source)
+		with (
+			patch.object(service, "get_context", return_value={"state_field": "state_one"}),
+			patch.object(workflow_approval, "_enabled", return_value=True),
+			patch.object(workflow_approval, "_recalculate_parent", side_effect=lambda *args: events.append("rollup")),
+			patch.object(frappe, "get_doc", return_value=SimpleNamespace(name="PARENT")),
+		):
+			self.assertTrue(timesheets.handle_selected_state_update(source))
 			self.assertEqual(events, ["rollup"])
 			self.assertEqual(source.status, "Pending Approval")
 			events.clear()
 			frappe.flags.defer_timesheet_rollup = True
-			wrapped(source)
+			self.assertTrue(timesheets.handle_selected_state_update(source))
 			self.assertEqual(events, [])
 			frappe.flags.defer_timesheet_rollup = False
 			source.status = "Rejected"
-			wrapped(source)
-			self.assertEqual(events, ["legacy"])
+			self.assertFalse(timesheets.handle_selected_state_update(source))
 
 	def test_native_apply_pins_before_saving_and_finishes_only_after_success(self):
 		source = self.source("SOURCE", "one")

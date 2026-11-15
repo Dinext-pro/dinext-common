@@ -23,7 +23,7 @@ DEPENDENCIES = {
     "frappe_comment_xt": "9b2e6b44a291f1cbdcf0808ffa34f250dbd0dfc6",
     "dinext_projects": "1e2edd35b1173c101c74d15a61f2f952354fb43d",
     "dinext_projects_pl": "d3a6e0c6edad7267fe41dc6dbe7f923acd001df5",
-    "dinext_timesheets": "f1e98e98c8baf8b8c9ab19122819698c61ddce26",
+    "dinext_timesheets": "51c21dcf116bdfb92ed6163fbd1def43ac4cce18",
     "project_workload_assignment": "e0689b7f8d0def8b1f6cf5bd7f766b0f604c1d06",
     "dinext_project_tasks_gantt": "d5080b2d3d5bb9e492ced30eb0ded0767e030043",
 }
@@ -45,6 +45,8 @@ SERVER_TESTS = {
         "test_workflow_approval_integration": (),
         "test_workflow_approval_concurrency": (),
         "test_workflow_list_actions": (),
+        "test_workflow_form_references": (),
+        "test_workflow_localization": (),
         "test_workflow_scenario_api": (),
         "test_workflow_scenario_bulk": (),
         "test_workflow_scenario_compat": (),
@@ -63,6 +65,8 @@ SERVER_TESTS = {
         "test_deadlines": (),
         "test_timesheet_settings_refinements": (),
         "test_timesheet_team_lead_access": (),
+        "test_workflow_email_ownership": (),
+        "test_workflow_localization": (),
     },
 }
 

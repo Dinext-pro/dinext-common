@@ -393,6 +393,15 @@ def _set_task_values(task_name: str, values: dict[str, Any]) -> None:
 	frappe.db.set_value("Workflow Task", task_name, values, update_modified=False)
 
 
+class WorkflowDomainRollbackError(frappe.ValidationError):
+	"""A domain validation requires rolling back the entire vote."""
+
+
+def domain_handler(doctype: str, operation: str):
+	paths = frappe.get_hooks("workflow_approval_domain_handlers", default={}).get(doctype, {}).get(operation)
+	return frappe.get_attr(paths[-1]) if paths else None
+
+
 def _lock_domain_dependencies(doctype: str, name: str) -> list[object]:
 	"""Lock producer-owned aggregate roots before the approval source row."""
 	dependencies: set[tuple[str, str]] = set()
@@ -1438,12 +1447,8 @@ def cast_vote(
 
 	if expected_creation and str(get_datetime(source.creation)) != expected_creation:
 		raise WorkflowApprovalConflictError(_("The Workflow target no longer matches the selected document"))
-	operation = nullcontext()
-	if source.doctype == "User Timesheet Position":
-		from dinext_common.workflow_approval.scenarios.timesheet_actions import atomic_timesheet_transition
-
-		operation = atomic_timesheet_transition()
-	with operation:
+	operation = domain_handler(source.doctype, "vote_context")
+	with operation() if operation else nullcontext():
 		return _cast_locked_vote(
 			task, source, transition_uuid, action, comment, request_id, completion_source, receipt_managed
 		)
@@ -1524,10 +1529,9 @@ def _cast_locked_vote(
 		receipt = _reserve_vote_response(task, source, request_id, parameters)
 		if receipt.response is not None:
 			return request_receipts.replay(receipt, parameters)
-	if source.doctype == "User Timesheet Position":
-		from dinext_common.workflow_approval.scenarios.timesheet_actions import validate_position_vote
-
-		validate_position_vote(source, transition.next_state)
+	validate_vote = domain_handler(source.doctype, "validate_vote")
+	if validate_vote:
+		validate_vote(source, transition.next_state)
 	fingerprint = get_content_fingerprint(source, workflow)
 	if service.is_ready():
 		service.start_cascade(source, manual=True)
@@ -1715,11 +1719,8 @@ def _finalize_round(
 		for manager, callbacks in callback_snapshots.items():
 			manager._functions.clear()
 			manager._functions.extend(callbacks)
-		if source.doctype == "User Timesheet Position":
-			from dinext_common.workflow_approval.scenarios.timesheet_actions import TimesheetTransitionError
-
-			if isinstance(caught, TimesheetTransitionError):
-				raise
+		if isinstance(caught, WorkflowDomainRollbackError):
+			raise
 		notes = getattr(frappe.flags, "workflow_finalization_errors", None)
 		if not isinstance(notes, list):
 			notes = []
@@ -1977,7 +1978,8 @@ def apply_domain_transition(
 	try:
 		frappe.flags.in_dinext_workflow_finalization = True
 		frappe.session.user = actor
-		if doctype == "User Timesheet Position" and state_field != "workflow_state":
+		use_authorized_transition = domain_handler(doctype, "use_authorized_transition")
+		if use_authorized_transition and use_authorized_transition(state_field):
 			_apply_winning_transition(source, transition.action)
 		else:
 			core_apply_workflow(source, transition.action)

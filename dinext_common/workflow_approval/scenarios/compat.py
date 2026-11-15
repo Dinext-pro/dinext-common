@@ -452,10 +452,6 @@ def install() -> None:
 				original = getattr(workflow_action, name)
 				replace_function(original, _wrap_source_helper(original))
 			_install_erpnext_adapter()
-			from dinext_common.workflow_approval.scenarios import timesheet_actions, timesheets
-
-			timesheets.install()
-			timesheet_actions.install()
 			_installed = True
 		finally:
 			_installing = False

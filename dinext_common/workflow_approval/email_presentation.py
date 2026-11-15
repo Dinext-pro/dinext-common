@@ -329,11 +329,11 @@ def prepare_context(template_name, context, user):
 
 
 def render_standard(name, context, user):
-	from dinext_common.workflow_approval.email_templates import default_email_templates
+	from dinext_common.workflow_approval.email_templates import renderable_email_templates
 
 	with language_context(user):
 		context = prepare_context(name, context, user)
-		template = default_email_templates()[name]
+		template = renderable_email_templates()[name]
 		return (
 			frappe.render_template(template["subject"], context),
 			frappe.render_template(template["response_html"], context),

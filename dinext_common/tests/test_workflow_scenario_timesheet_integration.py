@@ -9,7 +9,7 @@ import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 from dinext_common.workflow_approval import api, request_receipts
-from dinext_common.workflow_approval.scenarios import service, timesheet_actions
+from dinext_common.workflow_approval.scenarios import service
 from dinext_common.workflow_approval.scenarios.metadata import next_selection_order
 
 POSITION = "User Timesheet Position"
@@ -23,6 +23,9 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 			raise unittest.SkipTest("Requires an explicitly disposable Workflow scenario test site")
 		if "dinext_timesheets" not in frappe.get_installed_apps():
 			raise unittest.SkipTest("Requires the optional Timesheets app")
+		from dinext_timesheets import workflow_scenario_actions
+
+		cls.timesheet_actions = workflow_scenario_actions
 		for doctype, module, name in (
 			("Worker Utilization Table", "project_workload_assignment", "worker_utilization_table"),
 			("Cost Center Table", "dinext_projects_pl", "cost_center_table"),
@@ -165,17 +168,17 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		self.assertEqual({row["approver"] for row in pending}, {self.reviewer, self.other})
 		self.assertEqual({row["approver_name"] for row in pending},
 			{self.reviewer_name, self.other_name})
-		available = timesheet_actions.get_timesheet_position_actions(self.parent.name)
+		available = self.timesheet_actions.get_timesheet_position_actions(self.parent.name)
 		chosen = next(row for row in available["actions"] if row["action"] == self.action)
 		self.assertTrue(chosen["comment_is_required"])
 		self.assertEqual({row["transition_uuid"] for row in chosen["targets"]},
 			{self.marker + "-A", self.marker + "-B"})
 		self.assertEqual({row["workflow"] for row in chosen["targets"]}, {row.name for row in self.workflows})
 		with self.assertRaises(frappe.ValidationError):
-			timesheet_actions.apply_timesheet_position_action(self.parent.name, self.action, targets=chosen["targets"])
+			self.timesheet_actions.apply_timesheet_position_action(self.parent.name, self.action, targets=chosen["targets"])
 		events = []
 		with patch.object(frappe, "publish_realtime", side_effect=lambda event, data=None, **kwargs: events.append((event, data or kwargs.get("message") or {}))):
-			result = timesheet_actions.apply_timesheet_position_action(self.parent.name, self.action,
+			result = self.timesheet_actions.apply_timesheet_position_action(self.parent.name, self.action,
 				comment="Synthetic mixed-schema review", request_id=self.marker, track_progress=True,
 				targets=chosen["targets"])
 		self.assertEqual((result["processed"], result["total"]), (2, 2))
@@ -189,19 +192,19 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		self.assertEqual(self.parent.reload().ut_status, "Rejected")
 		self.assertEqual(service.get_context(a)["process_status"], "Running")
 		# A completed vote cannot reappear as a domain action while quorum waits.
-		actions_after = timesheet_actions.get_timesheet_position_actions(self.parent.name)
+		actions_after = self.timesheet_actions.get_timesheet_position_actions(self.parent.name)
 		self.assertNotIn(self.action, {row["action"] for row in actions_after["actions"]})
 		before = frappe.db.count("Workflow Task", {"reference_doctype": POSITION,
 			"reference_name": ("in", [a.name, b.name]), "status": "Completed"})
-		replayed = timesheet_actions.apply_timesheet_position_action(self.parent.name, self.action,
+		replayed = self.timesheet_actions.apply_timesheet_position_action(self.parent.name, self.action,
 			comment="Synthetic mixed-schema review", request_id=self.marker, targets=chosen["targets"])
 		self.assertEqual(replayed, result)
 		with self.assertRaises(frappe.ValidationError):
-			timesheet_actions.apply_timesheet_position_action(self.parent.name, self.action,
+			self.timesheet_actions.apply_timesheet_position_action(self.parent.name, self.action,
 				comment="A different comment", request_id=self.marker, targets=chosen["targets"])
 		frappe.db.delete(request_receipts.DOCTYPE, {"name": request_receipts.request_key("Timesheet", self.marker)})
 		with self.assertRaises(frappe.ValidationError):
-			timesheet_actions.apply_timesheet_position_action(self.parent.name, self.action,
+			self.timesheet_actions.apply_timesheet_position_action(self.parent.name, self.action,
 				comment="Synthetic mixed-schema review", request_id=self.marker, targets=chosen["targets"])
 		self.assertEqual(frappe.db.count("Workflow Task", {"reference_doctype": POSITION,
 			"reference_name": ("in", [a.name, b.name]), "status": "Completed"}), before)
@@ -278,14 +281,14 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		comments = self._workflow_comments(first, second)
 		frappe.set_user(self.other)
 
-		with self.assertRaises(timesheet_actions.TimesheetTransitionError):
+		with self.assertRaises(self.timesheet_actions.TimesheetTransitionError):
 			self._reject(first, task, "A", request_id=self.marker)
 
 		self.assertEqual(self._state_of_task(task), ("Working", "Open"))
 		self.assertEqual(self._workflow_comments(first, second), comments)
 		self.assertIsNone(request_receipts.get(request_receipts.request_key("Vote", self.marker)))
 		self.assertEqual(self.parent.reload().ut_status, "Pending Approval")
-		actions = timesheet_actions.get_timesheet_position_actions(self.parent.name)["actions"]
+		actions = self.timesheet_actions.get_timesheet_position_actions(self.parent.name)["actions"]
 		reject = next(row for row in actions if row["action"] == self.action)
 		self.assertEqual([target["name"] for target in reject["targets"]], [first.name])
 		self.assertTrue(reject["runs_timesheet_checks"])
@@ -325,10 +328,10 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		self.assertEqual(self.parent.reload().ut_status, "Pending Approval")
 		comment_count = self._workflow_comments(first, second)
 		callbacks = tuple(frappe.db.after_commit._functions)
-		actions = timesheet_actions.get_timesheet_position_actions(self.parent.name)["actions"]
+		actions = self.timesheet_actions.get_timesheet_position_actions(self.parent.name)["actions"]
 		self.assertTrue(next(row for row in actions if row["action"] == self.action)["runs_timesheet_checks"])
 
-		with self.assertRaises(timesheet_actions.TimesheetTransitionError):
+		with self.assertRaises(self.timesheet_actions.TimesheetTransitionError):
 			self._reject(first, final_vote, "A")
 
 		self.assertEqual(tuple(frappe.db.after_commit._functions), callbacks)
@@ -351,9 +354,9 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		task = self._task_for(first, self.other)
 		frappe.set_user(self.other)
 
-		actions = timesheet_actions.get_timesheet_position_actions(self.parent.name)["actions"]
+		actions = self.timesheet_actions.get_timesheet_position_actions(self.parent.name)["actions"]
 		self.assertTrue(next(row for row in actions if row["action"] == self.action)["runs_timesheet_checks"])
-		with self.assertRaises(timesheet_actions.TimesheetTransitionError):
+		with self.assertRaises(self.timesheet_actions.TimesheetTransitionError):
 			self._reject(first, task, "A")
 		self.assertEqual(self._state_of_task(task), ("Working", "Open"))
 
@@ -365,7 +368,7 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		frappe.set_user(self.reviewer)
 
 		with self.assertRaises(frappe.ValidationError):
-			timesheet_actions.apply_timesheet_position_action(
+			self.timesheet_actions.apply_timesheet_position_action(
 				self.parent.name, self.action, comment="Act on both synthetic positions"
 			)
 

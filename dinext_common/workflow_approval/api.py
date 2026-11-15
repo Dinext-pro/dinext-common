@@ -1061,31 +1061,38 @@ def _active_round_rows(reference_doctype: str, reference_names: list[str]) -> li
 	)
 
 
+def _form_references(source) -> tuple[str, list[str]] | None:
+	"""Resolve references from the installed application that owns the aggregate."""
+	providers = frappe.get_hooks("workflow_approval_form_references", default={}).get(source.doctype)
+	if providers:
+		return frappe.get_attr(providers[-1])(source)
+	return None
+
+
 @frappe.whitelist()
 def get_workflow_comments(doctype: str, name: str) -> list[WorkflowCommentResponse]:
 	"""Read required comments from the source's most recent decision rounds."""
 	source = frappe.get_doc(doctype, name)
 	source.check_permission("read")
-	if doctype != "User Timesheet":
+	resolved = _form_references(source)
+	if resolved is None:
 		return get_latest_round_comments(doctype, [name])
-	positions = frappe.get_all(
-		"User Timesheet Position", filters={"user_timesheet": name}, pluck="name"
-	)
+	reference_doctype, reference_names = resolved
 	references = [
-		{"reference_doctype": "User Timesheet Position", "reference_name": position}
-		for position in positions
+		{"reference_doctype": reference_doctype, "reference_name": reference_name}
+		for reference_name in reference_names
 	]
 	permissions = {}
 	prepare_source_permissions(references, frappe.session.user, permissions)
 	readable = [
-		position for position in positions
+		reference_name for reference_name in reference_names
 		if (
-			permissions[("User Timesheet Position", position)]
-			if ("User Timesheet Position", position) in permissions
-			else frappe.has_permission("User Timesheet Position", "read", doc=position)
+			permissions[(reference_doctype, reference_name)]
+			if (reference_doctype, reference_name) in permissions
+			else frappe.has_permission(reference_doctype, "read", doc=reference_name)
 		)
 	]
-	return get_latest_round_comments("User Timesheet Position", readable)
+	return get_latest_round_comments(reference_doctype, readable)
 
 
 @frappe.whitelist()
@@ -1093,15 +1100,7 @@ def get_form_approval_banner(doctype: str, name: str) -> dict[str, Any]:
 	"""Return pending approvers alongside any round rebuild indicators."""
 	source = frappe.get_doc(doctype, name)
 	source.check_permission("read")
-	reference_doctype = doctype
-	reference_names = [name]
-	if doctype == "User Timesheet":
-		reference_doctype = "User Timesheet Position"
-		reference_names = frappe.get_all(
-			"User Timesheet Position",
-			filters={"user_timesheet": name},
-			pluck="name",
-		)
+	reference_doctype, reference_names = _form_references(source) or (doctype, [name])
 	if not reference_names:
 		return {
 			"round_id": None,

@@ -88,8 +88,7 @@
 			finally { activeTransition = previous; }
 		},
 		prepareWorkflowRequest(method, args) {
-			if (enabled() && ["dinext_timesheets.workflow_approval.apply_timesheet_position_action",
-				"dinext_common.workflow_approval.api.bulk_vote", "frappe.model.workflow.bulk_workflow_approval"].includes(method) &&
+			if (enabled() && ["dinext_common.workflow_approval.api.bulk_vote", "frappe.model.workflow.bulk_workflow_approval"].includes(method) &&
 				activeTransition?.action === args.action && activeTransition.targets && !args.targets)
 				return { ...args, targets: activeTransition.targets };
 			return args;

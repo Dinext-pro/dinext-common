@@ -124,7 +124,7 @@ def previews():
 
 	from dinext_common.tests.test_workflow_email_presentation import TestWorkflowEmailPresentation
 	from dinext_common.workflow_approval.email_presentation import language_context, render_standard
-	from dinext_common.workflow_approval.email_templates import default_email_templates
+	from dinext_common.workflow_approval.email_templates import renderable_email_templates
 	from dinext_common.workflow_approval.notifications import _sendmail_for_user, _template_message
 
 	fixture = TestWorkflowEmailPresentation()
@@ -158,7 +158,7 @@ def previews():
 	try:
 		for language in ("ru", "en", ""):
 			frappe.db.set_value("User", base.EDITOR, "language", language, update_modified=False)
-			for name in (*default_email_templates(), correction):
+			for name in (*renderable_email_templates(), correction):
 				render = _template_message if name == correction else render_standard
 				subject, body = render(
 					name, context if "Timesheet" in name else generic, base.EDITOR

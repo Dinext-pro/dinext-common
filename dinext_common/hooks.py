@@ -66,9 +66,7 @@ fixtures = [
                 "Dinext Workflow Action",
                 "Dinext Workflow Correction",
                 "Dinext Workflow Digest",
-                "Dinext Timesheet Workflow Digest",
                 "Dinext Workflow Deadline Digest",
-                "Dinext Timesheet Workflow Deadline Digest",
             ]]
         ]
     },
@@ -383,12 +381,6 @@ get_changelog_feed = "dinext_common.changelog_feed.get_feed"
 # ------------------------------
 #
 override_whitelisted_methods = {
-	"dinext_timesheets.workflow_approval.get_timesheet_position_actions": (
-		"dinext_common.workflow_approval.scenarios.timesheet_actions.get_timesheet_position_actions"
-	),
-	"dinext_timesheets.workflow_approval.apply_timesheet_position_action": (
-		"dinext_common.workflow_approval.scenarios.timesheet_actions.apply_timesheet_position_action"
-	),
 	"frappe.apps.get_apps": "dinext_common.apps.get_apps",
 	"frappe.model.workflow.apply_workflow": (
 		"dinext_common.workflow_approval.api.apply_workflow"

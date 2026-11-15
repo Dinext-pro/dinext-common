@@ -19,8 +19,8 @@ def preserve_workflow_email_settings(doc, method=None):
         return
     existing = frappe.get_doc("Workflow", doc.name)
     if existing.get("custom_email_profile_version") != 1:
-        from dinext_common.workflow_approval.email_migration import APPROVAL_STATES, _suppress_existing_corrections
-        if doc.name in APPROVAL_STATES:
+        from dinext_common.workflow_approval.email_migration import _suppress_existing_corrections, supported_workflow_names
+        if doc.name in supported_workflow_names():
             # A fixture's version describes its defaults, not this site's completed upgrade.
             doc.custom_email_profile_version = 0
             _suppress_existing_corrections(doc.name)

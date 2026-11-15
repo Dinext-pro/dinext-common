@@ -569,10 +569,10 @@ Default Email Templates, used when no applicable custom template is configured:
 - `Dinext Workflow Action`
 - `Dinext Workflow Correction`
 - `Dinext Workflow Digest`
-- `Dinext Timesheet Workflow Digest`
+- `Dinext Timesheet Workflow Digest` (provided by `dinext_timesheets`)
 - `Dinext Timesheet Workflow Correction` (provided by `dinext_timesheets`)
 - `Dinext Workflow Deadline Digest`
-- `Dinext Timesheet Workflow Deadline Digest`
+- `Dinext Timesheet Workflow Deadline Digest` (provided by `dinext_timesheets`)
 
 Domain applications integrate through `workflow_approval_lock_dependencies`, `workflow_approval_pending_approvers`, `workflow_approval_vote_completed` and `workflow_approval_digest_item`. AFL form behavior belongs to `dinext_projects`; User Timesheet position actions are orchestrated by `dinext_timesheets.workflow_approval`.
 
