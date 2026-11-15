@@ -81,7 +81,11 @@ def current_checks(checks, revisions):
     for check in checks:
         if check.get('head_sha') not in revisions:
             continue
-        key = (check['name'], check.get('app', {}).get('id'))
+        name = check['name']
+        label = name.rsplit(' / ', 1)[-1]
+        if label in ('Cypress acceptance', 'Compatibility acceptance'):
+            name = label
+        key = (name, check.get('app', {}).get('id'))
         if key not in latest or check['id'] > latest[key]['id']:
             latest[key] = check
     return list(latest.values())

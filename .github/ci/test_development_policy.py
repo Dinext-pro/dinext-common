@@ -90,6 +90,30 @@ class PolicyTests(unittest.TestCase):
         new = {**check('Cypress acceptance', 'failure'), 'id': 11, 'head_sha': 'current'}
         self.assertEqual(current_checks([new, old], ['current']), [new])
 
+    def test_latest_acceptance_result_wins_across_workflow_job_names(self):
+        paths = ['app/public/js/form.js']
+        for label in ('Cypress acceptance', 'Compatibility acceptance'):
+            other = 'Compatibility acceptance' if label == 'Cypress acceptance' else 'Cypress acceptance'
+            passing_other = {**check(other), 'id': 12, 'head_sha': 'head'}
+            for old_name, new_name in ((label, 'Acceptance / ' + label), ('Acceptance / ' + label, label)):
+                old = {**check(old_name), 'id': 10, 'head_sha': 'head'}
+                for status, conclusion in (('completed', 'failure'), ('completed', 'skipped'), ('in_progress', None)):
+                    with self.subTest(label=label, old_name=old_name, status=status, conclusion=conclusion):
+                        latest = {**check(new_name, conclusion), 'id': 11, 'head_sha': 'merge', 'status': status}
+                        evidence = current_checks([latest, old, passing_other], ['head', 'merge'])
+                        self.assertEqual(validate_checks(paths, FORK, evidence), [label + ' for this PR revision'])
+
+    def test_latest_acceptance_does_not_use_unrelated_checks(self):
+        passing = {**check('Acceptance / Cypress acceptance'), 'id': 10, 'head_sha': 'merge'}
+        stale = {**check('Cypress acceptance', 'failure'), 'id': 11, 'head_sha': 'stale'}
+        untrusted = {**check('Cypress acceptance', 'failure', app=42), 'id': 12, 'head_sha': 'head'}
+        unrelated = {**check('Acceptance / App unit tests'), 'id': 13, 'head_sha': 'head'}
+        required_unit = {**check('App unit tests'), 'id': 14, 'head_sha': 'head'}
+        evidence = current_checks([passing, stale, untrusted, unrelated, required_unit], ['head', 'merge'])
+        self.assertEqual(validate_checks(['app/public/js/form.js'], OWN, evidence), [])
+        self.assertIn(unrelated, evidence)
+        self.assertIn(required_unit, evidence)
+
     def test_current_merge_evidence_is_accepted(self):
         merged = {**check('Cypress acceptance'), 'id': 11, 'head_sha': 'current-merge'}
         self.assertEqual(current_checks([merged], ['current', 'current-merge']), [merged])
