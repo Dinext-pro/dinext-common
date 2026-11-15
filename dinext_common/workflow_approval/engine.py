@@ -1524,6 +1524,10 @@ def _cast_locked_vote(
 		receipt = _reserve_vote_response(task, source, request_id, parameters)
 		if receipt.response is not None:
 			return request_receipts.replay(receipt, parameters)
+	if source.doctype == "User Timesheet Position":
+		from dinext_common.workflow_approval.scenarios.timesheet_actions import validate_position_vote
+
+		validate_position_vote(source, transition.next_state)
 	fingerprint = get_content_fingerprint(source, workflow)
 	if service.is_ready():
 		service.start_cascade(source, manual=True)

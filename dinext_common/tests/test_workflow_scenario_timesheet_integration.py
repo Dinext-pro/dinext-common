@@ -261,46 +261,74 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 			"comment_type": "Workflow",
 		})
 
-	def _reject(self, position, task_name, suffix):
+	def _reject(self, position, task_name, suffix, *, request_id=None):
 		return api.apply_workflow(
 			{"doctype": POSITION, "name": position.name},
 			self.action,
 			transition_uuid=self.marker + "-" + suffix,
 			task_name=task_name,
 			comment="Reject this synthetic position",
+			request_id=request_id,
 		)
 
-	def test_vote_waiting_for_quorum_does_not_claim_it_will_check_timesheet(self):
-		self._set_rules(("Rejected", "Rejected", "Any", 1, 0))
+	def test_first_vote_checks_filling_before_quorum_and_parent_threshold(self):
+		self._set_rules(("Rejected", "Rework", "All", 1, 0))
+		first, second = self.positions
+		task = self._task_for(first, self.other)
+		comments = self._workflow_comments(first, second)
 		frappe.set_user(self.other)
 
+		with self.assertRaises(timesheet_actions.TimesheetTransitionError):
+			self._reject(first, task, "A", request_id=self.marker)
+
+		self.assertEqual(self._state_of_task(task), ("Working", "Open"))
+		self.assertEqual(self._workflow_comments(first, second), comments)
+		self.assertIsNone(request_receipts.get(request_receipts.request_key("Vote", self.marker)))
+		self.assertEqual(self.parent.reload().ut_status, "Pending Approval")
 		actions = timesheet_actions.get_timesheet_position_actions(self.parent.name)["actions"]
 		reject = next(row for row in actions if row["action"] == self.action)
+		self.assertEqual([target["name"] for target in reject["targets"]], [first.name])
+		self.assertTrue(reject["runs_timesheet_checks"])
 
-		self.assertEqual([target["name"] for target in reject["targets"]], [self.positions[0].name])
-		self.assertFalse(reject["runs_timesheet_checks"])
+	def test_each_new_vote_checks_filling_and_preserves_accepted_votes(self):
+		from dinext_timesheets import workflow_approval
 
-	def test_actual_status_check_reverts_only_vote_that_reaches_quorum(self):
 		first, second = self.positions
 		self._set_rules(("Rejected", "Rejected", "All", 1, 0))
 		first_vote = self._task_for(first, self.other)
 		final_vote = self._task_for(first, self.reviewer)
 		second_rejection = self._task_for(second, self.reviewer)
 
-		frappe.set_user(self.other)
-		self.assertFalse(self._reject(first, first_vote, "A")["transitioned"])
-		frappe.set_user(self.reviewer)
-		self.assertTrue(
-			self._reject(second, second_rejection, "B")["transitioned"],
-			frappe.flags.workflow_finalization_errors,
-		)
+		with patch.object(workflow_approval, "_validate_positions") as validate_filling:
+			frappe.set_user(self.other)
+			first_result = self._reject(first, first_vote, "A", request_id=self.marker)
+			self.assertFalse(first_result["transitioned"])
+			validate_filling.assert_called_once()
+
+			# A network replay returns the first result even when current filling would fail.
+			validate_filling.side_effect = frappe.ValidationError("Filling changed after the first vote")
+			self.assertEqual(self._reject(first, first_vote, "A", request_id=self.marker), first_result)
+			validate_filling.assert_called_once()
+			validate_filling.side_effect = None
+
+			frappe.set_user(self.reviewer)
+			self.assertTrue(
+				self._reject(second, second_rejection, "B")["transitioned"],
+				frappe.flags.workflow_finalization_errors,
+			)
+			self.assertEqual(validate_filling.call_count, 2)
+			for event in validate_filling.call_args_list:
+				parent, checked_positions = event.args
+				self.assertEqual(parent.name, self.parent.name)
+				self.assertCountEqual([position.name for position in checked_positions], [first.name, second.name])
+
 		self.assertEqual(self.parent.reload().ut_status, "Pending Approval")
 		comment_count = self._workflow_comments(first, second)
 		callbacks = tuple(frappe.db.after_commit._functions)
 		actions = timesheet_actions.get_timesheet_position_actions(self.parent.name)["actions"]
 		self.assertTrue(next(row for row in actions if row["action"] == self.action)["runs_timesheet_checks"])
 
-		with self.assertRaises(frappe.ValidationError):
+		with self.assertRaises(timesheet_actions.TimesheetTransitionError):
 			self._reject(first, final_vote, "A")
 
 		self.assertEqual(tuple(frappe.db.after_commit._functions), callbacks)
@@ -315,6 +343,19 @@ class TestWorkflowScenarioTimesheetIntegration(unittest.TestCase):
 		self._set_rules(("Rejected", "Rejected", "All", 0, 0))
 		self.assertTrue(self._reject(first, final_vote, "A")["transitioned"])
 		self.assertEqual(self.parent.reload().ut_status, "Rejected")
+
+	def test_checked_vote_still_validates_after_parent_has_reached_status(self):
+		self._set_rules(("Rejected", "Rejected", "Any", 1, 0))
+		frappe.db.set_value("User Timesheet", self.parent.name, "ut_status", "Rejected")
+		first = self.positions[0]
+		task = self._task_for(first, self.other)
+		frappe.set_user(self.other)
+
+		actions = timesheet_actions.get_timesheet_position_actions(self.parent.name)["actions"]
+		self.assertTrue(next(row for row in actions if row["action"] == self.action)["runs_timesheet_checks"])
+		with self.assertRaises(timesheet_actions.TimesheetTransitionError):
+			self._reject(first, task, "A")
+		self.assertEqual(self._state_of_task(task), ("Working", "Open"))
 
 	def test_failed_status_check_rolls_back_every_vote_in_parent_operation(self):
 		self._set_rules(("Rejected", "Rejected", "Any", 1, 0))

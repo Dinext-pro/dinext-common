@@ -140,32 +140,34 @@ context("mixed Workflow scenarios in Timesheets", () => {
 		cy.noPermissionDialog();
 	});
 
-	it("checks filling for the configured timesheet status and restores input after a failure", () => {
+	it("checks filling on the first vote before quorum and honors clearing Timesheet Check", () => {
 		const data = fixture();
 		const parentRoute = `/app/user-timesheet/${encodeURIComponent(data.parent)}`;
 		const group = ".page-container:visible .inner-group-button[data-label='Workflow']";
 		const comment = "Review the synthetic timesheet rule";
-		const configureCheck = (status) => {
+		const configureCheck = (status, approver = data.actor) => {
 			cy.login();
 			cy.openDesk();
 			cy.call(`${helper}.set_check_status`, { status }).then(({ body }) => {
 				expect(body.message.check_status).to.equal(status);
 			});
-			cy.login(data.actor, data.password);
+			cy.login(approver, data.password);
 			cy.openDesk(parentRoute);
 			cy.window().should((win) => {
 				expect(win.cur_frm?.doc?.name).to.equal(data.parent);
 				expect(win.cur_frm.ut?.table).to.exist;
 			});
 		};
-		const chooseReject = () => {
+		const chooseReject = (requiresComment = false) => {
 			cy.get(`${group} > button`).should("be.visible").click();
 			cy.contains(`${group} .dropdown-item`, data.action).should("be.visible").click();
-			cy.get(".modal:visible textarea[data-fieldname='comment']").type(comment).blur();
-			cy.get(".modal:visible .btn-primary").should("not.be.disabled").click();
+			if (requiresComment) {
+				cy.get(".modal:visible textarea[data-fieldname='comment']").type(comment).blur();
+				cy.get(".modal:visible .btn-primary").should("not.be.disabled").click();
+			}
 		};
 
-		configureCheck("Rejected");
+		configureCheck("Rejected", data.other);
 		cy.intercept("POST", `**/api/method/${parentApply}`).as("timesheetApply");
 		chooseReject();
 		cy.contains(".modal:visible .modal-title", "Timesheet Validation Errors").should("be.visible");
@@ -179,19 +181,19 @@ context("mixed Workflow scenarios in Timesheets", () => {
 		// List rows use this server method directly, without the tabular filling hint.
 		cy.call(bulkVote, {
 			doctype: "User Timesheet Position",
-			names: [data.positions[1]],
+			names: [data.positions[0]],
 			action: data.action,
-			transition_uuid: data.uuids[1],
+			transition_uuid: data.uuids[0],
 			comment,
 		}).then((response) => {
 			expect(response.body.message.succeeded).to.deep.equal([]);
-			expect(response.body.message.failed.map((row) => row.name)).to.deep.equal([data.positions[1]]);
+			expect(response.body.message.failed.map((row) => row.name)).to.deep.equal([data.positions[0]]);
 		});
-		cy.call(contextMethod, { doctype: "User Timesheet Position", name: data.positions[1] })
+		cy.call(contextMethod, { doctype: "User Timesheet Position", name: data.positions[0] })
 			.its("body.message.context.state").should("equal", data.initial_state);
 
 		configureCheck(null);
-		chooseReject();
+		chooseReject(true);
 		cy.wait("@timesheetApply").its("response.statusCode").should("equal", 200);
 		cy.window().should((win) => {
 			expect(win.cur_frm.doc.ut_status).to.equal("Rejected");

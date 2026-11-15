@@ -238,10 +238,16 @@ def validate_targets(expected: list[TimesheetPositionTarget], targets: object) -
 			raise engine.WorkflowApprovalConflictError(_("No unique active Workflow Task is available for this action"))
 
 
-def _rollup_settings():
-	from dinext_timesheets.timesheet_settings import matching_position_rule, timesheet_check_status
+def _filling_check_rule() -> dict | None:
+	from dinext_timesheets.timesheet_settings import position_rules
 
-	return matching_position_rule, timesheet_check_status
+	return next((row for row in position_rules() if row["check_timesheet"]), None)
+
+
+def _rollup_settings():
+	from dinext_timesheets.timesheet_settings import matching_position_rule
+
+	return matching_position_rule, _filling_check_rule
 
 
 def _position_state(position, context: service.WorkflowContext) -> str:
@@ -263,19 +269,44 @@ def _move_position(position, context: service.WorkflowContext, target: str, reas
 	return True
 
 
+def _locked_positions(timesheet_name: str, source) -> list:
+	names = frappe.db.get_values(
+		POSITION, {"user_timesheet": timesheet_name}, "name", order_by="name asc",
+		pluck=True, for_update=True,
+	)
+	return [
+		source if name == source.name else frappe.get_doc(POSITION, name, for_update=True)
+		for name in names
+	]
+
+
+def _validate_filling(parent, positions) -> None:
+	try:
+		_producer()._validate_positions(parent, positions)
+	except frappe.ValidationError as cause:
+		error = TimesheetTransitionError(str(cause))
+		if message_id := getattr(cause, "__frappe_exc_id", None):
+			setattr(error, "__frappe_exc_id", message_id)
+		raise error from cause
+
+
+def validate_position_vote(source, next_state: str) -> None:
+	"""Validate the saved timesheet for a new vote into the checked position status."""
+	if not source.user_timesheet:
+		return
+	rule = _filling_check_rule()
+	if not rule or rule["position_status"] != next_state:
+		return
+	parent = frappe.get_doc("User Timesheet", source.user_timesheet, for_update=True)
+	_validate_filling(parent, _locked_positions(parent.name, source))
+
+
 def recalculate_parent(parent, changed_position, old_status: str | None) -> None:
 	"""Apply the winning Position Rules row to the locked aggregate."""
 	if not _enabled():
 		return _originals["_recalculate_parent"](parent, changed_position, old_status)
-	matching_position_rule, timesheet_check_status = _rollup_settings()
-	names = frappe.db.get_values(
-		POSITION, {"user_timesheet": parent.name}, "name", order_by="name asc",
-		pluck=True, for_update=True,
-	)
-	positions = [
-		changed_position if name == changed_position.name else frappe.get_doc(POSITION, name, for_update=True)
-		for name in names
-	]
+	matching_position_rule, get_check_rule = _rollup_settings()
+	positions = _locked_positions(parent.name, changed_position)
 	contexts = [service.get_context(position) for position in positions]
 	counts = Counter(_position_state(position, context) for position, context in zip(positions, contexts, strict=True))
 	rule = matching_position_rule(counts)
@@ -283,14 +314,9 @@ def recalculate_parent(parent, changed_position, old_status: str | None) -> None
 		return
 	producer = _producer()
 	new_status = rule["timesheet_status"]
-	if new_status == timesheet_check_status():
-		try:
-			producer._validate_positions(parent, positions)
-		except frappe.ValidationError as cause:
-			error = TimesheetTransitionError(str(cause))
-			if message_id := getattr(cause, "__frappe_exc_id", None):
-				setattr(error, "__frappe_exc_id", message_id)
-			raise error from cause
+	check_rule = get_check_rule()
+	if check_rule and new_status == check_rule["timesheet_status"]:
+		_validate_filling(parent, positions)
 
 	parent.ut_status = new_status
 	parent.ut_approval_date = frappe.utils.nowdate() if new_status == "Approved" else None
@@ -369,11 +395,15 @@ def _mark_checks(
 	options: dict[str, list[TimesheetPositionOption]],
 	current_status: str,
 ) -> None:
-	matching_position_rule, timesheet_check_status = _rollup_settings()
-	check_status = timesheet_check_status()
-	if not check_status or current_status == check_status:
-		for action in actions:
-			action["runs_timesheet_checks"] = False
+	matching_position_rule, get_check_rule = _rollup_settings()
+	check_rule = get_check_rule()
+	for action in actions:
+		action["runs_timesheet_checks"] = bool(check_rule) and any(
+			position["mode"] == "vote" and position["next_state"] == check_rule["position_status"]
+			for position in action["positions"]
+		)
+	remaining_actions = [action for action in actions if not action["runs_timesheet_checks"]]
+	if not check_rule or not remaining_actions or current_status == check_rule["timesheet_status"]:
 		return
 
 	round_ids = {
@@ -398,14 +428,16 @@ def _mark_checks(
 		if option["mode"] == "domain"
 		or votes[option.get("round_id"), option["transition_uuid"]] + 1 >= option.get("threshold", 1)
 	}
-	for action in actions:
+	for action in remaining_actions:
 		updates = {
 			position["name"]: position["next_state"]
 			for position in action["positions"]
 			if (position["name"], action["action"], position["transition_uuid"]) in reached
 		}
 		rule = matching_position_rule(Counter(updates.get(name, state) for name, state in current.items()))
-		action["runs_timesheet_checks"] = bool(updates and rule and rule["timesheet_status"] == check_status)
+		action["runs_timesheet_checks"] = bool(
+			updates and rule and rule["timesheet_status"] == check_rule["timesheet_status"]
+		)
 
 
 @frappe.whitelist()
