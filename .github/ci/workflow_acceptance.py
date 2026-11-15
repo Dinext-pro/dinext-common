@@ -29,6 +29,7 @@ DEPENDENCIES = {
 }
 SPECS = {
     "dinext_common": (
+        "approval_deadline_chart.js",
         "workflow_scenarios.js",
         "workflow_scenario_timesheets.js",
         "workflow_progress_unlock.js",
@@ -92,6 +93,7 @@ def configure_runner(support, config, common_sha):
     settings = {
         "developer_mode": 1,
         "enable_parallel_workflow_approval": 1,
+        "workflow_email_test_site": 1,
         "workflow_scenarios_test_site": 1,
         "host_name": BASE_URL,
     }

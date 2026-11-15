@@ -116,6 +116,7 @@ def execute(filters=None):
 				],
 			),
 			type="line",
+			lineOptions=dict(showDots=len(labels) == 1),
 			height=230,
 		)
 	)

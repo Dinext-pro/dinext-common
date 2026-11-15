@@ -80,7 +80,7 @@ def cleanup():
 
 def diagnostics():
 	"""Real report formatting over a controlled diagnostic dataset; no source writes."""
-	from copy import deepcopy
+	from datetime import date
 	from unittest.mock import patch
 
 	from frappe.translate import print_language
@@ -104,6 +104,14 @@ def diagnostics():
 			columns, data, message, chart, summary = report.execute()
 			result[language] = dict(columns=columns, result=data, message=message, chart=chart,
 				report_summary=summary, add_total_row=0)
+
+	single_week = [dict(rows[0], due_date=date(2026, 11, 12), discipline_status="On Time", deadline_error=None)]
+	with print_language("en"), patch.object(report, "metrics", return_value=dict(
+		rows=single_week, all_rows=single_week, on_time_percent=100, open_overdue=0, completed_late=0, errors=0,
+	)), patch.object(report, "full_name", return_value="Елена Морозова"):
+		columns, data, message, chart, summary = report.execute()
+		result["single_week"] = dict(columns=columns, result=data, message=message, chart=chart,
+			report_summary=summary, add_total_row=0)
 	return result
 
 
