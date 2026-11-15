@@ -78,17 +78,18 @@ def previews():
 	from dinext_common.tests.test_workflow_email_refinements import TestWorkflowEmailRefinements
 	from dinext_common.tests.test_workflow_mail_outlook import TestWorkflowMailOutlook
 	from dinext_common.workflow_approval.email_templates import default_email_templates
-	from dinext_common.workflow_approval.notifications import _task_actions
+	from dinext_common.workflow_approval.notifications import _task_actions, _template_message
 
 	fixture = TestWorkflowEmailRefinements()
 	fixture.users = [user for user, _name in USERS]
 	fixture.user = fixture.users[0]
 	old_language = frappe.db.get_value("User", fixture.user, "language")
 	result = []
+	correction = "Dinext Timesheet Workflow Correction"
 	try:
 		for language in ("ru", "en", ""):
 			frappe.db.set_value("User", fixture.user, "language", language)
-			for name in default_email_templates():
+			for name in (*default_email_templates(), correction):
 				context = fixture.timesheets() if "Timesheet" in name else fixture.context()
 				if "Timesheet" in name:
 					comments = (
@@ -129,7 +130,9 @@ def previews():
 						text="Уточните часы анализа требований: часть встречи относится к другому проекту.",
 					)
 					context["entry_context"] = dict(comments=[source_context])
-				subject, message, soup = fixture.native_message(name, context)
+				subject, message, soup = fixture.native_message(
+					name, context, renderer=_template_message if name == correction else None
+				)
 				for part in message.walk():
 					if part.get("Content-ID"):
 						cid = str(part["Content-ID"]).strip("<>")

@@ -73,14 +73,14 @@ class TestWorkflowEmailRefinements(FrappeTestCase):
 			],
 		)
 
-	def native_message(self, name, context=None):
+	def native_message(self, name, context=None, *, renderer=None):
 		from frappe.email.email_body import get_email
 		from frappe.utils.jinja import get_email_from_template
 
 		from dinext_common.workflow_approval.email_presentation import language_context, render_standard
 		from dinext_common.workflow_approval.notifications import _sendmail_for_user
 
-		subject, body = render_standard(name, context or self.context(), self.user)
+		subject, body = (renderer or render_standard)(name, context or self.context(), self.user)
 		# The only replaced boundary is outbound transport; native MIME, footer and CSS run.
 		with patch.object(frappe, "sendmail") as transport:
 			_sendmail_for_user(self.user, subject=subject, message=body, recipients=[self.user])
