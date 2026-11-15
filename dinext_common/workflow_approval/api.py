@@ -1780,8 +1780,18 @@ def _card_state_values(state: str) -> list[str]:
 
 @frappe.whitelist()
 def get_legacy_number_card_result(filters: str | dict[str, Any]) -> dict[str, Any]:
-	"""Return current, readable source populations for the six approval cards."""
+	"""Resolve stored cards that still use the original shared method."""
 	values = frappe.parse_json(filters) if isinstance(filters, str) else dict(filters)
+	source_state_field = (
+		"status" if values.get("doc") in ("User Timesheet Position", "Application For Leave") else "workflow_state"
+	)
+	return calculate_approval_number_card(values, source_state_field=source_state_field)
+
+
+def calculate_approval_number_card(
+	values: dict[str, Any], *, source_state_field: str
+) -> dict[str, Any]:
+	"""Count the readable sources in the same population as the destination list."""
 	doctype = values.get("doc")
 	state = values.get("state")
 	route = values.get("route")
@@ -1830,15 +1840,12 @@ def get_legacy_number_card_result(filters: str | dict[str, Any]) -> dict[str, An
 		name for name, row in unique.items() if has_workflow_task_permission(row, "read", frappe.session.user)
 	]
 	if names:
-		state_field = {"User Timesheet Position": "status", "Application For Leave": "status"}.get(
-			doctype, "workflow_state"
-		)
 		filters = {
 			"name": ["in", names],
 			"docstatus": ["!=", 2],
-			state_field: ["in", _card_state_values(state)],
+			source_state_field: ["in", _card_state_values(state)],
 		}
-		if state_field != "workflow_state" and frappe.get_meta(doctype).has_field("workflow_state"):
+		if source_state_field != "workflow_state" and frappe.get_meta(doctype).has_field("workflow_state"):
 			filters["workflow_state"] = ["in", _card_state_values(state)]
 		previous_cmd = frappe.form_dict.get("cmd")
 		try:

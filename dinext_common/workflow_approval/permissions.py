@@ -265,23 +265,39 @@ MONITORING_APPROVAL_NUMBER_CARDS = frozenset(
 
 
 def has_public_number_card_permission(doc, ptype="read", user=None, debug=False):
-	"""Allow read of the public approval cards.
-
-	Frappe's Number Card controller denies Custom cards that have no
-	document_type unless the user is a System Manager. These cards count
-	through whitelisted methods, so a read-only approver must still see them.
-	"""
+	"""Apply the access rules for the approval widgets shipped by Common."""
+	name = _get(doc, "name")
+	is_approval_card = name in PUBLIC_APPROVAL_NUMBER_CARDS or name in MONITORING_APPROVAL_NUMBER_CARDS
 	if ptype not in READ_PERMISSION_TYPES:
+		if (
+			ptype in MUTATING_PERMISSION_TYPES
+			and is_approval_card
+			and _get(doc, "is_standard")
+			and _get(doc, "module") == "Dinext Common"
+			and _get(doc, "document_type") == "Workflow Task"
+		):
+			return _is_system_manager(user or frappe.session.user)
 		return None
 	if not _get(doc, "is_public"):
 		return None
-	name = _get(doc, "name")
 	if name in PUBLIC_APPROVAL_NUMBER_CARDS:
 		return True
 	if name in MONITORING_APPROVAL_NUMBER_CARDS:
 		user = user or frappe.session.user
 		return _is_system_manager(user) or bool(get_monitorable_workflows(user))
 	return None
+
+
+def get_approval_number_card_query_conditions(user=None):
+	"""Apply the same monitoring restriction to the Number Card list."""
+	user = user or frappe.session.user
+	if _is_system_manager(user) or get_monitorable_workflows(user):
+		return None
+
+	card = frappe.qb.DocType("Number Card")
+	return card.name.notin(sorted(MONITORING_APPROVAL_NUMBER_CARDS)).get_sql(
+		quote_char="`", with_namespace=True
+	)
 
 
 def require_final_task_permission_queries(user: str | None = None) -> str:

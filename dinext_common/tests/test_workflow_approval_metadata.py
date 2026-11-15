@@ -25,6 +25,31 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 		)
 		return json.loads(path.read_text())
 
+	def test_generic_approval_widgets_are_shipped_as_standard_records(self):
+		metadata = self.metadata()
+		from dinext_common import hooks
+
+		module = APP_ROOT / "dinext_common"
+		cards = ("My open approvals", "My completed approvals", "Новые сегодня", "Автоматически выполнено за 30 дней")
+		cards += tuple(name for name, *_ in metadata.CONTROL_CARDS)
+		standard_cards = {
+			card["name"]: card
+			for path in (module / "number_card").glob("*/*.json")
+			for card in (json.loads(path.read_text()),)
+		}
+		for name in cards:
+			with self.subTest(card=name):
+				self.assertEqual(standard_cards[name]["document_type"], "Workflow Task")
+
+		chart_names = {metadata.CHART_NAME, *(name for name, *_ in metadata.CONTROL_CHARTS)}
+		standard_charts = {
+			json.loads(path.read_text())["name"] for path in (module / "dashboard_chart").glob("*/*.json")
+		}
+		self.assertTrue(chart_names <= standard_charts)
+		fixture_doctypes = {entry["doctype"] for entry in hooks.fixtures if isinstance(entry, dict)}
+		self.assertNotIn("Dashboard Chart", fixture_doctypes)
+		self.assertFalse((APP_ROOT / "fixtures" / "dashboard_chart.json").exists())
+
 	def test_workflow_task_is_app_owned_with_audit_fields_and_safe_permissions(self):
 		document = self.load_doctype("workflow_task")
 		fields = {field["fieldname"]: field for field in document["fields"]}

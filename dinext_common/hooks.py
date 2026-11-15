@@ -71,33 +71,6 @@ fixtures = [
         ]
     },
     {
-        "doctype": "Number Card",
-        "filters": [
-            ["name", "in", [
-                "My open approvals",
-                "Новые сегодня",
-                "My completed approvals",
-                "Автоматически выполнено за 30 дней",
-                "Открытые раунды",
-                "Сбои",
-                "Самое долгое ожидание",
-                "Решений за 30 дней",
-            ]]
-        ]
-    },
-    {
-        "doctype": "Dashboard Chart",
-        "filters": [
-            ["name", "in", [
-                "Pending approvals by document type",
-                "Open tasks by approver",
-                "Open task age by approver",
-                "Open rounds by document type",
-                "Approval duration by document type",
-            ]]
-        ]
-    },
-    {
         "doctype": "Custom HTML Block",
         "filters": [
             ["name", "in", [
@@ -280,6 +253,7 @@ permission_query_conditions = {
 }
 
 final_permission_query_conditions = {
+	"Number Card": "dinext_common.workflow_approval.permissions.get_approval_number_card_query_conditions",
 	"Workflow Process": "dinext_common.workflow_approval.scenarios.records.process_query_conditions",
 	"Workflow Document Context": "dinext_common.workflow_approval.scenarios.records.context_query_conditions",
 	"Workflow Task": "dinext_common.workflow_approval.permissions.get_workflow_task_permission_query_conditions",

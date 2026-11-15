@@ -24,6 +24,38 @@ class TestWorkflowApprovalPermissions(unittest.TestCase):
 		values.update(overrides)
 		return SimpleNamespace(**values)
 
+	def test_generic_approval_cards_do_not_grant_edit_access_from_workflow_task(self):
+		permissions = self.permissions()
+		card = {
+			"name": "My open approvals",
+			"module": "Dinext Common",
+			"document_type": "Workflow Task",
+			"is_standard": 1,
+			"is_public": 1,
+		}
+		user = "manager@example.com"
+		with patch.object(permissions.frappe, "get_roles", return_value=["Dashboard Manager"]):
+			self.assertTrue(permissions.has_public_number_card_permission(card, "read", user))
+			self.assertIs(permissions.has_public_number_card_permission(card, "write", user), False)
+			self.assertIsNone(permissions.has_public_number_card_permission({**card, "is_standard": 0}, "write", user))
+		with patch.object(permissions.frappe, "get_roles", return_value=["System Manager"]):
+			self.assertIs(permissions.has_public_number_card_permission(card, "write", user), True)
+
+	def test_monitoring_card_list_scope_matches_individual_card_read(self):
+		permissions = self.permissions()
+		user = "approver@example.com"
+		with (
+			patch.object(permissions.frappe, "get_roles", return_value=["Desk User"]),
+			patch.object(permissions, "get_monitorable_workflows", return_value=[]) as monitored,
+		):
+			condition = permissions.get_approval_number_card_query_conditions(user)
+			self.assertIn("NOT IN", condition)
+			for name in permissions.MONITORING_APPROVAL_NUMBER_CARDS:
+				self.assertIn(name, condition)
+			self.assertNotIn("My open approvals", condition)
+			monitored.return_value = ["Example Workflow"]
+			self.assertIsNone(permissions.get_approval_number_card_query_conditions(user))
+
 	def test_workflow_documents_use_standard_permission_hooks(self):
 		from dinext_common import hooks
 
