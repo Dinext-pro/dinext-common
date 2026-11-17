@@ -362,6 +362,7 @@ class BulkTargetFormInput(TypedDict):
 	process_id: str
 	task_name: str
 	transition_uuid: str
+	transition_semantic_hash: NotRequired[str]
 
 
 class BulkTaskFormInput(TypedDict, total=False):
@@ -404,6 +405,13 @@ def _parse_bulk_targets(targets: str | list[dict[str, Any]] | None, names: list[
 	by_name = {row["name"]: {field: row[field] for field in required} for row in rows}
 	if len(by_name) != len(rows) or set(by_name) != set(names):
 		raise frappe.ValidationError(_("Workflow targets do not match the selected documents"))
+	for row in rows:
+		if "transition_semantic_hash" not in row:
+			continue
+		transition_hash = row["transition_semantic_hash"]
+		if not isinstance(transition_hash, str) or not transition_hash:
+			raise frappe.ValidationError(_("Invalid workflow transition revision"))
+		by_name[row["name"]]["transition_semantic_hash"] = transition_hash
 	return by_name
 
 
@@ -575,6 +583,7 @@ def _execute_source_batch(
 			task_name=snapshot["task_name"] if snapshot else target.get("task_name"), comment=comment,
 			request_id=f"{request_id}:{name}" if request_id else None, completion_source="Bulk",
 			receipt_managed=bool(receipt), expected_creation=snapshot["source_created_at"] if snapshot else None,
+			expected_transition_hash=target.get("transition_semantic_hash"),
 		)
 
 	def progress(index):
@@ -813,7 +822,10 @@ def _available_task_transitions(task_names: list[str]) -> dict[str, list[dict[st
 			"parenttype": "Workflow Task",
 			"parentfield": "available_workflow_transitions",
 		},
-		fields=["parent", "transition_uuid", "action", "next_state", "allowed_role", "comment_is_required"],
+		fields=[
+			"parent", "transition_uuid", "action", "next_state", "allowed_role",
+			"comment_is_required", "transition_semantic_hash",
+		],
 		order_by="idx asc",
 		limit_page_length=0,
 	):
@@ -824,17 +836,21 @@ def _available_task_transitions(task_names: list[str]) -> dict[str, list[dict[st
 				"next_state": child.next_state,
 				"allowed": child.allowed_role,
 				"comment_is_required": bool(child.comment_is_required),
+				"transition_semantic_hash": child.transition_semantic_hash,
 			}
 		)
 	return transitions
 
 
 def _transition_target(task, transition) -> WorkflowTransitionTarget:
-	return {
+	target: WorkflowTransitionTarget = {
 		"name": task.reference_name, "workflow": task.get("workflow"),
 		"process_id": task.get("workflow_process"), "task_name": task.name,
 		"transition_uuid": transition["transition_uuid"], "next_state": transition["next_state"],
 	}
+	if transition_hash := transition.get("transition_semantic_hash"):
+		target["transition_semantic_hash"] = transition_hash
+	return target
 
 
 def _queue_transition_targets(task, transitions):
@@ -1306,6 +1322,7 @@ class WorkflowTransitionTarget(TypedDict):
 	task_name: str
 	transition_uuid: str
 	next_state: str
+	transition_semantic_hash: NotRequired[str]
 
 
 def _common_transition_targets(tasks: list[Any], transitions: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
