@@ -1,4 +1,5 @@
 import json
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from unittest.mock import patch
 
@@ -84,6 +85,97 @@ class TestWorkflowEmailIntegration(base.TestWorkflowApprovalIntegration):
         with patch.object(notifications,'_sendmail_for_user') as send:
             notifications.send_immediate_notification(task.name)
             send.assert_not_called()
+
+    def test_custom_email_renders_only_recipient_visible_fields(self):
+        from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+        source, task = self._source_and_task()
+        frappe.db.set_value('Issue', source.name, 'description', 'Private field value')
+        make_property_setter('Issue', 'description', 'permlevel', 1, 'Int')
+        workflow = self._profile()
+        template = frappe.get_doc({
+            'doctype': 'Email Template',
+            'name': '_Test Recipient Scoped Template',
+            'subject': '{{ subject }}',
+            'use_html': 1,
+            'response_html': '<p>{{ doc.subject }}: {{ doc.description or "Unavailable" }}</p>',
+        }).insert(ignore_permissions=True)
+        workflow.custom_workflow_action_email_template = template.name
+        workflow.save(ignore_permissions=True)
+        with patch.object(notifications, '_sendmail_for_user') as send:
+            notifications.send_immediate_notification(task.name)
+
+        generated = send.call_args.kwargs
+        self.assertIn('State email integration', generated['subject'])
+        self.assertIn('Unavailable', generated['args']['message'])
+        self.assertNotIn('Private field value', generated['args']['message'])
+
+    def test_pending_digest_stops_when_recipient_loses_document_access(self):
+        from frappe.email.doctype.email_queue.email_queue import EmailQueue
+
+        source, task = self._source_and_task()
+        workflow = self._profile(grouped=True)
+        action = notifications._workflow_action(task.name)
+        notifications.send_digest(workflow, self.user, [action], datetime(2039, 1, 3, 5, tzinfo=timezone.utc))
+        action.reload()
+        queue_name = frappe.db.get_value('Email Queue', {'message_id': ('like', action.custom_delivery_key + '%')})
+        self.assertTrue(queue_name)
+        recipient_roles = frappe.get_roles(self.user)
+        frappe.db.set_value('Custom DocPerm', {
+            'parent': source.doctype, 'role': ('in', recipient_roles), 'permlevel': 0,
+        }, {'read': 0, 'write': 0})
+        frappe.clear_cache(doctype=source.doctype)
+        self.assertFalse(notifications.recipient_can_read(task, source, self.user))
+
+        with patch('dinext_common.workflow_approval.email_queue._committed_permissions', nullcontext), \
+                patch.object(EmailQueue, 'send') as transport:
+            frappe.get_doc('Email Queue', queue_name).send(force_send=True)
+
+        transport.assert_not_called()
+        self.assertEqual(frappe.db.get_value('Email Queue', queue_name, 'status'), 'Error')
+
+    def _print_attachment(self, task):
+        workflow = self._profile()
+        workflow.custom_attach_document_pdf = 1
+        workflow.save(ignore_permissions=True)
+        frappe.db.set_single_value('Print Settings', 'send_print_as_pdf', 0)
+        with patch.object(notifications, '_sendmail_for_user') as send:
+            notifications.send_immediate_notification(task.name)
+        attachment, = send.call_args.kwargs['attachments']
+        return attachment['fcontent'].decode()
+
+    def test_print_attachment_keeps_link_identifier_and_excludes_hidden_title(self):
+        from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+        source, task = self._source_and_task()
+        project = frappe.get_doc({
+            'doctype': 'Project', 'name': 'qa-print-link-id', 'project_name': 'Private linked title',
+        })
+        project.db_insert()
+        source.db_set('project', project.name)
+        make_property_setter('Project', None, 'title_field', 'project_name', 'Data', for_doctype=True)
+        make_property_setter('Project', None, 'show_title_field_in_link', 1, 'Check', for_doctype=True)
+        make_property_setter('Project', 'project_name', 'permlevel', 1, 'Int')
+
+        attachment = self._print_attachment(task)
+
+        self.assertIn('qa-print-link-id', attachment)
+        self.assertNotIn('Private linked title', attachment)
+
+    def test_print_attachment_uses_standard_layout_in_place_of_custom_print_format(self):
+        from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+        _source, task = self._source_and_task()
+        custom = frappe.get_doc({
+            'doctype': 'Print Format', 'name': '_Test Workflow Mail Custom Print', 'doc_type': 'Issue',
+            'standard': 'No', 'custom_format': 1, 'html': '<p>Configured custom print body</p>',
+        }).insert(ignore_permissions=True)
+        make_property_setter('Issue', None, 'default_print_format', custom.name, 'Data', for_doctype=True)
+
+        attachment = self._print_attachment(task)
+
+        self.assertIn('State email integration', attachment)
+        self.assertNotIn('Configured custom print body', attachment)
 
     def test_digest_repeats_next_slot_but_not_same_slot(self):
         source,task=self._source_and_task()

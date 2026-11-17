@@ -6,16 +6,16 @@ import hashlib
 import html
 import json
 from collections import defaultdict
-from contextlib import nullcontext
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import frappe
 from frappe import _
-from frappe.email.doctype.email_template.email_template import get_email_template
-from frappe.translate import get_user_lang, print_language
 from frappe.utils import get_datetime, get_system_timezone, get_url_to_form, now_datetime
 
+from dinext_common.workflow_approval.email_access import (
+	SCOPE_HEADER, authorized_source, delivery_scope, recipient_user, visible_document,
+)
 from dinext_common.workflow_approval.email_settings import checked, profile_for_state, value
 from dinext_common.workflow_approval.email_templates import domain_email_template
 
@@ -119,18 +119,17 @@ def notification_transitions(task: object, workflow: object) -> list:
 
 
 def recipient_can_read(task: object, source: object, recipient: str) -> bool:
-	from dinext_common.workflow_approval.scenarios import service
-	if service.is_ready() and not service.task_is_current(source, task):
-		return False
 	"""Adapters may require access to a parent used in an email link."""
 	from dinext_common.workflow_approval.engine import _has_source_read_permission
+	from dinext_common.workflow_approval.scenarios import service
 
-	if not _has_source_read_permission(source, recipient):
+	if service.is_ready() and not service.task_is_current(source, task):
 		return False
-	return all(
-		frappe.get_attr(path)(task, source, recipient) is not False
-		for path in frappe.get_hooks("workflow_approval_email_permission") or []
-	)
+	with recipient_user(recipient):
+		return _has_source_read_permission(source, recipient) and all(
+			frappe.get_attr(path)(task, source, recipient) is not False
+			for path in frappe.get_hooks("workflow_approval_email_permission") or []
+		)
 
 
 def _delivery_context(task: object, workflow: object):
@@ -146,12 +145,8 @@ def _delivery_context(task: object, workflow: object):
 	user = frappe.db.get_value("User", task.approver, ["email", "enabled"], as_dict=True)
 	if not user or not user.enabled or not user.email:
 		return None
-	if not frappe.db.exists(task.reference_doctype, task.reference_name):
-		return None
-	source = frappe.get_doc(task.reference_doctype, task.reference_name)
-	if task.source_created_at and get_datetime(source.creation) != get_datetime(task.source_created_at):
-		return None
-	if not recipient_can_read(task, source, task.approver):
+	source = authorized_source(task, task.approver)
+	if source is None:
 		return None
 	return profile, source, user.email, transitions
 
@@ -226,16 +221,30 @@ def _task_actions(task: object, *, transitions=None, workflow=None) -> list[dict
 	return actions
 
 
+def task_context(task, document_title):
+	fields = ("name", "reference_doctype", "reference_name", "workflow", "workflow_state", "status",
+		"round_status", "approver", "source_owner", "deadline_due_at")
+	return {**{field: value(task, field) for field in fields}, "source_title": document_title}
+
+
+def workflow_context(workflow):
+	return {field: value(workflow, field) for field in ("name", "workflow_name", "document_type")}
+
+
 def _message_context(task, source, transitions, *, workflow=None):
+	from dinext_common.workflow_approval.email_presentation import document_title
+
 	if workflow is None and value(task, "workflow"):
 		workflow = frappe.get_doc("Workflow", task.workflow)
 	manifest = json.loads(task.round_manifest or "{}")
-	context = {**source.as_dict(), "doc": source.as_dict(), "workflow_task": task.as_dict(),
+	doc = source.as_dict(no_private_properties=True)
+	context = {**doc, "doc": doc, "workflow_task": task_context(task, document_title(doc)),
 		"entry_context": manifest.get("entry_context") or {},
 		"document_link": get_url_to_form(source.doctype, source.name),
 		"actions": _task_actions(task, transitions=transitions, workflow=workflow)}
-	for adapter_path in frappe.get_hooks("workflow_approval_email_context") or []:
-		context.update(frappe.get_attr(adapter_path)(task, source) or {})
+	with recipient_user(task.approver):
+		for adapter_path in frappe.get_hooks("workflow_approval_email_context") or []:
+			context.update(frappe.get_attr(adapter_path)(task, source) or {})
 	return context
 
 
@@ -249,10 +258,41 @@ def _template_message(
 	context: dict,
 	user: str | None = None,
 ) -> tuple[str, str]:
+	from frappe.utils import format_date, format_datetime, format_time, get_url, markdown
+	from frappe.utils.data import global_date_format
+	from frappe.utils.jinja import get_jenv, set_filters
+	from frappe.website.utils import abs_url
+	from jinja2.defaults import DEFAULT_FILTERS, DEFAULT_NAMESPACE
+	from jinja2.sandbox import safe_range
+	from dinext_common.workflow_approval.email_presentation import prepare_context
+
+	template = frappe.get_doc("Email Template", template_name)
 	with _language_context(user):
-		from dinext_common.workflow_approval.email_presentation import prepare_context
-		rendered = get_email_template(template_name, prepare_context(template_name, context, user))
-	return rendered.get("subject") or "", rendered.get("message") or ""
+		prepared = prepare_context(template_name, context, user)
+		environment = get_jenv().overlay(cache_size=0)
+		# A saved template receives the projected mail context and formatting helpers.
+		environment.globals = {
+			**DEFAULT_NAMESPACE, "range": safe_range, "_": _,
+			"frappe": {
+				"get_url": get_url,
+				"format": frappe.format_value,
+				"format_value": frappe.format_value,
+				"format_date": global_date_format,
+				"utils": {
+					"get_url": get_url,
+					"get_url_to_form": get_url_to_form,
+					"format_date": format_date,
+					"format_datetime": format_datetime,
+					"format_time": format_time,
+				},
+			},
+		}
+		environment.filters = dict(DEFAULT_FILTERS)
+		set_filters(environment)
+		environment.filters.update(global_date_format=global_date_format, markdown=markdown, abs_url=abs_url)
+		subject = environment.from_string(template.subject or "").render(prepared)
+		message = environment.from_string(template.response_ or "").render(prepared)
+		return subject, message
 
 
 def _sendmail_for_user(user: str, **kwargs):
@@ -261,7 +301,7 @@ def _sendmail_for_user(user: str, **kwargs):
 			kwargs["message"] = kwargs.pop("args")["message"]
 			kwargs.pop("template", None)
 		kwargs.pop("header", None)
-		from dinext_common.workflow_approval.email_presentation import inline_assets
+		from dinext_common.workflow_approval.email_presentation import inline_assets, plain_text
 		provided = list(kwargs.get("inline_images") or [])
 		known = {item.get("filename") for item in provided}
 		# The standard footer is formatted later by Frappe; provide its logo bytes
@@ -269,11 +309,10 @@ def _sendmail_for_user(user: str, **kwargs):
 		asset_html = (kwargs.get("message") or "") + '<img embed="assets/dinext_common/images/dinext.png">'
 		kwargs["inline_images"] = provided + [item for item in inline_assets(asset_html) if item["filename"] not in known]
 		if kwargs.get("message"):
-			from frappe.core.utils import html_to_plain_text
 			from frappe.utils import get_url
 			body = kwargs.pop("message")
 			kwargs["template"] = "dinext_workflow_message"
-			kwargs["args"] = dict(message=body, text_message=html_to_plain_text(body), sent_label=_("Sent by"),
+			kwargs["args"] = dict(message=body, text_message=plain_text(body), sent_label=_("Sent by"),
 				settings_label=_("Notification settings"),
 				settings_url=get_url("/api/method/dinext_common.workflow_approval.email_preferences.open_settings"))
 		return frappe.sendmail(**kwargs)
@@ -308,7 +347,9 @@ def send_immediate_notification(task_name: str) -> None:
 		from dinext_common.workflow_approval.signed_links import ensure_delivery_key
 		action.custom_delivery_key = ensure_delivery_key(task.name)
 		action.db_set("custom_notification_mode", "Immediate", update_modified=False)
-		message_context = _message_context(task, source, transitions, workflow=workflow)
+		visible = visible_document(source, task.approver)
+		with _language_context(task.approver):
+			message_context = _message_context(task, visible, transitions, workflow=workflow)
 		common_args = {
 			"template": "workflow_action",
 			"header": "Workflow Action",
@@ -339,20 +380,11 @@ def send_immediate_notification(task_name: str) -> None:
 			common_args["subject"] = subject
 		if message:
 			common_args["message"] = message
-		attach_pdf = profile.attach_pdf
-		common_args["attachments"] = (
-			[
-				frappe.attach_print(
-					source.doctype,
-					source.name,
-					file_name=source.name,
-					doc=source,
-					print_format=source.meta.default_print_format,
-				)
-			]
-			if attach_pdf
-			else []
-		)
+		common_args["attachments"] = []
+		if profile.attach_pdf:
+			from dinext_common.workflow_approval.email_attachment import attach_workflow_print
+
+			common_args["attachments"].append(attach_workflow_print(source, task.approver))
 		common_args["recipients"] = [email]
 		common_args["sender"] = "Dinext <ikhmel@dinext.ru>"
 		common_args["reply_to"] = "ikhmel@dinext.ru"
@@ -363,6 +395,7 @@ def send_immediate_notification(task_name: str) -> None:
 		common_args["reference_doctype"] = task.reference_doctype
 		common_args["reference_name"] = task.reference_name
 		common_args["message_id"] = action.custom_delivery_key
+		common_args["email_headers"] = {SCOPE_HEADER: delivery_scope(task.approver, {task.name: source})}
 		_sendmail_for_user(task.approver, **common_args)
 		action.db_set("custom_notification_status", "Enqueued", update_modified=False)
 	except Exception:
@@ -444,25 +477,37 @@ def dispatch_due_notifications() -> None:
 			frappe.log_error(title=f"Workflow approval digest failed: {workflow_name} / {state} / {recipient}")
 
 
-def _digest_rows(tasks: list[object], *, permitted=None, workflow=None) -> list[dict[str, object]]:
+def digest_item_override(task, source=None, recipient=None):
+	if source is not None:
+		with recipient_user(recipient):
+			for path in frappe.get_hooks("workflow_approval_scoped_digest_item") or []:
+				if override := frappe.get_attr(path)(task, source=source, recipient=recipient):
+					return override
+	for path in frappe.get_hooks("workflow_approval_digest_item") or []:
+		if override := frappe.get_attr(path)(task):
+			return override
+	return {}
+
+
+def _digest_rows(tasks: list[object], *, permitted=None, workflow=None, sources=None, recipient=None) -> list[dict[str, object]]:
+	from dinext_common.workflow_approval.email_presentation import document_title
+
 	if workflow is None and tasks and value(tasks[0], "workflow"):
 		workflow = frappe.get_doc("Workflow", tasks[0].workflow)
 	grouped: dict[str, dict[str, object]] = {}
 	for task in tasks:
+		source = sources.get(task.name) if sources is not None else None
 		row: dict[str, object] = {
 			"group_key": f"{task.reference_doctype}:{task.reference_name}",
 			"doctype": task.reference_doctype,
 			"name": task.reference_name,
-			"title": task.source_title,
+			"title": document_title(source.as_dict()) if source is not None else task.source_title,
 			"link": get_url_to_form(task.reference_doctype, task.reference_name),
 			"actions": _task_actions(task, transitions=permitted.get(task.name) if permitted is not None else None, workflow=workflow),
 			"count": 1,
 			"tasks": [task.name],
 		}
-		for adapter_path in frappe.get_hooks("workflow_approval_digest_item") or []:
-			override = frappe.get_attr(adapter_path)(task)
-			if override is not None:
-				row.update(override)
+		row.update(digest_item_override(task, source, recipient))
 		key = str(row.pop("group_key"))
 		if key in grouped:
 			grouped[key]["count"] = int(grouped[key]["count"]) + 1
@@ -495,10 +540,13 @@ def send_digest(
 	active_actions = []
 	tasks = []
 	permitted = {}
+	sources = {}
 	profile = None
 	delivery_key = None
 	for action in sorted(actions, key=lambda item: item.custom_workflow_task):
 		task = frappe.get_doc("Workflow Task", action.custom_workflow_task, for_update=True)
+		if task.approver != recipient:
+			continue
 		refreshed = _workflow_action(
 			action.custom_workflow_task,
 			for_update=True,
@@ -513,7 +561,7 @@ def send_digest(
 		context = _delivery_context(task, workflow)
 		if not context:
 			continue
-		current_profile, _source, _email, transitions = context
+		current_profile, source, _email, transitions = context
 		state = state or task.workflow_state
 		if task.workflow_state != state or current_profile.mode != "Digest" or (last_slot and last_slot >= _aware_utc(slot)):
 			continue
@@ -523,16 +571,20 @@ def send_digest(
 		refreshed.db_set("custom_delivery_key", delivery_key, update_modified=False)
 		active_actions.append(refreshed)
 		tasks.append(task)
+		sources[task.name] = source
 		permitted[task.name] = transitions
 	if not tasks:
 		return
-	rows = _digest_rows(tasks, permitted=permitted, workflow=workflow)
+	visible_sources = {name: visible_document(source, recipient) for name, source in sources.items()}
+	with _language_context(recipient):
+		rows = _digest_rows(tasks, permitted=permitted, workflow=workflow, sources=visible_sources, recipient=recipient)
+	rows_by_task = {name: row["title"] for row in rows for name in row["tasks"]}
 	domain_template = domain_email_template(tasks, "digest_template")
 	template_name = profile.digest_template or domain_template or DEFAULT_DIGEST_TEMPLATE
 	context = {
-		"workflow": workflow.as_dict(),
+		"workflow": workflow_context(workflow),
 		"recipient": recipient,
-		"tasks": [task.as_dict() for task in tasks],
+		"tasks": [task_context(task, rows_by_task[task.name]) for task in tasks],
 		"rows": rows,
 		"slot": slot,
 		"workflow_state": state,
@@ -592,7 +644,8 @@ def send_digest(
 	if not _queued_delivery(delivery_key):
 		_sendmail_for_user(recipient, recipients=[email], sender="Dinext <ikhmel@dinext.ru>",
 			reply_to="ikhmel@dinext.ru", subject=subject, message=message, header="Workflow Action",
-			reference_doctype="Workflow", reference_name=workflow.name, message_id=delivery_key)
+			reference_doctype="Workflow", reference_name=workflow.name, message_id=delivery_key,
+			email_headers={SCOPE_HEADER: delivery_scope(recipient, sources)})
 	for action in active_actions:
 		action.db_set(
 			{

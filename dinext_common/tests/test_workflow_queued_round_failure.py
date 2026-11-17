@@ -59,6 +59,7 @@ class TestWorkflowQueuedRoundFailure(FrappeTestCase):
 			receipt_key = request_receipts.request_key("Vote", request_id)
 			result = engine.cast_vote(task.name, transition_uuid="_test-transition", comment="Saved decision", request_id=request_id)
 			queue_name = result["pending_submission"]
+			self.assertEqual(api.get_vote_status(task.name)["pending_submission"], queue_name)
 			receipt = request_receipts.get(receipt_key)
 			round_id = task.approval_round_id
 
@@ -118,6 +119,13 @@ class TestWorkflowQueuedRoundFailure(FrappeTestCase):
 			self.assertEqual((doc.reload().status, doc.docstatus), ("Closed", 1))
 			self.assertEqual((task.reload().status, task.vote_comment, task.correlation_id), ("Completed", "Saved decision", request_id))
 			self.assertEqual(request_receipts.get(receipt_key), receipt)
+			current = api.get_vote_status(task.name)
+			self.assertNotIn("pending_submission", current)
+			self.assertEqual(current["workflow_state"], "Closed")
+			self.assertEqual(
+				engine.cast_vote(task.name, transition_uuid="_test-transition", comment="Saved decision", request_id=request_id),
+				result,
+			)
 
 	def test_staged_worker_rejects_live_semantic_drift(self):
 		from dinext_common.workflow_approval import engine

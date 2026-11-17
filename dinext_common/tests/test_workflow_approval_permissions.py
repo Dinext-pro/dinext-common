@@ -113,7 +113,8 @@ class TestWorkflowApprovalPermissions(unittest.TestCase):
 		with (
 			patch.dict(frappe.conf, {"enable_parallel_workflow_approval": 1}),
 			patch.object(permissions, "supports_final_task_permission_queries", return_value=True),
-			patch.object(frappe.db, "exists", side_effect=[True, False, True, True]),
+			patch.object(frappe.db, "exists", return_value=True),
+			patch.object(frappe.db, "get_value", side_effect=[None, frappe._dict(name="base", read=1, report=1)]),
 			patch.object(frappe, "get_doc") as get_doc,
 			patch.object(frappe, "clear_cache") as clear_cache,
 		):
@@ -122,9 +123,24 @@ class TestWorkflowApprovalPermissions(unittest.TestCase):
 
 		get_doc.assert_called_once_with({
 			"doctype": "Custom DocPerm", "parenttype": "DocType", "parentfield": "permissions",
-			"parent": "Workflow Task", "role": "All", "permlevel": 0, "if_owner": 0, "read": 1,
+			"parent": "Workflow Task", "role": "All", "permlevel": 0, "if_owner": 0, "read": 1, "report": 1,
 		})
 		get_doc.return_value.insert.assert_called_once_with(ignore_permissions=True)
+		clear_cache.assert_called_once_with(doctype="Workflow Task")
+
+	def test_existing_timesheet_base_read_recovers_standard_report_right(self):
+		permissions = self.permissions()
+		frappe = permissions.frappe
+		with (
+			patch.object(permissions, "supports_final_task_permission_queries", return_value=True),
+			patch.object(frappe.db, "exists", return_value=True),
+			patch.object(frappe.db, "get_value", return_value=frappe._dict(name="base", read=1, report=0)),
+			patch.object(frappe.db, "set_value") as set_value,
+			patch.object(frappe, "clear_cache") as clear_cache,
+		):
+			permissions.restore_workflow_task_base_read(during_cutover=True)
+
+		set_value.assert_called_once_with("Custom DocPerm", "base", {"report": 1})
 		clear_cache.assert_called_once_with(doctype="Workflow Task")
 
 	def test_timesheet_role_overrides_are_retained_with_legacy_platform_or_engine(self):

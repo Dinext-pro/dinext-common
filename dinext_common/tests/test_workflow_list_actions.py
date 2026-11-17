@@ -10,6 +10,39 @@ from dinext_common.workflow_approval import api
 USER = "list-approver@example.com"
 
 
+class TestOptionalKanbanMenu(unittest.TestCase):
+	def test_unreadable_boards_leave_the_current_view_usable(self):
+		from frappe.desk.doctype.kanban_board import kanban_board
+
+		from dinext_common.setup.workspace import get_optional_kanban_boards
+
+		message = {"message": "Existing message"}
+
+		def denied(doctype):
+			frappe.flags.error_message = "No permission for Kanban Board"
+			frappe.msgprint("No board access", title="Permission", raise_exception=frappe.PermissionError)
+
+		with (
+			patch.object(frappe.local, "flags", frappe._dict(error_message="existing")),
+			patch.object(frappe.local, "message_log", [message]),
+			patch.object(kanban_board, "get_kanban_boards", side_effect=denied) as get_boards,
+		):
+			self.assertEqual(get_optional_kanban_boards("Workflow"), [])
+			self.assertEqual(frappe.get_message_log(), [message])
+			self.assertEqual(frappe.flags.error_message, "existing")
+		get_boards.assert_called_once_with("Workflow")
+
+	def test_accessible_boards_still_use_the_native_lookup(self):
+		from frappe.desk.doctype.kanban_board import kanban_board
+
+		from dinext_common.setup.workspace import get_optional_kanban_boards
+
+		boards = [{"name": "Readable board"}]
+		with patch.object(kanban_board, "get_kanban_boards", return_value=boards) as get_boards:
+			self.assertEqual(get_optional_kanban_boards("Workflow"), boards)
+		get_boards.assert_called_once_with("Workflow")
+
+
 def transition(parent, uuid, *, action="Approve", state="Approved", required=0):
 	return frappe._dict(
 		parent=parent,

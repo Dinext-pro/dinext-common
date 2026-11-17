@@ -5,6 +5,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from copy import deepcopy
 from pathlib import Path
+from urllib.parse import urljoin, urlsplit
 
 import frappe
 from babel.dates import format_date, format_datetime
@@ -37,6 +38,27 @@ def inline_assets(message):
 		if path.is_relative_to(root) and path.is_file():
 			images.append(dict(filename=name, filecontent=path.read_bytes()))
 	return images
+
+
+def plain_text(message):
+	from bs4 import BeautifulSoup
+	from frappe.core.utils import html_to_plain_text
+	from frappe.utils import get_url
+
+	soup = BeautifulSoup(message, "html.parser")
+	base_url = get_url()
+	for link in soup.select("a[href]"):
+		href = link["href"].strip()
+		if not href or href.startswith("#"):
+			continue
+		try:
+			url = urljoin(base_url, href)
+			parsed = urlsplit(url)
+		except ValueError:
+			continue
+		if parsed.scheme in ("http", "https") and parsed.netloc and link.get_text(strip=True) != url:
+			link.append(f" ({url})")
+	return html_to_plain_text(str(soup))
 
 
 def recipient_language(user):
@@ -268,7 +290,10 @@ def prepare_context(template_name, context, user):
 	)
 	result["comments"] = [
 		dict(
-			comment, author_name=full_name(comment.get("actor")), at_label=date_label(comment.get("at"), user)
+			comment,
+			author_name=full_name(comment.get("actor")),
+			at_label=date_label(comment.get("at"), user),
+			lines=(comment.get("text") or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"),
 		)
 		for comment in (result.get("entry_context") or {}).get("comments", [])
 	]

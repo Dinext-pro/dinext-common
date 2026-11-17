@@ -6,6 +6,7 @@ import frappe
 from frappe.utils import add_days, now_datetime
 
 from dinext_common.tests.ui_test_helpers import PASSWORD, _ensure_role, _ensure_user
+from dinext_common.workflow_approval.scenarios import service
 
 PREFIX = "DINEXT-APPROVAL-WORKSPACE-QA-"
 APPROVER = "dinext-approval-workspace.en@example.invalid"
@@ -23,6 +24,8 @@ def _guard():
 def cleanup():
 	_guard()
 	frappe.db.delete("Workflow Task", {"name": ["like", PREFIX + "%"]})
+	for doctype in (service.CONTEXT, service.PROCESS):
+		frappe.db.delete(doctype, {"reference_doctype": "Issue", "reference_name": ["like", PREFIX + "%"]})
 	frappe.db.delete("Has Role", {"parent": WORKFLOW, "parenttype": "Workflow"})
 	frappe.db.delete("Workflow", {"name": WORKFLOW})
 	frappe.db.delete("Issue", {"name": ["like", PREFIX + "%"]})
@@ -36,6 +39,19 @@ def cleanup():
 	frappe.db.delete("Role", {"name": ["in", [READER_ROLE, MONITOR_ROLE]]})
 	frappe.db.commit()
 	return {"cleaned": True}
+
+
+def _create_active_process(source):
+	key = service.source_key(source)
+	source_fields = {"reference_doctype": source.doctype, "reference_name": source.name,
+		"source_created_at": source.creation}
+	process = f"{source.name}-process"
+	frappe.get_doc({"doctype": service.PROCESS, "name": process, **source_fields,
+		"source_key": key, "active_source_key": key, "workflow": WORKFLOW,
+		"status": "Running", "initial_state": "Open", "current_state": "Open"}).db_insert()
+	frappe.get_doc({"doctype": service.CONTEXT, "name": key, **source_fields,
+		"active_process": process}).db_insert()
+	return process
 
 
 def _grant_fixture_read(doctype):
@@ -118,8 +134,14 @@ def seed():
 		("Outside", "Completed", add_days(now, -31), "Manual"),
 	):
 		name = PREFIX + suffix
+		source_created_at = None
+		process = None
 		if suffix != "Archived":
-			frappe.get_doc({"doctype": "Issue", "name": name, "subject": name, "status": "Open"}).db_insert()
+			source = frappe.get_doc({"doctype": "Issue", "name": name, "subject": name, "status": "Open"})
+			source.db_insert()
+			source_created_at = source.creation
+			if status == "Working":
+				process = _create_active_process(source)
 		frappe.get_doc(
 			{
 				"doctype": "Workflow Task",
@@ -130,9 +152,11 @@ def seed():
 				"approver": APPROVER,
 				"user": APPROVER,
 				"workflow": WORKFLOW,
+				"workflow_process": process,
 				"workflow_state": "Open",
 				"reference_doctype": "Issue",
 				"reference_name": name,
+				"source_created_at": source_created_at,
 				"source_title": name,
 				"source_deleted_at": now if suffix == "Archived" else None,
 				"round_status": "Open" if status == "Working" else "Transitioned",

@@ -131,3 +131,14 @@ option.dinext-workflow-transition {
 [disabled] .dinext-workflow-transition[data-workflow-style] {
 	--dinext-workflow-action-color: var(--disabled-text-color);
 }
+
+@media (max-width: 360px) {
+	.page-head-content:has(.dinext-workflow-actions:not(.hide)) > .page-title {
+		flex: 1 1 0;
+		min-width: 0;
+	}
+
+	.page-head-content:has(.dinext-workflow-actions:not(.hide)) > .page-actions {
+		flex: 0 0 auto;
+	}
+}

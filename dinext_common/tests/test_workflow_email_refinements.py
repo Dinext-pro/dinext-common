@@ -155,6 +155,25 @@ class TestWorkflowEmailRefinements(FrappeTestCase):
 			self.assertRegex(cell.get("style", ""), r"padding:\s*(?:8|10|12)px")
 			self.assertRegex(cell.parent.parent.find_parent("td").get("style", ""), r"padding:[^;]*(?:6|8)px")
 
+	def test_native_plain_text_includes_document_and_action_links(self):
+		context = self.context()
+		context["actions"][0]["action_link"] += "&signature=synthetic"
+		_subject, message, soup = self.native_message("Dinext Workflow Action", context)
+		plain = message.get_body(preferencelist=("plain",)).get_content()
+		for url in (context["document_link"], *(action["action_link"] for action in context["actions"])):
+			self.assertIn(url, plain)
+			self.assertIsNotNone(soup.find("a", href=url))
+
+	def test_native_correction_preserves_comment_lines_in_both_parts(self):
+		context = self.context()
+		context["entry_context"]["comments"][0]["text"] = "Первая строка\r\n\r\nВторая строка <проверить>"
+		_subject, message, soup = self.native_message("Dinext Workflow Correction", context)
+		plain = message.get_body(preferencelist=("plain",)).get_content()
+		self.assertIn("Первая строка\n\nВторая строка <проверить>", plain.replace("\r\n", "\n"))
+		comment = soup.find(string=lambda text: text and "Первая строка" in text).parent
+		self.assertEqual(len(comment.find_all("br")), 2)
+		self.assertIn("Вторая строка <проверить>", comment.get_text())
+
 	def test_overdue_header_is_more_prominent_than_neutral_digest(self):
 		from dinext_common.workflow_approval.email_presentation import render_standard
 

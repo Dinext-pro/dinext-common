@@ -74,6 +74,29 @@
 		});
 	};
 
+	const followPendingVote = async (frm, taskName, target) => {
+		frappe.show_alert({ message: __("Workflow action queued"), indicator: "blue" });
+		for (let attempt = 0; attempt < 15; attempt += 1) {
+			await new Promise(resolve => setTimeout(resolve, 4000));
+			if (!target.isCurrent()) return;
+			const current = await workflowRequest("dinext_common.workflow_approval.api.get_vote_status", {
+				task_name: taskName,
+			});
+			if (!target.isCurrent()) return;
+			if (!current.pending_submission) {
+				if (!frm.is_dirty()) await reloadWorkflowForm(frm);
+				else frappe.show_alert({ message: __("Workflow status has changed"), indicator: "blue" });
+				if (current.submission_status === "Failed") {
+					frappe.show_alert({ message: __("Workflow action could not finish"), indicator: "red" });
+				}
+				return;
+			}
+		}
+		if (target.isCurrent()) {
+			frappe.show_alert({ message: __("Workflow action is still queued. Reload to check its status."), indicator: "blue" });
+		}
+	};
+
 	const closeProgressDialog = (dialog) => new Promise((resolve) => {
 		const remove = () => {
 			if (frappe.cur_progress === dialog) frappe.cur_progress = null;
@@ -302,6 +325,8 @@
 			? frappe.dinext.withWorkflowTargets(transition, () => submit(comment)) : submit(comment);
 		if (!(transition.comment_is_required ?? transition.custom_comment_is_required))
 			return execute("");
+		const opener = document.activeElement;
+		const actionButton = opener?.closest(".actions-btn-group")?.querySelector("button[data-toggle=dropdown]");
 		let validation;
 		const dialog = new frappe.ui.Dialog({
 			title: frappe.utils.escape_html(__("Comment required for {0}", [__(transition.action)])),
@@ -320,6 +345,30 @@
 			},
 		});
 		validation = bindWorkflowCommentValidation(dialog);
+		dialog.$wrapper.on("keydown.dinextApproval", (event) => {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				event.stopPropagation();
+				dialog.hide();
+			} else if (event.key === "Enter" && event.target === dialog.get_primary_btn()[0]) {
+				event.preventDefault();
+				event.stopPropagation();
+				dialog.get_primary_btn()[0].click();
+			} else if (event.key === "Tab") {
+				const elements = dialog.$wrapper.find(
+					"button:enabled, textarea:enabled, input:enabled, select:enabled, a[href]"
+				).filter(":visible").not("[tabindex='-1']");
+				const edge = event.shiftKey ? elements[0] : elements[elements.length - 1];
+				if (event.target === edge) {
+					event.preventDefault();
+					(event.shiftKey ? elements[elements.length - 1] : elements[0]).focus();
+				}
+			}
+		});
+		dialog.$wrapper.one("hidden.bs.modal.dinextApproval", () => {
+			const target = $(opener).is(":visible") ? opener : actionButton;
+			if (target?.isConnected && $(target).is(":visible")) target.focus();
+		});
 		dialog.show();
 		return dialog;
 	};
@@ -585,8 +634,8 @@
 	};
 
 	const transitionLabel = (transition, transitions) => {
-		const sameAction = (transitions || []).filter((row) => row.action === transition.action);
 		let text = __(transition.action);
+		const sameAction = (transitions || []).filter((row) => __(row.action) === text);
 		if (sameAction.length >= 2) {
 			const role = transition.allowed || transition.allowed_role || "";
 			const next = transition.next_state || "";
@@ -614,6 +663,7 @@
 							? transition : frappe.dinext.getWorkflowContext?.(frm.doc);
 						Object.assign(args, {
 							transition_uuid: transition.custom_transition_uuid,
+							expected_transition_hash: transition.transition_semantic_hash,
 							...(context?.workflow ? { workflow: context.workflow, process_id: context.process_id } : {}),
 							...(transition.task_name ? { task_name: transition.task_name } : {}),
 							comment,
@@ -627,6 +677,11 @@
 					if (!target.isCurrent()) return;
 					if (enabled()) {
 						await reloadWorkflowForm(frm);
+						if (result?.pending_submission && result.task) {
+							followPendingVote(frm, result.task, target).catch(error => {
+								if (target.isCurrent()) reportWorkflowError(error);
+							});
+						}
 					} else {
 						frappe.model.sync(result);
 						await frm.refresh();
@@ -685,6 +740,10 @@
 				if (!target.isCurrent() || generation !== this._dinext_actions_generation ||
 					processId !== frappe.dinext.getWorkflowContext?.(this.frm.doc)?.process_id) return;
 				this.frm.page.clear_actions_menu();
+				this.frm.page.actions_btn_group
+					.toggleClass("dinext-workflow-actions", transitions.length > 0)
+					.find("button[data-toggle=dropdown]")
+					.attr("aria-label", __("Actions"));
 				transitions.forEach((transition) => {
 					if (context?.workflow) transition = { ...transition,
 						workflow: transition.workflow || context.workflow,
@@ -823,6 +882,12 @@
 				}
 			);
 			if (result?.failed?.length) showBulkResult(result);
+			if (result?.succeeded?.some(item => item.result?.pending_submission)) {
+				frappe.show_alert({
+					message: __("Some workflow actions are still queued. Open the document to check its status."),
+					indicator: "blue",
+				});
+			}
 		} catch (error) {
 			reportWorkflowError(error);
 		}

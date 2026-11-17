@@ -104,7 +104,7 @@ app_include_css = [
     "/assets/dinext_common/css/common.css",
     "/assets/dinext_common/css/workspace_sidebar_hover.css",
     "/assets/dinext_common/css/dinext-tour.css",
-    "/assets/dinext_common/css/workflow_approval.css?v=20261107-7",
+    "/assets/dinext_common/css/workflow_approval.css?v=20261118-1",
 ]
 app_include_js = [
     "/assets/dinext_common/js/workspace_slug_redirects.js",
@@ -115,7 +115,7 @@ app_include_js = [
     "/assets/dinext_common/js/dashboard_filters_fix.js",
     "/assets/dinext_common/js/workspace_sidebar_hover.js",
     "/assets/dinext_common/js/workflow_scenarios.js?v=20261111-1",
-    "/assets/dinext_common/js/workflow_approval.js?v=20261115-2",
+    "/assets/dinext_common/js/workflow_approval.js?v=20261118-1",
 ]
 
 # Expose site_config flags to Desk bootinfo
@@ -197,6 +197,7 @@ before_migrate = [
 ]
 after_migrate = [
 	"dinext_common.workflow_approval.permissions.restore_workflow_task_base_read",
+	"dinext_common.workflow_approval.permissions.sanitize_restricted_task_titles",
 	"dinext_common.workflow_approval.request_receipts.register_log_settings",
 	"dinext_common.workflow_approval.scenarios.migration.execute",
 	"dinext_common.workflow_approval.deadlines.metadata.ensure_metadata",
@@ -275,6 +276,7 @@ has_permission = {
 # Override standard doctype classes
 
 override_doctype_class = {
+	"Email Queue": "dinext_common.workflow_approval.email_queue.DinextWorkflowEmailQueue",
 	"Submission Queue": "dinext_common.workflow_approval.queued_submission.DinextSubmissionQueue",
 	"Workflow": "dinext_common.workflow_approval.scenarios.workflow.DinextWorkflow",
 	"Scheduled Job Type": "dinext_common.overrides.scheduled_job_type.DinextScheduledJobType",
@@ -286,6 +288,9 @@ override_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
+	"Property Setter": {
+		"on_update": "dinext_common.workflow_approval.permissions.sanitize_tasks_after_title_permission_change",
+	},
 	"Workflow Action": {
 		"on_change": "dinext_common.workflow_approval.projections.persist_delivery_snapshot",
 	},
@@ -382,6 +387,9 @@ override_whitelisted_methods = {
 	"erpnext.accounts.utils.get_coa": "dinext_common.setup.chart_of_accounts.get_coa",
 	"frappe.desk.desktop.get_workspace_sidebar_items": (
 		"dinext_common.setup.workspace.get_workspace_sidebar_items"
+	),
+	"frappe.desk.doctype.kanban_board.kanban_board.get_kanban_boards": (
+		"dinext_common.setup.workspace.get_optional_kanban_boards"
 	),
 }
 #

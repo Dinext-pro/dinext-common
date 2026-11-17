@@ -10,18 +10,21 @@ from frappe.desk.notifications import clear_doctype_notifications
 
 
 def _close_assignment(task: object) -> None:
-	todo_names = frappe.get_all(
+	todo_names = frappe.db.get_values(
 		"ToDo",
-		filters={
+		{
 			"reference_type": "Workflow Task",
 			"reference_name": task.name,
 			"allocated_to": task.approver,
 			"status": ("not in", ("Closed", "Cancelled")),
 		},
-		pluck="name",
+		"name",
+		pluck=True,
+		for_update=True,
+		order_by="name asc",
 	)
 	for todo_name in todo_names:
-		todo = frappe.get_doc("ToDo", todo_name)
+		todo = frappe.get_doc("ToDo", todo_name, for_update=True)
 		todo.status = "Closed"
 		todo.save(ignore_permissions=True)
 
@@ -230,10 +233,13 @@ def close_task_projection(task: object) -> None:
 
 def close_round_projections(round_id: str) -> None:
 	"""Close all standard projections associated with one immutable round."""
-	task_names = frappe.get_all(
+	tasks = frappe.db.get_values(
 		"Workflow Task",
-		filters={"approval_round_id": round_id},
-		pluck="name",
+		{"approval_round_id": round_id},
+		["name", "approver"],
+		as_dict=True,
+		for_update=True,
+		order_by="name asc",
 	)
 	frappe.db.set_value(
 		"Workflow Action",
@@ -241,6 +247,6 @@ def close_round_projections(round_id: str) -> None:
 		{"status": "Completed"},
 		update_modified=False,
 	)
-	for task_name in task_names:
-		_close_assignment(frappe.get_doc("Workflow Task", task_name))
+	for task in tasks:
+		_close_assignment(task)
 	clear_doctype_notifications("Workflow Action")

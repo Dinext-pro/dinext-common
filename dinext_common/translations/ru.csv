@@ -485,6 +485,8 @@ Update Dinext Platform to support final permission query conditions before readi
 Workflow comments cannot exceed {0} characters,Комментарий процесса не может превышать {0} символов
 Sent by,Отправлено
 Notification settings,Настройки уведомлений
+Workflow mail recipient authorization could not be verified.,Не удалось подтвердить права получателя письма согласования.
+SMTP connection lost. Delivery is uncertain. A retry may deliver a duplicate with the same Message-ID.,Соединение SMTP прервалось. Доставка могла состояться. Повторная отправка может доставить копию с тем же Message-ID.
 Former user,Бывший пользователь
 Approval deadline exceeded,Нарушен срок согласования
 Please review the comment and correct the document.,Прочитайте комментарий и исправьте документ.
@@ -624,5 +626,17 @@ The Workflow request has expired. Refresh the document before acting.,Срок �
 "{0} → {1} (role {2})","{0} → {1} (роль {2})","Workflow"
 "Workflow action was not applied","Действие согласования не выполнено",""
 "Workflow action queued","Действие поставлено в очередь",""
+"Workflow status has changed","Состояние согласования изменилось",""
+"Workflow action could not finish","Действие согласования не завершилось",""
+"Workflow action is still queued. Reload to check its status.","Действие ещё в очереди. Обновите страницу, чтобы проверить состояние.",""
+"Some workflow actions are still queued. Open the document to check its status.","Некоторые действия ещё в очереди. Откройте документ, чтобы проверить его состояние.",""
+"This approval action is no longer available.","Это действие согласования больше недоступно.",""
+"Workflow confirmation unavailable","Подтверждение согласования временно недоступно",""
+"Please try this approval action again in a moment.","Повторите действие через некоторое время.",""
+"Invalid document revision","Не удалось определить версию документа",""
+"The document has changed. Refresh it before confirming your decision.","Документ изменился. Обновите его перед подтверждением решения.",""
+"The approval rules have changed. Refresh the document before confirming.","Правила согласования изменились. Обновите документ перед подтверждением.",""
+"The workflow document is no longer available","Документ согласования больше недоступен",""
+"The workflow is busy. Refresh the document and try the action again.","Согласование занято другим запросом. Обновите документ и повторите действие.",""
 "The vote will be recorded when background submission completes.","Голос будет записан после завершения фонового проведения.",""
 The background submission no longer has an active job.,Фоновое проведение больше не связано с активным заданием.

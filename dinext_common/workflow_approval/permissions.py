@@ -27,7 +27,7 @@ def supports_final_task_permission_queries() -> bool:
 
 
 def restore_workflow_task_base_read(*, during_cutover: bool = False) -> None:
-	"""Keep standard document access when Timesheets installs its role overrides."""
+	"""Keep standard document and report access with Timesheets role overrides."""
 	if not during_cutover and not frappe.conf.get("enable_parallel_workflow_approval"):
 		return
 	if not supports_final_task_permission_queries():
@@ -37,11 +37,16 @@ def restore_workflow_task_base_read(*, during_cutover: bool = False) -> None:
 	if not frappe.db.exists("Custom DocPerm", {"parent": doctype, "role": ("in", timesheet_roles)}):
 		return
 	base = {"parent": doctype, "role": "All", "permlevel": 0, "if_owner": 0}
-	if frappe.db.exists("Custom DocPerm", base):
-		return
-	frappe.get_doc({
-		"doctype": "Custom DocPerm", "parenttype": "DocType", "parentfield": "permissions", **base, "read": 1,
-	}).insert(ignore_permissions=True)
+	existing = frappe.db.get_value("Custom DocPerm", base, ["name", "read", "report"], as_dict=True)
+	if existing:
+		if not existing.read or existing.report:
+			return
+		frappe.db.set_value("Custom DocPerm", existing.name, {"report": 1})
+	else:
+		frappe.get_doc({
+			"doctype": "Custom DocPerm", "parenttype": "DocType", "parentfield": "permissions",
+			**base, "read": 1, "report": 1,
+		}).insert(ignore_permissions=True)
 	frappe.clear_cache(doctype=doctype)
 
 
@@ -81,6 +86,19 @@ def _source_reference(task: object) -> tuple[str | None, str | None]:
 	)
 
 
+@contextmanager
+def _quiet_permission_checks():
+	"""A denied candidate is an omitted row, so keep its diagnostics out of Desk."""
+	previous_mute = frappe.flags.mute_messages
+	previous_error = frappe.flags.error_message
+	frappe.flags.mute_messages = True
+	try:
+		yield
+	finally:
+		frappe.flags.mute_messages = previous_mute
+		frappe.flags.error_message = previous_error
+
+
 def _has_source_read_permission(task: object, user: str) -> bool:
 	doctype, name = _source_reference(task)
 	if not doctype or not name:
@@ -97,7 +115,10 @@ def _has_source_read_permission(task: object, user: str) -> bool:
 			frappe.session.user = user
 			frappe.local.user_perms = None
 			frappe.local.role_permissions = {}
-		return bool(frappe.has_permission(doctype, ptype="read", doc=name, user=user, throw=False))
+		with _quiet_permission_checks():
+			return bool(frappe.has_permission(doctype, ptype="read", doc=name, user=user, throw=False))
+	except (frappe.DoesNotExistError, frappe.PermissionError):
+		return False
 	finally:
 		if previous_user != user:
 			frappe.session.user = previous_user
@@ -200,9 +221,52 @@ def prepare_source_permissions(rows, user, source_permissions):
 	batch_read = _batch_read_helper()
 	if batch_read is None:
 		return
-	for doctype, names in sources.items():
-		visible = batch_read(doctype, names)
-		source_permissions.update(((doctype, name), name in visible) for name in names)
+	with _quiet_permission_checks():
+		for doctype, names in sources.items():
+			try:
+				visible = batch_read(doctype, names)
+			except (frappe.DoesNotExistError, frappe.PermissionError):
+				continue  # The exact single-document check handles these candidates.
+			source_permissions.update(((doctype, name), name in visible) for name in names)
+
+
+def public_source_title_field(meta) -> str | None:
+	"""Only store titles from fields readable at the document's base permission level."""
+	title_field = meta.title_field
+	field = meta.get_field(title_field) if title_field else None
+	if field and not int(field.permlevel or 0) and field.fieldtype != "Password":
+		return title_field
+	return None
+
+
+def sanitize_restricted_task_titles(doctype: str | None = None) -> None:
+	if not frappe.db.table_exists("Workflow Task"):
+		return
+	task = frappe.qb.DocType("Workflow Task")
+	todo = frappe.qb.DocType("ToDo")
+	doctypes = [doctype] if doctype else frappe.get_all("Workflow Task", pluck="reference_doctype", distinct=True)
+	for source_type in doctypes:
+		if not source_type or not frappe.db.exists("DocType", source_type):
+			continue
+		if public_source_title_field(frappe.get_meta(source_type, cached=False)):
+			continue
+		restricted = (task.reference_doctype == source_type) & (task.source_title != task.reference_name)
+		(
+			frappe.qb.update(todo)
+			.set(todo.description, frappe._("Workflow approval"))
+			.where((todo.reference_type == "Workflow Task") &
+				todo.reference_name.isin(frappe.qb.from_(task).select(task.name).where(restricted)))
+		).run()
+		(
+			frappe.qb.update(task)
+			.set(task.source_title, task.reference_name)
+			.where(restricted)
+		).run()
+
+
+def sanitize_tasks_after_title_permission_change(doc, method=None) -> None:
+	if doc.get("property") in {"permlevel", "title_field"} and doc.get("doc_type"):
+		sanitize_restricted_task_titles(doc.doc_type)
 
 
 def get_task_read_checker(
@@ -325,24 +389,32 @@ def get_workflow_task_permission_query_conditions(user: str | None = None) -> st
 		can_read = scope[3]
 		allowed = [row.name for row in scope[1] if can_read(row)]
 		return frappe.qb.DocType("Workflow Task").name.isin(allowed).get_sql() if allowed else "1=0"
-	can_read = get_task_read_checker(user)
+	source_permissions = {}
+	can_read = get_task_read_checker(user, source_permissions=source_permissions)
+	principal_filters = []
+	if not _is_system_manager(user):
+		principal_filters = [["approver", "=", user], ["user", "=", user]]
+		if workflows := get_monitorable_workflows(user):
+			principal_filters.append(["workflow", "in", workflows])
 	allowed = []
-	start = 0
+	filters = {}
 	while True:
 		rows = frappe.get_all(
 			"Workflow Task",
+			filters=filters,
+			or_filters=principal_filters,
 			fields=[
 				"name", "approver", "user", "workflow", "reference_doctype",
 				"reference_name", "doc", "wt_docname", "source_deleted_at",
 			],
 			order_by="name asc",
-			limit_start=start,
 			limit_page_length=500,
 		)
+		prepare_source_permissions(rows, user, source_permissions)
 		allowed.extend(row.name for row in rows if can_read(row))
 		if len(rows) < 500:
 			break
-		start += len(rows)
+		filters = {"name": (">", rows[-1].name)}
 	if not allowed:
 		return "1=0"
 	task = frappe.qb.DocType("Workflow Task")

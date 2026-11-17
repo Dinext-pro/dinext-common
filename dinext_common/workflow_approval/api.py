@@ -59,6 +59,7 @@ QUEUE_FIELDS = [
 
 
 TASK_ACCESS_FIELDS = (
+	"name",
 	"workflow_process",
 	"source_created_at",
 	"round_status",
@@ -100,11 +101,20 @@ def _require_system_manager() -> None:
 
 def _as_list(value: str | list[Any]) -> list[Any]:
 	if isinstance(value, str):
-		parsed = json.loads(value)
-		if not isinstance(parsed, list):
-			raise frappe.ValidationError(_("Expected a JSON list"))
-		return parsed
-	return list(value)
+		try:
+			value = json.loads(value)
+		except json.JSONDecodeError:
+			raise frappe.ValidationError(_("Expected a JSON list")) from None
+	if not isinstance(value, list):
+		raise frappe.ValidationError(_("Expected a JSON list"))
+	return value
+
+
+def _document_names(doctype: str, value: str | list[str]) -> list[str]:
+	names = _as_list(value)
+	if not doctype or any(not isinstance(name, str) or not name for name in names):
+		raise frappe.ValidationError(_("Expected a source type and a list of document names"))
+	return list(dict.fromkeys(names))
 
 
 def _source_identity(doc: object) -> tuple[str, str]:
@@ -185,6 +195,8 @@ def _vote_source_action(
 	task_name: str | None = None,
 	receipt_managed: bool = False,
 	expected_creation: str | None = None,
+	expected_modified: str | None = None,
+	expected_transition_hash: str | None = None,
 ) -> engine.VoteResult:
 	if request_id and not receipt_managed:
 		receipt = request_receipts.get(request_receipts.request_key("Vote", request_id))
@@ -220,6 +232,8 @@ def _vote_source_action(
 		task_name, transition_uuid=transition_uuid, action=action, comment=comment,
 		request_id=request_id, completion_source=completion_source,
 		receipt_managed=receipt_managed, expected_creation=expected_creation,
+		expected_modified=expected_modified,
+		expected_transition_hash=expected_transition_hash,
 	)
 
 
@@ -236,6 +250,20 @@ def _round_error_response():
 			indicator="red",
 		)
 		raise
+	except (engine.WorkflowDomainRollbackError, engine.WorkflowSourceChangedError) as error:
+		frappe.msgprint(
+			frappe.utils.escape_html(str(error)),
+			title=_("Workflow action was not applied"),
+			indicator="red",
+		)
+		raise
+	except (frappe.QueryDeadlockError, frappe.QueryTimeoutError):
+		if getattr(frappe.local, "request", None) is None:
+			raise
+		frappe.throw(
+			_("The workflow is busy. Refresh the document and try the action again."),
+			engine.WorkflowTemporarilyUnavailableError,
+		)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -258,6 +286,24 @@ def vote(
 		)
 
 
+@frappe.whitelist()
+def get_vote_status(task_name: str) -> dict[str, Any]:
+	"""Read the current outcome without replaying the original decision."""
+	task = frappe.get_doc("Workflow Task", task_name)
+	task.check_permission("read")
+	source = frappe.get_doc(task.reference_doctype, task.reference_name)
+	source.check_permission("read")
+	if get_datetime(task.source_created_at) != get_datetime(source.creation):
+		raise frappe.DoesNotExistError(_("The workflow document is no longer available"))
+	result = dict(engine._vote_result(task, source, transitioned=task.round_status == "Transitioned"))
+	if queue_name := result.get("pending_submission"):
+		submission_status = frappe.db.get_value("Submission Queue", queue_name, "status")
+		if submission_status in {"Failed", "Finished"}:
+			result.pop("pending_submission")
+		result["submission_status"] = submission_status
+	return result
+
+
 @frappe.whitelist(methods=["POST"])
 def apply_workflow(
 	doc: object,
@@ -268,6 +314,7 @@ def apply_workflow(
 	workflow: str | None = None,
 	process_id: str | None = None,
 	task_name: str | None = None,
+	expected_transition_hash: str | None = None,
 ) -> engine.VoteResult:
 	"""Replace direct Frappe apply_workflow with one task vote."""
 	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
@@ -277,6 +324,11 @@ def apply_workflow(
 
 		return core_apply_workflow(doc, action)
 	_require_post()
+	if isinstance(doc, str):
+		try:
+			doc = frappe.parse_json(doc)
+		except ValueError:
+			raise frappe.ValidationError(_("A persisted source document is required")) from None
 	doctype, name = _source_identity(doc)
 	if not doctype or not name:
 		raise frappe.ValidationError(_("A persisted source document is required"))
@@ -289,6 +341,8 @@ def apply_workflow(
 			comment=comment,
 			request_id=request_id,
 			workflow=workflow, process_id=process_id, task_name=task_name,
+			expected_modified=str(doc.get("modified") or "") if hasattr(doc, "get") else None,
+			expected_transition_hash=expected_transition_hash,
 		)
 
 
@@ -354,7 +408,7 @@ def _parse_bulk_targets(targets: str | list[dict[str, Any]] | None, names: list[
 
 
 def _source_batch(doctype, names, action, comment, transition_uuid, targets):
-	docnames = list(dict.fromkeys(str(name) for name in _as_list(names)))
+	docnames = _document_names(doctype, names)
 	if len(docnames) > MAX_BULK_DOCUMENTS:
 		raise frappe.ValidationError(_("Bulk approval supports at most 500 documents"))
 	targets_by_name = _parse_bulk_targets(targets, docnames)
@@ -724,7 +778,8 @@ def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monit
 	can_read = get_task_read_checker(
 		user, monitored_only=monitored_only, require_source=True, source_permissions=source_permissions
 	)
-	page_size = 500
+	batch_size = 500
+	page_size = min(limit, batch_size) if limit and limit > 0 else batch_size
 	start = 0
 	result = []
 	while True:
@@ -746,6 +801,7 @@ def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monit
 		if len(rows) < page_size:
 			return result
 		start += page_size
+		page_size = batch_size
 
 
 def _available_task_transitions(task_names: list[str]) -> dict[str, list[dict[str, Any]]]:
@@ -835,7 +891,9 @@ def get_personal_queue(filters=None, *, limit=None, include_transitions=False, f
 			task_filters[field] = values[field]
 	predicate = None
 	if values.get("created_on") or values.get("created_today"):
-		_, predicate = _queue_day_filter(values.get("created_on"))
+		day, predicate = _queue_day_filter(values.get("created_on"))
+		# Database timestamps use the site time zone. Keep the exact day test in the viewer's zone.
+		task_filters["creation"] = ("between", (get_datetime(add_days(day, -2)), get_datetime(add_days(day, 3))))
 	return _filtered_tasks(
 		task_filters, limit=limit, include_transitions=include_transitions, predicate=predicate, fields=fields
 	)
@@ -849,9 +907,7 @@ def get_my_queue(limit: int = 500) -> list[dict[str, Any]]:
 @frappe.whitelist()
 def get_my_source_transitions(doctype: str, names: str | list[str]) -> dict[str, list[dict[str, Any]]]:
 	"""Return exact personal transitions in one permission-filtered task/child batch."""
-	docnames = list(dict.fromkeys(_as_list(names)))
-	if not doctype or any(not isinstance(name, str) or not name for name in docnames):
-		frappe.throw(_("Expected a source type and a list of document names"), frappe.ValidationError)
+	docnames = _document_names(doctype, names)
 	if len(docnames) > MAX_BULK_DOCUMENTS:
 		raise frappe.ValidationError(_("Bulk approval supports at most 500 documents"))
 	if not docnames:
@@ -1236,6 +1292,7 @@ def get_transitions(
 			"allowed": row.allowed_role,
 			"custom_transition_uuid": row.transition_uuid,
 			"custom_comment_is_required": row.comment_is_required,
+			"transition_semantic_hash": row.transition_semantic_hash,
 			"workflow": task.workflow, "process_id": task.get("workflow_process"), "task_name": task.name,
 		}
 		for row in task.available_workflow_transitions
@@ -1290,7 +1347,7 @@ def get_common_list_transitions(doctype: str, names: str | list[str]) -> list[di
 
 	if not is_engine_enabled():
 		return []
-	docnames = list(dict.fromkeys(_as_list(names)))
+	docnames = _document_names(doctype, names)
 	if not docnames:
 		return []
 	if len(docnames) > MAX_BULK_DOCUMENTS:

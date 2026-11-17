@@ -372,7 +372,7 @@ class TestWorkflowApprovalIntegration(FrappeTestCase):
 		with (
 			patch.object(signed_links, "_peek_command", return_value=command),
 			patch.object(engine, "cast_vote", side_effect=vote_after_configuration_changed),
-			patch.object(signed_links, "return_link_expired_page") as expired,
+			patch.object(signed_links, "_show_expired_link") as expired,
 		):
 			signed_links.confirm_action("already-issued-command")
 		expired.assert_called_once()

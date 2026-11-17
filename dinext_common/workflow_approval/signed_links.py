@@ -11,14 +11,30 @@ from frappe import _
 from frappe.model.workflow import get_workflow_name
 from frappe.utils import get_datetime, get_url
 from frappe.utils.verified_command import get_signed_params, verify_request
-from frappe.workflow.doctype.workflow_action.workflow_action import (
-	return_link_expired_page,
-	return_success_page,
-)
+from frappe.workflow.doctype.workflow_action.workflow_action import return_success_page
+from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
 
 from dinext_common.workflow_approval import engine, localization
 
 COMMAND_TTL_SECONDS = 15 * 60
+COMMAND_CACHE_ERRORS = (RedisConnectionError, RedisTimeoutError)
+
+
+def _show_expired_link() -> None:
+	frappe.respond_as_web_page(
+		_("Link Expired"),
+		_("This approval action is no longer available."),
+		indicator_color="orange",
+	)
+
+
+def _show_confirmation_unavailable() -> None:
+	frappe.respond_as_web_page(
+		_("Workflow confirmation unavailable"),
+		_("Please try this approval action again in a moment."),
+		http_status_code=503,
+		indicator_color="orange",
+	)
 
 
 def _issue_command(payload: dict[str, str]) -> str:
@@ -46,6 +62,14 @@ def _peek_command(token: str) -> dict[str, str] | None:
 		frappe.cache.make_key(f"workflow-approval-command:{token}")
 	)
 	return json.loads(raw) if raw else None
+
+
+def _clear_committed_command(token: str) -> None:
+	try:
+		_consume_command(token)
+	except COMMAND_CACHE_ERRORS:
+		# The completed receipt still prevents a second vote until the token expires.
+		frappe.logger("workflow_approval").warning("Unable to clear a committed workflow confirmation")
 
 
 def _configuration_restored(task) -> bool:
@@ -141,15 +165,11 @@ def _render_preview(
 	last_modified: str | None,
 	delivery_key: str,
 ) -> None:
-	task = frappe.get_doc("Workflow Task", task_name)
 	try:
+		task = frappe.get_doc("Workflow Task", task_name)
 		source = frappe.get_doc(task.reference_doctype, task.reference_name)
 	except frappe.DoesNotExistError:
-		frappe.respond_as_web_page(
-			_("Link Expired"),
-			_("The referenced document is no longer available."),
-			indicator_color="orange",
-		)
+		_show_expired_link()
 		return
 	transition = next(
 		(
@@ -174,19 +194,26 @@ def _render_preview(
 		or not delivery_key
 		or not _open_action(task_name, delivery_key)
 	):
-		return_link_expired_page(source, task.workflow_state)
+		_show_expired_link()
 		return
 	confirmation_method = (
 		"/api/method/dinext_common.workflow_approval.signed_links.confirm_action"
 	)
-	command_token = _issue_command(
-		{
-			"task_name": task_name,
-			"transition_uuid": transition_uuid,
-			"user": user,
-			"delivery_key": delivery_key,
-		}
-	)
+	try:
+		command_token = _issue_command(
+			{
+				"task_name": task_name,
+				"transition_uuid": transition_uuid,
+				"user": user,
+				"delivery_key": delivery_key,
+				"modified": str(get_datetime(source.modified)),
+				"creation": str(get_datetime(source.creation)),
+				"transition_hash": transition.transition_semantic_hash,
+			}
+		)
+	except COMMAND_CACHE_ERRORS:
+		_show_confirmation_unavailable()
+		return
 	confirmation_url = get_url(confirmation_method)
 	changed = bool(
 		last_modified
@@ -258,7 +285,11 @@ def confirm_action(
 	command_token: str,
 	comment: object = None,
 ) -> None:
-	preview = _peek_command(command_token)
+	try:
+		preview = _peek_command(command_token)
+	except COMMAND_CACHE_ERRORS:
+		_show_confirmation_unavailable()
+		return
 	if preview and frappe.session.user not in ("Guest", preview["user"]):
 		raise frappe.PermissionError(_("This approval link belongs to another user"))
 	command = preview
@@ -273,22 +304,19 @@ def confirm_action(
 	transition_uuid = command["transition_uuid"]
 	user = command["user"]
 	delivery_key = command["delivery_key"]
-	task = frappe.get_doc("Workflow Task", task_name)
+	try:
+		task = frappe.get_doc("Workflow Task", task_name)
+	except frappe.DoesNotExistError:
+		_show_expired_link()
+		return
 	if (
 		task.status != "Working"
 		or task.round_status != "Open"
 		or task.approver != user
+		or not _actor_can_read_task(task, user)
 		or not _open_action(task_name, delivery_key)
 	):
-		try:
-			source = frappe.get_doc(task.reference_doctype, task.reference_name)
-			return_link_expired_page(source, task.workflow_state)
-		except frappe.DoesNotExistError:
-			frappe.respond_as_web_page(
-				_("Link Expired"),
-				_("The referenced document is no longer available."),
-				indicator_color="orange",
-			)
+		_show_expired_link()
 		return
 	from dinext_common.workflow_approval.api import _read_round_failure
 
@@ -304,6 +332,9 @@ def confirm_action(
 			comment=comment,
 			completion_source="Signed Link",
 			request_id=f"signed:{attempt}",
+			expected_creation=command.get("creation"),
+			expected_modified=command.get("modified"),
+			expected_transition_hash=command.get("transition_hash"),
 			expected_delivery_key=delivery_key,
 		)
 		if result.get("pending_submission"):
@@ -315,13 +346,15 @@ def confirm_action(
 			return
 		# Invalid input/rollback leaves the command usable; the engine request ID
 		# makes a retry after commit idempotent even if Redis cleanup is delayed.
-		frappe.db.after_commit.add(lambda: _consume_command(command_token))
+		frappe.db.after_commit.add(lambda: _clear_committed_command(command_token))
 		return_success_page(
 			frappe.get_doc(result["reference_doctype"], result["reference_name"])
 		)
-	except engine.ExpiredWorkflowActionError:
-		return_link_expired_page(frappe.get_doc(task.reference_doctype, task.reference_name), task.workflow_state)
-	except engine.NoEligibleApproversError as error:
+	except (engine.ExpiredWorkflowActionError, frappe.DoesNotExistError, frappe.PermissionError):
+		_show_expired_link()
+	except (engine.NoEligibleApproversError, engine.WorkflowDomainRollbackError, engine.WorkflowSourceChangedError) as error:
+		if isinstance(error, engine.WorkflowSourceChangedError):
+			frappe.db.rollback()
 		frappe.respond_as_web_page(
 			_("Workflow action was not applied"),
 			frappe.utils.escape_html(str(error)),
@@ -369,7 +402,7 @@ def apply_action(
 	task_name = _find_task_for_action(doctype, docname, action, user)
 	task = frappe.get_doc("Workflow Task", task_name)
 	if not _legacy_task_is_eligible(task):
-		return_link_expired_page(frappe.get_doc(doctype, docname), task.workflow_state)
+		_show_expired_link()
 		return
 	transition = next(
 		row for row in task.available_workflow_transitions if row.action == action
@@ -415,7 +448,7 @@ def confirm_legacy_action(
 	task_name = _find_task_for_action(doctype, docname, action, user)
 	task = frappe.get_doc("Workflow Task", task_name)
 	if not _legacy_task_is_eligible(task):
-		return_link_expired_page(frappe.get_doc(doctype, docname), task.workflow_state)
+		_show_expired_link()
 		return
 	task = frappe.get_doc("Workflow Task", task_name)
 	transition = next(

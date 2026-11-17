@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
@@ -187,6 +188,27 @@ class TestWorkflowScenarioLifecycle(unittest.TestCase):
 		self.assertEqual(second["process_status"], "Prepared")
 		self.assertEqual(frappe.db.get_value(service.PROCESS, first["process_id"], "status"), "Completed")
 		self.assertTrue(all(task.workflow_process == second["process_id"] for task in self.tasks(source)))
+
+	def test_configured_terminal_state_preserves_completed_process_and_visible_state(self):
+		source = self.source("A document")
+		original = service.get_context(source)
+		terminal = self.a.states[-1].state
+		get_hooks = frappe.get_hooks
+
+		def hooks(name=None, *args, **kwargs):
+			if name == "workflow_scenario_final_states":
+				return {self.a.name: [terminal]}
+			return get_hooks(name, *args, **kwargs)
+
+		with patch.object(frappe, "get_hooks", side_effect=hooks):
+			self.assertFalse(self.vote(source)["transitioned"])
+			self.assertTrue(self.vote(source, self.user)["transitioned"])
+			source.reload()
+			context = service.ensure_context(source, persist_state=True)
+		self.assertEqual(context["state"], terminal)
+		self.assertIsNone(context["process_id"])
+		self.assertEqual(frappe.db.get_value(service.PROCESS, original["process_id"], "status"), "Completed")
+		self.assertEqual(self.tasks(source), [])
 
 	def test_running_schema_ignores_disabled_flag_and_conditions(self):
 		source = self.source("A document")

@@ -33,6 +33,7 @@ def cleanup():
 	frappe.db.delete("Workflow Task", {"workflow": WORKFLOW})
 	for doctype, filters in [
 		("ToDo", {"reference_type": "Workflow Task", "reference_name": ["in", tasks]}),
+		("Workflow Request Receipt", {"initiator": ["in", [ALICE, BOB, MONITOR]]}),
 		("Workflow Action", {"reference_doctype": "Note", "reference_name": ["like", PREFIX + "%"]}),
 		("Comment", {"reference_doctype": "Note", "reference_name": ["like", PREFIX + "%"]}),
 		("DocShare", {"share_doctype": "Note", "share_name": ["like", PREFIX + "%"]}),
@@ -101,7 +102,8 @@ def seed():
 	for action in ("Approve", "Reject"):
 		_ensure_master("Workflow Action Master", action, {"workflow_action_name": action})
 	workflow = frappe.get_doc({"doctype": "Workflow", "name": WORKFLOW,
-		"workflow_name": WORKFLOW, "document_type": "Note", "workflow_state_field": "title", "is_active": 1})
+		"workflow_name": WORKFLOW, "document_type": "Note", "workflow_state_field": "title", "is_active": 1,
+		"custom_activation_condition": "doc.title == 'Draft'"})
 	workflow.db_insert()
 	for index, state in enumerate(("Draft", "Approved", "Rejected"), 1):
 		frappe.get_doc({"doctype": "Workflow Document State", "parent": WORKFLOW, "parenttype": "Workflow",

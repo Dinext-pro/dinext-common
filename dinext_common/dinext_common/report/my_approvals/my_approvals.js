@@ -1,5 +1,14 @@
 frappe.query_reports["My Approvals"] = {
 	formatter(...args) { return frappe.dinext.approvalReportFormatter(...args); },
+	filters: [
+		{ fieldname: "workflow", fieldtype: "Data", label: __("Workflow") },
+		{ fieldname: "reference_doctype", fieldtype: "Data", label: __("Document Type") },
+		{ fieldname: "workflow_state", fieldtype: "Data", label: __("State") },
+		{ fieldname: "action", fieldtype: "Data", label: __("Action") },
+		{ fieldname: "minimum_age", fieldtype: "Int", label: __("Minimum Age (days)") },
+		{ fieldname: "created_today", fieldtype: "Check", label: __("Created Today") },
+		{ fieldname: "created_on", fieldtype: "Date", label: __("Created On") },
+	],
 	get_datatable_options(options) {
 		return Object.assign(options, { checkboxColumn: true });
 	},

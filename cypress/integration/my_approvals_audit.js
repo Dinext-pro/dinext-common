@@ -282,6 +282,10 @@ describe("My Approvals audit corrections", () => {
 	});
 
 	it("commits the permitted bulk item and preserves the denied item's audit record", () => {
+		const pendingCard = () => cy.contains(".number-widget-box", "Awaiting My Decision");
+		cy.login(fixture.alice, fixture.password);
+		cy.openDesk("/app/my-approvals");
+		pendingCard().find(".number").should("have.text", "1");
 		openReport("My Approvals");
 		cy.window().then(async (win) => {
 			const result = await win.frappe.xcall("dinext_common.workflow_approval.api.bulk_task_vote", {
@@ -289,7 +293,23 @@ describe("My Approvals audit corrections", () => {
 				comment: "Synthetic accepted bulk vote", request_id: fixture.prefix + "bulk",
 			});
 			expect(result.succeeded).to.have.length(1);
+			expect(result.succeeded[0].result).to.include({
+				task: fixture.tasks.Main, status: "Completed", transitioned: true,
+			});
 			expect(result.failed).to.have.length(1);
+			expect(result.failed[0].task_name).to.eq(fixture.tasks.Denied);
+		});
+		cy.openDesk("/app/my-approvals");
+		pendingCard().find(".number").should("have.text", "0");
+		pendingCard().find(".widget-body").click();
+		cy.window().should((win) => {
+			expect(win.frappe.query_report.report_name).to.eq("My Approvals");
+			expect(win.frappe.query_report.data).to.deep.eq([]);
+		});
+		openReport("My Approval History");
+		cy.window().should((win) => {
+			const row = win.frappe.query_report.data.find((item) => item.name === fixture.tasks.Main);
+			expect(row?.status).to.eq("Completed");
 		});
 		cy.login(fixture.bob, fixture.password);
 		cy.openDesk(`/app/note/${encodeURIComponent(fixture.prefix + "Main")}`);

@@ -5,10 +5,12 @@ from collections import defaultdict
 from datetime import datetime
 
 import frappe
-from frappe.utils import get_datetime, get_url_to_form, now_datetime
+from frappe.utils import get_url_to_form, now_datetime
 
 from dinext_common.workflow_approval import notifications as mail
 from dinext_common.workflow_approval.deadlines.extensions import get_extensions
+from dinext_common.workflow_approval.email_access import SCOPE_HEADER, authorized_source, delivery_scope, visible_document
+from dinext_common.workflow_approval.email_presentation import document_title
 from dinext_common.workflow_approval.email_preferences import email_allowed
 from dinext_common.workflow_approval.email_settings import checked, normalize_send_times
 from dinext_common.workflow_approval.email_templates import domain_email_template
@@ -103,22 +105,18 @@ def _eligible(task, workflow, recipient, now):
 		return False
 	if not frappe.db.get_value("User", recipient, "enabled"):
 		return False
-	try:
-		source = frappe.get_doc(task.reference_doctype, task.reference_name)
-	except frappe.DoesNotExistError:
-		return False
-	if task.source_created_at and get_datetime(source.creation) != get_datetime(task.source_created_at):
+	source = authorized_source(task, recipient)
+	if source is None:
 		return False
 	from dinext_common.workflow_approval.scenarios import service
 	if service.is_ready():
-		return service.task_is_current(source, task) and mail.recipient_can_read(task, source, recipient)
+		return source
 	from frappe.model.workflow import get_workflow_name
 
-	return (
-		workflow.is_active and get_workflow_name(source.doctype) == workflow.name
-		and source.get(workflow.workflow_state_field) == task.workflow_state
-		and mail.recipient_can_read(task, source, recipient)
-	)
+	if (workflow.is_active and get_workflow_name(source.doctype) == workflow.name
+		and source.get(workflow.workflow_state_field) == task.workflow_state):
+		return source
+	return False
 
 
 def send_group(*, workflow, recipient, task_names, slot, now=None):
@@ -128,11 +126,13 @@ def send_group(*, workflow, recipient, task_names, slot, now=None):
 	if not user or not user.enabled or not user.email:
 		return
 	tasks = []
+	sources = {}
 	# Lock assignments deterministically. Queue insertion and delivery claim share the transaction.
 	for name in sorted(set(task_names)):
 		task = frappe.get_doc("Workflow Task", name, for_update=True)
-		if _eligible(task, workflow, recipient, now):
+		if source := _eligible(task, workflow, recipient, now):
 			tasks.append(task)
+			sources[task.name] = source
 	if not tasks:
 		return
 	state = tasks[0].workflow_state
@@ -148,6 +148,7 @@ def send_group(*, workflow, recipient, task_names, slot, now=None):
 		tasks = [task for task in tasks if delivery_slot(task, policy, recipient, now) == slot]
 		if not tasks:
 			return
+	sources = {task.name: sources[task.name] for task in tasks}
 	default_template = domain_email_template(tasks, "deadline_template") or DEFAULT_DEADLINE_TEMPLATE
 	template = policy.custom_deadline_email_template or default_template
 	# Mutable template/schedule values must never alter an already-formed incident/slot key.
@@ -180,10 +181,11 @@ def send_group(*, workflow, recipient, task_names, slot, now=None):
 			return
 		rows = []
 		for task in tasks:
+			source = visible_document(sources[task.name], recipient)
 			row = dict(
 				doctype=task.reference_doctype,
 				name=task.reference_name,
-				title=task.source_title,
+				title=document_title(source.as_dict()),
 				link=get_url_to_form(task.reference_doctype, task.reference_name),
 				due=task.deadline_due_at,
 				overdue_hours=max(
@@ -195,14 +197,13 @@ def send_group(*, workflow, recipient, task_names, slot, now=None):
 				count=1,
 				tasks=[task.name],
 			)
-			for adapter in frappe.get_hooks("workflow_approval_digest_item") or []:
-				row.update(frappe.get_attr(adapter)(task) or {})
+			row.update(mail.digest_item_override(task, source, recipient))
 			row["actions"] = []
 			rows.append(row)
 		context = dict(
 			rows=rows,
-			tasks=[task.as_dict() for task in tasks],
-			workflow=workflow.as_dict(),
+			tasks=[mail.task_context(task, row["title"]) for task, row in zip(tasks, rows, strict=True)],
+			workflow=mail.workflow_context(workflow),
 			workflow_state=state,
 			recipient=recipient,
 			slot=slot,
@@ -223,6 +224,7 @@ def send_group(*, workflow, recipient, task_names, slot, now=None):
 			subject=subject,
 			message=message,
 			message_id=key,
+			email_headers={SCOPE_HEADER: delivery_scope(recipient, sources)},
 			reference_doctype="Workflow",
 			reference_name=workflow.name,
 		)

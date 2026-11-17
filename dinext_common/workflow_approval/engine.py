@@ -54,6 +54,14 @@ class WorkflowApprovalConflictError(WorkflowApprovalError):
 	"""Raised when a vote no longer matches current source or workflow state."""
 
 
+class WorkflowSourceChangedError(WorkflowApprovalConflictError):
+	"""The user confirmed an older revision of the document."""
+
+
+class WorkflowTemporarilyUnavailableError(WorkflowApprovalError):
+	http_status_code = 503
+
+
 class ExpiredWorkflowActionError(WorkflowApprovalConflictError):
 	"""The signed confirmation no longer matches the current task projection."""
 
@@ -430,8 +438,10 @@ def _configured_transition_hashes(workflow: object, state: str) -> dict[str, str
 
 
 def _source_snapshot(doc: object) -> dict[str, Any]:
+	from dinext_common.workflow_approval.permissions import public_source_title_field
+
 	meta = _value(doc, "meta")
-	title_field = _value(meta, "title_field")
+	title_field = public_source_title_field(meta) if meta else None
 	return {
 		"source_created_at": _value(doc, "creation"),
 		"source_owner": _value(doc, "owner"),
@@ -452,11 +462,13 @@ def _active_task_names(doctype: str, name: str) -> list[str]:
 	)
 
 
-def _round_task_names(round_id: str) -> list[str]:
-	return frappe.get_all(
+def _round_task_names(round_id: str, *, for_update: bool = False) -> list[str]:
+	return frappe.db.get_values(
 		"Workflow Task",
-		filters={"approval_round_id": round_id},
-		pluck="name",
+		{"approval_round_id": round_id},
+		"name",
+		pluck=True,
+		for_update=for_update,
 		order_by="name asc",
 	)
 
@@ -498,7 +510,7 @@ def _lock_domain_dependencies(doctype: str, name: str) -> list[object]:
 
 
 def _set_round_values(round_id: str, values: dict[str, Any]) -> None:
-	for task_name in _round_task_names(round_id):
+	for task_name in _round_task_names(round_id, for_update=True):
 		_set_task_values(task_name, values)
 
 
@@ -766,10 +778,10 @@ def _add_stalled_diagnostic(doc: object, message: str) -> None:
 
 
 def _completed_vote_rows(round_id: str) -> list[dict[str, Any]]:
-	return frappe.get_all(
+	return frappe.db.get_values(
 		"Workflow Task",
-		filters={"approval_round_id": round_id, "status": "Completed"},
-		fields=[
+		{"approval_round_id": round_id, "status": "Completed"},
+		[
 			"name",
 			"approver",
 			"action",
@@ -777,6 +789,8 @@ def _completed_vote_rows(round_id: str) -> list[dict[str, Any]]:
 			"transition_semantic_hash",
 			"vote_comment",
 		],
+		as_dict=True,
+		for_update=True,
 		order_by="name asc",
 	)
 
@@ -1007,7 +1021,7 @@ def _amend_open_round(
 			continue
 		_replace_available_transitions(task.name, desired)
 	_repair_open_round_tasks(doc, active, manifest)
-	counts = _round_vote_counts(round_id, manifest)
+	counts = _round_vote_counts(round_id, manifest, for_update=True)
 	reached = [row for row in counts if int(row["votes"]) >= int(row["threshold"])]
 	if not reached:
 		return False
@@ -1121,7 +1135,7 @@ def carry_stable_votes(
 
 
 def _reached_winner(round_id: str, manifest: dict[str, Any]) -> dict[str, Any] | None:
-	counts = _round_vote_counts(round_id, manifest)
+	counts = _round_vote_counts(round_id, manifest, for_update=True)
 	reached = [row for row in counts if int(row["votes"]) >= int(row["threshold"])]
 	if not reached:
 		return None
@@ -1426,22 +1440,26 @@ def _apply_automatic_votes(
 	return winner
 
 
-def _round_vote_counts(round_id: str, manifest: dict[str, Any]) -> list[dict[str, Any]]:
-	completed = frappe.get_all(
+def _round_vote_counts(
+	round_id: str, manifest: dict[str, Any], *, for_update: bool = False
+) -> list[dict[str, Any]]:
+	tasks = frappe.db.get_values(
 		"Workflow Task",
-		filters={"approval_round_id": round_id, "status": "Completed"},
-		fields=["transition_uuid", "completed_at"],
+		{"approval_round_id": round_id, "status": ("in", ["Completed", "Working"])},
+		["name", "status", "transition_uuid", "transition_semantic_hash"],
+		as_dict=True,
+		for_update=for_update,
+		order_by="name asc",
 	)
-	working_names = frappe.get_all(
-		"Workflow Task",
-		filters={"approval_round_id": round_id, "status": "Working"},
-		pluck="name",
-	)
+	completed = [task for task in tasks if task.status == "Completed"]
+	working_names = [task.name for task in tasks if task.status == "Working"]
 	remaining = (
-		frappe.get_all(
+		frappe.db.get_values(
 			"Available Workflow Transitions",
-			filters={"parent": ("in", working_names)},
-			pluck="transition_uuid",
+			{"parent": ("in", working_names)},
+			"transition_uuid",
+			pluck=True,
+			for_update=for_update,
 		)
 		if working_names
 		else []
@@ -1451,6 +1469,10 @@ def _round_vote_counts(round_id: str, manifest: dict[str, Any]) -> list[dict[str
 			**transition,
 			"votes": sum(
 				1 for task in completed if task.transition_uuid == transition["transition_uuid"]
+				and (
+					not task.transition_semantic_hash
+					or task.transition_semantic_hash == transition.get("transition_semantic_hash")
+				)
 			),
 			"remaining": remaining.count(transition["transition_uuid"]),
 		}
@@ -1591,6 +1613,8 @@ def cast_vote(
 	completion_source: str = "Manual",
 	receipt_managed: bool = False,
 	expected_creation: str | None = None,
+	expected_modified: str | None = None,
+	expected_transition_hash: str | None = None,
 	expected_delivery_key: str | None = None,
 ) -> VoteResult:
 	"""Lock source then task, revalidate, record one vote, and finalize if reached."""
@@ -1626,12 +1650,14 @@ def cast_vote(
 	operation = domain_handler(source.doctype, "vote_context")
 	with _atomic_workflow_attempt(), operation() if operation else nullcontext():
 		return _cast_locked_vote(
-			task, source, transition_uuid, action, comment, request_id, completion_source, receipt_managed
+			task, source, transition_uuid, action, comment, request_id, completion_source, receipt_managed,
+			expected_modified=expected_modified, expected_transition_hash=expected_transition_hash,
 		)
 
 
 def _cast_locked_vote(
 	task, source, transition_uuid, action, comment, request_id, completion_source, receipt_managed,
+	*, expected_modified=None, expected_transition_hash=None,
 ) -> VoteResult:
 	if task.approver != frappe.session.user and frappe.session.user != "Administrator":
 		raise frappe.PermissionError(_("Only the snapshotted approver can complete this task"))
@@ -1657,6 +1683,14 @@ def _cast_locked_vote(
 	if task.status != "Working" or task.round_status != "Open":
 		raise WorkflowApprovalConflictError(_("Workflow Task is no longer active"))
 
+	if expected_modified:
+		try:
+			revision = get_datetime(expected_modified)
+		except (ValueError, TypeError):
+			raise frappe.ValidationError(_("Invalid document revision")) from None
+		if get_datetime(source.modified) != revision:
+			raise WorkflowSourceChangedError(_("The document has changed. Refresh it before confirming your decision."))
+
 	from dinext_common.workflow_approval.scenarios import service
 	service.validate_task(source, task)
 	context = _workflow_context(source)
@@ -1665,6 +1699,15 @@ def _cast_locked_vote(
 	workflow_name, workflow, _state_field, state = context
 	if workflow_name != task.workflow or state != task.workflow_state:
 		raise WorkflowApprovalConflictError(_("The source workflow state has changed"))
+
+	if expected_transition_hash:
+		current = next((
+			row for row in workflow.transitions
+			if row.state == state and row.custom_transition_uuid == transition_uuid
+		), None)
+		if not current or _transition_dict(current)["transition_semantic_hash"] != expected_transition_hash:
+			frappe.db.after_rollback.add(partial(_persist_round_configuration, task.approval_round_id))
+			raise WorkflowSourceChangedError(_("The approval rules have changed. Refresh the document before confirming."))
 
 	manifest = _parse_manifest(task)
 	classification = _classify_round(manifest, workflow, state, task.approval_round_id)
@@ -1757,7 +1800,9 @@ def _cast_locked_vote(
 
 	close_task_projection(task)
 
-	counts = _round_vote_counts(task.approval_round_id, manifest)
+	# The transaction may have read a task pointer before waiting for the source lock.
+	# Use a current read to include votes committed during that wait.
+	counts = _round_vote_counts(task.approval_round_id, manifest, for_update=True)
 	reached = [row for row in counts if row["votes"] >= row["threshold"]]
 	winner = (
 		min(reached, key=lambda row: (int(row["idx"]), row["transition_uuid"]))
@@ -1784,8 +1829,8 @@ def _cast_locked_vote(
 			"Workflow",
 			_("Workflow approval is stalled because no action can reach its threshold."),
 		)
-	refreshed_task = frappe.get_doc("Workflow Task", task.name)
-	refreshed_source = frappe.get_doc(source.doctype, source.name)
+	refreshed_task = frappe.get_doc("Workflow Task", task.name, for_update=True)
+	refreshed_source = frappe.get_doc(source.doctype, source.name, for_update=True)
 	result = _vote_result(refreshed_task, refreshed_source, transitioned=transitioned)
 	if receipt:
 		request_receipts.finish(receipt.name, result)
@@ -1855,19 +1900,20 @@ def _round_matches_source(task, source) -> bool:
 
 
 def _finalization_actor(round_id: str, winner: dict[str, Any]) -> str:
-	actors = frappe.get_all(
+	actor = frappe.db.get_value(
 		"Workflow Task",
-		filters={
+		{
 			"approval_round_id": round_id,
 			"status": "Completed",
 			"transition_uuid": winner["transition_uuid"],
 		},
-		pluck="approver",
+		"approver",
 		order_by="completed_at desc, name asc",
+		for_update=True,
 	)
-	if not actors:
+	if not actor:
 		raise WorkflowApprovalConflictError(_("Reached transition has no completed approver"))
-	return actors[0]
+	return actor
 
 
 def _ensure_finalization_placeholder(
@@ -1944,7 +1990,7 @@ def _finalize_round(
 				return False
 			if result is None:
 				raise WorkflowApprovalConflictError(_("Workflow core did not create the expected Submission Queue"))
-			refreshed = frappe.get_doc(source.doctype, source.name)
+			refreshed = frappe.get_doc(source.doctype, source.name, for_update=True)
 			if not _round_matches_source(sample, refreshed) or not _source_at_workflow_state(
 				refreshed, workflow, winner["next_state"]
 			):
@@ -1980,8 +2026,8 @@ def _finalize_round(
 
 def _finish_round(round_id: str, winner: dict[str, Any]) -> None:
 	now = now_datetime()
-	for task_name in _round_task_names(round_id):
-		status = frappe.db.get_value("Workflow Task", task_name, "status")
+	for task_name in _round_task_names(round_id, for_update=True):
+		status = frappe.db.get_value("Workflow Task", task_name, "status", for_update=True)
 		values: dict[str, Any] = {
 			"round_status": "Transitioned",
 			"finalization_status": "Finished",

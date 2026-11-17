@@ -12,7 +12,7 @@
 <p style="margin:0 0 12px">{{ _("Please review the comment and correct the document.") }}</p>
 <p style="margin:8px 0 12px"><a href="{{ (timesheet_link or document_link)|e }}" style="color:#1769aa;font-weight:bold">{{ (timesheet_title or document_title)|e }}</a></p>
 {% if position_label %}<p style="margin:8px 0 12px">{{ position_label|e }}</p>{% endif %}
-{% for comment in comments %}<table role="presentation" width="100%" style="margin:16px 0;border-left:3px solid #cf635a;background:#fff5f3"><tr><td style="padding:12px 16px;white-space:pre-wrap">{% if comment.get('system') %}{{ _("Automatic workflow transition") }}{% else %}<strong>{{ comment.author_name|e }}</strong>{% endif %}: {{ comment.text|e }}</td></tr></table>{% endfor %}
+{% for comment in comments %}<table role="presentation" width="100%" style="margin:16px 0;border-left:3px solid #cf635a;background:#fff5f3"><tr><td style="padding:12px 16px;white-space:pre-wrap">{% if comment.get('system') %}{{ _("Automatic workflow transition") }}{% else %}<strong>{{ comment.author_name|e }}</strong>{% endif %}: {% for line in comment.lines %}{% if not loop.first %}<br>{% endif %}{{ line|e }}{% endfor %}</td></tr></table>{% endfor %}
 {% elif email_kind=='action' %}
 <p style="margin:0 0 12px">{{ _("A document is awaiting your decision.") }}</p><p style="margin:8px 0 12px"><a href="{{ document_link|e }}" style="color:#1769aa;font-weight:bold">{{ document_title|e }}</a><br><span style="color:#596579;font-size:14px">{{ author_name|e }}</span></p>{% if is_timesheet and hours is defined %}<p style="font-size:14px;margin:6px 0">{{ _("Hours") }}: {{ hours_label|e }}{% if hours_breakdown_label %} ({{ hours_breakdown_label|e }}){% endif %}</p>{% endif %}{{ action_buttons(actions) }}
 {% else %}

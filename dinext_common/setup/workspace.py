@@ -84,6 +84,21 @@ def get_workspace_sidebar_items():
 	return payload
 
 
+@frappe.whitelist()
+def get_optional_kanban_boards(doctype: str):
+	"""Keep the Desk view switcher usable when it has no readable boards."""
+	from frappe.desk.doctype.kanban_board.kanban_board import get_kanban_boards
+
+	message_count = len(frappe.local.message_log)
+	previous_error = frappe.flags.error_message
+	try:
+		return get_kanban_boards(doctype)
+	except frappe.PermissionError:
+		del frappe.local.message_log[message_count:]
+		frappe.flags.error_message = previous_error
+		return []
+
+
 def _can_see_approval_control():
 	from dinext_common.workflow_approval.permissions import get_monitorable_workflows
 

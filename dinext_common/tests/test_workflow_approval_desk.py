@@ -66,6 +66,9 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 		self.assertEqual(result["value"], 1)
 		self.assertEqual(result["route_options"]["created_on"], "2026-01-02")
 		self.assertEqual(get_all.call_args.kwargs["limit_page_length"], 500)
+		self.assertEqual(get_all.call_args.kwargs["filters"]["creation"], (
+			"between", (datetime(2025, 12, 31), datetime(2026, 1, 5)),
+		))
 		can_read.assert_called_once()
 
 	def test_decision_card_passes_exact_cutoff_and_completion_filter_to_report(self):

@@ -49,7 +49,7 @@ def _round_is_protected(tasks: list[object]) -> bool:
 	):
 		return True
 	names = [task.name for task in tasks]
-	if frappe.db.exists(
+	if _linked_record_exists(
 		"Workflow Task",
 		{"reused_from_workflow_task": ("in", names)},
 	):

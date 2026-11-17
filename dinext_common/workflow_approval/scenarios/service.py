@@ -402,6 +402,24 @@ def _retire_process(process: Any, reason: str, status: str = "Cancelled") -> Non
 	)
 
 
+def _keeps_terminal_state(doc, workflow, context) -> bool:
+	state_field = workflow.workflow_state_field
+	state = doc.get(state_field)
+	states = workflow.get("states") or []
+	if not any(row.state == state for row in states) or not is_terminal(workflow, state):
+		return False
+	final_states = frappe.get_hooks("workflow_scenario_final_states", {}).get(workflow.name, ())
+	initial_docstatus = int(states[0].get("doc_status") or 0)
+	last_process = context.last_process
+	if state not in final_states and (
+		initial_docstatus == int(doc.get("docstatus") or 0)
+		or not last_process
+		or frappe.db.get_value(PROCESS, last_process, "workflow", for_update=True) != workflow.name
+	):
+		return False
+	return frappe.db.get_value(doc.doctype, doc.name, state_field, for_update=True) == state
+
+
 def ensure_context(doc: Any, *, persist_state: bool = False, strict: bool = True) -> WorkflowContext:
 	"""Prepare a candidate under the source lock; preserve every Running process.
 
@@ -425,6 +443,12 @@ def ensure_context(doc: Any, *, persist_state: bool = False, strict: bool = True
 		return get_context(doc)
 	try:
 		workflow = select_workflow(doc)
+		if workflow and not process and _keeps_terminal_state(doc, workflow, context):
+			if context.routing_error:
+				frappe.db.set_value(
+					CONTEXT, context.name, {"routing_error": None, "error_workflow": None}, update_modified=False
+				)
+			return _context_values(doc, workflow)
 		state = (
 			initial_state(workflow, doc)
 			if workflow and (not process or process.workflow != workflow.name)
@@ -756,9 +780,8 @@ def task_is_current(source: Any, task: Any) -> bool:
 def current_task_rows(rows: list[Any]) -> list[Any]:
 	if not is_ready():
 		return rows
-	active = [
-		row for row in rows if row.get("round_status") in ("Open", "Stalled", "Finalizing", "Conflicted")
-	]
+	active_statuses = ("Open", "Stalled", "Finalizing", "Conflicted")
+	active = [row for row in rows if row.get("round_status") in active_statuses]
 	if not active:
 		return rows
 	keys = {
@@ -783,7 +806,7 @@ def current_task_rows(rows: list[Any]) -> list[Any]:
 	return [
 		row
 		for row in rows
-		if row not in active
+		if row.get("round_status") not in active_statuses
 		or (row.get("workflow_process") and contexts.get(keys.get(row.name)) == row.workflow_process)
 	]
 
