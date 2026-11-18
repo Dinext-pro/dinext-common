@@ -295,6 +295,7 @@ class TestDeadlineIntegration(Base):
 			send_group(**kwargs)
 			self.assertEqual(send.call_count, 1)
 			self.assertNotIn("preview_action", send.call_args.kwargs["message"])
+			self.assertNotIn("open_email_action", send.call_args.kwargs["message"])
 			frappe.db.set_value("Workflow Task", task.name, "status", "Completed")
 			kwargs["slot"] = slot.replace(hour=14)
 			kwargs["now"] = kwargs["slot"] + timedelta(minutes=1)

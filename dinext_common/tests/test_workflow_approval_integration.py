@@ -299,7 +299,7 @@ class TestWorkflowApprovalIntegration(FrappeTestCase):
 		}])
 
 	def test_configuration_restores_a_withdrawn_assignment_and_expires_its_old_link(self):
-		from urllib.parse import parse_qs, urlsplit
+		from urllib.parse import urlsplit
 
 		from dinext_common.workflow_approval import engine, projections, signed_links
 
@@ -343,7 +343,9 @@ class TestWorkflowApprovalIntegration(FrappeTestCase):
 		self.assertEqual(frappe.db.count("ToDo", {"reference_type": "Workflow Task", "reference_name": task.name, "status": "Open"}), 1)
 		self.assertIsNone(signed_links._open_action(task.name, old_key))
 		url = signed_links.get_task_action_url(task, task.available_workflow_transitions[0])
-		current_key = parse_qs(urlsplit(url).query)["delivery_key"][0]
+		link = urlsplit(url)
+		self.assertFalse(bool(link.query))
+		current_key = signed_links._read_signed_email_preview(link.fragment)["delivery_key"]
 		self.assertNotEqual(current_key, old_key)
 		self.assertTrue(signed_links._open_action(task.name, current_key))
 		self.assertEqual(old_action.reload().custom_delivery_key, old_key)

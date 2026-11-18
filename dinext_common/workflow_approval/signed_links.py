@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import html
 import json
+from urllib.parse import unquote_plus, urlsplit
 
 import frappe
 from frappe import _
@@ -13,11 +15,18 @@ from frappe.utils import get_datetime, get_url
 from frappe.utils.verified_command import get_signed_params, verify_request
 from frappe.workflow.doctype.workflow_action.workflow_action import return_success_page
 from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
+from werkzeug.wrappers import Response
 
 from dinext_common.workflow_approval import engine, localization
 
 COMMAND_TTL_SECONDS = 15 * 60
 COMMAND_CACHE_ERRORS = (RedisConnectionError, RedisTimeoutError)
+EMAIL_ACTION_PAGE = "/api/method/dinext_common.workflow_approval.signed_links.open_email_action"
+EMAIL_ACTION_PREVIEW = "/api/method/dinext_common.workflow_approval.signed_links.preview_email_action"
+SIGNED_PREVIEW_PREFIX = "approval_preview="
+SIGNED_PREVIEW_FIELDS = {
+	"task_name", "transition_uuid", "user", "current_state", "last_modified", "delivery_key",
+}
 
 
 def _show_expired_link() -> None:
@@ -151,10 +160,97 @@ def get_task_action_url(task: object, transition: object) -> str:
 		),
 		"delivery_key": _link_delivery_key(action, task),
 	}
-	method = (
-		"/api/method/dinext_common.workflow_approval.signed_links.preview_action"
-	)
-	return get_url(method + "?" + get_signed_params(params))
+	# The browser keeps fragments out of the request URL and Referer.
+	signed = get_signed_params({"approval_preview": json.dumps(params, separators=(",", ":"))})
+	return get_url(EMAIL_ACTION_PAGE + "#" + signed)
+
+
+def _read_signed_email_preview(preview_token: str) -> dict[str, str] | None:
+	if not preview_token or len(preview_token) > 8192:
+		return None
+	encoded_token, separator, _signature = preview_token.rpartition("&_signature=")
+	if not separator or not encoded_token.startswith(SIGNED_PREVIEW_PREFIX):
+		return None
+	if not hmac.compare_digest(preview_token.encode(), get_signed_params(encoded_token).encode()):
+		return None
+	try:
+		payload = json.loads(unquote_plus(encoded_token.removeprefix(SIGNED_PREVIEW_PREFIX), errors="strict"))
+	except ValueError:
+		return None
+	if (
+		not isinstance(payload, dict)
+		or payload.keys() != SIGNED_PREVIEW_FIELDS
+		or any(not isinstance(value, str) for value in payload.values())
+	):
+		return None
+	return payload
+
+
+@frappe.whitelist(allow_guest=True, methods=["GET"])
+def open_email_action() -> Response:
+	"""Open a minimal same-origin page without receiving signed data in its URL."""
+	from frappe.sessions import get_csrf_token
+
+	title = html.escape(_("Opening workflow action"))
+	no_script = html.escape(_("Enable JavaScript to open the approval preview."))
+	csrf_token = html.escape(get_csrf_token(), quote=True)
+	body = f"""<!doctype html>
+<html lang="{html.escape(frappe.local.lang or "en", quote=True)}">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>{title}</title>
+	<script src="/assets/dinext_common/js/workflow_email_link.js" defer></script>
+</head>
+<body>
+	<main>
+		<p role="status">{title}</p>
+		<noscript>{no_script}</noscript>
+		<form id="workflow-email-preview" method="post" action="{EMAIL_ACTION_PREVIEW}">
+			<input type="hidden" name="csrf_token" value="{csrf_token}">
+			<input type="hidden" name="preview_token">
+		</form>
+	</main>
+</body>
+</html>"""
+	return Response(body, content_type="text/html; charset=utf-8", headers={
+		"Cache-Control": "no-store",
+		"Referrer-Policy": "same-origin",
+		"Content-Security-Policy": "default-src 'none'; script-src 'self'; form-action 'self'; "
+		"frame-ancestors 'none'; base-uri 'none'",
+	})
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def preview_email_action() -> None:
+	preview_tokens = frappe.request.form.getlist("preview_token")
+	frappe.form_dict.pop("preview_token", None)
+	if len(preview_tokens) != 1 or not _is_same_origin_preview():
+		_show_expired_link()
+		return
+	payload = _read_signed_email_preview(preview_tokens[0])
+	if not payload:
+		_show_expired_link()
+		return
+	_render_preview(**payload)
+
+
+def _is_same_origin_preview() -> bool:
+	"""Guest sessions do not persist Frappe's CSRF token between requests."""
+	try:
+		origin = urlsplit(frappe.request.headers.get("Origin", ""))
+		configured = urlsplit(get_url())
+		default_port = {"http": 80, "https": 443}.get(origin.scheme)
+		return bool(
+			default_port
+			and origin.hostname
+			and not (origin.username or origin.password or origin.path or origin.query or origin.fragment)
+			and origin.scheme == configured.scheme
+			and origin.hostname == configured.hostname
+			and (origin.port or default_port) == (configured.port or default_port)
+		)
+	except ValueError:
+		return False
 
 
 def _render_preview(
