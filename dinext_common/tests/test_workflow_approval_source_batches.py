@@ -9,6 +9,31 @@ from dinext_common.workflow_approval.scenarios import service
 
 
 class TestApprovalSourceBatches(unittest.TestCase):
+	def test_persistent_source_uses_one_document_load_for_access(self):
+		from frappe.model.document import Document
+
+		reader = "reader@example.com"
+		row = {"reference_doctype": "Note", "reference_name": "note"}
+		document = frappe._dict(doctype="Note", name="note")
+		with (
+			patch.object(frappe, "session", frappe._dict(user=reader)),
+			patch.object(frappe.local, "flags", frappe._dict()),
+			patch.object(frappe, "get_meta", return_value=frappe._dict(is_virtual=0, issingle=0, istable=0)),
+			patch("frappe.model.base_document.get_controller", return_value=Document),
+			patch.object(frappe.db, "exists") as exists,
+			patch.object(frappe, "get_doc", return_value=document) as load,
+			patch.object(frappe, "has_permission", return_value=False) as has_permission,
+		):
+			self.assertFalse(permissions._has_source_read_permission(row, reader))
+			exists.assert_not_called()
+			load.assert_called_once_with("Note", "note")
+			has_permission.assert_called_once_with("Note", ptype="read", doc=document, user=reader, throw=False)
+
+			load.side_effect = frappe.DoesNotExistError
+			has_permission.reset_mock()
+			self.assertFalse(permissions._has_source_read_permission(row, reader))
+			has_permission.assert_not_called()
+
 	def test_narrow_reads_keep_each_tasks_context_and_permission(self):
 		user = "reader"
 		created = datetime(2026, 1, 1)

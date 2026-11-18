@@ -103,8 +103,6 @@ def _has_source_read_permission(task: object, user: str) -> bool:
 	doctype, name = _source_reference(task)
 	if not doctype or not name:
 		return False
-	if not frappe.get_meta(doctype).is_virtual and not frappe.db.exists(doctype, name):
-		return False
 	previous_user = frappe.session.user
 	previous_user_perms = getattr(frappe.local, "user_perms", None)
 	previous_role_permissions = getattr(frappe.local, "role_permissions", {})
@@ -116,7 +114,14 @@ def _has_source_read_permission(task: object, user: str) -> bool:
 			frappe.local.user_perms = None
 			frappe.local.role_permissions = {}
 		with _quiet_permission_checks():
-			return bool(frappe.has_permission(doctype, ptype="read", doc=name, user=user, throw=False))
+			meta = frappe.get_meta(doctype)
+			source = name
+			if not meta.is_virtual:
+				if _uses_standard_document_loader(doctype, meta, user):
+					source = frappe.get_doc(doctype, name)
+				elif not frappe.db.exists(doctype, name):
+					return False
+			return bool(frappe.has_permission(doctype, ptype="read", doc=source, user=user, throw=False))
 	except (frappe.DoesNotExistError, frappe.PermissionError):
 		return False
 	finally:
@@ -124,6 +129,17 @@ def _has_source_read_permission(task: object, user: str) -> bool:
 			frappe.session.user = previous_user
 			frappe.local.user_perms = previous_user_perms
 			frappe.local.role_permissions = previous_role_permissions
+
+
+def _uses_standard_document_loader(doctype: str, meta, user: str) -> bool:
+	"""A normal row loader fails closed for missing documents before checking access."""
+	from frappe.model.base_document import get_controller
+	from frappe.model.document import Document
+
+	if user == "Administrator" or meta.issingle or meta.istable:
+		return False
+	controller = get_controller(doctype)
+	return controller.__init__ is Document.__init__ and controller.load_from_db is Document.load_from_db
 
 
 def _is_workflow_monitor(task: object, user: str) -> bool:
