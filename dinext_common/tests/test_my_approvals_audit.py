@@ -35,6 +35,12 @@ class TestMyApprovalsAudit(unittest.TestCase):
 			self.assertEqual(row.progress, "Approve 1/2; Reject 0/1")
 			self.assertEqual(row.progress_transitions[0]["votes"], 1)
 
+	def test_interactive_queue_loads_only_the_requested_page(self):
+		filters = {"queue_page": 2}
+		with patch.object(queue, "get_personal_queue", return_value=[]) as read:
+			queue.execute(filters)
+		read.assert_called_once_with(filters, include_transitions=True, limit=100, offset=100)
+
 	def test_completed_votes_are_grouped_by_uuid(self):
 		with patch.object(frappe, "get_all", return_value=[
 			frappe._dict(approval_round_id="R", transition_uuid="a"),

@@ -361,6 +361,10 @@ get_changelog_feed = "dinext_common.changelog_feed.get_feed"
 # Overriding Methods
 # ------------------------------
 #
+workflow_approval_lock_dependencies = [
+	"dinext_common.workflow_approval.invoice_projects.lock_dependencies",
+]
+
 override_whitelisted_methods = {
 	"frappe.desk.reportview.get": "dinext_common.workflow_approval.task_list.get",
 	"frappe.desk.form.load.getdoc": "dinext_common.workflow_approval.monitoring.get_report_document",

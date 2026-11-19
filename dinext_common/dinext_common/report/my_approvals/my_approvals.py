@@ -7,13 +7,20 @@ from collections import Counter
 
 import frappe
 from frappe import _
-from frappe.utils import date_diff, now_datetime
+from frappe.utils import cint, date_diff, now_datetime
 
 from dinext_common.workflow_approval.api import get_personal_queue
 
+QUEUE_PAGE_SIZE = 100
+
+
 def execute(filters=None):
 	filters = frappe._dict(filters or {})
-	rows = get_personal_queue(filters, include_transitions=True)
+	page = max(0, cint(filters.queue_page))
+	offset = max(0, page - 1) * QUEUE_PAGE_SIZE
+	filter_after_loading = bool(filters.action or filters.minimum_age)
+	paging = {"limit": QUEUE_PAGE_SIZE, "offset": offset} if page and not filter_after_loading else {}
+	rows = get_personal_queue(filters, include_transitions=True, **paging)
 	completed = _completed_votes({row.approval_round_id for row in rows})
 	for row in rows:
 		manifest = json.loads(row.round_manifest)
@@ -27,11 +34,13 @@ def execute(filters=None):
 		row.progress = _progress(row.progress_transitions)
 		row.age_days = max(0, date_diff(now_datetime(), row.creation))
 	rows = [row for row in rows if _matches(row, filters)]
+	if page and filter_after_loading:
+		rows = rows[offset : offset + QUEUE_PAGE_SIZE]
 	counts = Counter(row.reference_doctype for row in rows)
 	chart = {
 		"data": {
 			"labels": [_(label) for label in counts],
-			"datasets": [{"name": _("Pending"), "values": list(counts.values())}],
+			"datasets": [{"name": _("Pending on this page") if page else _("Pending"), "values": list(counts.values())}],
 		},
 		"type": "bar",
 	}
@@ -70,7 +79,7 @@ def _matches(row, filters) -> bool:
 			not filters.workflow_state or row.workflow_state == filters.workflow_state,
 			not filters.action
 			or any(transition["action"] == filters.action for transition in row.available_transitions),
-			not filters.minimum_age or row.age_days >= int(filters.minimum_age),
+			not filters.minimum_age or row.age_days >= cint(filters.minimum_age),
 		)
 	)
 

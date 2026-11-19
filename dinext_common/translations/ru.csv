@@ -642,3 +642,6 @@ The Workflow request has expired. Refresh the document before acting.,Срок �
 The background submission no longer has an active job.,Фоновое проведение больше не связано с активным заданием.
 Opening workflow action,Открывается действие согласования
 Enable JavaScript to open the approval preview.,Включите JavaScript для предпросмотра решения.
+Queue page,Страница очереди
+Enter 0 to show all results,Введите 0 для показа всех результатов
+Pending on this page,На согласовании на этой странице

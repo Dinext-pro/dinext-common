@@ -1,6 +1,8 @@
 frappe.query_reports["My Approvals"] = {
 	formatter(...args) { return frappe.dinext.approvalReportFormatter(...args); },
 	filters: [
+		{ fieldname: "queue_page", fieldtype: "Int", label: __("Queue page"), default: 1,
+			description: __("Enter 0 to show all results") },
 		{ fieldname: "workflow", fieldtype: "Data", label: __("Workflow") },
 		{ fieldname: "reference_doctype", fieldtype: "Data", label: __("Document Type") },
 		{ fieldname: "workflow_state", fieldtype: "Data", label: __("State") },

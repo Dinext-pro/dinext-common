@@ -864,10 +864,11 @@ def _queue_transition_targets(task, transitions):
 	]
 
 
-def _filtered_tasks(filters, *, limit=None, include_transitions=False, predicate=None, fields=QUEUE_FIELDS):
+def _filtered_tasks(filters, *, limit=None, offset=0, include_transitions=False, predicate=None, fields=QUEUE_FIELDS):
 	rows = _select_task_rows(
-		filters, fields=fields, order_by=PERSONAL_TASK_ORDER, limit=limit, predicate=predicate
-	)
+		filters, fields=fields, order_by=PERSONAL_TASK_ORDER,
+		limit=(limit + offset) if limit else limit, predicate=predicate,
+	)[offset:]
 	if not include_transitions:
 		return [frappe._dict({field: row.get(field) for field in fields}) for row in rows]
 	if not rows:
@@ -894,7 +895,7 @@ def _queue_day_filter(created_on=None):
 	return day, lambda row: _aware_utc(row.creation).astimezone(zone).date() == day
 
 
-def get_personal_queue(filters=None, *, limit=None, include_transitions=False, fields=QUEUE_FIELDS):
+def get_personal_queue(filters=None, *, limit=None, offset=0, include_transitions=False, fields=QUEUE_FIELDS):
 	values = frappe._dict(filters or {})
 	task_filters = {
 		"approver": frappe.session.user,
@@ -911,7 +912,8 @@ def get_personal_queue(filters=None, *, limit=None, include_transitions=False, f
 		# Database timestamps use the site time zone. Keep the exact day test in the viewer's zone.
 		task_filters["creation"] = ("between", (get_datetime(add_days(day, -2)), get_datetime(add_days(day, 3))))
 	return _filtered_tasks(
-		task_filters, limit=limit, include_transitions=include_transitions, predicate=predicate, fields=fields
+		task_filters, limit=limit, offset=offset,
+		include_transitions=include_transitions, predicate=predicate, fields=fields
 	)
 
 
