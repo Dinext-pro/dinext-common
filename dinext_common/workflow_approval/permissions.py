@@ -392,6 +392,16 @@ def require_final_task_permission_queries(user: str | None = None) -> str:
 	return ""
 
 
+def task_principal_filters(user: str) -> list:
+	"""Return a conservative SQL prefilter for the final task policy."""
+	if _is_system_manager(user):
+		return []
+	filters = [["approver", "=", user], ["user", "=", user]]
+	if workflows := get_monitorable_workflows(user):
+		filters.append(["workflow", "in", workflows])
+	return filters
+
+
 def get_workflow_task_permission_query_conditions(user: str | None = None) -> str:
 	"""Narrow standard lists using the same policy as document reads.
 
@@ -407,11 +417,7 @@ def get_workflow_task_permission_query_conditions(user: str | None = None) -> st
 		return frappe.qb.DocType("Workflow Task").name.isin(allowed).get_sql() if allowed else "1=0"
 	source_permissions = {}
 	can_read = get_task_read_checker(user, source_permissions=source_permissions)
-	principal_filters = []
-	if not _is_system_manager(user):
-		principal_filters = [["approver", "=", user], ["user", "=", user]]
-		if workflows := get_monitorable_workflows(user):
-			principal_filters.append(["workflow", "in", workflows])
+	principal_filters = task_principal_filters(user)
 	allowed = []
 	filters = {}
 	while True:

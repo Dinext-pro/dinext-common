@@ -362,6 +362,7 @@ get_changelog_feed = "dinext_common.changelog_feed.get_feed"
 # ------------------------------
 #
 override_whitelisted_methods = {
+	"frappe.desk.reportview.get": "dinext_common.workflow_approval.task_list.get",
 	"frappe.desk.form.load.getdoc": "dinext_common.workflow_approval.monitoring.get_report_document",
 	"frappe.apps.get_apps": "dinext_common.apps.get_apps",
 	"frappe.model.workflow.apply_workflow": (
