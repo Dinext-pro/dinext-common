@@ -19,6 +19,7 @@ class TestPendingCardTargets(unittest.TestCase):
 					get_all=self.candidates,
 					get_list=self.sources,
 					get_meta=lambda _doctype: SimpleNamespace(has_field=lambda _field: False),
+					local=SimpleNamespace(),
 					session=frappe._dict(user="reader@example.invalid"),
 					form_dict=frappe._dict(),
 				),

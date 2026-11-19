@@ -364,7 +364,8 @@ def _verify_reviewed_records() -> None:
 
 def collect_legacy_consumers() -> list[dict[str, str]]:
 	"""Find runtime metadata that still invokes one of the five bare APIs."""
-	targets = cutover_records("remove")["Legacy API"]
+	removed = cutover_records("remove")
+	targets = removed.get("Legacy API", ())
 	search_fields = {
 		"Server Script": ("api_method", "script", "disabled"),
 		"Client Script": ("script", "enabled"),
@@ -380,7 +381,7 @@ def collect_legacy_consumers() -> list[dict[str, str]]:
 		if not available:
 			continue
 		for row in frappe.get_all(doctype, fields=["name", *available]):
-			if row.name in cutover_records("remove").get(doctype, ()):
+			if row.name in removed.get(doctype, ()):
 				continue
 			if doctype == "Client Script" and not row.get("enabled"):
 				continue

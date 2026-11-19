@@ -9,6 +9,8 @@ from unittest.mock import patch
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+from dinext_common.tests.test_workflow_email_presentation import requires_timesheet_email_presentation
+
 
 class TestWorkflowMailOutlook(FrappeTestCase):
 	def setUp(self):
@@ -145,6 +147,7 @@ class TestWorkflowMailOutlook(FrappeTestCase):
 		context["rows"] = [position]
 		return context
 
+	@requires_timesheet_email_presentation
 	def test_timesheet_digest_explains_fractional_hours_and_comments(self):
 		_subject, _message, soup = self.fixture.native_message(
 			"Dinext Timesheet Workflow Digest", self.hours_context()
@@ -155,6 +158,7 @@ class TestWorkflowMailOutlook(FrappeTestCase):
 		)
 		self.assertNotIn("неиспользованный день", soup.get_text())
 
+	@requires_timesheet_email_presentation
 	def test_single_timesheet_approval_also_explains_hours(self):
 		context = self.fixture.context()
 		position = self.hours_context()["rows"][0]
@@ -164,6 +168,7 @@ class TestWorkflowMailOutlook(FrappeTestCase):
 		_subject, _message, soup = self.fixture.native_message("Dinext Workflow Action", context)
 		self.assertIn("Часы: 8 (2 ч.", soup.get_text(" ", strip=True))
 
+	@requires_timesheet_email_presentation
 	def test_hour_details_are_localized_and_plain_text(self):
 		context = self.hours_context()
 		context["rows"][0]["hours_details"] = [
@@ -175,6 +180,7 @@ class TestWorkflowMailOutlook(FrappeTestCase):
 		self.assertIn("Hours: 8 (3.5 h — <script>testing</script>, 4.5 h)", soup.get_text(" ", strip=True))
 		self.assertIsNone(soup.find("script"))
 
+	@requires_timesheet_email_presentation
 	def test_absent_details_and_manager_digest_do_not_invent_or_expose_a_breakdown(self):
 		context = self.hours_context()
 		_subject, _message, soup = self.fixture.native_message(

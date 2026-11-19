@@ -1856,13 +1856,14 @@ def _card_state_values(state: str) -> list[str]:
 
 @frappe.whitelist()
 def get_legacy_number_card_result(filters: str | dict[str, Any]) -> dict[str, Any]:
-	"""Resolve stored cards using the active Workflow's configured state field."""
-	from frappe.model.workflow import get_workflow_name, get_workflow_state_field
-
+	"""Resolve stored cards with the same state filters as the owning module."""
 	values = frappe.parse_json(filters) if isinstance(filters, str) else dict(filters)
-	workflow = get_workflow_name(values["doc"]) if values.get("doc") else None
-	source_state_field = get_workflow_state_field(workflow) if workflow else None
-	return calculate_approval_number_card(values, source_state_field=source_state_field or "workflow_state")
+	configured_fields = (
+		frappe.get_hooks("workflow_approval_number_card_state_fields", default={})
+		if getattr(frappe.local, "site", None) else {}
+	)
+	fields = configured_fields.get(values.get("doc")) or ["workflow_state"]
+	return calculate_approval_number_card(values, source_state_field=fields[-1])
 
 
 def calculate_approval_number_card(

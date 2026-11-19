@@ -9,6 +9,8 @@ import frappe
 from bs4 import BeautifulSoup
 from frappe.tests.utils import FrappeTestCase
 
+from dinext_common.tests.test_workflow_email_presentation import requires_timesheet_email_presentation
+
 
 class TestWorkflowEmailRefinements(FrappeTestCase):
 	def setUp(self):
@@ -215,6 +217,7 @@ class TestWorkflowEmailRefinements(FrappeTestCase):
 			)
 		return context
 
+	@requires_timesheet_email_presentation
 	def test_timesheet_overdue_has_one_parent_with_unique_approvers_and_earliest_deadlines(self):
 		from dinext_common.workflow_approval.email_presentation import (
 			language_context,
@@ -240,6 +243,7 @@ class TestWorkflowEmailRefinements(FrappeTestCase):
 		self.assertNotIn("preview_action", body)
 		self.assertFalse(any(h.get_text(strip=True) == "Иван Петров" for h in soup.find_all("h2")))
 
+	@requires_timesheet_email_presentation
 	def test_ordinary_timesheet_digest_retains_canonical_position_labels(self):
 		from dinext_common.workflow_approval.email_presentation import render_standard
 
@@ -249,6 +253,7 @@ class TestWorkflowEmailRefinements(FrappeTestCase):
 		self.assertIn("Архитектор решения", body)
 		self.assertIn("preview_action", body)
 
+	@requires_timesheet_email_presentation
 	def test_timesheet_correction_header_names_parent_type_not_internal_position(self):
 		from dinext_common.workflow_approval.email_presentation import render_standard
 

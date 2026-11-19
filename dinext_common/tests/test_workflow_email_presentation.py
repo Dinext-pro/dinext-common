@@ -1,7 +1,20 @@
+from functools import wraps
 from unittest.mock import patch
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+
+
+
+def requires_timesheet_email_presentation(test):
+	"""Skip this cross-app test when its owning application is absent."""
+	@wraps(test)
+	def check_app(self):
+		if "dinext_timesheets" not in frappe.get_installed_apps():
+			self.skipTest("Requires the Timesheets email presentation provider")
+		return test(self)
+
+	return check_app
 
 
 class TestWorkflowEmailPresentation(FrappeTestCase):
@@ -113,6 +126,7 @@ class TestWorkflowEmailPresentation(FrappeTestCase):
 		self.assertIn("Настройки уведомлений", body)
 		self.assertNotIn("Sent via", body)
 
+	@requires_timesheet_email_presentation
 	def test_timesheets_group_by_author_parent_and_deduplicate_positions_and_hours(self):
 		from dinext_common.workflow_approval.email_presentation import (
 			language_context,

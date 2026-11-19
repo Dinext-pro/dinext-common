@@ -191,6 +191,21 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 		self.assertIn("Approved", seen["filters"]["next_state"][1])
 		self.assertIn("Согласовано", seen["filters"]["next_state"][1])
 
+	def test_legacy_card_uses_the_owner_display_state_field(self):
+		api = self.api()
+		filters = {"doc": "Example Request", "state": "Approved", "route": "example-request"}
+		site = SimpleNamespace(
+			local=SimpleNamespace(site="test"),
+			get_hooks=lambda name, default: {"Example Request": ["status"]}
+			if name == "workflow_approval_number_card_state_fields" else default,
+		)
+		with (
+			patch.object(api, "frappe", site),
+			patch.object(api, "calculate_approval_number_card") as calculate,
+		):
+			api.get_legacy_number_card_result.__wrapped__(filters)
+		calculate.assert_called_once_with(filters, source_state_field="status")
+
 	def test_describe_rebuild_rounds_returns_every_stalled_document(self):
 		api = self.api()
 		rows = [
