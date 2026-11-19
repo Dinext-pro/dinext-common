@@ -192,7 +192,7 @@ def schedule_task_notification(task: object) -> None:
 			enqueue_after_commit=True, now=frappe.flags.in_test)
 
 
-def _email_choice_key(row: object, current: object) -> tuple | None:
+def _email_choice_key(row: object, current: object, choice_fields=()) -> tuple | None:
 	"""Only an identical single-vote outcome may share one email button across roles."""
 	if (not current or value(row, "policy") != "Any" or int(value(row, "threshold") or 0) != 1
 		or (value(current, "custom_parallel_approval_policy") or "Any") != "Any"):
@@ -202,17 +202,19 @@ def _email_choice_key(row: object, current: object) -> tuple | None:
 		checked(value(row, "comment_is_required")), checked(value(row, "auto_complete_unchanged")),
 		value(current, "action"), value(current, "next_state"), value(current, "condition") or "",
 		checked(value(current, "allow_self_approval")), checked(value(current, "custom_reset_on_change")),
-		checked(value(current, "custom_comment_is_required")), checked(value(current, "custom_timesheet_management_action")),
+		checked(value(current, "custom_comment_is_required")),
+		*(checked(value(current, field)) for field in choice_fields),
 	)
 
 
 def _task_actions(task: object, *, transitions=None, workflow=None) -> list[dict[str, str]]:
 	from dinext_common.workflow_approval.signed_links import get_task_action_url
+	choice_fields = frappe.get_hooks("workflow_approval_email_choice_fields") or ()
 	current = {value(row, "custom_transition_uuid"): row for row in value(workflow, "transitions", [])}
 	seen = set()
 	actions = []
 	for row in transitions if transitions is not None else task.available_workflow_transitions:
-		key = _email_choice_key(row, current.get(value(row, "transition_uuid")))
+		key = _email_choice_key(row, current.get(value(row, "transition_uuid")), choice_fields)
 		if key is not None:
 			if key in seen:
 				continue

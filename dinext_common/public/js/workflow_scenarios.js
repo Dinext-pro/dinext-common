@@ -80,6 +80,7 @@
 		getWorkflowDefinition: definitionFor,
 		getWorkflowState: stateFor,
 		storeWorkflowContext: store,
+		loadWorkflowContexts: (doctype, names) => enabled() ? loadContexts(doctype, names) : Promise.resolve({}),
 		paintWorkflowRoutingError: paintRoutingError,
 		async withWorkflowTargets(transition, operation) {
 			const previous = activeTransition;
@@ -305,8 +306,7 @@
 					if (this.data !== rows || this._dinext_context_generation !== generation) return;
 					for (const doc of rows) {
 						store(doc, response[doc.name]);
-						if (this.doctype === "User Timesheet Position" && contextFor(doc)?.workflow)
-							doc.status = contextFor(doc).state;
+						this.settings?.project_workflow_status?.(doc, contextFor(doc));
 					}
 					render.apply(this, args);
 					this._dinext_context_loading = false;
@@ -327,8 +327,8 @@
 		};
 		ListView.__dinext_scenarios = true;
 	};
-	const patchTimesheetData = () => {
-		if (!frappe.call || frappe.call.__dinext_scenario_projection) return;
+	const batchSourceTransitions = () => {
+		if (!frappe.call || frappe.call.__dinext_source_transition_batches) return;
 		const original = frappe.call;
 		frappe.call = function (options, ...args) {
 			if (enabled() && options?.method === "dinext_common.workflow_approval.api.get_my_source_transitions" &&
@@ -336,25 +336,11 @@
 				return loadBatches(options.method, options.args.doctype, options.args.names,
 					options => original.call(this, options)).then(message => ({ message }));
 			}
-			const response = original.call(this, options, ...args);
-			if (!enabled() || options?.method !== "frappe.desk.reportview.get_list" ||
-				options.args?.doctype !== "User Timesheet Position" || !currentFormDoc("User Timesheet")) return response;
-			return Promise.resolve(response).then(async result => {
-				const rows = result.message;
-				if (!Array.isArray(rows) || !rows.length) return result;
-				const contexts = await loadContexts("User Timesheet Position", rows.map(row => row.name),
-					options => original.call(this, options));
-				for (const row of rows) {
-					const envelope = contexts[row.name];
-					store(row, envelope);
-					if (envelope?.context?.workflow) row.status = envelope.context.state;
-				}
-				return result;
-			});
+			return original.call(this, options, ...args);
 		};
-		frappe.call.__dinext_scenario_projection = true;
+		frappe.call.__dinext_source_transition_batches = true;
 	};
-	const install = () => { patchWorkflow(); patchForms(); patchIndicators(); patchLists(); patchTimesheetData(); };
+	const install = () => { patchWorkflow(); patchForms(); patchIndicators(); patchLists(); batchSourceTransitions(); };
 	install();
 	frappe.router?.on("change", install);
 })();

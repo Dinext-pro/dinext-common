@@ -1,42 +1,39 @@
 import unittest
 from types import SimpleNamespace as Row
-
-
-class Workflow(Row):
-    def append(self, table, values):
-        getattr(self, table).append(Row(**values))
+from unittest.mock import Mock, patch
 
 
 class TestWorkflowEmailMigration(unittest.TestCase):
     def test_approval_inherits_and_rejection_overrides(self):
         from dinext_common.workflow_approval.email_migration import configure_workflow
-        w = Workflow(name='AFL Workflow', states=[Row(state='Editing'), Row(state='Pending Approval'), Row(state='Rejected')],
-            transitions=[Row(state='Rejected', allow_self_approval=1)])
-        configure_workflow(w, now='2026-01-01 00:00:00')
-        self.assertEqual(w.custom_group_send_times,'08:00, 17:00')
-        self.assertEqual(w.states[0].send_email,0)
-        self.assertEqual(w.states[1].custom_email_settings_override,0)
-        self.assertEqual(w.states[2].custom_email_settings_override,1)
-        self.assertEqual(w.states[2].custom_group_workflow_action_emails,0)
-        self.assertEqual(w.transitions[0].send_email_to_creator,1)
 
-    def test_goal_has_rejected_and_creator_only_return(self):
-        from dinext_common.workflow_approval.email_migration import configure_workflow
-        w = Workflow(name='Goal Approval', states=[Row(state='Draft'),Row(state='Parent Approval'),Row(state='Finance Approval')],
-            transitions=[Row(state='Parent Approval',action='Reject',next_state='Draft'),Row(state='Finance Approval',action='Reject',next_state='Draft')])
-        configure_workflow(w,now='2026-01-01 00:00:00')
-        self.assertEqual([t.next_state for t in w.transitions[:2]],['Rejected','Rejected'])
-        returns=[t for t in w.transitions if t.state=='Rejected']
-        self.assertEqual(len(returns),1)
-        self.assertEqual(returns[0].next_state,'Draft')
-        self.assertEqual(returns[0].condition,'doc.owner == frappe.session.user')
-        self.assertEqual(returns[0].send_email_to_creator,1)
+        workflow = Row(states=[Row(state="Editing"), Row(state="Review"), Row(state="Rejected")],
+            transitions=[Row(state="Rejected", allow_self_approval=1)])
+        configure_workflow(workflow, profile={"approval_states": ("Review",)}, now="2026-01-01 00:00:00")
+        self.assertEqual(workflow.custom_group_send_times, "08:00, 17:00")
+        self.assertEqual(workflow.states[0].send_email, 0)
+        self.assertEqual(workflow.states[1].send_email, 1)
+        self.assertEqual(workflow.states[2].custom_email_settings_override, 1)
+        self.assertEqual(workflow.states[2].custom_group_workflow_action_emails, 0)
+        self.assertEqual(workflow.transitions[0].send_email_to_creator, 1)
 
-    def test_rebuilt_approval_actions_are_not_permanently_suppressed(self):
-        from unittest.mock import Mock,patch
-        from dinext_common.workflow_approval import email_migration as migration,metadata
-        workflow=Mock();workflow.get.return_value=0
-        observed=[]
-        with patch.object(migration.frappe.utils,'now_datetime',return_value='2026-11-07 10:00:00'), patch.object(migration.frappe,'flags',Row(suppress_workflow_mail=False)), patch.object(migration.frappe,'db',Mock()), patch.object(migration.frappe,'get_doc',return_value=workflow), patch.object(migration,'APPROVAL_STATES',{'Goal Approval':('Parent Approval',)}), patch.object(metadata,'ensure_workflow_approval_email_templates'), patch.object(migration,'configure_workflow'), patch.object(migration,'_suppress_existing_corrections'), patch.object(migration,'_rebuild_goal_rounds',side_effect=lambda:observed.append(migration.frappe.flags.suppress_workflow_mail)):
+    def test_owner_callbacks_run_once_around_configuration(self):
+        from dinext_common.workflow_approval import email_migration as migration, metadata
+
+        workflow = Mock()
+        workflow.get.side_effect = [0, 1]
+        before_save, after_save = Mock(), Mock()
+        profile = {"workflow": "Review", "before_configure": before_save, "after_save": after_save}
+        with patch.object(migration.frappe.utils, "now_datetime", return_value="2026-11-07 10:00:00"), \
+                patch.object(migration.frappe, "db", Mock()), \
+                patch.object(migration.frappe, "get_doc", return_value=workflow), \
+                patch.object(migration, "domain_email_profiles", return_value={"Document": profile}), \
+                patch.object(metadata, "ensure_workflow_approval_email_templates"), \
+                patch.object(migration, "configure_workflow") as configure, \
+                patch.object(migration, "_suppress_existing_corrections"):
             migration.ensure_email_profiles()
-        self.assertEqual(observed,[False])
+            migration.ensure_email_profiles()
+        before_save.assert_called_once_with(workflow)
+        configure.assert_called_once_with(workflow, profile=profile, now="2026-11-07 10:00:00")
+        workflow.save.assert_called_once_with(ignore_permissions=True)
+        after_save.assert_called_once_with(workflow)

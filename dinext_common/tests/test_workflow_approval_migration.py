@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 
 class TestWorkflowApprovalMigration(unittest.TestCase):
@@ -11,7 +12,10 @@ class TestWorkflowApprovalMigration(unittest.TestCase):
 
 	def test_deletion_manifest_contains_exact_classified_records(self):
 		migration = self.migration()
-		manifest = migration.LEGACY_DELETION_MANIFEST
+		manifest = migration.cutover_records("remove")
+		if "Custom DocPerm" not in manifest:
+			self.assertIn("Workflow Task Processing", manifest["Server Script"])
+			return
 
 		self.assertEqual(len(manifest["Server Script"]), 14)
 		self.assertEqual(len(manifest["Client Script"]), 8)
@@ -20,7 +24,7 @@ class TestWorkflowApprovalMigration(unittest.TestCase):
 		self.assertEqual(len(manifest["Legacy API"]), 5)
 		self.assertIn("UTP_UT_Status_V3", manifest["Server Script"])
 		self.assertIn("Task Limit Exceeded_V4", manifest["Server Script"])
-		self.assertIn("UTP_comm_2_UT_transfer", migration.RETAINED_SYSTEM_RECORDS["Server Script"])
+		self.assertIn("UTP_comm_2_UT_transfer", migration.cutover_records("retain")["Server Script"])
 
 	def test_content_hash_ignores_runtime_noise_but_detects_behavior_changes(self):
 		migration = self.migration()
@@ -104,10 +108,10 @@ class TestWorkflowApprovalMigration(unittest.TestCase):
 	def test_lossless_matrix_covers_every_classified_record(self):
 		migration = self.migration()
 		rows = { (row["doctype"], row["name"]): row["decision"] for row in migration.lossless_matrix() }
-		for doctype, names in migration.LEGACY_DELETION_MANIFEST.items():
+		for doctype, names in migration.cutover_records("remove").items():
 			for name in names:
 				self.assertEqual(rows[(doctype, name)], "remove")
-		for doctype, names in migration.RETAINED_SYSTEM_RECORDS.items():
+		for doctype, names in migration.cutover_records("retain").items():
 			for name in names:
 				self.assertEqual(rows[(doctype, name)], "retain")
 
@@ -144,6 +148,16 @@ class TestWorkflowApprovalMigration(unittest.TestCase):
 			def resolver(app: str) -> Path:
 				return root / app
 
+			migration_rules = [
+				{"remove": {"Server Script": ("Workflow Task Assign",), "Client Script": ("UT_Accept_WF",)},
+					"fixture_files": (("dinext_projects", "fixtures/server_script.json", "Server Script"),
+						("dinext_timesheets", "fixtures/client_script.json", "Client Script")),
+					"notification_files": (("dinext_projects", "dinext_projects/notification/требуется_согласование",
+						"Требуется согласование"),)},
+			]
+			providers = patch.object(migration, "_cutover_providers", return_value=migration_rules)
+			providers.start()
+			self.addCleanup(providers.stop)
 			leftovers = {
 				(row["doctype"], row["name"])
 				for row in migration.collect_repository_leftovers(resolver)

@@ -468,7 +468,7 @@
 		frm.dashboard.add_comment(reasons.map((reason) => frappe.utils.escape_html(reason)).join("<br>"), "orange", true);
 		return messages.children(".form-message").last().addClass("dinext-workflow-round-errors");
 	};
-	const paintWorkflowComments = (frm, rows) => {
+	const paintWorkflowComments = (frm, rows, { showReferences = false } = {}) => {
 		const messages = frm.layout?.message;
 		if (!messages?.length) return;
 		messages.children(".dinext-workflow-comments").remove();
@@ -477,7 +477,7 @@
 			return;
 		}
 		const escape = (value) => frappe.utils.escape_html(String(value || ""));
-		const showReference = frm.doctype === "User Timesheet" &&
+		const showReference = showReferences &&
 			new Set(rows.map((row) => row.reference_name)).size > 1;
 		const html = rows.map((row) => {
 			const reference = showReference ? `<strong>${escape(row.reference_name)}</strong> · ` : "";
@@ -488,7 +488,7 @@
 		frm.dashboard.add_comment(html, "orange", true);
 		return messages.children(".form-message").last().addClass("dinext-workflow-comments");
 	};
-	const refreshWorkflowComments = async (frm) => {
+	const refreshWorkflowComments = async (frm, options) => {
 		if (!frm?.doc) return;
 		const target = captureWorkflowForm(frm);
 		const generation = (frm._dinext_comment_generation || 0) + 1;
@@ -500,7 +500,7 @@
 			const rows = await workflowRequest("dinext_common.workflow_approval.api.get_workflow_comments", {
 				doctype: frm.doc.doctype, name: target.name,
 			});
-			if (isCurrent()) paintWorkflowComments(frm, rows || []);
+			if (isCurrent()) paintWorkflowComments(frm, rows || [], options);
 		} catch (error) {
 			if (isCurrent()) console.error(error);
 		}
@@ -1026,31 +1026,33 @@
 		}
 		paintApprovalBanner(frm);
 	};
+	const registerWorkflowApprovalForm = (doctype) => {
+		if (!enabled() || pendingRegistered.has(doctype) ||
+			frappe.boot.dinext_workflow_custom_form_banners?.includes(doctype)) return;
+		pendingRegistered.add(doctype);
+		frappe.ui.form.on(doctype, {
+			refresh(frm) {
+				scheduleBanner(frm);
+				localizeApprovalTimeline(frm);
+			},
+			timeline_refresh(frm) {
+				localizeApprovalTimeline(frm);
+			},
+		});
+		if (typeof cur_frm !== "undefined" && cur_frm?.doctype === doctype && !cur_frm.is_new()) {
+			scheduleBanner(cur_frm);
+		}
+	};
+	frappe.dinext.registerWorkflowApprovalForm = registerWorkflowApprovalForm;
+
 	const registerPendingApprovers = () => {
 		if (!enabled()) return;
 		const doctypes = new Set([
 			...Object.keys(frappe.workflow?.workflows || {}),
 			...Object.values(typeof locals !== "undefined" ? locals.Workflow || {} : {})
 				.map((workflow) => workflow.document_type).filter(Boolean),
-			"Application For Leave",
 		]);
-		doctypes.delete("User Timesheet");
-		doctypes.forEach((doctype) => {
-			if (pendingRegistered.has(doctype)) return;
-			pendingRegistered.add(doctype);
-			frappe.ui.form.on(doctype, {
-				refresh(frm) {
-					scheduleBanner(frm);
-					localizeApprovalTimeline(frm);
-				},
-				timeline_refresh(frm) {
-					localizeApprovalTimeline(frm);
-				},
-			});
-			if (cur_frm && cur_frm.doctype === doctype && !cur_frm.is_new()) {
-				scheduleBanner(cur_frm);
-			}
-		});
+		doctypes.forEach(registerWorkflowApprovalForm);
 	};
 
 	const start = () => {

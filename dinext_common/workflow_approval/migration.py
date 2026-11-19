@@ -12,67 +12,15 @@ from typing import Any
 
 import frappe
 
-LEGACY_DELETION_MANIFEST: dict[str, tuple[str, ...]] = {
-	"Server Script": (
-		"Workflow Task Processing After Save V2",
-		"Get my approved WT",
-		"Workflow Task Processing",
-		"Get my working WT V2",
-		"Workflow Task Assign",
-		"AFL WT After Save",
-		"AFL WT Before Save",
-		"AFL_Deleted_WTs_Deleted",
-		"UTP Check WT Before Save V2",
-		"UTP Proccess WT After Save",
-		"UTP_Deleted_WTs_Deleted",
-		"Set Timesheet Status",
-		"UTP_UT_Status_V3",
-		"Task Limit Exceeded_V4",
-	),
-	"Client Script": (
-		"AFL_Approval_V3",
-		"Workflow_Task_Route",
-		"Множественное_Согласование_AFL_V3",
-		"WT_To_UTP_Route",
-		"UT_Accept_WF",
-		"UTP_History_Data",
-		"UTP_Route",
-		"UTP_ListView_Style_2",
-	),
-	"Notification": (
-		"Требуется согласование",
-		"Требуется исправление",
-		"Согласоанияе ТШ",
-	),
-	"Custom DocPerm": (
-		"cdi70531d5",
-		"g2rmhjbeg2",
-		"g70iffqseh",
-	),
-	"Legacy API": (
-		"Workflow_Task_Processing",
-		"Workflow_Task_Processing_After_Save",
-		"Get_my_working_WT",
-		"Get_my_completed_WT",
-		"set_timesheet_status",
-	),
-}
-
-RETAINED_SYSTEM_RECORDS: dict[str, tuple[str, ...]] = {
-	"Server Script": (
-		"UTP_comm_2_UT_transfer",
-		"AFL_Calculate_Hours",
-		"AFL_Projects",
-	),
-	"Notification": ("Лимит по задаче",),
-}
-
-RETAINED_LIVE_CLIENT_SCRIPTS = (
-	"Custom_ListView_6",
-	"User_Timesheet_Position_to_User_Timesheet_form_integration_V10",
-	"ApFL_Status_Color",
-)
-RETAINED_DISABLED_SERVER_SCRIPTS = ("AFL_Calculate_Hours", "AFL_Projects")
+_SHARED_LEGACY_RECORDS = {'Client Script': ('Workflow_Task_Route',),
+ 'Legacy API': ('Workflow_Task_Processing',
+                'Workflow_Task_Processing_After_Save',
+                'Get_my_working_WT',
+                'Get_my_completed_WT'),
+ 'Server Script': ('Workflow Task Processing After Save V2',
+                   'Get my approved WT',
+                   'Workflow Task Processing',
+                   'Get my working WT V2')}
 
 CUTOVER_STATE_VERSION = 1
 CUTOVER_PHASES = (
@@ -83,33 +31,6 @@ CUTOVER_PHASES = (
 	"delete_records",
 	"smoke",
 	"enable_engine",
-)
-
-REPOSITORY_FIXTURE_FILES = (
-	("dinext_projects", "fixtures/server_script.json", "Server Script"),
-	("dinext_projects", "fixtures/client_script.json", "Client Script"),
-	("dinext_projects", "fixtures/custom_docperm.json", "Custom DocPerm"),
-	("dinext_timesheets", "fixtures/server_script.json", "Server Script"),
-	("dinext_timesheets", "fixtures/client_script.json", "Client Script"),
-	("dinext_timesheets", "fixtures/custom_docperm.json", "Custom DocPerm"),
-)
-
-STANDARD_NOTIFICATION_FILES = (
-	(
-		"dinext_projects",
-		"dinext_projects/notification/требуется_согласование",
-		"Требуется согласование",
-	),
-	(
-		"dinext_projects",
-		"dinext_projects/notification/требуется_исправление",
-		"Требуется исправление",
-	),
-	(
-		"dinext_timesheets",
-		"dinext_timesheets/notification/согласоанияе_тш",
-		"Согласоанияе ТШ",
-	),
 )
 
 REQUIRED_SCHEMA_FIELDS = {
@@ -240,6 +161,34 @@ def assert_cutover_ready(report: Mapping[str, Any]) -> None:
 		)
 
 
+def _cutover_providers():
+	return [
+		frappe.get_attr(provider)()
+		for provider in frappe.get_hooks("workflow_approval_cutover_providers")
+	]
+
+
+def cutover_records(decision):
+	records = defaultdict(list)
+	if decision == "remove":
+		for doctype, names in _SHARED_LEGACY_RECORDS.items():
+			records[doctype].extend(names)
+	for provider in _cutover_providers():
+		for doctype, names in provider.get(decision, {}).items():
+			records[doctype].extend(names)
+	return {doctype: tuple(dict.fromkeys(names)) for doctype, names in records.items()}
+
+
+def _cutover_values(key):
+	return tuple(dict.fromkeys(value for provider in _cutover_providers() for value in provider.get(key, ())))
+
+
+def _run_cutover_extensions(phase):
+	steps = [provider[phase] for provider in _cutover_providers() if phase in provider]
+	for _, run in sorted(steps, key=lambda step: step[0]):
+		run()
+
+
 def _app_path(app: str) -> Path:
 	return Path(frappe.get_app_path(app))
 
@@ -248,12 +197,12 @@ def collect_repository_leftovers(app_path=None) -> list[dict[str, str]]:
 	"""Find classified artifacts that would be restored from fixtures or standard files."""
 	resolver = app_path or _app_path
 	leftovers: list[dict[str, str]] = []
-	for app, relative, doctype in REPOSITORY_FIXTURE_FILES:
+	for app, relative, doctype in _cutover_values("fixture_files"):
 		path = resolver(app) / relative
 		if not path.exists():
 			continue
 		rows = json.loads(path.read_text())
-		blocked = set(LEGACY_DELETION_MANIFEST.get(doctype, ()))
+		blocked = set(cutover_records("remove").get(doctype, ()))
 		for row in rows:
 			name = str(row.get("name") or "")
 			if name in blocked:
@@ -265,7 +214,7 @@ def collect_repository_leftovers(app_path=None) -> list[dict[str, str]]:
 						"name": name,
 					}
 				)
-	for app, relative, name in STANDARD_NOTIFICATION_FILES:
+	for app, relative, name in _cutover_values("notification_files"):
 		path = resolver(app) / relative
 		if path.exists() and any(path.glob("*.json")):
 			leftovers.append(
@@ -288,7 +237,7 @@ def lossless_matrix() -> list[dict[str, str]]:
 			"decision": "remove",
 			"replacement": "dinext_common.workflow_approval",
 		}
-		for doctype, names in LEGACY_DELETION_MANIFEST.items()
+		for doctype, names in cutover_records("remove").items()
 		for name in names
 	] + [
 		{
@@ -297,7 +246,7 @@ def lossless_matrix() -> list[dict[str, str]]:
 			"decision": "retain",
 			"replacement": "typed adapter + retained record",
 		}
-		for doctype, names in RETAINED_SYSTEM_RECORDS.items()
+		for doctype, names in cutover_records("retain").items()
 		for name in names
 	]
 
@@ -316,7 +265,7 @@ def _live_records(doctype: str, names: tuple[str, ...]) -> list[dict[str, Any]]:
 def collect_live_preflight() -> dict[str, Any]:
 	"""Collect live target records and open-round ambiguity for cutover."""
 	records = {}
-	for doctype, names in LEGACY_DELETION_MANIFEST.items():
+	for doctype, names in cutover_records("remove").items():
 		if doctype == "Legacy API":
 			continue
 		rows = _live_records(doctype, names)
@@ -391,8 +340,8 @@ def summarize_live_hashes() -> dict[str, dict[str, str]]:
 		for doctype, rows in report["records"].items()
 	}
 	for doctype, names, disabled in (
-		("Client Script", RETAINED_LIVE_CLIENT_SCRIPTS, lambda row: not row.enabled),
-		("Server Script", RETAINED_DISABLED_SERVER_SCRIPTS, lambda row: row.disabled),
+		("Client Script", _cutover_values("retained_client_scripts"), lambda row: not row.enabled),
+		("Server Script", _cutover_values("retained_server_scripts"), lambda row: row.disabled),
 	):
 		hashes.setdefault(doctype, {}).update(
 			{row.name: system_record_hash(row) for row in _live_records(doctype, names) if not disabled(row)}
@@ -415,7 +364,7 @@ def _verify_reviewed_records() -> None:
 
 def collect_legacy_consumers() -> list[dict[str, str]]:
 	"""Find runtime metadata that still invokes one of the five bare APIs."""
-	targets = LEGACY_DELETION_MANIFEST["Legacy API"]
+	targets = cutover_records("remove")["Legacy API"]
 	search_fields = {
 		"Server Script": ("api_method", "script", "disabled"),
 		"Client Script": ("script", "enabled"),
@@ -431,7 +380,7 @@ def collect_legacy_consumers() -> list[dict[str, str]]:
 		if not available:
 			continue
 		for row in frappe.get_all(doctype, fields=["name", *available]):
-			if row.name in LEGACY_DELETION_MANIFEST.get(doctype, ()):
+			if row.name in cutover_records("remove").get(doctype, ()):
 				continue
 			if doctype == "Client Script" and not row.get("enabled"):
 				continue
@@ -453,7 +402,7 @@ def collect_legacy_consumers() -> list[dict[str, str]]:
 
 
 def _split_consumers(consumers: list[dict[str, str]]) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
-	disableable = set(RETAINED_LIVE_CLIENT_SCRIPTS)
+	disableable = set(_cutover_values("retained_client_scripts"))
 	retained = [row for row in consumers if row["name"] in disableable]
 	blocking = [row for row in consumers if row["name"] not in disableable]
 	return blocking, retained
@@ -490,9 +439,9 @@ def assert_cutover_compatibility() -> None:
 
 	if not supports_final_task_permission_queries():
 		raise CutoverBlockedError("Update Dinext Platform before enabling parallel Workflow approval")
-	apps = frappe.get_installed_apps()
-	for app in ("project_workload_assignment", "dinext_project_tasks_gantt"):
-		if app in apps and 1 not in frappe.get_hooks("workflow_approval_canonical_statuses", app_name=app):
+	installed = set(frappe.get_installed_apps())
+	for app in _cutover_values("canonical_status_consumers"):
+		if app in installed and 1 not in frappe.get_hooks("workflow_approval_canonical_statuses", app_name=app):
 			raise CutoverBlockedError(f"Update {app} before enabling canonical approval statuses")
 
 
@@ -504,15 +453,7 @@ def _phase_preflight() -> dict[str, Any]:
 	report["disableable_consumers"] = retained
 	assert_cutover_ready(report)
 	_verify_reviewed_records()
-	apps = frappe.get_installed_apps()
-	if "project_workload_assignment" in apps:
-		from project_workload_assignment.legacy_absences import plan_legacy_absence_query
-
-		plan_legacy_absence_query()
-	if "dinext_timesheets" in apps:
-		from dinext_timesheets.patches.v1_0.unify_utp_workflow_status import preflight
-
-		preflight()
+	_run_cutover_extensions("preflight")
 	return {
 		"record_counts": {
 			doctype: len(rows) for doctype, rows in report["records"].items()
@@ -525,12 +466,8 @@ def _phase_drain_queues() -> dict[str, Any]:
 	from frappe.utils.background_jobs import get_jobs
 
 	doctypes = set(frappe.get_all("Workflow", filters={"is_active": 1}, pluck="document_type"))
-	doctypes.update(("User Timesheet", "User Timesheet Position", "Application For Leave"))
-	job_modules = (
-		"dinext_common.workflow_approval.",
-		"dinext_timesheets.workflow_approval.",
-		"dinext_timesheets.dinext_timesheets.user_timesheet.events.limits_notify.",
-	)
+	doctypes.update(_cutover_values("queue_doctypes"))
+	job_modules = ("dinext_common.workflow_approval.", *_cutover_values("queue_job_modules"))
 	site = frappe.local.site
 	has_workflow_job = any(
 		(getattr(method, "__module__", "") + "." if callable(method) else str(method)).startswith(job_modules)
@@ -559,35 +496,18 @@ def _phase_migrate_settings() -> dict[str, Any]:
 		ensure_workflow_approval_desk_records,
 		ensure_workflow_approval_email_templates,
 	)
-	from dinext_common.workflow_approval.permissions import restore_workflow_task_base_read
 
 	ensure_workflow_approval_custom_fields()
 	ensure_workflow_approval_email_templates()
 	ensure_workflow_approval_desk_records()
-	restore_workflow_task_base_read(during_cutover=True)
-	if "dinext_timesheets" in frappe.get_installed_apps():
-		from dinext_timesheets.patches.v1_0.configure_parallel_workflows_v2 import (
-			execute as configure_timesheet_workflows,
-		)
-		from dinext_timesheets.patches.v1_0.unify_utp_workflow_status import migrate
-
-		migrate()
-		configure_timesheet_workflows()
-	if "dinext_projects" in frappe.get_installed_apps():
-		from dinext_projects.application_for_leave import configure_application_for_leave
-
-		configure_application_for_leave()
-	if "project_workload_assignment" in frappe.get_installed_apps():
-		from project_workload_assignment.legacy_absences import migrate_legacy_absence_query
-
-		migrate_legacy_absence_query()
+	_run_cutover_extensions("migrate_settings")
 	return {"configured": True}
 
 
 def _phase_disable_retained_consumers() -> dict[str, Any]:
 	_verify_reviewed_records()
 	disabled: list[str] = []
-	for name in RETAINED_LIVE_CLIENT_SCRIPTS:
+	for name in _cutover_values("retained_client_scripts"):
 		if frappe.db.exists("Client Script", name):
 			frappe.db.set_value(
 				"Client Script",
@@ -597,7 +517,7 @@ def _phase_disable_retained_consumers() -> dict[str, Any]:
 				update_modified=False,
 			)
 			disabled.append(name)
-	for name in RETAINED_DISABLED_SERVER_SCRIPTS:
+	for name in _cutover_values("retained_server_scripts"):
 		if frappe.db.exists("Server Script", name):
 			frappe.db.set_value("Server Script", name, "disabled", 1, update_modified=False)
 			disabled.append(name)
@@ -609,7 +529,7 @@ def _phase_disable_retained_consumers() -> dict[str, Any]:
 def _phase_delete_records() -> dict[str, int]:
 	_verify_reviewed_records()
 	deleted: dict[str, int] = {}
-	for doctype, names in LEGACY_DELETION_MANIFEST.items():
+	for doctype, names in cutover_records("remove").items():
 		if doctype == "Legacy API":
 			continue
 		deleted[doctype] = 0
@@ -647,15 +567,11 @@ def _phase_smoke() -> dict[str, Any]:
 			for name in names
 			if doctype != "Legacy API" and frappe.db.exists(doctype, name)
 		]
-		for doctype, names in LEGACY_DELETION_MANIFEST.items()
+		for doctype, names in cutover_records("remove").items()
 	}
 	remaining = {key: value for key, value in remaining.items() if value}
 	consumers = collect_legacy_consumers()
-	if "dinext_timesheets" in frappe.get_installed_apps() and frappe.db.exists("Workflow", {
-		"document_type": "User Timesheet Position",
-		"workflow_state_field": ("!=", "status"),
-	}):
-		raise CutoverBlockedError("Timesheet positions still have a legacy Workflow state field")
+	_run_cutover_extensions("smoke")
 	if remaining or consumers:
 		raise CutoverBlockedError(
 			"Post-cutover smoke failed: "

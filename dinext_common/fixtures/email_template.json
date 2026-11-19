@@ -20,7 +20,7 @@
   "reference_doctype": null,
   "response": null,
   "response_html": "{% include \"templates/emails/dinext_workflow.html\" %}",
-  "subject": "{{ header_title }}: {{ timesheet_title if is_timesheet else document_title|truncate(100) }}",
+  "subject": "{{ header_title }}: {{ subject_document_title or document_title|truncate(100) }}",
   "use_html": 1
  },
  {
@@ -32,7 +32,7 @@
   "reference_doctype": null,
   "response": null,
   "response_html": "{% include \"templates/emails/dinext_workflow.html\" %}",
-  "subject": "{{ header_title }}: {{ timesheet_title if is_timesheet else document_title|truncate(100) }}",
+  "subject": "{{ header_title }}: {{ subject_document_title or document_title|truncate(100) }}",
   "use_html": 1
  },
  {

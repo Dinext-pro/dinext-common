@@ -10,16 +10,6 @@ from dinext_common.workflow_approval.policy import (
 	transition_semantic_hash,
 )
 
-_REVIEW_STATES = {
-	"На согласовании": "Pending Approval",
-	"Согласовано": "Approved",
-	"Отклонено": "Rejected",
-}
-_EDITING_STATES = {"Редактирование": "Editing", **_REVIEW_STATES}
-STATE_NAMES = {
-	"AFL Workflow": _EDITING_STATES,
-	"Expense_Claim_Workflow": {"Черновик": "Draft", **_REVIEW_STATES},
-}
 ACTION_NAMES = {
 	"Передать на согласование": "Submit for Approval",
 	"Согласовано": "Approve",
@@ -27,32 +17,9 @@ ACTION_NAMES = {
 	"Остановить Воркфлоу": "Stop Workflow",
 	"Редактировать": "Edit",
 }
-_OPTIONALITY_WORKFLOWS = {
-	*STATE_NAMES,
-	"Dinext Budget Approval",
-	"Dinext Project Scorecard Approval",
-	"Goal Approval",
-	"Project Approval",
-	"Project Gate Checkpoint Workflow",
-	"Project Stage Workflow",
-	"Purchase_Invoice_Workflow",
-	"Sales_Invoice_Workflow",
-}
 _ACTIVE_ROUND_STATUSES = ("Open", "Stalled", "Conflicted", "Finalizing")
 _LABEL_FIELDS = ("state", "action", "next_state")
 _VOTE_FLAGS = ("comment_is_required", "reset_on_change", "auto_complete_unchanged")
-_CARD_NAMES = (
-	"Моих Заявок на согласовании",
-	"Моих Заявок Согласовано",
-	"Моих Заявок Отклонено",
-	"Заявки на отсутствие у меня на согласовании-2",
-	"Заявки на отсутствие согласованные мной-1",
-	"Заявок EC на согласовании",
-	"Заявок EC Согласовано",
-	"Заявок EC Отклонено",
-	"Заявок EC у меня на согласовании",
-	"Заявок EC Согласованных мной",
-)
 
 
 def _localization_hooks():
@@ -63,7 +30,6 @@ def _localization_hooks():
 
 def _localization_rules():
 	return {
-		**{workflow: {"states": states} for workflow, states in STATE_NAMES.items()},
 		**{
 			workflow: frappe.get_attr(paths[-1])()
 			for workflow, paths in _localization_hooks().items()
@@ -74,8 +40,8 @@ def _localization_rules():
 
 def _state_names(workflow):
 	if paths := _localization_hooks().get(workflow):
-		return frappe.get_attr(paths[-1])()["states"]
-	return STATE_NAMES.get(workflow, {})
+		return frappe.get_attr(paths[-1])().get("states", {})
+	return {}
 
 
 def state_name(workflow, value):
@@ -125,7 +91,8 @@ def preserve_fixture_transition_ids(doc, method=None):
 	"""Keep live UUIDs for semantically equivalent rows when Frappe reloads fixtures."""
 	if not frappe.flags.in_fixtures:
 		return
-	if doc.name not in _OPTIONALITY_WORKFLOWS and doc.name not in _localization_hooks():
+	if (doc.name not in _localization_hooks()
+		and doc.name not in frappe.get_hooks("workflow_approval_preserve_fixture_transition_ids")):
 		return
 	if not frappe.db.exists("Workflow", doc.name):
 		return
@@ -165,7 +132,7 @@ def guard_label_migration():
 	):
 		manifest = (frappe.parse_json(task.round_manifest) or {}) if task.round_manifest else {}
 		uses_legacy_state = any(
-			task.get(key) in rules[task.workflow]["states"] for key in ("state", "workflow_state")
+			task.get(key) in rules[task.workflow].get("states", {}) for key in ("state", "workflow_state")
 		)
 		personal = frappe.get_all(
 			"Available Workflow Transitions", filters={"parent": task.name}, fields=list(_LABEL_FIELDS)
@@ -244,16 +211,16 @@ def _rename_round_task(task, current, evidence, rules):
 		)
 
 
-def _migrate_card_filters():
-	for card in frappe.get_all("Number Card", filters={"name": ("in", _CARD_NAMES)}, fields=["name", "filters_json"]):
+def _migrate_card_filters(names, states):
+	for card in frappe.get_all("Number Card", filters={"name": ("in", names)}, fields=["name", "filters_json"]):
 		filters = frappe.parse_json(card.filters_json)
 		original = frappe.as_json(filters)
-		if isinstance(filters, dict) and filters.get("state") in _REVIEW_STATES:
-			filters["state"] = _REVIEW_STATES[filters["state"]]
+		if isinstance(filters, dict) and filters.get("state") in states:
+			filters["state"] = states[filters["state"]]
 		elif isinstance(filters, list):
 			for row in filters:
 				if len(row) > 3 and row[1] in ("status", "workflow_state") and isinstance(row[3], str):
-					row[3] = _REVIEW_STATES.get(row[3], row[3])
+					row[3] = states.get(row[3], row[3])
 		if frappe.as_json(filters) != original:
 			frappe.db.set_value("Number Card", card.name, "filters_json", frappe.as_json(filters), update_modified=False)
 
@@ -263,16 +230,24 @@ def migrate_workflow_labels():
 	from dinext_common.workflow_approval.engine import _transition_dict
 
 	for name, rules in _localization_rules().items():
-		states = rules["states"]
+		if cards := rules.get("cards"):
+			_migrate_card_filters(cards, rules["card_states"])
+		for state in rules.get("optional_states", ()):
+			frappe.db.set_value(
+				"Workflow Document State",
+				{"parent": name, "parentfield": "states", "state": state, "is_optional_state": 0},
+				"is_optional_state", 1, update_modified=False,
+			)
+		states = rules.get("states")
+		if not states:
+			continue
 		if not frappe.db.exists("Workflow", name):
 			continue
 		workflow = frappe.get_doc("Workflow", name)
 		if not workflow.is_active or not set(states.values()).issubset(row.state for row in workflow.states):
 			continue
 
-		source_fields = [workflow.workflow_state_field]
-		if name == "AFL Workflow":
-			source_fields.append("status")
+		source_fields = dict.fromkeys((workflow.workflow_state_field, *rules.get("additional_state_fields", ())))
 		for old, new in states.items():
 			for field in source_fields:
 				frappe.db.set_value(
@@ -304,12 +279,3 @@ def migrate_workflow_labels():
 			evidence = collect_legacy_evidence(tasks, current) if collect_legacy_evidence else {}
 			for task in tasks:
 				_rename_round_task(task, current, evidence, rules)
-
-	_migrate_card_filters()
-	frappe.db.set_value(
-		"Workflow Document State",
-		{"parent": "Маршрут заявки на закупку", "parentfield": "states", "state": "Черновик", "is_optional_state": 0},
-		"is_optional_state",
-		1,
-		update_modified=False,
-	)

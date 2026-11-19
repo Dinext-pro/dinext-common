@@ -130,20 +130,18 @@ assert.equal(frappe.dinext.getWorkflowContext(unsupported), undefined,
   "Unsupported producer types must retain native workflow behavior");
 
 const exactTargets = [{ name: "A", workflow: "Alpha", process_id: "P-A", task_name: "TASK-A", transition_uuid: "UUID-A" }];
-assert.equal(typeof frappe.dinext.withWorkflowTargets, "function", "Timesheet actions must retain the selected transition targets");
+assert.equal(typeof frappe.dinext.withWorkflowTargets, "function", "Selected actions must retain the selected transition targets");
 await frappe.dinext.withWorkflowTargets({ action: "Approve", targets: exactTargets }, async () => {
-  const args = frappe.dinext.prepareWorkflowRequest("dinext_timesheets.workflow_approval.apply_timesheet_position_action",
-    { timesheet_name: "UT-1", action: "Approve" });
-  assert.equal(args.targets, exactTargets);
-  assert.equal(frappe.dinext.prepareWorkflowRequest("dinext_common.workflow_approval.api.bulk_vote",
-    { action: "Approve", names: ["A"] }).targets, exactTargets,
-    "The existing Timesheets row caller must retain its process target too");
+  const args = { action: "Approve", names: ["A"] };
+  const method = "dinext_common.workflow_approval.api.bulk_vote";
+  assert.equal(frappe.dinext.prepareWorkflowRequest(method, args).targets, exactTargets);
+  assert.equal(frappe.dinext.prepareWorkflowRequest("example_module.approvals.apply_action", args), args,
+    "Only known common requests get implicit targets");
   await Promise.resolve();
-  assert.equal(frappe.dinext.prepareWorkflowRequest("dinext_timesheets.workflow_approval.apply_timesheet_position_action",
-    { action: "Approve" }).targets, exactTargets);
+  assert.equal(frappe.dinext.prepareWorkflowRequest(method, args).targets, exactTargets);
 });
-assert.equal(frappe.dinext.prepareWorkflowRequest("dinext_timesheets.workflow_approval.apply_timesheet_position_action", { action: "Approve" }).targets,
-  undefined, "Targets must leave the request scope after completion");
+assert.equal(frappe.dinext.prepareWorkflowRequest("dinext_common.workflow_approval.api.bulk_vote",
+  { action: "Approve" }).targets, undefined, "Targets must leave the request scope after completion");
 
 const list = new ListView();
 delete docs.A.__onload;
@@ -169,16 +167,24 @@ await longList._dinext_workflow_render_promise;
 assert.equal(longList.rendered.length, 501, "Native large list pages must render within the context batch limit");
 assert.ok(contextBatchSizes.every(size => size <= 500));
 const longApprovals = await frappe.call({ method: "dinext_common.workflow_approval.api.get_my_source_transitions",
-  args: { doctype: "User Timesheet Position", names: longList.data.map(row => row.name) } });
+  args: { doctype: "Issue", names: longList.data.map(row => row.name) } });
 assert.equal(Object.keys(longApprovals.message).length, 501,
-  "A large native Timesheets page must load every personal action within the server batch limit");
+  "A large document list must load every personal action within the server batch limit");
 
-route.splice(0, route.length, "Form", "User Timesheet", "UT-1");
-context.cur_frm = { doctype: "User Timesheet", doc: { name: "UT-1" } };
+// Domain code owns any changes to the row returned by ordinary reportview requests.
 batchResponse = { message: { "POSITION-1": envelope("Alpha", "P-POSITION", "Waiting A") } };
 const positions = await frappe.call({ method: "frappe.desk.reportview.get_list",
-  args: { doctype: "User Timesheet Position" } });
-assert.equal(positions.message[0].status, "Waiting A", "Timesheet display must use each position's selected state");
+  args: { doctype: "Example Line" } });
+assert.equal(positions.message[0].status, "Legacy status");
+const lineContexts = await frappe.dinext.loadWorkflowContexts("Example Line", ["POSITION-1"]);
+assert.equal(lineContexts["POSITION-1"].context.state, "Waiting A", "Aggregate views can load state for their rows");
+
+const projectedList = new ListView();
+projectedList.data = [{ doctype: "Issue", name: "POSITION-1", status: "Native" }];
+projectedList.settings = { project_workflow_status(row, context) { row.status = context.state; } };
+projectedList.render();
+await projectedList._dinext_workflow_render_promise;
+assert.equal(projectedList.data[0].status, "Waiting A", "The owning list may project each resolved workflow state");
 
 frappe.boot.enable_parallel_workflow_approval = false;
 assert.equal(frappe.workflow.get_state(docs.A), "wrong-native-state");

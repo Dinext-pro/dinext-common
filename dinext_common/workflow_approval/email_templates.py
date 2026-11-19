@@ -28,7 +28,7 @@ def default_email_templates():
     names=("Dinext Workflow Action","Dinext Workflow Digest","Dinext Workflow Correction",
         "Dinext Workflow Deadline Digest")
     return {name:{"subject":('{{ header_title }}: {{ summary }}' if 'Digest' in name else
-        '{{ header_title }}: {{ timesheet_title if is_timesheet else document_title|truncate(100) }}'),
+        '{{ header_title }}: {{ subject_document_title or document_title|truncate(100) }}'),
         "response_html":'{% include "templates/emails/dinext_workflow.html" %}'} for name in names}
 
 
@@ -97,19 +97,15 @@ def legacy_email_templates():
 def is_known_default_template(name, existing):
     if not existing.get("use_html"):
         return False
-    provided = _provided("workflow_approval_email_template_providers").get(name)
-    if provided:
-        return any(
-            all(existing.get(field) == value for field, value in version.items())
-            for version in (provided["current"], *provided.get("previous", ()))
-        )
-    current = default_email_templates().get(name)
-    if not current:
-        return False
+    provided = _provided("workflow_approval_email_template_providers").get(name, {})
+    current = provided.get("current") or default_email_templates().get(name)
     previous = previous_email_templates().get(name, {})
     former = dict(previous)
-    if not former:
-        return all(existing.get(key) == item for key,item in current.items())
-    former["response_html"] = former["response_html"].replace('{% if comment.get("system") %}{{ _("Automatic workflow transition") }}: {% endif %}', '')
-    return any(all(existing.get(key) == item for key, item in version.items())
-        for version in (current, previous, former, legacy_email_templates().get(name, {})) if version)
+    if former:
+        former["response_html"] = former["response_html"].replace(
+            '{% if comment.get("system") %}{{ _("Automatic workflow transition") }}: {% endif %}', ""
+        )
+    domain_history = _provided("workflow_approval_previous_email_template_providers").get(name, ())
+    versions = (current, previous, former, legacy_email_templates().get(name), *provided.get("previous", ()),
+        *domain_history)
+    return any(all(existing.get(key) == value for key, value in version.items()) for version in versions if version)

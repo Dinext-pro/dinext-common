@@ -98,19 +98,6 @@ def number_label(value, user):
 	return format_decimal(value or 0, format="#,##0.##", locale=recipient_language(user).replace("-", "_"))
 
 
-def hours_breakdown(details, user):
-	unit = _("h", context="WorkflowTimesheetHours")
-	entries = []
-	for item in details or []:
-		hours = float(item.get("hours") or 0)
-		if hours == 0:
-			continue
-		text = number_label(hours, user) + " " + unit
-		description = (item.get("description") or "").strip()
-		entries.append(text + (" — " + description if description else ""))
-	return ", ".join(entries)
-
-
 def action_details(action):
 	result = dict(action)
 	name = result.get("action_name") or result.get("action") or ""
@@ -154,104 +141,19 @@ def _row(row, user):
 		result["title"] = result["doctype_label"]
 	result["due_label"] = date_label(row.get("due"), user)
 	result["overdue_label"] = number_label(row.get("overdue_hours"), user)
-	result["hours_label"] = number_label(row.get("hours"), user)
-	result["hours_breakdown_label"] = hours_breakdown(row.get("hours_details"), user)
 	if row.get("approver"):
 		result["approver_name"] = full_name(row["approver"])
 	return result
 
 
-def timesheet_deadline_groups(rows, user):
-	"""One permitted parent, with each approver's earliest missed deadline."""
-	from dinext_common.workflow_approval.notifications import _aware_utc
-
-	sheets = {}
+def document_summary(rows, doc=None, workflow=None):
+	by_type = defaultdict(set)
+	doc = doc or {}
 	for row in rows:
-		if not row.get("timesheet_name"):
-			continue
-		sheet = sheets.setdefault(
-			row["timesheet_name"],
-			dict(
-				name=row["timesheet_name"],
-				link=row["link"],
-				author_name=full_name(row.get("author")),
-				title=_("Timesheet")
-				+ " · "
-				+ date_label(row.get("period_from"), user, date_only=True)
-				+ " — "
-				+ date_label(row.get("period_to"), user, date_only=True),
-				overdues={},
-			),
-		)
-		key = row.get("approver") or row.get("approver_name") or ""
-		previous = sheet["overdues"].get(key)
-		if previous is None:
-			sheet["overdues"][key] = dict(row)
-			continue
-		if row.get("due") and (
-			not previous.get("due") or _aware_utc(row["due"]) < _aware_utc(previous["due"])
-		):
-			previous.update(due=row["due"], due_label=row["due_label"])
-		previous["overdue_hours"] = max(
-			float(previous.get("overdue_hours") or 0), float(row.get("overdue_hours") or 0)
-		)
-		previous["overdue_label"] = number_label(previous["overdue_hours"], user)
-	for sheet in sheets.values():
-		sheet["overdues"] = sorted(
-			sheet["overdues"].values(), key=lambda item: (item.get("approver_name") or "").casefold()
-		)
-	return sorted(sheets.values(), key=lambda item: (item["title"], item["author_name"], item["name"]))
-
-
-def timesheet_groups(rows, user):
-	authors = {}
-	for row in rows:
-		if not row.get("timesheet_name"):
-			continue
-		author = row.get("author") or ""
-		group = authors.setdefault(author, dict(author_name=full_name(author), sheets={}))
-		sheet = group["sheets"].setdefault(
-			row["timesheet_name"],
-			dict(
-				name=row["timesheet_name"],
-				title=_("Timesheet")
-				+ " · "
-				+ date_label(row.get("period_from"), user, date_only=True)
-				+ " — "
-				+ date_label(row.get("period_to"), user, date_only=True),
-				link=row["link"],
-				positions={},
-			),
-		)
-		position = sheet["positions"].setdefault(
-			row.get("position_name") or row["name"], dict(row, overdues=[])
-		)
-		if row.get("due"):
-			position["overdues"].append(
-				dict(
-					approver_name=row.get("approver_name"),
-					due_label=row["due_label"],
-					overdue_label=row["overdue_label"],
-				)
-			)
-	result = []
-	for author in sorted(authors.values(), key=lambda item: item["author_name"].casefold()):
-		sheets = []
-		for sheet in author["sheets"].values():
-			positions = sorted(
-				sheet["positions"].values(),
-				key=lambda item: (int(item.get("ordinal") or 0), item.get("position_name") or ""),
-			)
-			sheet.update(
-				positions=positions,
-				count=len(positions),
-				hours=sum(float(item.get("hours") or 0) for item in positions),
-			)
-			sheet["hours_label"] = number_label(sheet["hours"], user)
-			sheets.append(sheet)
-		author["sheets"] = sorted(sheets, key=lambda item: item["name"])
-		result.append(author)
-	return result
+		by_type[row.get("doctype") or doc.get("doctype") or "Document"].add(row.get("name"))
+	if not by_type:
+		by_type[doc.get("doctype") or (workflow or {}).get("document_type") or "Document"].add(doc.get("name"))
+	return " · ".join(_(doctype) + ": " + str(len(names)) for doctype, names in by_type.items())
 
 
 def prepare_context(template_name, context, user):
@@ -266,12 +168,7 @@ def prepare_context(template_name, context, user):
 		if "Digest" in template_name or (result.get("rows") is not None and not result.get("doc"))
 		else "action"
 	)
-	result.update(
-		email_kind=kind,
-		is_timesheet="Timesheet" in template_name
-		or bool(result.get("timesheet_link"))
-		or any(row.get("timesheet_name") for row in result.get("rows") or []),
-	)
+	result.update(email_kind=kind, workflow_state=state)
 	doc = result.get("doc") or {}
 	result["document_title"] = result.get("document_title") or document_title(doc, user)
 	result["document_type_label"] = _(doc.get("doctype") or "")
@@ -279,15 +176,7 @@ def prepare_context(template_name, context, user):
 		doc.get("owner") or (result.get("workflow_task") or {}).get("source_owner")
 	)
 	result["actions"] = [action_details(action) for action in result.get("actions") or []]
-	result["hours_label"] = number_label(result.get("hours"), user)
-	result["hours_breakdown_label"] = hours_breakdown(result.get("hours_details"), user)
 	result["rows"] = [_row(row, user) for row in result.get("rows") or []]
-	result["author_groups"] = timesheet_groups(result["rows"], user) if kind != "deadline" else []
-	result["overdue_timesheets"] = (
-		timesheet_deadline_groups(result["rows"], user)
-		if kind == "deadline" and result["is_timesheet"]
-		else []
-	)
 	result["comments"] = [
 		dict(
 			comment,
@@ -301,10 +190,6 @@ def prepare_context(template_name, context, user):
 		result["actions"] = []
 		for row in result["rows"]:
 			row["actions"] = []
-		for author in result["author_groups"]:
-			for sheet in author["sheets"]:
-				for position in sheet["positions"]:
-					position["actions"] = []
 	headers = {
 		"action": _("Approval required"),
 		"digest": _("Pending workflow approvals"),
@@ -313,43 +198,23 @@ def prepare_context(template_name, context, user):
 	}
 	result["header_title"] = headers[kind]
 	result["count"] = len({(row.get("doctype"), row.get("name")) for row in result["rows"]})
-	if result["overdue_timesheets"]:
-		result["count"] = len(result["overdue_timesheets"])
-		result["summary"] = _("Timesheet") + ": " + str(result["count"])
-		if state:
-			result["summary"] += " — " + _(state)
-	elif result["author_groups"]:
-		sheets = [sheet for author in result["author_groups"] for sheet in author["sheets"]]
-		result["summary"] = " · ".join(
-			(
-				_("Timesheets") + ": " + str(len(sheets)),
-				_("Positions") + ": " + str(sum(sheet["count"] for sheet in sheets)),
-				_("Hours") + ": " + number_label(sum(sheet["hours"] for sheet in sheets), user),
-			)
-		)
-	elif result["is_timesheet"]:
-		result["summary"] = _("Timesheet") + ": 1" + (" — " + _(state) if state else "")
-	else:
-		by_type = defaultdict(set)
-		for row in result["rows"]:
-			by_type[row.get("doctype") or doc.get("doctype") or "Document"].add(row.get("name"))
-		if not by_type:
-			by_type[
-				doc.get("doctype") or (result.get("workflow") or {}).get("document_type") or "Document"
-			].add(doc.get("name"))
-		result["summary"] = " · ".join(
-			_(doctype) + ": " + str(len(names)) for doctype, names in by_type.items()
-		)
-		if state:
-			result["summary"] += " — " + _(state)
-	if result.get("timesheet_period_from"):
-		result["timesheet_title"] = (
-			_("Timesheet")
-			+ " · "
-			+ date_label(result["timesheet_period_from"], user, date_only=True)
-			+ " — "
-			+ date_label(result["timesheet_period_to"], user, date_only=True)
-		)
+	result["summary"] = document_summary(result["rows"], doc, result.get("workflow"))
+	if state:
+		result["summary"] += " — " + _(state)
+
+	# These layout controls may only be set by installed applications.
+	result.update(
+		subject_document_title=None,
+		document_caption=None,
+		document_details=[],
+		primary_document_link=result.get("document_link"),
+		primary_document_title=result["document_title"],
+		grouped_rows_template=None,
+		ungrouped_rows=result["rows"],
+	)
+	if getattr(frappe.local, "site", None):
+		for provider in frappe.get_hooks("workflow_approval_email_presentation_providers") or ():
+			result.update(frappe.get_attr(provider)(template_name, result, user) or {})
 	return result
 
 

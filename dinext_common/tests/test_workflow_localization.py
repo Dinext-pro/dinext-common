@@ -12,7 +12,15 @@ from dinext_common.workflow_approval.policy import transition_semantic_hash
 
 class TestWorkflowLocalization(TestCase):
 	def setUp(self):
-		self.workflow = "AFL Workflow"
+		self.workflow = "Example Workflow"
+		from dinext_common.workflow_approval import localization
+
+		rules = patch.object(localization, "_localization_hooks", return_value={self.workflow: ["example.labels"]})
+		resolver = patch.object(frappe, "get_attr", return_value=lambda: {"states": {"Old": "New"}})
+		self.addCleanup(rules.stop)
+		self.addCleanup(resolver.stop)
+		rules.start()
+		resolver.start()
 		self.previous = engine._transition_dict(
 			{
 				"state": "Pending Approval",
@@ -53,14 +61,14 @@ class TestWorkflowLocalization(TestCase):
 		self.assertIsNone(self.rename(current={**self.current, "comment_is_required": True}))
 
 	def test_other_workflows_keep_russian_labels(self):
-		self.assertIsNone(self.rename(workflow="Project Approval"))
+		self.assertIsNone(self.rename(workflow="Other Workflow"))
 
 	def test_registered_localization_is_selected_by_workflow(self):
 		from dinext_common.workflow_approval.localization import state_name
 
 		with (
 			patch.object(frappe, "local", SimpleNamespace(site="test")),
-			patch.object(frappe, "get_hooks", return_value={"Review Workflow": ["example.workflow_labels"]}),
+			patch("dinext_common.workflow_approval.localization._localization_hooks", return_value={"Review Workflow": ["example.workflow_labels"]}),
 			patch.object(frappe, "get_attr", return_value=lambda: {"states": {"Review old": "Review new"}}),
 		):
 			self.assertEqual(state_name("Review Workflow", "Review old"), "Review new")

@@ -493,7 +493,6 @@ Please review the comment and correct the document.,Прочитайте ком�
 A document is awaiting your decision.,Документ ожидает вашего решения.
 The following documents are still awaiting a decision.,Эти документы всё ещё ожидают решения.
 Review the documents below. Each action applies to its own document.,Рассмотрите документы ниже. Каждое действие относится к своему документу.
-Hours awaiting approval,Часы на согласовании
 Overdue hours,Часы просрочки
 Positions,Позиции
 Timesheets,Таймшиты
@@ -569,7 +568,6 @@ Deadline Timezone,Часовой пояс срока
 Deadline Policy Snapshot,Исходные настройки срока
 Responsible approver,Согласующий
 Earliest missed deadline,Самый ранний нарушенный срок
-h,ч.,WorkflowTimesheetHours
 Workflow Scenario,Сценарий согласования,
 Selection Order,Порядок выбора,
 Activation Condition,Условие запуска,

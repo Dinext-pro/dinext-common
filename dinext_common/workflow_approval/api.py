@@ -1843,7 +1843,7 @@ def get_monitored_tasks(
 
 
 def _card_state_values(state: str) -> list[str]:
-	"""English workflow states and the Russian values stored before the timesheet migration."""
+	"""Equivalent state labels accepted by existing approval cards."""
 	groups = (
 		("Approved", "Согласовано", "Согласован"),
 		("Pending Approval", "На согласовании"),
@@ -1856,12 +1856,13 @@ def _card_state_values(state: str) -> list[str]:
 
 @frappe.whitelist()
 def get_legacy_number_card_result(filters: str | dict[str, Any]) -> dict[str, Any]:
-	"""Resolve stored cards that still use the original shared method."""
+	"""Resolve stored cards using the active Workflow's configured state field."""
+	from frappe.model.workflow import get_workflow_name, get_workflow_state_field
+
 	values = frappe.parse_json(filters) if isinstance(filters, str) else dict(filters)
-	source_state_field = (
-		"status" if values.get("doc") in ("User Timesheet Position", "Application For Leave") else "workflow_state"
-	)
-	return calculate_approval_number_card(values, source_state_field=source_state_field)
+	workflow = get_workflow_name(values["doc"]) if values.get("doc") else None
+	source_state_field = get_workflow_state_field(workflow) if workflow else None
+	return calculate_approval_number_card(values, source_state_field=source_state_field or "workflow_state")
 
 
 def calculate_approval_number_card(

@@ -114,8 +114,8 @@ app_include_js = [
     "/assets/dinext_common/js/dinext-desk.js",
     "/assets/dinext_common/js/dashboard_filters_fix.js",
     "/assets/dinext_common/js/workspace_sidebar_hover.js",
-    "/assets/dinext_common/js/workflow_scenarios.js?v=20261111-1",
-    "/assets/dinext_common/js/workflow_approval.js?v=20261118-1",
+    "/assets/dinext_common/js/workflow_scenarios.js?v=20261120-1",
+    "/assets/dinext_common/js/workflow_approval.js?v=20261120-1",
 ]
 
 # Expose site_config flags to Desk bootinfo
@@ -196,7 +196,6 @@ before_migrate = [
 	"dinext_common.workflow_approval.localization.guard_label_migration",
 ]
 after_migrate = [
-	"dinext_common.workflow_approval.permissions.restore_workflow_task_base_read",
 	"dinext_common.workflow_approval.permissions.sanitize_restricted_task_titles",
 	"dinext_common.workflow_approval.request_receipts.register_log_settings",
 	"dinext_common.workflow_approval.scenarios.migration.execute",

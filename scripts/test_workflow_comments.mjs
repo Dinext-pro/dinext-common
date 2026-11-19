@@ -23,9 +23,11 @@ const frm = {
     nodes.push({ html, classes: new Set(["form-message", color]) });
   } },
 };
+const formEvents = {};
 const document = { addEventListener() {} };
 const frappe = {
-  boot: {}, ui: { form: {} }, router: { on() {} },
+  boot: {}, ui: { form: { on(doctype, handlers) { formEvents[doctype] = handlers; } } },
+  router: { on() {} },
   get_route_str: () => route,
   utils: { escape_html: (value) => String(value)
     .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -52,6 +54,13 @@ assert.doesNotMatch(nodes[1].html, /<script>/);
 frappe.dinext.paintWorkflowComments(frm, []);
 assert.deepEqual(nodes.map((node) => node.html), ["Other message"]);
 
+const relatedComments = [...comments, { ...comments[1], reference_name: "<position-2>" }];
+frappe.dinext.paintWorkflowComments(frm, relatedComments);
+assert.doesNotMatch(nodes[1].html, /&lt;position-2&gt;/);
+frappe.dinext.paintWorkflowComments(frm, relatedComments, { showReferences: true });
+assert.match(nodes[1].html, /&lt;position-2&gt;/, "An aggregate form can display escaped source names");
+frappe.dinext.paintWorkflowComments(frm, []);
+
 let pending = frappe.dinext.refreshWorkflowComments(frm);
 route = "List/Issue";
 respond({ message: comments });
@@ -68,3 +77,9 @@ await pending;
 assert.match(nodes[1].html, /Alice/);
 assert.doesNotMatch(nodes[1].html, /&lt;img/);
 console.log("Workflow comment rendering and stale-response checks passed");
+
+frappe.boot.enable_parallel_workflow_approval = true;
+frappe.boot.dinext_workflow_custom_form_banners = ["Aggregate"];
+frappe.dinext.registerWorkflowApprovalForm("Request");
+frappe.dinext.registerWorkflowApprovalForm("Aggregate");
+assert.deepEqual(Object.keys(formEvents), ["Request"], "The owner opts into the common dashboard or supplies its own");
