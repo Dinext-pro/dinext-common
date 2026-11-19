@@ -5,7 +5,7 @@ from frappe.desk.query_report import get_report_doc
 
 @frappe.whitelist()
 def get_report_document(doctype: str, name: str | int):
-	if doctype != "Report" or name != "Approval Monitoring":
+	if doctype != "Report" or name not in {"Approval Monitoring", "My Approvals"}:
 		return getdoc(doctype, name)
 	try:
 		report = frappe.get_doc("Report", name)
