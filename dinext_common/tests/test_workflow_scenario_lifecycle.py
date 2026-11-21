@@ -496,15 +496,17 @@ class TestWorkflowScenarioLifecycle(unittest.TestCase):
 		source = self.source("A entry mismatch")
 		first = service.get_context(source)
 		self.vote(source)
-		# Running schema remains usable; only its next initial state is now incompatible.
-		frappe.db.set_value("Workflow Document State", self.a.states[0].name, "doc_status", 1)
+		# Finish the running schema, then reject entry to a different incompatible schema.
+		source.title = "B entry mismatch"
+		source.save(ignore_permissions=True)
+		frappe.db.set_value("Workflow Document State", self.b.states[0].name, "doc_status", 1)
 		self.assertTrue(self.vote(source, self.user)["transitioned"])
 		source.reload()
 		self.assertEqual(frappe.db.get_value(service.PROCESS, first["process_id"], "status"), "Completed")
 		self.assertIsNone(service.get_context(source)["process_id"])
 		self.assertEqual(source.get(FIELDS[0]), self.a.states[1].state)
 		self.assertIn(
-			self.a.name, frappe.db.get_value(service.CONTEXT, service.source_key(source), "routing_error")
+			self.b.name, frappe.db.get_value(service.CONTEXT, service.source_key(source), "routing_error")
 		)
 
 	def test_persisted_budget_survives_a_worker_boundary(self):

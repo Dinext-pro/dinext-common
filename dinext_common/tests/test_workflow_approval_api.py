@@ -63,6 +63,7 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 			frappe._dict(
 				parent="READABLE",
 				transition_uuid=uuid,
+				transition_semantic_hash=f"{uuid}-hash",
 				action="Approve",
 				next_state="Approved",
 				allowed_role="Approver",
@@ -90,6 +91,7 @@ class TestWorkflowApprovalAPI(unittest.TestCase):
 			[
 				{
 					"transition_uuid": uuid,
+					"transition_semantic_hash": f"{uuid}-hash",
 					"action": "Approve",
 					"next_state": "Approved",
 					"allowed": "Approver",

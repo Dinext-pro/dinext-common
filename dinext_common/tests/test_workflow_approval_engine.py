@@ -246,6 +246,17 @@ class TestAutomaticVoteReuse(unittest.TestCase):
 		engine = self.engine
 		db = Mock()
 		db.get_value.side_effect = lambda _doctype, name, field: self.tasks[name][field]
+
+		def round_rows(doctype, filters, fields, *, pluck=False, **kwargs):
+			if doctype == "Workflow Task":
+				return self.get_all(doctype, filters=filters, fields=fields, order_by=kwargs.get("order_by"))
+			return [
+				option.transition_uuid
+				for name in filters["parent"][1]
+				for option in self.tasks[name].available_workflow_transitions
+			]
+
+		db.get_values.side_effect = round_rows
 		db.set_value.side_effect = lambda _doctype, name, values, **kwargs: self.tasks[name].update(values)
 		manifest = {"transitions": [{"transition_uuid": "approve", "idx": 1, "threshold": 1}]}
 		with (
