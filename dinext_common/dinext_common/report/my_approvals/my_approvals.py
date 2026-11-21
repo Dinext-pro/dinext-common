@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections import Counter
 
 import frappe
@@ -23,13 +22,13 @@ def execute(filters=None):
 	rows = get_personal_queue(filters, include_transitions=True, **paging)
 	completed = _completed_votes({row.approval_round_id for row in rows})
 	for row in rows:
-		manifest = json.loads(row.round_manifest)
+		manifest = frappe.parse_json(row.round_manifest or {}) or {}
 		row.available_actions = ", ".join(
 			dict.fromkeys(transition["action"] for transition in row.available_transitions)
 		)
 		row.progress_transitions = [
 			{**transition, "votes": completed[(row.approval_round_id, transition.get("transition_uuid"))]}
-			for transition in manifest["transitions"]
+			for transition in manifest.get("transitions") or ()
 		]
 		row.progress = _progress(row.progress_transitions)
 		row.age_days = max(0, date_diff(now_datetime(), row.creation))

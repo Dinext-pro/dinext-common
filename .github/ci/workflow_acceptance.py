@@ -53,6 +53,7 @@ SERVER_TESTS = {
         "test_workflow_approval_permissions": (),
         "test_workflow_approval_desk": (),
         "test_workflow_native_access": (),
+        "test_my_approvals_audit": (),
         "test_workflow_scenario_records": (),
         "test_my_approvals_permissions_integration": (),
         "test_workflow_approval_migration": (),

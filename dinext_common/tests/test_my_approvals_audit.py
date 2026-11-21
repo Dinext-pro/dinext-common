@@ -35,6 +35,24 @@ class TestMyApprovalsAudit(unittest.TestCase):
 			self.assertEqual(row.progress, "Approve 1/2; Reject 0/1")
 			self.assertEqual(row.progress_transitions[0]["votes"], 1)
 
+	def test_queue_keeps_tasks_without_round_metadata(self):
+		rows = [
+			frappe._dict(
+				name=f"OLD-{index}", approval_round_id="R", creation=datetime(2026, 11, 6),
+				reference_doctype="Issue",
+				available_transitions=[{"action": "Approve", "transition_uuid": "a"}],
+				round_manifest=manifest,
+			)
+			for index, manifest in enumerate((None, "", "{}", '{"transitions":null}'))
+		]
+		with (
+			patch.object(queue, "get_personal_queue", return_value=rows),
+			patch.object(queue, "_completed_votes", return_value=Counter()),
+		):
+			visible = queue.execute({"queue_page": 1})[1]
+		self.assertEqual([row.name for row in visible], ["OLD-0", "OLD-1", "OLD-2", "OLD-3"])
+		self.assertTrue(all(row.available_actions == "Approve" and row.progress == "" for row in visible))
+
 	def test_interactive_queue_loads_only_the_requested_page(self):
 		filters = {"queue_page": 2}
 		with patch.object(queue, "get_personal_queue", return_value=[]) as read:
