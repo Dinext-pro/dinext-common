@@ -35,15 +35,6 @@ ROLE_MONITOR = "_Cypress WF Monitor"
 ROLE_MANAGER = "_Cypress WF Manager"
 ROLES = (ROLE, ROLE_B, ROLE_COHORT, ROLE_MONITOR, ROLE_MANAGER)
 
-TIMESHEET_ROLE = "Dinext_UTP_Appoval"
-AUTHOR = "igor.khmel@tutby.news"
-LEAVE_FROM = "2026-12-14"
-LEAVE_TO = "2026-12-18"
-TIMESHEET_FROM = "2026-12-14"
-TIMESHEET_TO = "2026-12-20"
-CONFLICTED_TIMESHEET_FROM = "2026-12-21"
-CONFLICTED_TIMESHEET_TO = "2026-12-27"
-
 WORKFLOWS = (
 	"_Cypress WF All",
 	"_Cypress WF Reject",
@@ -52,14 +43,8 @@ WORKFLOWS = (
 	"_Cypress WF Empty",
 	"_Cypress WF Split",
 )
-PERMISSION_DOCS = (
-	"Issue_Permissions",
-	"UT_Permissions-1",
-	"UTP_Permissions-1",
-	"AFL_Permissions-1",
-)
+PERMISSION_DOCS = ("Issue_Permissions",)
 ISSUE_READ_ROLES = (ROLE, ROLE_B, ROLE_MONITOR, ROLE_MANAGER)
-TIMESHEET_READ_ROLES = (ROLE, ROLE_MANAGER)
 
 
 def _permission_as(user: str, doctype: str, ptype: str, doc: str | None = None) -> bool:
@@ -416,44 +401,6 @@ def _our_issues() -> list[str]:
 	)
 
 
-def _our_timesheets() -> list[str]:
-	names: list[str] = []
-	for start, end in (
-		(TIMESHEET_FROM, TIMESHEET_TO),
-		(CONFLICTED_TIMESHEET_FROM, CONFLICTED_TIMESHEET_TO),
-	):
-		names.extend(
-			frappe.get_all(
-				"User Timesheet",
-				filters={
-					"ts_valid_from": start,
-					"ts_valid_for": end,
-					"timesheet_from": AUTHOR,
-				},
-				pluck="name",
-			)
-		)
-	return names
-
-
-def _our_leaves() -> list[str]:
-	return frappe.get_all(
-		"Application For Leave",
-		filters={"alfrom_date": LEAVE_FROM, "alto_date": LEAVE_TO, "alreasons": "Cypress parallel workflow"},
-		pluck="name",
-	)
-
-
-def _our_positions(timesheets: list[str]) -> list[str]:
-	if not timesheets:
-		return []
-	return frappe.get_all(
-		"User Timesheet Position",
-		filters={"user_timesheet": ["in", timesheets]},
-		pluck="name",
-	)
-
-
 @whitelist_for_tests
 def cleanup_parallel_workflow_cypress() -> dict:
 	"""Delete documents and users this suite created, then restore Issue workflows."""
@@ -461,26 +408,9 @@ def cleanup_parallel_workflow_cypress() -> dict:
 	previous = _cache_get(CACHE_PREVIOUS) or []
 	with _engine_paused():
 		issues = _our_issues()
-		timesheets = _our_timesheets()
-		positions = _our_positions(timesheets)
-		leaves = _our_leaves()
 		_delete_tasks_for("Issue", issues)
-		_delete_tasks_for("User Timesheet Position", positions)
-		_delete_tasks_for("Application For Leave", leaves)
-		_delete_tasks_for("User Timesheet", timesheets)
-		previous_import = frappe.flags.in_import
-		frappe.flags.in_import = True
-		try:
-			for doctype, names in (
-				("User Timesheet Position", positions),
-				("User Timesheet", timesheets),
-				("Application For Leave", leaves),
-				("Issue", issues),
-			):
-				for name in names:
-					frappe.delete_doc(doctype, name, force=True, ignore_permissions=True)
-		finally:
-			frappe.flags.in_import = previous_import
+		for name in issues:
+			frappe.delete_doc("Issue", name, force=True, ignore_permissions=True)
 	for name in WORKFLOWS:
 		if frappe.db.exists("Workflow", name):
 			frappe.db.set_value("Workflow", name, "is_active", 0, update_modified=False)
@@ -529,217 +459,6 @@ def _duplicate_uuid_result() -> dict:
 	return {"rejected": False, "message": "Workflow saved with a repeated UUID"}
 
 
-def _seed_timesheet(workflow_name: str) -> dict:
-	from frappe.model.workflow import get_workflow_name
-
-	position_workflow = get_workflow_name("User Timesheet Position")
-	leave_workflow = get_workflow_name("Application For Leave")
-	worker = frappe.db.get_value("Worker", {"wuser": AUTHOR}, "name")
-	leave_type = frappe.db.get_value("Type Of Leave", {}, "name")
-	if not worker or not leave_type:
-		frappe.throw("Cypress timesheet seed needs a Worker for the author and a Type Of Leave")
-	with _engine_paused():
-		timesheet = frappe.get_doc(
-			{
-				"doctype": "User Timesheet",
-				"timesheet_from": AUTHOR,
-				"timesheet_from_name": "Cypress Timesheet",
-				"ts_valid_from": TIMESHEET_FROM,
-				"ts_valid_for": TIMESHEET_TO,
-				"ut_status": "Pending Approval",
-			}
-		).insert(ignore_permissions=True)
-		position = frappe.get_doc(
-			{
-				"doctype": "User Timesheet Position",
-				"user_timesheet": timesheet.name,
-				"user": AUTHOR,
-				"status": "Pending Approval",
-				"period": "Cypress parallel workflow",
-			}
-		).insert(ignore_permissions=True)
-		frappe.db.set_value(
-			"User Timesheet Position",
-			position.name,
-			"status",
-			"Pending Approval",
-			update_modified=False,
-		)
-		leave = frappe.get_doc(
-			{
-				"doctype": "Application For Leave",
-				"alworker": worker,
-				"lauser": AUTHOR,
-				"altype_of_leave": leave_type,
-				"alfrom_date": LEAVE_FROM,
-				"alto_date": LEAVE_TO,
-				"status": "Pending Approval",
-				"alreasons": "Cypress parallel workflow",
-			}
-		).insert(ignore_permissions=True)
-	round_id = frappe.generate_hash(length=40)
-	_manual_task(
-		doctype="User Timesheet Position",
-		name=position.name,
-		workflow=position_workflow,
-		state="Pending Approval",
-		approver=APPROVER,
-		round_status="Open",
-		status="Working",
-		round_id=round_id,
-		action="Cypress Position",
-		next_state="Approved",
-		transition_uuid="cypress-position",
-		allowed_role=ROLE,
-	)
-	_manual_task(
-		doctype="User Timesheet Position",
-		name=position.name,
-		workflow=position_workflow,
-		state="Pending Approval",
-		approver=APPROVER_B,
-		round_status="Open",
-		status="Working",
-		round_id=round_id,
-		action="Cypress Position",
-		next_state="Approved",
-		transition_uuid="cypress-position",
-		allowed_role=ROLE,
-	)
-	leave_round = frappe.generate_hash(length=40)
-	_manual_task(
-		doctype="Application For Leave",
-		name=leave.name,
-		workflow=leave_workflow,
-		state="Pending Approval",
-		approver=APPROVER,
-		round_status="Open",
-		status="Working",
-		round_id=leave_round,
-		action="Cypress Leave",
-		next_state="Approved",
-		transition_uuid="cypress-leave",
-		allowed_role=ROLE,
-	)
-	_manual_task(
-		doctype="Application For Leave",
-		name=leave.name,
-		workflow=leave_workflow,
-		state="Pending Approval",
-		approver=APPROVER_B,
-		round_status="Open",
-		status="Working",
-		round_id=leave_round,
-		action="Cypress Leave",
-		next_state="Approved",
-		transition_uuid="cypress-leave",
-		allowed_role=ROLE,
-	)
-	return {
-		"timesheet": timesheet.name,
-		"position": position.name,
-		"leave": leave.name,
-		"pending_names": ["Cypress Approver", "Cypress Approver B"],
-	}
-
-
-def _seed_conflicted_timesheet(workflow_name: str) -> dict:
-	with _engine_paused():
-		timesheet = frappe.get_doc(
-			{
-				"doctype": "User Timesheet",
-				"timesheet_from": AUTHOR,
-				"timesheet_from_name": "Cypress conflicted timesheet",
-				"ts_valid_from": CONFLICTED_TIMESHEET_FROM,
-				"ts_valid_for": CONFLICTED_TIMESHEET_TO,
-				"ut_status": "Pending Approval",
-			}
-		).insert(ignore_permissions=True)
-		position = frappe.get_doc(
-			{
-				"doctype": "User Timesheet Position",
-				"user_timesheet": timesheet.name,
-				"user": AUTHOR,
-				"status": "Pending Approval",
-				"period": "Cypress conflicted timesheet",
-			}
-		).insert(ignore_permissions=True)
-		frappe.db.set_value(
-			"User Timesheet Position",
-			position.name,
-			{"project": "Cypress Project", "project_role": "Cypress Role", "status": "Pending Approval"},
-			update_modified=False,
-		)
-		stalled_position = frappe.get_doc(
-			{
-				"doctype": "User Timesheet Position",
-				"user_timesheet": timesheet.name,
-				"user": AUTHOR,
-				"status": "Pending Approval",
-				"period": "Cypress stalled position",
-			}
-		).insert(ignore_permissions=True)
-		frappe.db.set_value(
-			"User Timesheet Position",
-			stalled_position.name,
-			{"project": "Cypress Second Project", "status": "Pending Approval"},
-			update_modified=False,
-		)
-	task_name = _manual_task(
-		doctype="User Timesheet Position",
-		name=position.name,
-		workflow=workflow_name,
-		state="Pending Approval",
-		approver=APPROVER,
-		round_status="Conflicted",
-		status="Working",
-		round_id=frappe.generate_hash(length=40),
-	)
-	frappe.db.set_value(
-		"Workflow Task",
-		task_name,
-		"failure_metadata",
-		json.dumps(
-			{
-				"reason": "configuration_changed",
-				"stable": [
-					{
-						"transition_uuid": "cypress-keep",
-						"action": "Cypress Kept",
-						"approvers": [APPROVER_B],
-					}
-				],
-				"void": [
-					{
-						"transition_uuid": "cypress-drop",
-						"action": "Cypress Dropped",
-						"change": "semantic",
-						"approvers": [APPROVER],
-					}
-				],
-				"added": [],
-			},
-			ensure_ascii=False,
-		),
-		update_modified=False,
-	)
-	_manual_task(
-		doctype="User Timesheet Position",
-		name=stalled_position.name,
-		workflow=workflow_name,
-		state="Pending Approval",
-		approver=APPROVER,
-		round_status="Stalled",
-		status="Working",
-		round_id=frappe.generate_hash(length=40),
-	)
-	return {
-		"conflicted_timesheet": timesheet.name,
-		"conflicted_position": position.name,
-		"stalled_position": stalled_position.name,
-	}
-
-
 def _seed_conflicted(issue_name: str, workflow_name: str) -> str:
 	round_id = frappe.generate_hash(length=40)
 	task_name = _manual_task(
@@ -785,7 +504,7 @@ def _seed_conflicted(issue_name: str, workflow_name: str) -> str:
 
 @whitelist_for_tests
 def seed_parallel_workflow_cypress() -> dict:
-	"""Create isolated Issue rounds and a timesheet chain. Returns the fixture."""
+	"""Create isolated Issue rounds. Returns the fixture."""
 	_assert_flag()
 	cleanup_parallel_workflow_cypress()
 	_assert_flag()
@@ -798,14 +517,14 @@ def seed_parallel_workflow_cypress() -> dict:
 	_cache_set(CACHE_PREVIOUS, previous)
 	for role in ROLES:
 		_ensure_role(role)
-	_ensure_user(APPROVER, "Cypress Approver", [ROLE, ROLE_COHORT, "Desk User", TIMESHEET_ROLE], dark=True)
+	_ensure_user(APPROVER, "Cypress Approver", [ROLE, ROLE_COHORT, "Desk User"], dark=True)
 	_ensure_user(APPROVER_B, "Cypress Approver B", [ROLE, ROLE_B, "Desk User"])
 	_ensure_user(MONITOR, "Cypress Monitor", [ROLE_MONITOR, "Desk User"])
 	_ensure_user(EXCLUDED, "Cypress Excluded", [ROLE_COHORT, "Desk User"])
 	_ensure_user(
 		MANAGER,
 		"Cypress Manager",
-		[ROLE_MANAGER, "System Manager", "Desk User", TIMESHEET_ROLE],
+		[ROLE_MANAGER, "System Manager", "Desk User"],
 	)
 	for role in ISSUE_READ_ROLES:
 		_ensure_issue_perm(role)
@@ -814,11 +533,6 @@ def seed_parallel_workflow_cypress() -> dict:
 		_ensure_read_perm("Report", role)
 		_ensure_read_perm("Support Settings", role)
 		_ensure_read_perm("Kanban Board", role)
-	for role in TIMESHEET_READ_ROLES:
-		for doctype in ("User Timesheet", "User Timesheet Position"):
-			_ensure_read_perm(doctype, role)
-		for parent in ("UT_Permissions-1", "UTP_Permissions-1", "AFL_Permissions-1"):
-			_ensure_permission_condition(parent, role)
 	frappe.clear_cache()
 
 	all_workflow = _insert_workflow(
@@ -956,18 +670,6 @@ def seed_parallel_workflow_cypress() -> dict:
 		allowed_role=ROLE,
 	)
 
-	utp_workflow = (
-		frappe.db.get_value(
-			"Workflow",
-			{"document_type": "User Timesheet Position", "is_active": 1},
-			"name",
-		)
-		or all_workflow.name
-	)
-	timesheet = _seed_timesheet(utp_workflow)
-	timesheet.update(_seed_conflicted_timesheet(utp_workflow))
-	holiday_read = _permission_as(APPROVER, "Holiday List", "read")
-	project_write = _permission_as(APPROVER, "Project", "write")
 	ikhmel_after = frappe.db.get_value("User", PROTECTED_USER, "modified")
 
 	fixture = {
@@ -980,8 +682,6 @@ def seed_parallel_workflow_cypress() -> dict:
 		"approver_name": "Cypress Approver",
 		"approver_b_name": "Cypress Approver B",
 		"ikhmel_modified_unchanged": ikhmel_modified == ikhmel_after,
-		"holiday_list_read": holiday_read,
-		"project_write": project_write,
 		"can_write_issue": can_write,
 		"all_workflow": all_workflow.name,
 		"all_issue": all_issue.name,
@@ -1021,7 +721,6 @@ def seed_parallel_workflow_cypress() -> dict:
 		"history_task": history_task,
 		"conflicted_issue": conflicted_issue.name,
 		"quiet_issue": quiet_issue.name,
-		**timesheet,
 	}
 	_cache_set(CACHE_FIXTURE, fixture)
 	return fixture

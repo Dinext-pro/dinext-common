@@ -6,7 +6,6 @@ let fixture;
 
 function setOptional(value) {
 	return cy.call(`${helper}.set_required_pending_optional`, {
-		doctype: "Issue",
 		optional: value,
 	});
 }

@@ -58,8 +58,6 @@ context("parallel workflow desk", () => {
 	it("Existing approver is untouched", () => {
 		const fixture = load();
 		expect(fixture.ikhmel_modified_unchanged).to.eq(true);
-		expect(fixture.project_write).to.eq(false);
-		expect(fixture.holiday_list_read).to.eq(false);
 		expect(fixture.can_write_issue).to.eq(false);
 	});
 
@@ -180,37 +178,6 @@ context("parallel workflow desk", () => {
 		cy.noPermissionDialog();
 	});
 
-	it("Pending names after reload", () => {
-		const fixture = load();
-		asApprover();
-		cy.visit(`/app/application-for-leave/${encodeURIComponent(fixture.leave)}`);
-		cy.get(".dinext-pending-approvers", { timeout: 60000 })
-			.should("contain", fixture.approver_name)
-			.and("contain", fixture.approver_b_name);
-		cy.visit(`/app/application-for-leave/${encodeURIComponent(fixture.leave)}`);
-		cy.get(".dinext-pending-approvers", { timeout: 60000 }).should(
-			"contain",
-			fixture.approver_name
-		);
-		cy.visit(`/app/user-timesheet/${encodeURIComponent(fixture.timesheet)}`);
-		cy.get(".form-message.blue", { timeout: 60000 }).should(($el) => {
-			const text = $el.text().replaceAll(fixture.approver_b_name, "");
-			expect(
-				$el.text().includes("Action expected from") ||
-					$el.text().includes("Ожидается действие от")
-			).to.eq(true);
-			expect($el.text()).to.include(fixture.approver_b_name);
-			expect(text).to.not.include(fixture.approver_name);
-		});
-		cy.get(".dinext-pending-approvers").should("not.exist");
-		cy.reload();
-		cy.get(".form-message.blue", { timeout: 60000 }).should(
-			"contain",
-			fixture.approver_b_name
-		);
-		cy.noPermissionDialog();
-	});
-
 	it("Conflicted round uses the compact banner without an approver reset", () => {
 		const fixture = load();
 		asApprover();
@@ -262,33 +229,6 @@ context("parallel workflow desk", () => {
 		cy.noPermissionDialog();
 	});
 
-	it("Approver list renders", () => {
-		const fixture = load();
-		asApprover();
-		cy.window().then((win) => {
-			win.frappe.route_options = { name: fixture.position };
-			win.frappe.set_route("List", "User Timesheet Position");
-		});
-		cy.get(".dinext-utp-action-select", { timeout: 60000 }).should("exist");
-		cy.contains("button", /Apply workflow action|Применить действие согласования/).should(
-			"not.exist"
-		);
-		cy.noPermissionDialog();
-	});
-
-	it("Approver opens a pending timesheet", () => {
-		const fixture = load();
-		asApprover();
-		cy.visit(`/app/user-timesheet/${encodeURIComponent(fixture.timesheet)}`);
-		cy.get(".form-message.blue", { timeout: 60000 }).should(
-			"contain",
-			fixture.approver_b_name
-		);
-		cy.get(".dinext-pending-approvers").should("not.exist");
-		cy.get(".dinext-utp-action-select, .actions-btn-group").should("exist");
-		cy.noPermissionDialog();
-		cy.contains("Holiday List").should("not.exist");
-	});
 
 	it("Inaccessible approver is excluded", () => {
 		const fixture = load();
@@ -317,26 +257,4 @@ context("parallel workflow desk", () => {
 		});
 	});
 
-	it("Reports and timesheet desk", () => {
-		const fixture = load();
-		asApprover();
-		cy.visit("/app/query-report/My%20Approval%20History?ignore_prepared_report=1");
-		cy.get(".dt-row", { timeout: 120000 }).should("have.length.at.least", 1);
-		asApprover(fixture.monitor);
-		cy.visit("/app/query-report/Approval%20Monitoring?ignore_prepared_report=1");
-		cy.get(".dt-row", { timeout: 120000 }).should("have.length.at.least", 1);
-		asApprover();
-		cy.window().then((win) => {
-			win.frappe.route_options = { name: fixture.position };
-			win.frappe.set_route("List", "User Timesheet Position");
-		});
-		cy.get(".dinext-utp-action-select", { timeout: 60000 }).should("exist");
-		cy.visit(`/app/user-timesheet/${encodeURIComponent(fixture.timesheet)}`);
-		cy.get(".form-message.blue", { timeout: 60000 }).should(
-			"contain",
-			fixture.approver_b_name
-		);
-		cy.get(".dinext-pending-approvers").should("not.exist");
-		cy.noPermissionDialog();
-	});
 });

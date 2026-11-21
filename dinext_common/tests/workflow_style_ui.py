@@ -18,11 +18,11 @@ def _master(doctype, name, **values):
 		frappe.get_doc({"doctype": doctype, "name": name, **values}).insert(ignore_permissions=True)
 
 
-def _task(source, workflow, transitions, suffix):
+def _task(source, workflow, transitions, suffix, *, prefix=PREFIX):
 	task = frappe.get_doc(
 		{
 			"doctype": "Workflow Task",
-			"name": PREFIX + "Task " + suffix,
+			"name": prefix + "Task " + suffix,
 			"workflow": workflow.name,
 			"reference_doctype": source.doctype,
 			"reference_name": source.name,
@@ -56,7 +56,7 @@ def _task(source, workflow, transitions, suffix):
 
 
 @whitelist_for_tests
-def seed_workflow_styles(include_timesheets=False):
+def seed_workflow_styles():
 	_guard()
 	cleanup_workflow_styles()
 	frappe.get_doc(
@@ -128,63 +128,7 @@ def seed_workflow_styles(include_timesheets=False):
 		"task": task.name,
 		"states": {style or "Neutral": PREFIX + (style or "Neutral") for style in STYLES},
 	}
-	if not frappe.utils.cint(include_timesheets):
-		return result
-	parent = frappe.get_doc(
-		{
-			"doctype": "User Timesheet",
-			"name": PREFIX + "Timesheet",
-			"timesheet_from": "Guest",
-			"timesheet_from_name": "Workflow style test",
-			"ts_valid_from": "2039-01-03",
-			"ts_valid_for": "2039-01-09",
-			"ut_status": "Pending Approval",
-		}
-	)
-	parent.db_insert()
-	position = frappe.get_doc(
-		{
-			"doctype": "User Timesheet Position",
-			"name": PREFIX + "Position",
-			"user_timesheet": parent.name,
-			"user": "Guest",
-			"workflow_state": "Pending Approval",
-			"status": "Pending Approval",
-			"all_hours": 8.0,
-			"period": "2039-01",
-		}
-	)
-	position.db_insert()
-	position.append(
-		"table", {"date": "2039-01-03", "hours": 8.0, "description": "Style test", "utilized_hours": 8.0}
-	).db_insert()
-	utp_workflow = frappe.get_doc(
-		{
-			"doctype": "Workflow",
-			"workflow_name": PREFIX + "Positions",
-			"document_type": position.doctype,
-			"workflow_state_field": "workflow_state",
-			"is_active": 1,
-			"send_email_alert": 0,
-			"states": [
-				{"state": state, "doc_status": "0", "allow_edit": "System Manager"}
-				for state in ("Pending Approval", "Approved", "Rejected")
-			],
-			"transitions": [
-				{
-					"state": "Pending Approval",
-					"action": action,
-					"next_state": target,
-					"allowed": "System Manager",
-					"allow_self_approval": 1,
-				}
-				for action, target in (("Style approve", "Approved"), ("Style reject", "Rejected"))
-			],
-		}
-	).insert(ignore_permissions=True)
-	frappe.clear_cache(doctype=position.doctype)
-	_task(position, utp_workflow, utp_workflow.transitions, "position")
-	return {**result, "timesheet": parent.name, "position": position.name}
+	return result
 
 
 @whitelist_for_tests
@@ -201,8 +145,6 @@ def cleanup_workflow_styles():
 	_guard()
 	for doctype, filters in (
 		("Workflow Task", {"name": ["like", PREFIX + "%"]}),
-		("User Timesheet Position", {"name": PREFIX + "Position"}),
-		("User Timesheet", {"name": PREFIX + "Timesheet"}),
 		("Workflow", {"name": ["like", PREFIX + "%"]}),
 	):
 		if not frappe.db.exists("DocType", doctype):
