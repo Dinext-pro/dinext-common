@@ -773,7 +773,7 @@ def get_bulk_workflow_job(job_id: str) -> BulkJobResponse:
 		return {"status": "failed"}
 	return {"status": "pending"}
 
-def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monitored_only=False):
+def _iter_task_rows(filters, *, fields, order_by, limit, predicate=None, monitored_only=False):
 	fields = list(dict.fromkeys((*fields, *TASK_ACCESS_FIELDS)))
 	user = frappe.session.user
 	if monitored_only and user != "Administrator" and "System Manager" not in frappe.get_roles(user):
@@ -781,7 +781,7 @@ def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monit
 		if filters.get("workflow"):
 			workflows = [workflow for workflow in workflows if workflow == filters["workflow"]]
 		if not workflows:
-			return []
+			return
 		filters = {**filters, "workflow": ("in", workflows)}
 	source_permissions = {}
 	can_read = get_task_read_checker(
@@ -790,7 +790,6 @@ def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monit
 	batch_size = 500
 	page_size = min(limit, batch_size) if limit and limit > 0 else batch_size
 	start = 0
-	result = []
 	while True:
 		rows = frappe.get_all(
 			"Workflow Task",
@@ -804,13 +803,26 @@ def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monit
 		selected = current_task_rows(rows)
 		selected = [row for row in selected if predicate(row)] if predicate else selected
 		prepare_source_permissions(selected, user, source_permissions)
-		result.extend(row for row in selected if can_read(row))
-		if limit and len(result) >= limit:
-			return result[:limit]
+		readable = (row for row in selected if can_read(row))
+		if limit is not None and limit < 0:
+			yield from list(readable)[:limit]
+			return
+		for row in readable:
+			yield row
+			if limit:
+				limit -= 1
+				if not limit:
+					return
 		if len(rows) < page_size:
-			return result
+			return
 		start += page_size
 		page_size = batch_size
+
+
+def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monitored_only=False):
+	return list(_iter_task_rows(
+		filters, fields=fields, order_by=order_by, limit=limit, predicate=predicate, monitored_only=monitored_only,
+	))
 
 
 def _available_task_transitions(task_names: list[str]) -> dict[str, list[dict[str, Any]]]:
@@ -895,7 +907,7 @@ def _queue_day_filter(created_on=None):
 	return day, lambda row: _aware_utc(row.creation).astimezone(zone).date() == day
 
 
-def get_personal_queue(filters=None, *, limit=None, offset=0, include_transitions=False, fields=QUEUE_FIELDS):
+def _personal_queue_filters(filters):
 	values = frappe._dict(filters or {})
 	task_filters = {
 		"approver": frappe.session.user,
@@ -911,6 +923,11 @@ def get_personal_queue(filters=None, *, limit=None, offset=0, include_transition
 		day, predicate = _queue_day_filter(values.get("created_on"))
 		# Database timestamps use the site time zone. Keep the exact day test in the viewer's zone.
 		task_filters["creation"] = ("between", (get_datetime(add_days(day, -2)), get_datetime(add_days(day, 3))))
+	return task_filters, predicate
+
+
+def get_personal_queue(filters=None, *, limit=None, offset=0, include_transitions=False, fields=QUEUE_FIELDS):
+	task_filters, predicate = _personal_queue_filters(filters)
 	return _filtered_tasks(
 		task_filters, limit=limit, offset=offset,
 		include_transitions=include_transitions, predicate=predicate, fields=fields
@@ -1558,9 +1575,13 @@ def _queue_card(filters):
 		("created_today", "created_on", "workflow", "reference_doctype", "workflow_state", "action", "minimum_age"),
 		"",
 	)
-	fields = ("creation",) if filters else ()
+	task_filters, predicate = _personal_queue_filters(filters)
+	rows = _iter_task_rows(
+		task_filters, fields=("creation",) if predicate else (), order_by=PERSONAL_TASK_ORDER,
+		limit=None, predicate=predicate,
+	)
 	return _number_card(
-		len(get_personal_queue(filters, fields=fields)),
+		sum(1 for _ in rows),
 		"My Approvals",
 		{**route_options, **filters, "ignore_prepared_report": True},
 	)

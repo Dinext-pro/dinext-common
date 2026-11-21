@@ -33,6 +33,23 @@ class TestWorkflowApprovalReportRows(unittest.TestCase):
 		self.assertEqual(get_all.call_count, 1)
 		self.assertNotIn("round_manifest", get_all.call_args.kwargs["fields"])
 
+	def test_counter_does_not_build_rendered_queue_rows(self):
+		user = "approver@example.invalid"
+		rows = [
+			frappe._dict(name=name, approver=user, reference_doctype="Note", reference_name=source)
+			for name, source in [("A", "visible"), ("B", "visible"), ("C", "hidden")]
+		]
+		with (
+			patch.object(frappe, "session", frappe._dict(user=user)),
+			patch.object(frappe, "get_roles", return_value=[]),
+			patch.object(frappe, "get_all", return_value=rows),
+			patch.object(api, "get_personal_queue", side_effect=AssertionError("rendered queue")),
+			patch("dinext_common.workflow_approval.permissions._has_source_read_permission",
+				side_effect=lambda task, user: task["reference_name"] == "visible") as read,
+		):
+			self.assertEqual(api.open_approval_count()["value"], 2)
+		self.assertEqual(read.call_count, 2)
+
 	def test_new_card_checks_access_only_for_tasks_created_today(self):
 		from dinext_common.workflow_approval import notifications, permissions
 
