@@ -16,10 +16,10 @@ from xml.etree import ElementTree
 SITE = "ci.test"
 BASE_URL = "http://localhost:8000"
 DEPENDENCIES = {
-    "frappe": "12407fa94bb09168997169cdd3d68ef264c2bc01",
+    "frappe": "de9b663eb808e8ffbe7d38a0a3233a45745831a6",
     "erpnext": "548e80297397ba5d3ca4fb111a923fe784a37f4e",
     "hrms": "b8cdb4431d6322477c4ed7c04d164fe00972298a",
-    "doctype_permission": "43a18b9611d9a1fdf69a3c8d25bf953f468a146a",
+    "doctype_permission": "882eefaea7a67f7128cc41cb4e1d67f2123e104c",
     "frappe_comment_xt": "9b2e6b44a291f1cbdcf0808ffa34f250dbd0dfc6",
     "dinext_projects": "87748d8fb1389110be6066b6329a9c4f63e55b71",
     "dinext_projects_pl": "d3a6e0c6edad7267fe41dc6dbe7f923acd001df5",
@@ -50,6 +50,10 @@ SERVER_TESTS = {
         "test_workflow_approval_engine": (),
         "test_workflow_approval_integration": (),
         "test_workflow_approval_permissions": (),
+        "test_workflow_approval_desk": (),
+        "test_workflow_native_access": (),
+        "test_workflow_scenario_records": (),
+        "test_my_approvals_permissions_integration": (),
         "test_workflow_approval_migration": (),
         "test_workflow_queued_round_failure": (),
         "test_workflow_approval_concurrency": (),
@@ -232,6 +236,11 @@ def main():
         runner = configure_runner(support, config, common_sha)
         subprocess.run([sys.executable, runner, source], check=True)
     bench = runner_temp / "dinext-test-bench"
+    subprocess.run([
+        str(bench / "env/bin/python"), "-c",
+        "from frappe.model.db_query import DatabaseQuery; "
+        "assert not hasattr(DatabaseQuery, 'final_permission_query_conditions_version')",
+    ], cwd=bench, check=True)
     failures = run_server(bench, app, artifacts)
     if app == "dinext_common":
         for consumer in ("project_workload_assignment", "dinext_project_tasks_gantt"):

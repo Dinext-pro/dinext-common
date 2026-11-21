@@ -11,6 +11,8 @@ from importlib import import_module
 from typing import Any
 
 import frappe
+from frappe.utils import cint
+from frappe.utils.caching import request_cache
 
 READ_PERMISSION_TYPES = {"read", "report", "export", "print", "email", "select"}
 MUTATING_PERMISSION_TYPES = {"create", "write", "delete", "share", "submit", "cancel"}
@@ -18,13 +20,19 @@ MUTATING_PERMISSION_TYPES = {"create", "write", "delete", "share", "submit", "ca
 _task_candidates = ContextVar("workflow_task_read_candidates", default=None)
 
 
-def supports_final_task_permission_queries() -> bool:
-	from frappe.model.db_query import DatabaseQuery
-
-	return getattr(DatabaseQuery, "final_permission_query_conditions_version", 0) >= 1 and callable(
-		getattr(DatabaseQuery, "get_final_permission_query_conditions", None)
+def workflow_query_protection_configured() -> bool:
+	conditions = frappe.get_hooks("permission_query_conditions", {})
+	validator = frappe.get_hooks("doc_events", {}).get("DocShare", {}).get("validate", ())
+	return (
+		"dinext_common.workflow_approval.permissions.validate_workflow_docshare" in validator
+		and all(conditions.get(doctype) for doctype in WORKFLOW_READ_DOCTYPES)
+		and not any(_has_workflow_share(doctype, None, None) for doctype in WORKFLOW_READ_DOCTYPES)
 	)
 
+
+def supports_final_task_permission_queries() -> bool:
+	# Compatibility for apps that check whether Common protects task queries.
+	return workflow_query_protection_configured()
 
 @contextmanager
 def task_read_candidates(rows, source_permissions):
@@ -169,6 +177,8 @@ def has_workflow_task_permission(
 	scope = _task_candidates.get()
 	if scope and scope[0] == user:
 		return scope[3](doc)
+	if name := _get(doc, "name"):
+		require_no_workflow_shares("Workflow Task", user, name)
 	return _can_read_task(
 		doc,
 		user,
@@ -320,6 +330,54 @@ MONITORING_APPROVAL_NUMBER_CARDS = frozenset(
 )
 
 
+WORKFLOW_SERVICE_DOCTYPES = frozenset({"Workflow Task", "Workflow Process", "Workflow Document Context"})
+WORKFLOW_READ_DOCTYPES = WORKFLOW_SERVICE_DOCTYPES | {"Number Card"}
+WORKFLOW_SHARE_ERROR = "Workflow access follows the source document and assigned roles. Remove the direct sharing grant."
+
+
+class WorkflowReadBlocked(frappe.ValidationError):
+	# Other permission hooks may catch PermissionError and fall back to DocShare.
+	http_status_code = 403
+
+
+def validate_workflow_docshare(doc, method=None):
+	protected = doc.share_doctype in WORKFLOW_SERVICE_DOCTYPES or (
+		doc.share_doctype == "Number Card" and doc.share_name in MONITORING_APPROVAL_NUMBER_CARDS
+	)
+	if protected and any(cint(doc.get(field)) for field in ("read", "write", "submit", "share")):
+		frappe.throw(frappe._(WORKFLOW_SHARE_ERROR), frappe.PermissionError)
+
+
+@request_cache
+def _has_workflow_share(doctype, user, name):
+	share = frappe.qb.DocType("DocShare")
+	query = frappe.qb.from_(share).select(share.name).where(
+		(share.share_doctype == doctype) & (share.read == 1)
+	)
+	if doctype == "Number Card":
+		query = query.where(share.share_name.isin(sorted(MONITORING_APPROVAL_NUMBER_CARDS)))
+	if user is not None:
+		query = query.where((share.user == user) | (share.everyone == 1))
+	if name is not None:
+		query = query.where(share.share_name == name)
+	return bool(query.limit(1).run())
+
+
+def require_no_workflow_shares(doctype, user, name=None):
+	if user != "Administrator" and _has_workflow_share(doctype, user, name):
+		frappe.throw(frappe._(WORKFLOW_SHARE_ERROR), WorkflowReadBlocked)
+
+
+def may_read_monitoring_cards(user):
+	return _is_system_manager(user) or bool(get_monitorable_workflows(user))
+
+
+def set_monitoring_card_visibility(doc, method=None):
+	if doc.name in MONITORING_APPROVAL_NUMBER_CARDS:
+		doc.is_public = 0
+		doc.owner = "Administrator"
+
+
 def has_public_number_card_permission(doc, ptype="read", user=None, debug=False):
 	"""Apply the access rules for the approval widgets shipped by Common."""
 	name = _get(doc, "name")
@@ -334,38 +392,27 @@ def has_public_number_card_permission(doc, ptype="read", user=None, debug=False)
 		):
 			return _is_system_manager(user or frappe.session.user)
 		return None
-	if not _get(doc, "is_public"):
-		return None
-	if name in PUBLIC_APPROVAL_NUMBER_CARDS:
-		return True
+	name = _get(doc, "name")
 	if name in MONITORING_APPROVAL_NUMBER_CARDS:
 		user = user or frappe.session.user
-		return _is_system_manager(user) or bool(get_monitorable_workflows(user))
+		require_no_workflow_shares("Number Card", user, name)
+		return may_read_monitoring_cards(user)
+	if _get(doc, "is_public") and name in PUBLIC_APPROVAL_NUMBER_CARDS:
+		return True
 	return None
 
 
 def get_approval_number_card_query_conditions(user=None):
 	"""Apply the same monitoring restriction to the Number Card list."""
 	user = user or frappe.session.user
-	if _is_system_manager(user) or get_monitorable_workflows(user):
+	require_no_workflow_shares("Number Card", user)
+	if may_read_monitoring_cards(user):
 		return None
 
 	card = frappe.qb.DocType("Number Card")
 	return card.name.notin(sorted(MONITORING_APPROVAL_NUMBER_CARDS)).get_sql(
 		quote_char="`", with_namespace=True
 	)
-
-
-def require_final_task_permission_queries(user: str | None = None) -> str:
-	"""Refuse standard Task lists on platforms that can widen policy via shares."""
-	from frappe import _
-
-	if not supports_final_task_permission_queries():
-		frappe.throw(
-			_("Update Dinext Platform to support final permission query conditions before reading Workflow Tasks."),
-			frappe.PermissionError,
-		)
-	return ""
 
 
 def task_principal_filters(user: str) -> list:
@@ -386,6 +433,7 @@ def get_workflow_task_permission_query_conditions(user: str | None = None) -> st
 	condition, with source/workflow checks cached only for this invocation.
 	"""
 	user = user or frappe.session.user
+	require_no_workflow_shares("Workflow Task", user)
 	scope = _task_candidates.get()
 	if scope and scope[0] == user:
 		can_read = scope[3]

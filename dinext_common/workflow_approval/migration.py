@@ -436,10 +436,10 @@ def _require_cutover_operator() -> None:
 
 
 def assert_cutover_compatibility() -> None:
-	from dinext_common.workflow_approval.permissions import supports_final_task_permission_queries
+	from dinext_common.workflow_approval.permissions import workflow_query_protection_configured
 
-	if not supports_final_task_permission_queries():
-		raise CutoverBlockedError("Update Dinext Platform before enabling parallel Workflow approval")
+	if not workflow_query_protection_configured():
+		raise CutoverBlockedError("Configure Workflow read protection and remove conflicting Workflow sharing grants before enabling parallel approval")
 	installed = set(frappe.get_installed_apps())
 	for app in _cutover_values("canonical_status_consumers"):
 		if app in installed and 1 not in frappe.get_hooks("workflow_approval_canonical_statuses", app_name=app):

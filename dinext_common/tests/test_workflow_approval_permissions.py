@@ -65,7 +65,7 @@ class TestWorkflowApprovalPermissions(unittest.TestCase):
 
 		self.assertIn("Workflow Task", hooks.has_permission)
 		self.assertIn("Workflow Task", hooks.permission_query_conditions)
-		self.assertIn("Workflow Task", hooks.final_permission_query_conditions)
+		self.assertNotIn("Workflow Task", getattr(hooks, "final_permission_query_conditions", {}))
 
 	def test_loading_app_hooks_preserves_core_workflow_action_filter(self):
 		from importlib import reload

@@ -48,8 +48,20 @@ class TestWorkflowScenarioRecords(unittest.TestCase):
 		readable_sources = [frappe._dict(name="ISS-1", creation="2026-01-02 03:04:05")]
 		qb = Mock()
 		qb.DocType.return_value.name.isin.return_value.get_sql.return_value = "safe-source-filter"
-		with patch.object(records.frappe, "get_all", return_value=rows), patch.object(records.frappe, "get_list", return_value=readable_sources), patch.object(records.frappe, "session", frappe._dict(user="reader@example.com")), patch.object(records.frappe, "qb", qb):
+		from dinext_common.workflow_approval import permissions
+		with (
+			patch.object(records.frappe, "get_all", return_value=rows),
+			patch.object(records.frappe, "get_list", return_value=readable_sources),
+			patch.object(records.frappe, "session", frappe._dict(user="reader@example.com")),
+			patch.object(records.frappe, "qb", qb),
+			patch.object(permissions, "require_no_workflow_shares"),
+			patch.object(permissions, "prepare_source_permissions"),
+			patch.object(permissions, "_has_source_read_permission", return_value=True) as source_permission,
+		):
 			self.assertEqual(records.process_query_conditions("reader@example.com"), "safe-source-filter")
+			source_permission.assert_called_once_with(rows[0], "reader@example.com")
+			source_permission.return_value = False
+			self.assertEqual(records.process_query_conditions("reader@example.com"), "1=0")
 		qb.DocType.return_value.name.isin.assert_called_once_with(["current"])
 
 	def test_explicit_reader_context_is_restored_after_failed_source_query(self):

@@ -1,5 +1,6 @@
 """Exercise standard Frappe endpoints against synthetic private source records."""
 import json
+from collections import defaultdict
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 from unittest.mock import patch
@@ -17,6 +18,7 @@ PREFIX = "_Test Approval Audit "
 class TestMyApprovalsStandardPermissions(FrappeTestCase):
 	def setUp(self):
 		super().setUp()
+		frappe.local.request_cache = defaultdict(dict)
 		frappe.set_user("Administrator")
 		self.alice = "audit.alice@example.invalid"
 		self.bob = "audit.bob@example.invalid"
@@ -24,11 +26,12 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 		self.manager = "audit.manager@example.invalid"
 		self.role = PREFIX + "Monitor"
 		_ensure_role(self.role)
-		for user, roles in [(self.alice, []), (self.bob, []), (self.monitor, [self.role]), (self.manager, ["System Manager"])]:
-			_ensure_user(user, user.split("@")[0], ["Desk User", *roles])
+		with patch("frappe.core.doctype.user.user.ask_pass_update"):
+			for user, roles in [(self.alice, []), (self.bob, []), (self.monitor, [self.role]), (self.manager, ["System Manager"])]:
+				_ensure_user(user, user.split("@")[0], ["Desk User", *roles])
 		self._cleanup_rows()
 		self.workflow = PREFIX + "Workflow"
-		frappe.get_doc({"doctype": "Workflow", "name": self.workflow, "workflow_name": self.workflow, "document_type": "Note"}).db_insert()
+		self._insert_workflow(self.workflow)
 		frappe.get_doc({"doctype": "Has Role", "parent": self.workflow, "parenttype": "Workflow",
 			"parentfield": "custom_approval_monitor_roles", "role": self.role}).db_insert()
 		self.source = frappe.get_doc({"doctype": "Note", "name": PREFIX + "Private",
@@ -44,6 +47,16 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 			"status": "Working", "round_status": "Open"})
 		self.task.insert(ignore_permissions=True)
 
+	def _insert_workflow(self, name):
+		last_order = frappe.db.get_value(
+			"Workflow", {"document_type": "Note"}, "custom_selection_order",
+			order_by="custom_selection_order desc",
+		)
+		frappe.get_doc({
+			"doctype": "Workflow", "name": name, "workflow_name": name, "document_type": "Note",
+			"custom_selection_order": (last_order or 0) + 1,
+		}).db_insert()
+
 	def tearDown(self):
 		frappe.set_user("Administrator")
 		self._cleanup_rows()
@@ -54,6 +67,7 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 		for user in (self.alice, self.bob, self.monitor, self.manager):
 			frappe.cache.hdel("user_permissions", user)
 		frappe.db.delete("DocShare", {"share_name": ["like", PREFIX + "%"]})
+		frappe.db.delete("Available Workflow Transitions", {"parent": ["like", PREFIX + "%"], "parenttype": "Workflow Task"})
 		frappe.db.delete("Workflow Task", {"name": ["like", PREFIX + "%"]})
 		frappe.db.delete("Note", {"name": PREFIX + "Private"})
 		frappe.db.delete("Has Role", {"parent": PREFIX + "Workflow", "parenttype": "Workflow"})
@@ -76,8 +90,11 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 		self._assert_denied(self.manager)
 
 	def test_source_share_grants_monitor_read_but_task_share_does_not_bypass_policy(self):
-		frappe.share.add("Workflow Task", self.task.name, self.bob, read=1, write=1,
-			flags={"ignore_share_permission": True})
+		with self.assertRaises(frappe.PermissionError):
+			frappe.share.add_docshare(
+				"Workflow Task", self.task.name, self.bob, read=1, write=1,
+				flags={"ignore_share_permission": True},
+			)
 		self._assert_denied(self.bob)
 		frappe.set_user("Administrator")
 		frappe.share.add("Note", self.source.name, self.monitor, read=1)
@@ -136,9 +153,8 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 		frappe.get_doc({"doctype": "User Permission", "user": self.bob,
 			"allow": "Workflow", "for_value": self.workflow,
 			"apply_to_all_doctypes": 0, "applicable_for": "Workflow Task"}).insert(ignore_permissions=True)
-		frappe.share.add("Workflow Task", self.task.name, self.bob, read=1,
-			flags={"ignore_share_permission": True})
-		self._assert_denied(self.bob)
+		self._add_conflicting_share()
+		self._assert_conflicting_share_denied()
 		# Explicit trusted queries remain available to internal audit services.
 		self.assertEqual([row.name for row in frappe.get_all("Workflow Task",
 			filters={"name": self.task.name}, fields=["name"])], [self.task.name])
@@ -146,8 +162,7 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 	def test_task_policy_preserves_standard_linked_user_constraints(self):
 		other = PREFIX + "Other Workflow"
 		frappe.db.delete("Workflow", {"name": other})
-		frappe.get_doc({"doctype": "Workflow", "name": other,
-			"workflow_name": other, "document_type": "Note"}).db_insert()
+		self._insert_workflow(other)
 		frappe.get_doc({"doctype": "User Permission", "user": self.alice,
 			"allow": "Workflow", "for_value": other,
 			"apply_to_all_doctypes": 0, "applicable_for": "Workflow Task"}).insert(ignore_permissions=True)
@@ -195,8 +210,7 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 			frappe.clear_cache(doctype="Workflow Task")
 
 	def test_owner_constraint_and_task_share_do_not_restore_denied_row(self):
-		frappe.share.add("Workflow Task", self.task.name, self.bob, read=1,
-			flags={"ignore_share_permission": True})
+		self._add_conflicting_share()
 		with self._task_role_constraint(owner_only=True):
 			from frappe.model.db_query import requires_owner_constraint
 
@@ -204,26 +218,76 @@ class TestMyApprovalsStandardPermissions(FrappeTestCase):
 			self.assertTrue(requires_owner_constraint(frappe.permissions.get_role_permissions(
 				frappe.get_meta("Workflow Task"), user=self.bob
 			)))
-			self._assert_denied(self.bob)
+			self._assert_conflicting_share_denied()
 
 	def test_only_shared_task_still_requires_approval_policy(self):
-		frappe.share.add("Workflow Task", self.task.name, self.bob, read=1,
-			flags={"ignore_share_permission": True})
+		self._add_conflicting_share()
 		with self._task_role_constraint():
 			frappe.set_user(self.bob)
 			self.assertFalse(frappe.permissions.get_role_permissions(
 				frappe.get_meta("Workflow Task"), user=self.bob
 			).get("read"))
-			self._assert_denied(self.bob)
+			self._assert_conflicting_share_denied()
 
-	def test_standard_task_list_fails_closed_without_final_platform_capability(self):
+	def _add_conflicting_share(self):
+		# Seed pre-existing rows without invoking the new grant validator.
+		frappe.get_doc({
+			"doctype": "DocShare", "share_doctype": "Workflow Task", "share_name": self.task.name,
+			"user": self.bob, "read": 1,
+		}).db_insert()
+
+	def _assert_conflicting_share_denied(self):
+		with self.assertRaises(permissions.WorkflowReadBlocked):
+			self._visible(self.bob)
+		with self.assertRaises(permissions.WorkflowReadBlocked):
+			get("Workflow Task", self.task.name)
+
+	def test_conflicting_share_closed_with_a_custom_permission_hook(self):
+		if "doctype_permission" not in frappe.get_installed_apps():
+			self.skipTest("DocType Permission is optional")
+		from doctype_permission.doctype_permission import utils
+
+		self._add_conflicting_share()
+		frappe.set_user(self.bob)
+		with patch.object(utils, "get_doctype_permission_map", return_value={"Workflow Task": []}):
+			self._assert_conflicting_share_denied()
+		with (
+			patch.object(utils, "get_doctype_permission_map", return_value={"Workflow Task": ["Test Rule"]}),
+			patch.object(utils, "get_doctype_permission", return_value=""),
+		):
+			with self.assertRaises(permissions.WorkflowReadBlocked):
+				frappe.has_permission("Workflow Task", doc=self.task.name, user=self.bob)
+
+	def test_child_search_uses_the_parent_policy(self):
+		from dinext_common.workflow_approval import desk_access
+
+		child = frappe.get_doc({
+			"doctype": "Available Workflow Transitions", "parent": self.task.name,
+			"parenttype": "Workflow Task", "parentfield": "available_workflow_transitions",
+			"action": "Approve", "next_state": "Approved",
+		})
+		child.db_insert()
+		for user, expected in ((self.alice, [child.name]), (self.bob, [])):
+			frappe.set_user(user)
+			rows = desk_access.search_widget(
+				"Available Workflow Transitions", "Approve", filters={"parent": self.task.name},
+				ignore_user_permissions=True,
+			)
+			self.assertEqual([row[0] for row in rows], expected)
+
+	def test_standard_task_list_enforces_permissions_without_final_platform_capability(self):
 		from frappe.model.db_query import DatabaseQuery
 
-		with patch.object(DatabaseQuery, "final_permission_query_conditions_version", 0, create=True):
-			with self.assertRaises(frappe.PermissionError):
-				self._visible(self.alice)
-			self.assertEqual([row.name for row in frappe.get_all("Workflow Task",
-				filters={"name": self.task.name}, fields=["name"])], [self.task.name])
+		with (
+			patch.object(DatabaseQuery, "final_permission_query_conditions_version", 0, create=True),
+			patch.object(DatabaseQuery, "get_final_permission_query_conditions", return_value="", create=True),
+		):
+			self.assertEqual([row.name for row in self._visible(self.alice)], [self.task.name])
+			self._assert_denied(self.bob)
+			frappe.set_user("Administrator")
+			self._add_conflicting_share()
+			frappe.local.request_cache = defaultdict(dict)
+			self._assert_conflicting_share_denied()
 
 	def test_existing_queue_link_filter_is_upgraded_without_setup_permissions(self):
 		from dinext_common.workflow_approval.metadata import _ensure_queue_action_filter

@@ -249,10 +249,6 @@ after_migrate = [
 # }
 #
 permission_query_conditions = {
-	"Workflow Task": "dinext_common.workflow_approval.permissions.require_final_task_permission_queries",
-}
-
-final_permission_query_conditions = {
 	"Number Card": "dinext_common.workflow_approval.permissions.get_approval_number_card_query_conditions",
 	"Workflow Process": "dinext_common.workflow_approval.scenarios.records.process_query_conditions",
 	"Workflow Document Context": "dinext_common.workflow_approval.scenarios.records.context_query_conditions",
@@ -260,6 +256,8 @@ final_permission_query_conditions = {
 }
 
 has_permission = {
+	"Prepared Report": "dinext_common.workflow_approval.report_access.has_prepared_report_permission",
+	"File": "dinext_common.workflow_approval.report_access.has_report_attachment_permission",
 	"Workflow Process": "dinext_common.workflow_approval.scenarios.records.has_record_permission",
 	"Workflow Document Context": "dinext_common.workflow_approval.scenarios.records.has_record_permission",
 	"Workflow Task": "dinext_common.workflow_approval.permissions.has_workflow_task_permission",
@@ -275,6 +273,7 @@ has_permission = {
 # Override standard doctype classes
 
 override_doctype_class = {
+	"File": "dinext_common.workflow_approval.report_access.WorkflowReportAttachment",
 	"Email Queue": "dinext_common.workflow_approval.email_queue.DinextWorkflowEmailQueue",
 	"Submission Queue": "dinext_common.workflow_approval.queued_submission.DinextSubmissionQueue",
 	"Workflow": "dinext_common.workflow_approval.scenarios.workflow.DinextWorkflow",
@@ -287,6 +286,10 @@ override_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
+	"Report": {"validate": "dinext_common.workflow_approval.report_access.require_live_workflow_report"},
+	"Prepared Report": {"before_insert": "dinext_common.workflow_approval.report_access.stop_prepared_workflow_result"},
+	"DocShare": {"validate": "dinext_common.workflow_approval.permissions.validate_workflow_docshare"},
+	"Number Card": {"validate": "dinext_common.workflow_approval.permissions.set_monitoring_card_visibility"},
 	"Property Setter": {
 		"on_update": "dinext_common.workflow_approval.permissions.sanitize_tasks_after_title_permission_change",
 	},
@@ -361,6 +364,11 @@ get_changelog_feed = "dinext_common.changelog_feed.get_feed"
 # ------------------------------
 #
 override_whitelisted_methods = {
+	"frappe.desk.search.search_link": "dinext_common.workflow_approval.desk_access.search_link",
+	"frappe.desk.search.search_widget": "dinext_common.workflow_approval.desk_access.search_widget",
+	"frappe.desk.doctype.number_card.number_card.get_cards_for_user": (
+		"dinext_common.workflow_approval.desk_access.get_cards_for_user"
+	),
 	"frappe.desk.reportview.get": "dinext_common.workflow_approval.task_list.get",
 	"frappe.desk.form.load.getdoc": "dinext_common.workflow_approval.monitoring.get_report_document",
 	"frappe.apps.get_apps": "dinext_common.apps.get_apps",

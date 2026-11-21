@@ -7,7 +7,7 @@
  "document_type": "Workflow Task",
  "function": "Count",
  "idx": 0,
- "is_public": 1,
+ "is_public": 0,
  "is_standard": 1,
  "label": "Open Approval Rounds",
  "method": "dinext_common.workflow_approval.api.open_control_round_count",

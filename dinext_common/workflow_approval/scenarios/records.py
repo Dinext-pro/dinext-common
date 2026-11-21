@@ -23,7 +23,21 @@ def require_service_write(doc: object) -> None:
 def has_record_permission(doc: object, ptype: str = "read", user: str | None = None) -> bool:
 	if ptype not in READ_TYPES:
 		return False
-	if not doc.get("reference_doctype") or not doc.get("reference_name") or not doc.get("source_created_at"):
+	from dinext_common.workflow_approval.permissions import (
+		WORKFLOW_SERVICE_DOCTYPES,
+		_has_source_read_permission,
+		require_no_workflow_shares,
+	)
+
+	user = user or frappe.session.user
+	if doc.get("name"):
+		require_no_workflow_shares(doc.doctype, user, doc.name)
+	if (
+		not doc.get("reference_doctype")
+		or doc.reference_doctype in WORKFLOW_SERVICE_DOCTYPES
+		or not doc.get("reference_name")
+		or not doc.get("source_created_at")
+	):
 		return False
 	try:
 		created_at = frappe.db.get_value(doc.reference_doctype, doc.reference_name, "creation")
@@ -31,9 +45,7 @@ def has_record_permission(doc: object, ptype: str = "read", user: str | None = N
 		return False
 	if not created_at or get_datetime(created_at) != get_datetime(doc.source_created_at):
 		return False
-	from dinext_common.workflow_approval.permissions import _has_source_read_permission
-
-	return _has_source_read_permission(doc, user or frappe.session.user)
+	return _has_source_read_permission(doc, user)
 
 
 @contextmanager
@@ -57,13 +69,21 @@ def _read_as_user(user: str):
 
 def _query_conditions(doctype: str, user: str | None = None) -> str:
 	"""Batch source list permissions and creation identities before exposing audit rows."""
+	from dinext_common.workflow_approval.permissions import (
+		WORKFLOW_SERVICE_DOCTYPES,
+		_has_source_read_permission,
+		prepare_source_permissions,
+		require_no_workflow_shares,
+	)
+
 	user = user or frappe.session.user
+	require_no_workflow_shares(doctype, user)
 	rows = frappe.get_all(
 		doctype, fields=["name", "reference_doctype", "reference_name", "source_created_at"]
 	)
 	by_type = defaultdict(list)
 	for row in rows:
-		if row.reference_doctype not in SERVICE_TYPES:
+		if row.reference_doctype not in WORKFLOW_SERVICE_DOCTYPES:
 			by_type[row.reference_doctype].append(row)
 	readable = []
 	for source_type, records in by_type.items():
@@ -81,12 +101,18 @@ def _query_conditions(doctype: str, user: str | None = None) -> str:
 		except (frappe.PermissionError, frappe.DoesNotExistError):
 			continue
 		identities = {row.name: get_datetime(row.creation) for row in sources}
-		readable.extend(
-			row.name
-			for row in records
-			if row.source_created_at
+		candidates = [
+			row for row in records if row.source_created_at
 			and identities.get(row.reference_name) == get_datetime(row.source_created_at)
-		)
+		]
+		permissions = {}
+		prepare_source_permissions(candidates, user, permissions)
+		for row in candidates:
+			key = source_type, row.reference_name
+			if key not in permissions:
+				permissions[key] = _has_source_read_permission(row, user)
+			if permissions[key]:
+				readable.append(row.name)
 	if not readable:
 		return "1=0"
 	table = frappe.qb.DocType(doctype)

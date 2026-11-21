@@ -66,18 +66,12 @@ class TestMyApprovalsAudit(unittest.TestCase):
 		self.assertEqual(duration._period(options)[0], datetime(2026, 10, 8, 13, 15, 42))
 		self.assertEqual(str(duration._period({"from_date": "2026-10-08", "to_date": "2026-11-07"})[0]), "2026-10-08")
 
-	def test_old_platform_task_lists_fail_closed(self):
-		from frappe.model.db_query import DatabaseQuery
+	def test_cutover_uses_common_protection_readiness(self):
+		from dinext_common.workflow_approval import migration
 
-		self.assertTrue(hasattr(permissions, "require_final_task_permission_queries"))
-		for version, method in [(0, lambda *args: ""), (1, None)]:
-			with self.subTest(version=version, method=method), patch.object(
-				DatabaseQuery, "final_permission_query_conditions_version", version, create=True
-			), patch.object(DatabaseQuery, "get_final_permission_query_conditions", method, create=True), patch.object(
-				frappe, "throw", side_effect=frappe.PermissionError
-			), patch.object(frappe, "_", side_effect=lambda text: text):
-				with self.assertRaises(frappe.PermissionError):
-					permissions.require_final_task_permission_queries("Administrator")
+		with patch.object(permissions, "workflow_query_protection_configured", return_value=False):
+			with self.assertRaises(migration.CutoverBlockedError):
+				migration.assert_cutover_compatibility()
 
 	def test_comment_normalization_contract_matches_server(self):
 		from dinext_common.workflow_approval.policy import normalize_comment

@@ -431,6 +431,8 @@ def ensure_workflow_approval_desk_records() -> None:
 	_ensure_pending_approvals_chart()
 	_ensure_control_charts()
 	_ensure_personal_report_filters()
+	from dinext_common.workflow_approval.report_access import ensure_live_workflow_reports
+	ensure_live_workflow_reports()
 
 	if frappe.db.exists("Custom HTML Block", OBSOLETE_APPROVALS_BLOCK):
 		frappe.delete_doc(
@@ -493,14 +495,15 @@ def _ensure_number_card(name: str, label: str, method: str, color: str) -> None:
 	}
 	if frappe.db.exists("Number Card", name):
 		card = frappe.get_doc("Number Card", name)
-		card.update(values)
+		card.update({"is_public": 0, "owner": "Administrator"})
 		card.save(ignore_permissions=True)
 		return
 	card = frappe.get_doc(
 		{
 			"doctype": "Number Card",
 			"name": name,
-			"is_public": 1,
+			"is_public": 0,
+			"owner": "Administrator",
 			"is_standard": 1,
 			"module": "Dinext Common",
 			**values,
