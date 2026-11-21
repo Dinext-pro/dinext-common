@@ -16,14 +16,15 @@ from xml.etree import ElementTree
 SITE = "ci.test"
 BASE_URL = "http://localhost:8000"
 DEPENDENCIES = {
-    "frappe": "de9b663eb808e8ffbe7d38a0a3233a45745831a6",
+    "frappe": "3b73839e0c5080f638d007fe96e2da02225d6674",
     "erpnext": "548e80297397ba5d3ca4fb111a923fe784a37f4e",
     "hrms": "b8cdb4431d6322477c4ed7c04d164fe00972298a",
     "doctype_permission": "882eefaea7a67f7128cc41cb4e1d67f2123e104c",
     "frappe_comment_xt": "9b2e6b44a291f1cbdcf0808ffa34f250dbd0dfc6",
-    "dinext_projects": "87748d8fb1389110be6066b6329a9c4f63e55b71",
-    "dinext_projects_pl": "d3a6e0c6edad7267fe41dc6dbe7f923acd001df5",
-    "dinext_timesheets": "e897c88f63ddcd5b25aa5d50232ee158abcb1b7b",
+    "dinext_projects": "534345d00bb10489c74f64048bfb74bba6593c60",
+    "dinext_projects_pl": "6b6852fd63bb863344b5183216f5ce0521e66338",
+    "dinext_timesheets": "2fcd685832900a2e7c0cb920ff10e77318da05e9",
+    "dinext_deputies": "ed5798add9aaa5c80f51f634316adb8a191d5126",
     "project_workload_assignment": "18a0845b25f3759a607760ca5aa6316e68f0f006",
     "dinext_project_tasks_gantt": "c9650bf6986c8e276c1899139b2e90d1253bfc45",
 }
@@ -32,14 +33,14 @@ SPECS = {
         "approval_deadline_chart.js",
         "workflow_scenarios.js",
         "workflow_round_errors.js",
-        "workflow_scenario_timesheets.js",
+        "workflow_delegation_audit.js",
         "workflow_progress_unlock.js",
         "workflow_request_receipts.js",
     ),
-    "dinext_projects": ("workflow_comment_banner.js",),
     "dinext_timesheets": (
         "timesheet_team_lead.js", "worker_calendar_deadlines.js", "ut_form_workflow_position_failures.js",
-        "ut_empty_approval.js",
+        "ut_empty_approval.js", "workflow_scenario_timesheets.js",
+        "application_for_leave.js", "afl_workflow_comment_banner.js",
     ),
     "project_workload_assignment": ("workload_absence_navigation.js",),
 }
@@ -55,6 +56,7 @@ SERVER_TESTS = {
         "test_workflow_scenario_records": (),
         "test_my_approvals_permissions_integration": (),
         "test_workflow_approval_migration": (),
+        "test_workflow_legacy_api_retirement": (),
         "test_workflow_queued_round_failure": (),
         "test_workflow_approval_concurrency": (),
         "test_workflow_approval_signed_links": (),
@@ -68,8 +70,6 @@ SERVER_TESTS = {
         "test_workflow_scenario_compat": (),
         "test_workflow_scenario_lifecycle": (),
         "test_workflow_scenario_reselection_integration": (),
-        "test_workflow_scenario_timesheet_integration": (),
-        "test_workflow_scenario_timesheets": (),
         "test_workflow_deadline_integration": ("test_signed_comment_uses_live_rule_and_invalid_input_keeps_retry",),
     },
     "dinext_projects": {
@@ -82,6 +82,9 @@ SERVER_TESTS = {
         "test_timesheet_settings_refinements": (),
         "test_timesheet_team_lead_access": (),
         "test_empty_timesheet_approval": (),
+        "test_workflow_scenario_timesheet_integration": (),
+        "test_workflow_scenario_timesheets": (),
+        "dinext_timesheets.dinext_timesheets.doctype.application_for_leave.test_application_for_leave": (),
         "test_approval_fingerprint_integration": (),
         "test_utp_status_migration": (),
         "test_workflow_email_ownership": (),
@@ -247,7 +250,8 @@ def main():
             failures.extend(run_server(bench, consumer, artifacts))
     if failures:
         print("Failing Workflow server suites: " + ", ".join(failures), flush=True)
-    run_browser(bench, app, artifacts)
+    if SPECS.get(app):
+        run_browser(bench, app, artifacts)
     if app == "dinext_common":
         run_browser(bench, "project_workload_assignment", artifacts)
     if failures:
