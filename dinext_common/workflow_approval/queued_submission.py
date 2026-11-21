@@ -8,7 +8,7 @@ from frappe import _
 from frappe.core.doctype.submission_queue.submission_queue import SubmissionQueue
 from frappe.utils import get_datetime, now_datetime
 
-from dinext_common.workflow_approval import engine
+from dinext_common.workflow_approval import acting, engine
 
 
 def pending(task):
@@ -74,7 +74,7 @@ def has_active_job(queue_name, source, *, job_id=None, named=False):
 		return None
 
 
-def stage(task, source, transition, workflow, *, comment, completion_source, request_id, receipt_recorded):
+def stage(task, source, transition, workflow, *, comment, completion_source, request_id, receipt_recorded, performer):
 	"""Return a queue acknowledgment only for a winning draft-to-submit vote."""
 	if source.docstatus != 0 or not source.meta.queue_in_background:
 		return None
@@ -86,7 +86,8 @@ def stage(task, source, transition, workflow, *, comment, completion_source, req
 	if not _can_queue(source, workflow, winner):
 		return None
 	vote = dict(task_name=task.name, transition_uuid=transition.transition_uuid, comment=comment,
-		completion_source=completion_source, request_id=request_id, receipt_recorded=receipt_recorded)
+		completion_source=completion_source, request_id=request_id, receipt_recorded=receipt_recorded,
+		performer=performer._asdict())
 	return _stage_votes(task, source, workflow, winner, [vote], actor=task.approver)
 
 
@@ -222,19 +223,17 @@ def complete_source(doc):
 			engine.complete_task(voting_task, transition, comment=vote["comment"],
 				completion_source=vote["completion_source"], content_fingerprint=queue.vote_fingerprint,
 				request_id=vote["request_id"], receipt_recorded=vote["receipt_recorded"],
-				reused_from=vote.get("reused_from"))
+				reused_from=vote.get("reused_from"),
+				performer=acting.Performer(**vote["performer"]) if vote.get("performer") else None)
 			voting_task.reload()
 			engine._dispatch_vote_completed(voting_task, doc, transition)
 			if vote.get("reused_from"):
 				message = _("{0} automatically reused action {1}").format(
 					frappe.bold(frappe.utils.escape_html(voting_task.approver)),
 					frappe.bold(frappe.utils.escape_html(_(transition.action))))
+				doc.add_comment("Workflow", message)
 			else:
-				message = _("{0} voted {1}{2}").format(
-					frappe.bold(frappe.utils.escape_html(voting_task.approver)),
-					frappe.bold(frappe.utils.escape_html(_(transition.action))),
-					f": {frappe.utils.escape_html(vote['comment'])}" if vote["comment"] else "")
-			doc.add_comment("Workflow", message)
+				acting.log_vote(doc, voting_task, transition.action, vote["comment"])
 		from dinext_common.workflow_approval.email_context import entry_context_for_round
 		entry = entry_context_for_round(task.approval_round_id, data["winner"])
 		engine._finish_round(task.approval_round_id, data["winner"])

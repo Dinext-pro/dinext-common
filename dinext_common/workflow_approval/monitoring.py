@@ -5,7 +5,7 @@ from frappe.desk.query_report import get_report_doc
 
 @frappe.whitelist()
 def get_report_document(doctype: str, name: str | int):
-	if doctype != "Report" or name not in {"Approval Monitoring", "My Approvals"}:
+	if doctype != "Report" or name not in {"Approval Monitoring", "My Approvals", "My Approval History"}:
 		return getdoc(doctype, name)
 	try:
 		report = frappe.get_doc("Report", name)
@@ -24,7 +24,7 @@ def get_report_document(doctype: str, name: str | int):
 	report = get_report_doc(name)
 	metadata = {
 		field: report.get(field)
-		for field in ("doctype", "name", "is_standard", "ref_doctype", "report_name", "report_type")
+		for field in ("doctype", "name", "is_standard", "ref_doctype", "report_name", "report_type", "filters")
 	}
 	if frappe.response.docs is None:
 		frappe.response.docs = []

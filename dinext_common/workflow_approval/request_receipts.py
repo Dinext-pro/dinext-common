@@ -10,10 +10,12 @@ import frappe
 from frappe import _
 from frappe.utils import get_datetime, now_datetime
 
+from dinext_common.workflow_approval import acting
+
 DOCTYPE = "Workflow Request Receipt"
 DEFAULT_RETENTION_DAYS = 7
 RECEIPT_FIELDS = (
-	"name", "initiator", "request_digest", "status", "targets", "item_results", "response", "job_id",
+	"name", "initiator", "deputy", "request_digest", "status", "targets", "item_results", "response", "job_id",
 )
 
 
@@ -31,7 +33,11 @@ def _digest(value: object) -> str:
 
 
 def request_key(operation: str, request_id: str) -> str:
-	return _digest([operation, frappe.session.user, request_id])
+	identity = acting.current()
+	parts = [operation, identity.performed_as, request_id]
+	if identity.deputy:
+		parts.append(identity.deputy)
+	return _digest(parts)
 
 
 def target(source, task_name: str | None = None) -> ReceiptTarget:
@@ -76,10 +82,15 @@ def lock(key: str):
 	return receipt
 
 
+def belongs_to_current_user(receipt) -> bool:
+	identity = acting.current()
+	return receipt.initiator == identity.performed_as and receipt.get("deputy") == identity.deputy
+
+
 def verify(receipt, parameters: object) -> None:
 	from dinext_common.workflow_approval.engine import WorkflowApprovalConflictError
 
-	if receipt.initiator != frappe.session.user:
+	if not belongs_to_current_user(receipt):
 		raise frappe.PermissionError
 	if receipt.request_digest != _digest(parameters):
 		raise WorkflowApprovalConflictError(_("This Workflow request was already used with different parameters"))
@@ -100,6 +111,7 @@ def reserve(
 		"name": key,
 		"operation": operation,
 		"initiator": frappe.session.user,
+		"deputy": acting.current().deputy,
 		"request_digest": _digest(parameters),
 		"status": "Working",
 		"targets": json.dumps(targets),

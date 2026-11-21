@@ -24,7 +24,7 @@ from frappe.model.workflow import (
 from frappe.utils import get_datetime, now_datetime
 from frappe.utils.user import get_users_with_role
 
-from dinext_common.workflow_approval import request_receipts
+from dinext_common.workflow_approval import acting, request_receipts
 from dinext_common.workflow_approval.fingerprint import (
 	ContentFingerprint,
 	fingerprint_document,
@@ -1089,6 +1089,7 @@ def _copy_carried_vote(
 		comment=str(_value(vote, "vote_comment") or ""),
 		completion_source="Carried",
 		content_fingerprint=fingerprint,
+		reused_from=_value(vote, "name"),
 	)
 	from dinext_common.workflow_approval.projections import close_task_projection
 
@@ -1506,6 +1507,7 @@ def complete_task(
 	request_id: str | None = None,
 	reused_from: str | None = None,
 	receipt_recorded: bool = False,
+	performer: acting.Performer | None = None,
 ) -> None:
 	_set_task_values(
 		task.name,
@@ -1520,6 +1522,8 @@ def complete_task(
 			"vote_comment": comment,
 			"completed_at": now_datetime(),
 			"completion_source": completion_source,
+			"performed_by": performer.performed_by if performer else None,
+			"performed_as": performer.performed_as if performer else None,
 			"reused_from_workflow_task": reused_from,
 			"content_fingerprint": content_fingerprint.digest,
 			"content_fingerprint_version": content_fingerprint.version,
@@ -1666,6 +1670,7 @@ def _cast_locked_vote(
 	if task.source_created_at and get_datetime(task.source_created_at) != get_datetime(source.creation):
 		raise WorkflowApprovalConflictError(_("The Workflow Task belongs to another document instance"))
 
+	performer = acting.current()
 	receipt = None
 	record_vote_response = request_id and not receipt_managed
 	if record_vote_response:
@@ -1679,6 +1684,9 @@ def _cast_locked_vote(
 		if task.get("request_receipt_recorded"):
 			raise WorkflowApprovalConflictError(_("The Workflow request has expired. Refresh the document before acting."))
 		if task.status == "Completed":
+			previous = acting.Performer(task.get("performed_by"), task.get("performed_as"))
+			if previous.deputy != performer.deputy:
+				raise WorkflowApprovalConflictError(_("This Workflow request belongs to another performer"))
 			return _vote_result(task, source, transitioned=task.round_status == "Transitioned")
 	if task.status != "Working" or task.round_status != "Open":
 		raise WorkflowApprovalConflictError(_("Workflow Task is no longer active"))
@@ -1761,7 +1769,7 @@ def _cast_locked_vote(
 			validate_vote(source, transition.next_state)
 		pending_result = stage(task, source, transition, workflow, comment=normalized_comment,
 			completion_source=completion_source, request_id=request_id,
-			receipt_recorded=bool(receipt or receipt_managed))
+			receipt_recorded=bool(receipt or receipt_managed), performer=performer)
 		if pending_result:
 			if receipt:
 				request_receipts.finish(receipt.name, pending_result)
@@ -1781,21 +1789,11 @@ def _cast_locked_vote(
 		content_fingerprint=fingerprint,
 		request_id=request_id,
 		receipt_recorded=bool(receipt or receipt_managed),
+		performer=performer,
 	)
 	task.reload()
 	_dispatch_vote_completed(task, source, transition)
-	source.add_comment(
-		"Workflow",
-		_("{0} voted {1}{2}").format(
-			frappe.bold(frappe.utils.escape_html(task.approver)),
-			frappe.bold(frappe.utils.escape_html(_(transition.action))),
-			(
-				f": {frappe.utils.escape_html(normalized_comment)}"
-				if normalized_comment
-				else ""
-			),
-		),
-	)
+	acting.log_vote(source, task, transition.action, normalized_comment)
 	from dinext_common.workflow_approval.projections import close_task_projection
 
 	close_task_projection(task)

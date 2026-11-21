@@ -17,7 +17,7 @@ from frappe.workflow.doctype.workflow_action.workflow_action import return_succe
 from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
 from werkzeug.wrappers import Response
 
-from dinext_common.workflow_approval import engine, localization
+from dinext_common.workflow_approval import acting, engine, localization
 
 COMMAND_TTL_SECONDS = 15 * 60
 COMMAND_CACHE_ERRORS = (RedisConnectionError, RedisTimeoutError)
@@ -420,19 +420,21 @@ def confirm_action(
 	retry_from = failure.get("submission_queue") if failure and failure.get("task_name") == task.name else ""
 	attempt = hashlib.sha256(f"{command_token}:{retry_from}".encode()).hexdigest()
 	previous_user = frappe.session.user
+	performer = acting.Performer(None, user) if previous_user == "Guest" else acting.current()
 	try:
 		frappe.session.user = user
-		result = engine.cast_vote(
-			task_name,
-			transition_uuid=transition_uuid,
-			comment=comment,
-			completion_source="Signed Link",
-			request_id=f"signed:{attempt}",
-			expected_creation=command.get("creation"),
-			expected_modified=command.get("modified"),
-			expected_transition_hash=command.get("transition_hash"),
-			expected_delivery_key=delivery_key,
-		)
+		with acting.use(performer):
+			result = engine.cast_vote(
+				task_name,
+				transition_uuid=transition_uuid,
+				comment=comment,
+				completion_source="Signed Link",
+				request_id=f"signed:{attempt}",
+				expected_creation=command.get("creation"),
+				expected_modified=command.get("modified"),
+				expected_transition_hash=command.get("transition_hash"),
+				expected_delivery_key=delivery_key,
+			)
 		if result.get("pending_submission"):
 			frappe.respond_as_web_page(
 				_("Workflow action queued"),

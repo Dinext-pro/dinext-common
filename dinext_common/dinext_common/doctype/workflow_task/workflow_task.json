@@ -37,6 +37,8 @@
   "vote_comment",
   "completed_at",
   "completion_source",
+  "performed_by",
+  "performed_as",
   "reused_from_workflow_task",
   "cancelled_at",
   "cancellation_reason",
@@ -307,7 +309,21 @@
    "read_only": 1
   },
   {
-   "depends_on": "eval:doc.completion_source=='Automatic Unchanged'",
+   "fieldname": "performed_by",
+   "fieldtype": "Link",
+   "label": "Performed By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "performed_as",
+   "fieldtype": "Link",
+   "label": "Acted As",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.reused_from_workflow_task",
    "fieldname": "reused_from_workflow_task",
    "fieldtype": "Link",
    "label": "Reused From Workflow Task",

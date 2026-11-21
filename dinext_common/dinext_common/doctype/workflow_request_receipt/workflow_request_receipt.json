@@ -5,6 +5,7 @@
  "field_order": [
   "operation",
   "initiator",
+  "deputy",
   "request_digest",
   "status",
   "targets",
@@ -26,6 +27,12 @@
    "fieldtype": "Data",
    "label": "Initiator",
    "reqd": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "deputy",
+   "fieldtype": "Data",
+   "label": "Deputy",
    "read_only": 1
   },
   {

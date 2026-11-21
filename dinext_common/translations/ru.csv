@@ -643,3 +643,8 @@ Enable JavaScript to open the approval preview.,Включите JavaScript дл
 Queue page,Страница очереди
 Enter 0 to show all results,Введите 0 для показа всех результатов
 Pending on this page,На согласовании на этой странице
+Performed By,Выполнил
+Acted As,От чьего имени
+{0} voted {1} on behalf of {2}{3},{0} выполнил действие {1} от имени {2}{3}
+{0} was recorded for {1} via an email link{2},Действие {0} записано за {1} по ссылке из письма{2}
+This Workflow request belongs to another performer,Этот запрос Workflow выполнил другой пользователь

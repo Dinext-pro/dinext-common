@@ -33,7 +33,7 @@ class TestWorkflowQueuedRoundFailure(FrappeTestCase):
 		from frappe.utils.background_jobs import enqueue
 		from redis.exceptions import ConnectionError
 
-		from dinext_common.workflow_approval import api, engine, finalization, request_receipts
+		from dinext_common.workflow_approval import acting, api, engine, finalization, request_receipts
 		from dinext_common.workflow_approval.queued_submission import DinextSubmissionQueue
 
 		workflow = frappe.get_doc("Workflow", self.workflow_name)
@@ -56,8 +56,9 @@ class TestWorkflowQueuedRoundFailure(FrappeTestCase):
 				"reference_doctype": "Issue", "reference_name": doc.name, "approver": self.user,
 			})
 			request_id = frappe.generate_hash(length=32)
-			receipt_key = request_receipts.request_key("Vote", request_id)
-			result = engine.cast_vote(task.name, transition_uuid="_test-transition", comment="Saved decision", request_id=request_id)
+			with acting.use(acting.Performer(self.user, "Administrator")):
+				receipt_key = request_receipts.request_key("Vote", request_id)
+				result = engine.cast_vote(task.name, transition_uuid="_test-transition", comment="Saved decision", request_id=request_id)
 			queue_name = result["pending_submission"]
 			self.assertEqual(api.get_vote_status(task.name)["pending_submission"], queue_name)
 			receipt = request_receipts.get(receipt_key)
@@ -118,14 +119,16 @@ class TestWorkflowQueuedRoundFailure(FrappeTestCase):
 			self.assertEqual(queue.reload().status, "Finished", queue.exception)
 			self.assertEqual((doc.reload().status, doc.docstatus), ("Closed", 1))
 			self.assertEqual((task.reload().status, task.vote_comment, task.correlation_id), ("Completed", "Saved decision", request_id))
+			self.assertEqual((task.performed_by, task.performed_as), (self.user, "Administrator"))
 			self.assertEqual(request_receipts.get(receipt_key), receipt)
 			current = api.get_vote_status(task.name)
 			self.assertNotIn("pending_submission", current)
 			self.assertEqual(current["workflow_state"], "Closed")
-			self.assertEqual(
-				engine.cast_vote(task.name, transition_uuid="_test-transition", comment="Saved decision", request_id=request_id),
-				result,
-			)
+			with acting.use(acting.Performer(self.user, "Administrator")):
+				self.assertEqual(
+					engine.cast_vote(task.name, transition_uuid="_test-transition", comment="Saved decision", request_id=request_id),
+					result,
+				)
 
 	def test_staged_worker_rejects_live_semantic_drift(self):
 		from dinext_common.workflow_approval import engine

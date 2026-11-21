@@ -72,6 +72,8 @@ def get_columns():
 		{"fieldname": "workflow", "label": _("Workflow"), "fieldtype": "Data"},
 		{"fieldname": "action", "label": _("Action"), "fieldtype": "Data"},
 		{"fieldname": "status", "label": _("Status"), "fieldtype": "Data"},
+		{"fieldname": "performed_by", "label": _("Performed By"), "fieldtype": "Link", "options": "User"},
+		{"fieldname": "performed_as", "label": _("Acted As"), "fieldtype": "Link", "options": "User"},
 		{"fieldname": "completion_source", "label": _("Completion Source"), "fieldtype": "Data"},
 		{"fieldname": "event_at", "label": _("Completed At"), "fieldtype": "Datetime"},
 		{"fieldname": "vote_comment", "label": _("Comment"), "fieldtype": "Small Text"},

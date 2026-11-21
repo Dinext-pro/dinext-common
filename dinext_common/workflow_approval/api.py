@@ -12,7 +12,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, get_datetime, getdate, now_datetime
 
-from dinext_common.workflow_approval import engine, request_receipts
+from dinext_common.workflow_approval import acting, engine, request_receipts
 from dinext_common.workflow_approval.comments import WorkflowCommentResponse, get_latest_round_comments
 from dinext_common.workflow_approval.validation import discard_collected_comment_messages
 from dinext_common.workflow_approval.pending import (
@@ -57,6 +57,7 @@ QUEUE_FIELDS = [
 	"vote_comment",
 ]
 
+HISTORY_FIELDS = [*QUEUE_FIELDS, "performed_by", "performed_as"]
 
 TASK_ACCESS_FIELDS = (
 	"name",
@@ -175,9 +176,13 @@ def _prior_task_for_request(doctype: str, name: str, request_id: str) -> str | N
 	row = frappe.db.get_value("Workflow Task", {
 		"reference_doctype": doctype, "reference_name": name,
 		"approver": frappe.session.user, "correlation_id": request_id,
-	}, ["name", "status", "request_receipt_recorded"], as_dict=True)
+	}, ["name", "status", "request_receipt_recorded", "performed_by", "performed_as"], as_dict=True)
 	if row and (row.status == "Completed" or row.request_receipt_recorded):
-		return row.name
+		if row.request_receipt_recorded and not row.performed_as:
+			# Reconciliation can record a request without completing a vote.
+			return row.name
+		if acting.Performer(row.performed_by, row.performed_as).deputy == acting.current().deputy:
+			return row.name
 	return None
 
 
@@ -643,22 +648,25 @@ def bulk_task_vote(
 	return _run_bulk([{"task_name": row["task_name"]} for row in rows], apply, receipt=receipt, parameters=rows)
 
 
-def run_background_bulk(*, receipt_key=None, initiator=None, **arguments) -> BulkVoteResponse:
-	"""Run a reserved job as its original initiator, including Frappe worker retries."""
-	if not receipt_key:
-		return bulk_vote(**arguments)
+def run_background_bulk(*, receipt_key=None, initiator=None, deputy=None, **arguments) -> BulkVoteResponse:
+	"""Use the original session identities, including on worker retries."""
 	previous_user = frappe.session.user
+	initiator = initiator or previous_user
 	if previous_user != initiator:
 		frappe.set_user(initiator)
 	try:
-		return _run_reserved_source_batch(receipt_key, arguments)
-	except Exception:
-		frappe.db.rollback()
-		receipt = request_receipts.get(receipt_key, for_update=True)
-		if receipt and receipt.status == "Working" and receipt.initiator == frappe.session.user:
-			request_receipts.finish(receipt_key, None, failed=True)
-			frappe.db.commit()
-		raise
+		with acting.use(acting.Performer(deputy or initiator, initiator)):
+			if not receipt_key:
+				return bulk_vote(**arguments)
+			try:
+				return _run_reserved_source_batch(receipt_key, arguments)
+			except Exception:
+				frappe.db.rollback()
+				receipt = request_receipts.get(receipt_key, for_update=True)
+				if receipt and receipt.status == "Working" and request_receipts.belongs_to_current_user(receipt):
+					request_receipts.finish(receipt_key, None, failed=True)
+					frappe.db.commit()
+				raise
 	finally:
 		if previous_user != initiator:
 			frappe.set_user(previous_user)
@@ -727,6 +735,7 @@ def bulk_workflow_approval(
 		if receipt.status != "Working" or get_job(job_id):
 			return {"job_id": job_id}
 		args.update(receipt_key=receipt.name, initiator=receipt.initiator)
+	args.update(initiator=frappe.session.user, deputy=acting.current().deputy)
 	job = frappe.enqueue(BULK_JOB_METHOD, queue="short", timeout=1000, job_id=job_id, **args)
 	if isinstance(job, dict):
 		return job
@@ -743,9 +752,9 @@ def get_bulk_workflow_job(job_id: str) -> BulkJobResponse:
 	if len(job_id) != 32 or any(char not in "0123456789abcdef" for char in job_id):
 		return {"status": "unavailable"}
 	receipt = frappe.db.get_value(request_receipts.DOCTYPE, {"job_id": job_id},
-		["initiator", "status", "response", "targets"], as_dict=True)
+		["initiator", "deputy", "status", "response", "targets"], as_dict=True)
 	if receipt:
-		if receipt.initiator != frappe.session.user:
+		if not request_receipts.belongs_to_current_user(receipt):
 			return {"status": "unavailable"}
 		request_receipts.check_targets(json.loads(receipt.targets))
 		if receipt.status == "Completed":
@@ -759,6 +768,7 @@ def get_bulk_workflow_job(job_id: str) -> BulkJobResponse:
 		or job.kwargs.get("method") not in (BULK_VOTE_METHOD, BULK_JOB_METHOD)
 		or (not receipt and job.kwargs.get("method") == BULK_JOB_METHOD and job.kwargs.get("kwargs", {}).get("request_id"))
 		or job.kwargs.get("user") != frappe.session.user
+		or job.kwargs.get("kwargs", {}).get("deputy") != acting.current().deputy
 		or job.kwargs.get("site") != frappe.local.site
 	):
 		return {"status": "unavailable"}
@@ -959,7 +969,7 @@ def get_my_source_transitions(doctype: str, names: str | list[str]) -> dict[str,
 		for name, tasks in groups.items() if len(tasks) == 1}
 
 
-def get_personal_history(filters=None, *, limit=None, include_transitions=False, fields=QUEUE_FIELDS):
+def get_personal_history(filters=None, *, limit=None, include_transitions=False, fields=HISTORY_FIELDS):
 	values = frappe._dict(filters or {})
 	task_filters = {
 		"approver": frappe.session.user,
@@ -994,7 +1004,7 @@ def get_source_approval_history(
 			"source_created_at": source.creation,
 			"status": ("in", ("Completed", "Cancelled")),
 		},
-		fields=QUEUE_FIELDS + ["cancelled_at", "cancellation_reason"],
+		fields=HISTORY_FIELDS,
 		order_by="modified desc, name desc",
 		limit=min(int(limit), 1000),
 	)

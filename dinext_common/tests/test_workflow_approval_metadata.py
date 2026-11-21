@@ -100,7 +100,7 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 		)
 		self.assertEqual(
 			fields["reused_from_workflow_task"]["depends_on"],
-			"eval:doc.completion_source=='Automatic Unchanged'",
+			"eval:doc.reused_from_workflow_task",
 		)
 		self.assertEqual(
 			fields["cancellation_reason"]["depends_on"],
