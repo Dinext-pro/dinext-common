@@ -51,6 +51,12 @@ fixtures = [
         "doctype": "Server Script",
         "filters": [
             ["module", "=", "Dinext Common"],
+            ["name", "not in", [
+                "Get my approved WT",
+                "Get my working WT V2",
+                "Workflow Task Processing",
+                "Workflow Task Processing After Save V2",
+            ]],
         ]
     },
     {
@@ -186,6 +192,7 @@ doctype_list_js = {
 # before_install = "dinext_common.install.before_install"
 after_install = "dinext_common.install.after_install"
 after_sync = [
+	"dinext_common.workflow_approval.migration.retire_legacy_script_apis",
 	"dinext_common.workflow_approval.email_preferences.migrate_preferences",
 	"dinext_common.workflow_approval.request_receipts.register_log_settings",
 ]
@@ -196,6 +203,7 @@ before_migrate = [
 	"dinext_common.workflow_approval.localization.guard_label_migration",
 ]
 after_migrate = [
+	"dinext_common.workflow_approval.migration.retire_legacy_script_apis",
 	"dinext_common.workflow_approval.permissions.sanitize_restricted_task_titles",
 	"dinext_common.workflow_approval.request_receipts.register_log_settings",
 	"dinext_common.workflow_approval.scenarios.migration.execute",

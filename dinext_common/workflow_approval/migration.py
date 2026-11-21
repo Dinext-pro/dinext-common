@@ -527,6 +527,25 @@ def _phase_disable_retained_consumers() -> dict[str, Any]:
 	return {"disabled": disabled}
 
 
+def retire_legacy_script_apis() -> None:
+	"""Disable the former Common endpoints after fixture installation or update."""
+	names = frappe.get_all(
+		"Server Script",
+		filters={
+			"module": "Dinext Common",
+			"script_type": "API",
+			"name": ("in", _SHARED_LEGACY_RECORDS["Server Script"]),
+			"api_method": ("in", _SHARED_LEGACY_RECORDS["Legacy API"]),
+			"disabled": 0,
+		},
+		pluck="name",
+	)
+	for name in names:
+		frappe.db.set_value("Server Script", name, "disabled", 1, update_modified=False)
+	if names:
+		frappe.cache.delete_value("server_script_map")
+
+
 def _phase_delete_records() -> dict[str, int]:
 	_verify_reviewed_records()
 	deleted: dict[str, int] = {}
