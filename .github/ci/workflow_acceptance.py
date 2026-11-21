@@ -23,7 +23,7 @@ DEPENDENCIES = {
     "frappe_comment_xt": "9b2e6b44a291f1cbdcf0808ffa34f250dbd0dfc6",
     "dinext_projects": "534345d00bb10489c74f64048bfb74bba6593c60",
     "dinext_projects_pl": "6b6852fd63bb863344b5183216f5ce0521e66338",
-    "dinext_timesheets": "2fcd685832900a2e7c0cb920ff10e77318da05e9",
+    "dinext_timesheets": "7ece17d45424961090f159270c9256b04ce5c1a3",
     "dinext_deputies": "ed5798add9aaa5c80f51f634316adb8a191d5126",
     "project_workload_assignment": "18a0845b25f3759a607760ca5aa6316e68f0f006",
     "dinext_project_tasks_gantt": "c9650bf6986c8e276c1899139b2e90d1253bfc45",
