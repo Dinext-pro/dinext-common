@@ -1,3 +1,6 @@
+from dinext_common.dinext_common.doctype.workflow_deadline_delivery.workflow_deadline_delivery import (
+	DEFAULT_RETENTION_DAYS as _deadline_delivery_retention_days,
+)
 from dinext_common.workflow_approval.request_receipts import DEFAULT_RETENTION_DAYS as _receipt_retention_days
 
 
@@ -195,6 +198,7 @@ after_sync = [
 	"dinext_common.workflow_approval.migration.retire_legacy_script_apis",
 	"dinext_common.workflow_approval.email_preferences.migrate_preferences",
 	"dinext_common.workflow_approval.request_receipts.register_log_settings",
+	"dinext_common.dinext_common.doctype.workflow_deadline_delivery.workflow_deadline_delivery.register_log_settings",
 ]
 before_migrate = [
 	"dinext_common.workflow_approval.scenarios.compat.initialize",
@@ -206,6 +210,7 @@ after_migrate = [
 	"dinext_common.workflow_approval.migration.retire_legacy_script_apis",
 	"dinext_common.workflow_approval.permissions.sanitize_restricted_task_titles",
 	"dinext_common.workflow_approval.request_receipts.register_log_settings",
+	"dinext_common.dinext_common.doctype.workflow_deadline_delivery.workflow_deadline_delivery.register_log_settings",
 	"dinext_common.workflow_approval.scenarios.migration.execute",
 	"dinext_common.workflow_approval.deadlines.metadata.ensure_metadata",
 	"dinext_common.workflow_approval.email_preferences.ensure_type",
@@ -470,7 +475,10 @@ ignore_links_on_delete = ["Workflow Task", "Workflow Process", "Workflow Documen
 # Automatically update python controller files with type annotations for this app.
 # export_python_type_annotations = True
 
-default_log_clearing_doctypes = {"Workflow Request Receipt": _receipt_retention_days}
+default_log_clearing_doctypes = {
+	"Workflow Request Receipt": _receipt_retention_days,
+	"Workflow Deadline Delivery": _deadline_delivery_retention_days,
+}
 
 
 # Install compatibility once, with request/job-local document selection.

@@ -18,13 +18,13 @@ from dinext_common.workflow_approval.email_templates import domain_email_templat
 DEFAULT_DEADLINE_TEMPLATE = "Dinext Workflow Deadline Digest"
 
 
-def current_policy(task, workflow):
+def current_policy(task, workflow, *, include_disabled=False):
 	return next(
 		(
 			row
 			for row in workflow.transitions
 			if row.custom_transition_uuid == task.deadline_transition_uuid
-			and checked(row.get("custom_deadline_enabled"))
+			and (include_disabled or checked(row.get("custom_deadline_enabled")))
 		),
 		None,
 	)
@@ -54,7 +54,7 @@ def recipients(task, policy, now):
 	)
 
 
-def delivery_slot(task, policy, recipient, now):
+def delivery_slot(task, policy, recipient, now, *, require_provider=False):
 	if policy.custom_deadline_email_mode == "Immediate":
 		return None
 	unit = policy.custom_deadline_interval_unit
@@ -76,6 +76,8 @@ def delivery_slot(task, policy, recipient, now):
 		return mail.latest_due_digest_slot(unit=unit, **context)
 	handler = get_extensions(task.reference_doctype).get("sending_intervals", {}).get(unit)
 	if not handler:
+		if require_provider:
+			raise ValueError("Deadline schedule provider is unavailable")
 		return None
 	return handler["latest_slot"](
 		{
@@ -119,8 +121,16 @@ def _eligible(task, workflow, recipient, now):
 	return False
 
 
+def delivery_key(workflow, state, recipient, identity, *, slot=None):
+	if slot is not None:
+		return mail.make_delivery_key(
+			"Deadline Digest", workflow, recipient, f"{slot.isoformat()}:{identity}", state=state
+		)
+	return mail.make_delivery_key("Deadline Immediate", workflow, recipient, identity, state=state)
+
+
 def send_group(*, workflow, recipient, task_names, slot, now=None):
-	now = now or now_datetime()
+	eligibility_time = now or now_datetime()
 	workflow = frappe.get_doc("Workflow", workflow.name)
 	user = frappe.db.get_value("User", recipient, ["email", "enabled"], as_dict=True)
 	if not user or not user.enabled or not user.email:
@@ -130,7 +140,7 @@ def send_group(*, workflow, recipient, task_names, slot, now=None):
 	# Lock assignments deterministically. Queue insertion and delivery claim share the transaction.
 	for name in sorted(set(task_names)):
 		task = frappe.get_doc("Workflow Task", name, for_update=True)
-		if source := _eligible(task, workflow, recipient, now):
+		if source := _eligible(task, workflow, recipient, eligibility_time):
 			tasks.append(task)
 			sources[task.name] = source
 	if not tasks:
@@ -144,20 +154,20 @@ def send_group(*, workflow, recipient, task_names, slot, now=None):
 	mode = policy.custom_deadline_email_mode
 	if (slot is None) != (mode == "Immediate"):
 		return
+	# Mutable template/schedule values must never alter an already-formed incident/slot key.
+	identity = policy_id if slot is not None else tasks[0].deadline_assignment_id
+	key = delivery_key(workflow.name, state, recipient, identity, slot=slot)
+	if frappe.db.exists("Workflow Deadline Delivery", key):
+		return
 	if slot is not None:
-		tasks = [task for task in tasks if delivery_slot(task, policy, recipient, now) == slot]
+		# Cleanup may have retired the selected slot while the scheduler waited.
+		current_time = now or now_datetime()
+		tasks = [task for task in tasks if delivery_slot(task, policy, recipient, current_time) == slot]
 		if not tasks:
 			return
 	sources = {task.name: sources[task.name] for task in tasks}
 	default_template = domain_email_template(tasks, "deadline_template") or DEFAULT_DEADLINE_TEMPLATE
 	template = policy.custom_deadline_email_template or default_template
-	# Mutable template/schedule values must never alter an already-formed incident/slot key.
-	identity = slot.isoformat() + ":" + policy_id if slot else tasks[0].deadline_assignment_id
-	key = mail.make_delivery_key(
-		"Deadline Digest" if slot else "Deadline Immediate", workflow.name, recipient, identity, state=state
-	)
-	if frappe.db.exists("Workflow Deadline Delivery", key):
-		return
 	savepoint = "deadline_delivery_" + key[:12]
 	frappe.db.savepoint(savepoint)
 	try:
@@ -234,7 +244,7 @@ def send_group(*, workflow, recipient, task_names, slot, now=None):
 
 
 def dispatch_due_deadlines(now=None):
-	now = now or now_datetime()
+	selection_time = now or now_datetime()
 	groups = defaultdict(list)
 	workflows = {}
 	# Scheduler is a trusted system reader; every recipient/document pair is checked again at send.
@@ -258,17 +268,17 @@ def dispatch_due_deadlines(now=None):
 			if (
 				task.deadline_error
 				or not task.deadline_due_at
-				or mail._aware_utc(task.deadline_due_at) >= mail._aware_utc(now)
+				or mail._aware_utc(task.deadline_due_at) >= mail._aware_utc(selection_time)
 			):
 				continue
 			workflow = workflows.setdefault(task.workflow, frappe.get_doc("Workflow", task.workflow))
 			policy = current_policy(task, workflow)
 			if not policy or not checked(workflow.send_email_alert):
 				continue
-			for recipient in sorted(set(recipients(task, policy, now))):
-				if not _eligible(task, workflow, recipient, now):
+			for recipient in sorted(set(recipients(task, policy, selection_time))):
+				if not _eligible(task, workflow, recipient, selection_time):
 					continue
-				slot = delivery_slot(task, policy, recipient, now)
+				slot = delivery_slot(task, policy, recipient, selection_time)
 				if policy.custom_deadline_email_mode == "Digest" and not slot:
 					continue
 				key = (
