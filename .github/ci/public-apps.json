@@ -147,7 +147,7 @@
       "dinext_projects_pl",
       "doctype_permission"
     ],
-    "ci_sha": "370b154007e995beec8953de8396073cd373e594"
+    "ci_sha": "215933aaa8a21bbeaf15296e5b5f254a608a9c71"
   },
   "erpnext": {
     "repository": "https://github.com/Dinext-pro/dinext_erp.git",

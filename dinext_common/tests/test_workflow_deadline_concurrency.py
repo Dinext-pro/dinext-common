@@ -54,13 +54,17 @@ class TestDeadlineDeliveryProcess(TestWorkflowApprovalProcessConcurrency):
 			custom_deadline_interval_unit="Days", custom_deadline_interval_value=1,
 			custom_deadline_send_times="08:00, 17:00"))
 		workflow.save(ignore_permissions=True)
+		frappe.db.set_value("User", self.users[0], "time_zone", "UTC")
 		with patch("frappe.attach_print", return_value={}):
 			source = self._make_source("Concurrent deadline delivery")
 		task = self._task_for_user(source.name, self.users[0])
 		self.assertTrue(task.deadline_assignment_id)
 		frappe.db.set_value("Workflow Task", task.name, "deadline_due_at", "2026-01-01 00:00:00")
 		frappe.db.commit()
-		slot = datetime(2026, 11, 10, 5, tzinfo=timezone.utc)
+		# Use the first slot of a day after the new policy's anchor.
+		slot = (datetime.now(timezone.utc) + timedelta(days=2)).replace(
+			hour=8, minute=0, second=0, microsecond=0
+		)
 		arguments = (workflow.name, task.name, self.users[0], slot.isoformat())
 		outcomes, _count = self._run_processes(_deliver, [arguments, arguments])
 		self.assertTrue(all(not row["error"] for row in outcomes), outcomes)
