@@ -70,7 +70,7 @@
       "dinext_projects",
       "project_workload_assignment"
     ],
-    "ci_sha": "0518d5b0c47a2811fc9dc4178d162ecf11772dbe"
+    "ci_sha": "0f71cfe6d5a71b18f435d260e8772d9c60f1c0b3"
   },
   "dinext_projects": {
     "repository": "https://github.com/Dinext-pro/dinext-projects.git",
@@ -80,7 +80,7 @@
       "doctype_permission",
       "erpnext"
     ],
-    "ci_sha": "d0faf6b64a2d7b0bd075bfe48dd06fb8455e08d3"
+    "ci_sha": "d0b903af452167757c6164d33ae1ab2aa66dc41d"
   },
   "dinext_projects_pl": {
     "repository": "https://github.com/Dinext-pro/dinext-projects-pl.git",
@@ -90,7 +90,7 @@
       "doctype_permission",
       "dinext_projects"
     ],
-    "ci_sha": "a498f84ef82e2e59275f8853dcbc42af3da0cfbd",
+    "ci_sha": "ca8406e553bb464247213138fe4df1f958aee0e3",
     "test_dependencies": [
       "hrms"
     ]
@@ -147,7 +147,7 @@
       "dinext_projects_pl",
       "doctype_permission"
     ],
-    "ci_sha": "7f986126e2ff3bc141276b3e2d11632bcc3121e2"
+    "ci_sha": "370b154007e995beec8953de8396073cd373e594"
   },
   "erpnext": {
     "repository": "https://github.com/Dinext-pro/dinext_erp.git",
@@ -272,6 +272,6 @@
       "dinext_projects_pl",
       "dinext_timesheets"
     ],
-    "ci_sha": "a8b176aee6d1fc714c123b13409c7966fb2449d0"
+    "ci_sha": "aaaa4fa3175589ff183d018b626e7fd756d509ca"
   }
 }
