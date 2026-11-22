@@ -2,6 +2,7 @@ import json
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 
 APP_ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +50,61 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 		fixture_doctypes = {entry["doctype"] for entry in hooks.fixtures if isinstance(entry, dict)}
 		self.assertNotIn("Dashboard Chart", fixture_doctypes)
 		self.assertFalse((APP_ROOT / "fixtures" / "dashboard_chart.json").exists())
+
+	def test_repairs_existing_standard_card_without_replacing_its_configuration(self):
+		metadata = self.metadata()
+		name, label, method, color = metadata.CONTROL_CARDS[0]
+		card = metadata.frappe._dict(
+			name=name,
+			module="Dinext Common",
+			is_standard=1,
+			method=method,
+			type="Custom",
+			document_type="User Timesheet Position",
+			label="Administrator's label",
+			is_public=0,
+			owner="Administrator",
+		)
+		db = Mock()
+		db.set_value.side_effect = lambda _doctype, _name, values, **_kwargs: card.update(values)
+		with (
+			patch.object(metadata.frappe, "db", db),
+			patch.object(metadata.frappe, "get_doc", return_value=card),
+		):
+			metadata._ensure_number_card(name, label, method, color)
+			metadata._ensure_number_card(name, label, method, color)
+
+		self.assertEqual(card.document_type, "Workflow Task")
+		self.assertEqual(card.label, "Administrator's label")
+		self.assertEqual(card.method, method)
+		self.assertEqual(card.is_public, 0)
+		self.assertEqual(card.owner, "Administrator")
+		db.set_value.assert_called_once_with(
+			"Number Card", name, {"document_type": "Workflow Task"}, update_modified=False
+		)
+
+	def test_does_not_modify_card_with_known_name_but_different_ownership(self):
+		metadata = self.metadata()
+		name, label, method, color = metadata.CONTROL_CARDS[0]
+		for overrides in ({"module": "Another App"}, {"is_standard": 0}, {"method": "another.method"}):
+			with self.subTest(overrides=overrides):
+				card = metadata.frappe._dict(
+					name=name,
+					document_type="User Timesheet Position",
+					type="Custom",
+					is_public=1,
+					owner="Another owner",
+					**({"module": "Dinext Common", "is_standard": 1, "method": method} | overrides),
+				)
+				with (
+					patch.object(metadata.frappe, "db", Mock()) as db,
+					patch.object(metadata.frappe, "get_doc", return_value=card),
+				):
+					metadata._ensure_number_card(name, label, method, color)
+
+				self.assertEqual(card.document_type, "User Timesheet Position")
+				self.assertEqual(card.is_public, 1)
+				db.set_value.assert_not_called()
 
 	def test_workflow_task_is_app_owned_with_audit_fields_and_safe_permissions(self):
 		document = self.load_doctype("workflow_task")
@@ -377,10 +433,11 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 			else:
 				self.assertFalse(set(icons).intersection(row["name"] for row in rows))
 
-	def test_user_timesheet_form_does_not_use_the_common_approver_banner(self):
+	def test_application_can_register_its_own_approver_banner(self):
 		banner = (APP_ROOT / "public" / "js" / "workflow_approval.js").read_text()
-		self.assertIn('doctypes.delete("User Timesheet")', banner)
-		self.assertIn('"Application For Leave"', banner)
+		self.assertIn("dinext_workflow_custom_form_banners?.includes(doctype)", banner)
+		self.assertNotIn('"User Timesheet"', banner)
+		self.assertNotIn('"Application For Leave"', banner)
 		self.assertIn("frappe.dinext.paintRebuildRounds", banner)
 		self.assertIn("banner.rounds", banner)
 

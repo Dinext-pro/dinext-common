@@ -1,6 +1,8 @@
 import json
 from contextlib import nullcontext
 from datetime import datetime, timezone
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import frappe
@@ -317,6 +319,36 @@ class TestWorkflowEmailIntegration(base.TestWorkflowApprovalIntegration):
             self.assertEqual(template.subject,'Preserve fixture customization')
             self.assertEqual(template.response_html,'<p>My correction text</p>')
         finally:frappe.db.set_value('Email Template',template.name,{k:original[k]for k in ['subject','response_html','response','use_html']})
+
+    def test_forced_fixture_import_preserves_state_schedule_anchor(self):
+        from frappe.modules.import_file import import_file_by_path
+
+        workflow = self._profile(grouped=True)
+        workflow.custom_email_profile_version = 1
+        row = workflow.states[0]
+        row.custom_email_settings_override = 1
+        row.custom_group_workflow_action_emails = 1
+        row.custom_group_interval_unit = "Days"
+        row.custom_group_interval_value = 1
+        row.custom_group_send_times = "09:15"
+        workflow.save(ignore_permissions=True)
+        anchor = datetime(2026, 1, 2, 9, 15)
+        row.db_set("custom_group_schedule_anchor", anchor, update_modified=False)
+        incoming = workflow.as_dict()
+        incoming.states[0].custom_group_send_times = "08:00, 17:00"
+        original_flag = frappe.flags.in_fixtures
+        try:
+            with TemporaryDirectory() as directory:
+                path = Path(directory) / "workflow.json"
+                path.write_text(frappe.as_json([incoming]))
+                frappe.flags.in_fixtures = True
+                for _ in range(2):
+                    import_file_by_path(str(path), data_import=True, force=True, reset_permissions=True)
+                    workflow.reload()
+                    self.assertEqual(workflow.states[0].custom_group_send_times, "09:15")
+                    self.assertEqual(workflow.states[0].custom_group_schedule_anchor, anchor)
+        finally:
+            frappe.flags.in_fixtures = original_flag
 
     def test_fixture_import_keeps_legacy_version_for_upgrade_and_suppresses_history(self):
         workflow=frappe.get_doc('Workflow','AFL Workflow')
