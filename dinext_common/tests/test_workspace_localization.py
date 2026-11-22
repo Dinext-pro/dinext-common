@@ -9,7 +9,7 @@ class TestWorkspaceLocalization(unittest.TestCase):
 	def test_export_resolves_translated_labels_and_links(self):
 		app = Path(__file__).resolve().parents[1]
 		documents = {
-			"dinext_common": ("My Approvals", "my_approvals", 8),
+			"dinext_common": ("My Approvals", "my_approvals", 12),
 			"dinext_timesheets": ("My Timesheets", "my_timesheets", 20),
 		}
 		name, slug, card_count = documents[app.name]

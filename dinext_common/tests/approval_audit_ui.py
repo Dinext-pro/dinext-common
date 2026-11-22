@@ -21,7 +21,8 @@ PREVIOUS = PREFIX + "previous-workflows"
 
 
 def _guard():
-	if frappe.local.site not in {"approvals-fixes-test", "test_site"} or frappe.session.user != "Administrator":
+	ci_test = frappe.local.site == "ci.test" and frappe.flags.in_test and frappe.conf.allow_tests
+	if (frappe.local.site not in {"approvals-fixes-test", "test_site"} and not ci_test) or frappe.session.user != "Administrator":
 		raise frappe.PermissionError("Audit fixtures require the isolated test administrator")
 
 

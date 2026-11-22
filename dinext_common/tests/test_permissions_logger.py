@@ -21,21 +21,22 @@ class TestPermissionsLogger(unittest.TestCase):
 		existing = logging.getLogger(logger_name)
 		existing.handlers.clear()
 
-		missing_home = "/home/frappe/frappe-bench/logs"
 		with (
-			patch.object(permissions.frappe.utils, "get_bench_path", return_value="/home/frappe/frappe-bench"),
+			tempfile.TemporaryDirectory() as bench_root,
+			patch.object(permissions.frappe.utils, "get_bench_path", return_value=bench_root),
 			patch.object(permissions.os, "makedirs", side_effect=PermissionError("denied")),
 			patch.object(permissions.os, "access", return_value=False),
 		):
+			missing_home = os.path.join(bench_root, "logs")
 			logger = permissions.get_custom_logger(
 				name=logger_name,
 				log_file="has_permission_test.log",
 				log_dir=missing_home,
 			)
+			self.assertFalse(os.path.exists(missing_home))
 
 		self.assertTrue(logger.handlers)
 		self.assertTrue(any(isinstance(handler, logging.NullHandler) for handler in logger.handlers))
-		self.assertFalse(os.path.exists(missing_home))
 
 	def test_logger_uses_bench_logs_when_writable(self):
 		from dinext_common.dinext_common import permissions

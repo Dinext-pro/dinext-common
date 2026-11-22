@@ -12,6 +12,9 @@ from dinext_common.workflow_approval import api, policy
 class TestApprovalValidationLocalization(FrappeTestCase):
 	def setUp(self):
 		frappe.set_user("Administrator")
+		engine_setting = patch.dict(frappe.conf, {"enable_parallel_workflow_approval": True})
+		engine_setting.start()
+		self.addCleanup(engine_setting.stop)
 		self.fixture = fixture.seed()
 		self.task = self.fixture["tasks"]["Main"]
 		self.round_id = frappe.db.get_value("Workflow Task", self.task, "approval_round_id")

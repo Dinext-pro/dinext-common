@@ -377,10 +377,9 @@ class TestWorkflowApprovalMetadata(unittest.TestCase):
 			else:
 				self.assertFalse(set(icons).intersection(row["name"] for row in rows))
 
-	def test_user_timesheet_form_does_not_use_the_common_approver_banner(self):
+	def test_forms_can_supply_their_own_approver_banner(self):
 		banner = (APP_ROOT / "public" / "js" / "workflow_approval.js").read_text()
-		self.assertIn('doctypes.delete("User Timesheet")', banner)
-		self.assertIn('"Application For Leave"', banner)
+		self.assertIn("frappe.boot.dinext_workflow_custom_form_banners?.includes(doctype)", banner)
 		self.assertIn("frappe.dinext.paintRebuildRounds", banner)
 		self.assertIn("banner.rounds", banner)
 

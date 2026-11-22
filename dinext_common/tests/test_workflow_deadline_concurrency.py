@@ -2,6 +2,7 @@
 
 import os
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import frappe
 
@@ -53,7 +54,8 @@ class TestDeadlineDeliveryProcess(TestWorkflowApprovalProcessConcurrency):
 			custom_deadline_interval_unit="Days", custom_deadline_interval_value=1,
 			custom_deadline_send_times="08:00, 17:00"))
 		workflow.save(ignore_permissions=True)
-		source = self._make_source("Concurrent deadline delivery")
+		with patch("frappe.attach_print", return_value={}):
+			source = self._make_source("Concurrent deadline delivery")
 		task = self._task_for_user(source.name, self.users[0])
 		self.assertTrue(task.deadline_assignment_id)
 		frappe.db.set_value("Workflow Task", task.name, "deadline_due_at", "2026-01-01 00:00:00")

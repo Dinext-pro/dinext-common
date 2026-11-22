@@ -25,7 +25,7 @@ class TestWorkflowApprovalRetention(unittest.TestCase):
 			finalization_status="Finished",
 		)
 		mock_frappe = MagicMock()
-		mock_frappe.db.exists.return_value = True
+		mock_frappe.db.get_value.return_value = "WT-2"
 		with patch.object(retention, "frappe", mock_frappe):
 			self.assertTrue(retention._round_is_protected([task]))
 
@@ -38,7 +38,7 @@ class TestWorkflowApprovalRetention(unittest.TestCase):
 			finalization_status="Finished",
 		)
 		mock_frappe = MagicMock()
-		mock_frappe.db.exists.return_value = False
+		mock_frappe.db.get_value.return_value = None
 		mock_frappe.get_all.return_value = [
 			SimpleNamespace(
 				status="Completed",
