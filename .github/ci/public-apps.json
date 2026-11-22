@@ -90,7 +90,7 @@
       "doctype_permission",
       "dinext_projects"
     ],
-    "ci_sha": "ca8406e553bb464247213138fe4df1f958aee0e3",
+    "ci_sha": "e509e7b293085d96b6b140582bf3c20bd2e8d9c4",
     "test_dependencies": [
       "hrms"
     ]
