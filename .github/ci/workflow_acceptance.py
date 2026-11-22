@@ -42,6 +42,7 @@ SPECS = {
         "workflow_progress_unlock.js",
         "workflow_request_receipts.js",
         "workflow_deadline_delivery_retention.js",
+        "my_approvals_workspace.js",
     ),
     "dinext_timesheets": (
         "timesheet_team_lead.js", "worker_calendar_deadlines.js", "ut_form_workflow_position_failures.js",
@@ -65,6 +66,9 @@ SERVER_TESTS = {
         "test_workflow_scenario_records": (),
         "test_my_approvals_permissions_integration": (),
         "test_workflow_approval_migration": (),
+        "test_workflow_deadline_report": (),
+        "test_workflow_email_migration": (),
+        "test_workflow_email_integration": (),
         "test_workflow_legacy_api_retirement": (),
         "test_workflow_site_schema_compat": (),
         "test_workflow_queued_round_failure": (),
@@ -87,6 +91,7 @@ SERVER_TESTS = {
     },
     "dinext_projects": {
         "test_application_for_leave": (),
+        "test_issue_assignment": (),
         "test_workflow_deadlines": (),
     },
     "dinext_timesheets": {

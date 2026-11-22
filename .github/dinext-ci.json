@@ -7,6 +7,9 @@
   "skip_test_records": false,
   "post_install": [
     "dinext_project_tasks_gantt",
-    "dinext_deputies"
+    "dinext_deputies",
+    "dinext_project_stage_gate",
+    "dinext_project_evaluation",
+    "dinext_goals"
   ]
 }
