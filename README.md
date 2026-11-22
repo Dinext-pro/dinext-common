@@ -22,11 +22,7 @@
 
 # Dinext Common
 
-`dinext_common` is the shared Frappe application for the Dinext platform. It is installed
-into an existing [Bench](https://github.com/frappe/bench) with Frappe and ERPNext and
-centralizes platform-wide branding, site settings, reusable
-Desk behavior, configurable workspace hubs, the What's New feed, on-demand
-frontend libraries and the data cleanup subsystem.
+`dinext_common` is the shared Frappe application of the Dinext platform. It installs in an existing [Bench](https://github.com/frappe/bench) with Frappe and ERPNext and centralizes branding, site settings, reusable Desk behavior, configurable workspace hubs, the What's New feed, on-demand frontend libraries, data cleanup and the shared parallel Workflow approval engine.
 
 The application is installed on multiple sites together with other Dinext applications.
 Domain applications (`dinext_*`) consume its API and assets;
@@ -64,12 +60,13 @@ In practice, the application does the following:
   load on demand;
 - provides a Desk tool for previewing and analyzing fixtures across all
   installed applications.
+- Provides the task-based parallel Workflow engine, My Approvals and standard Workflow RPC overrides.
 
 Functionality is divided among applications in the Dinext ecosystem:
 
 | Application | Responsibility |
 | --- | --- |
-| `dinext_common` | Branding, Desk UX, workspace menus and hubs, News Feed, Fixture Analysis, data cleanup, shared JS/CSS, Dinext chart of accounts template. |
+| `dinext_common` | Branding, Desk UX, workspace menus and hubs, News Feed, Fixture Analysis, data cleanup, shared JS/CSS, Dinext chart of accounts template.  Shared parallel Workflow approval and My Approvals. |
 | Domain applications (`dinext_projects`, etc.) | Their own DocTypes, workspaces and hub cards. Register contributions through `dinext_common.setup.hub_catalog`. |
 | ERPNext | Required dependency (`required_apps`). Chart of Accounts and Company are overridden only for the `Dinext` template. |
 
@@ -119,8 +116,11 @@ are not copied here: see [AGENTS.md](AGENTS.md).
   child rule tables.
 - **Dinext** chart of accounts template: overrides of `Company` and ERPNext methods
   for CoA selection.
+- Shared `workflow_approval.js` and `workflow_approval.css` provide the parallel approval Desk gate when `enable_parallel_workflow_approval` is enabled in boot.
+- Parallel Workflow supports `Any` / `All` / `Minimum`, the `Workflow Task` queue, bulk actions, signed email and terminal-round retention. My Approvals opens at `/app/my-approvals`; the engine is off until enabled in `site_config`.
 
 ## 🚀 Installation
+
 
 The application is installed into an existing Bench with Frappe and ERPNext. Use
 the actual Git URL and branch of your distribution.
@@ -509,6 +509,8 @@ Rule types:
 - `Workflow Cleanup Rule`: by age, optionally by reference DocType and
   workflow status.
 
+The workflow cleanup job removes eligible terminal approval rounds, then old `Workflow Process` records and obsolete `Workflow Document Context` records. The last process and the context of a live document are kept so the workflow engine can resume automatic transitions.
+
 The application also installs enabled Server Scripts from fixtures:
 
 - `Data Cleanup Daily` — daily `Scheduler Event`;
@@ -523,6 +525,85 @@ The application also installs enabled Server Scripts from fixtures:
 one long-running cleanup job in `long` for each enabled
 category. Cleanup scripts delete matching records in batches with periodic
 commit.
+
+### Parallel Workflow approval
+
+The shared engine lives in `dinext_common.workflow_approval`. The `site_config` flag `enable_parallel_workflow_approval` enables it and defaults to off. `extend_bootinfo` exposes the same flag as `frappe.boot.enable_parallel_workflow_approval`; without it, Desk uses standard Frappe Workflow UI.
+
+Several Workflows may be active for one document type. A positive unique `custom_selection_order` and `custom_activation_condition` select the first matching definition. The first accepted action pins the process to that definition. Successful entry into a terminal state completes the process and immediately prepares a new independent instance if its condition still wins; use a state-aware condition when the document must stop after approval. Scenario context is document-specific and preserves separate process history.
+
+When the flag is enabled:
+
+- Outgoing Workflow transitions with `Any` / `All` / `Minimum` policies create a `Workflow Task` round with a snapshot of eligible approvers.
+- Votes, bulk actions and finalization use overrides for `frappe.model.workflow.apply_workflow`, `bulk_workflow_approval`, `get_transitions` and `get_common_transition_actions`.
+- Signed-link confirmation uses `dinext_common.workflow_approval.signed_links`.
+
+The **My Approvals** workspace (`/app/my-approvals`) contains `My open approvals`, `Новые сегодня` (New today), `My completed approvals` and `Автоматически выполнено за 30 дней` (Automatically completed in 30 days), the `Pending approvals by document type` chart based on `My Approvals`, and links to `My Approvals`, `My Approval History` and `Approval Monitoring`. Its monitoring section includes open rounds, errors, longest waits and manual decisions in the last 30 days; charts include `Open tasks by approver`, `Open task age by approver`, `Open rounds by document type` and `Approval duration by document type`, with links to `Approval Load` and `Approval Duration`. Monitoring figures include only observable Workflows and readable source documents. `ensure_workflow_approval_desk_records` creates cards, charts, the workspace and Email Templates on migration; `configure_workspace_menu` registers the hub card.
+
+Reports in the Dinext Common module:
+
+- `My Approvals` — personal queue;
+- `My Approval History` — decision history;
+- `Approval Monitoring` — round monitoring for authorized roles;
+- `Approval Load` — open assignments by approver;
+- `Approval Duration` — manual approval duration and open rounds by group.
+
+Key whitelisted methods in `dinext_common.workflow_approval.api`:
+
+- `apply_workflow`, `vote`, `bulk_vote`, `bulk_task_vote`,
+  `bulk_workflow_approval`;
+- `get_my_queue`, `get_my_history`, `get_source_approval_history`,
+  `get_pending_approvers`, `get_transitions`, `get_common_transition_actions`;
+- `open_approval_count`, `new_approval_count`, `completed_approval_count`,
+  `automatic_approval_count`, `attention_approval_count`,
+  `get_approval_dashboard`, `get_legacy_number_card_result`,
+  `open_control_round_count`, `attention_control_round_count`,
+  `longest_control_wait`, `control_decision_count`,
+  `get_monitored_tasks`;
+- `reset_round`, `retry_finalization` (System Manager).
+
+Default Email Templates, used when no applicable custom template is configured:
+
+- `Dinext Workflow Action`
+- `Dinext Workflow Correction`
+- `Dinext Workflow Digest`
+- `Dinext Timesheet Workflow Digest` (provided by `dinext_timesheets`)
+- `Dinext Timesheet Workflow Correction` (provided by `dinext_timesheets`)
+- `Dinext Workflow Deadline Digest`
+- `Dinext Timesheet Workflow Deadline Digest` (provided by `dinext_timesheets`)
+
+Domain applications integrate through `workflow_approval_lock_dependencies`, `workflow_approval_pending_approvers`, `workflow_approval_vote_completed` and `workflow_approval_digest_item`. AFL form behavior belongs to `dinext_projects`; User Timesheet position actions are orchestrated by `dinext_timesheets.workflow_approval`.
+
+The `cutover_parallel_workflow_approvals` patch is a no-op unless `site_config` contains `run_parallel_workflow_cutover`. Successful cutover sets `enable_parallel_workflow_approval` to `1`.
+
+### Workflow email profiles, deadlines and discipline
+
+`Send Email Alert` is the Workflow-wide master switch. Each state's `Send Email On State` independently permits delivery. An untouched state inherits the complete Workflow email profile. Changing mode, schedule, template or PDF creates a state override from the current inherited profile; **Use Workflow settings** restores inheritance without changing that state's permission flag. The form identifies inherited and state-owned settings. State overrides, including explicitly disabled grouping, take priority over Workflow defaults.
+
+With `Group Workflow Action Emails`, configure a positive Hours/Days interval and a digest template. Days accepts multiple normalized local times, such as `08:00, 17:00`; Hours hides times. Without grouping, `Next Action Email Template` and optional PDF are available in **Workflow Approval Email**. Individual mail contains one personalized task with its permitted next actions; digests are separated by Workflow, state and recipient. Dispatch rechecks user activation, source/parent read access, Workflow subscription and current transition `Send Email To Creator` flags by UUID. Creator filtering never changes voting rights. Schedule changes re-anchor future delivery; retries and existing Email Queue entries protect against duplicate formation.
+
+The seven standard templates are `Dinext Workflow Digest`, `Dinext Workflow Action`, `Dinext Workflow Correction`, `Dinext Timesheet Workflow Digest`, `Dinext Timesheet Workflow Correction`, `Dinext Workflow Deadline Digest` and `Dinext Timesheet Workflow Deadline Digest`. Known stock versions are upgraded while customer edits are preserved. Subjects/body use the recipient's language with system fallback, business document titles and human names. A compact header, spaced content/actions and a full-width footer provide the Dinext logo, website and notification-settings links while retaining account signatures. Equivalent Any/threshold-one choices offered through multiple roles become one email button; distinct conditions, destinations and voting semantics stay separate.
+
+Correction mail shows the entry transition's author/comment and document link, with no transition buttons. Ordinary Timesheet digests retain authors, parent timesheets, canonical position numbers, **project — task — role**, and pending hours. Each position's total is followed by its nonzero dated hours/comments, for example `Hours: 8 (2 h — testing, 3.5 h — development, 2.5 h — documentation)`. Links lead to the parent timesheet. Manager overdue digests show only parent timesheets, responsible approvers and overdue information, with no positions, author sections or action buttons. Signed links open a preview; POST confirmation enforces live required-comment rules and single-use commands.
+
+Mandatory-target transitions may configure a positive deadline in Hours/Days, a user/role recipient, template and immediate or scheduled escalation. `workflow_deadline_extensions` adds DocType-specific interval, sending-cadence and recipient providers. `dinext_projects` supplies **Working Days** from the approver's Worker holiday calendar and the current **Worker Group Manager**. A short working date counts as one working day; this is a date-based policy. The approved UTP default is **3 Working Days**, with manager digests at `08:00, 17:00`. It is distinct from 24 working hours.
+
+`Approval Deadline Discipline` reports due-date cohorts; errors/unknown history do not improve percentages, and no observations produce a translated empty result. My Approvals includes deadline cards and a standard chart. `dinext_timesheets` owns submission/approval discipline and My Timesheets deadline controls. All rows and figures enforce source/task access. Standard diagnostic text is translated when displayed, preserving stored history.
+
+Task delivery snapshots retain the Action's delivery identity/state for projection recovery. Reconciliation repairs missing open ToDo/Action records without resetting an existing delivery decision. Migration copies legacy Action state; if both a legacy Action and its delivery evidence are already missing, historical immediate delivery remains explicitly unknown and is not invented. Future digest slots can include the restored current task. Retention is available only to System Manager, requires POST remotely, and preserves active work and reused history. A rejected removed-action vote does not commit the caller's unrelated transaction.
+
+### Workflow checks and acceptance scope
+
+Run server regressions on a dedicated local test site, for example:
+
+```bash
+bench --site your-test-site.local run-tests --module dinext_common.tests.test_workflow_standards
+bench --site your-test-site.local run-tests --module dinext_common.tests.test_workflow_approval_desk
+bench --site your-test-site.local run-tests --module dinext_common.tests.test_workflow_deadline_integration
+bench --site your-test-site.local run-ui-tests dinext_common --headless
+```
+
+UI acceptance covers Russian/English/system language, light/dark themes and mobile widths. The 11 November email acceptance confirmed 345 server tests, 6 Cypress scenarios and 14 selected SMTP messages by exact IMAP Message-ID; those figures belong to that recorded code revision, not every later commit. This audit records its own regression results separately in central `dinext-docs` under `process/development-management/acceptance/`. Actual installed Windows Outlook rendering remains unverified because the supported Windows bridge is unavailable; native MIME and browser checks cover the shared table row and footer width.
 
 ### On-demand libraries
 
@@ -593,24 +674,21 @@ Key hooks and settings:
 
 - `app_logo_url = "/assets/dinext_common/images/DI_SQ_NBG.png"`
 - `app_icon = "/assets/dinext_common/images/DINEXT_FAVICON.ico"`
-- `website_context` sets the favicon and splash image for the public website
-- `app_include_css` includes `common.css` and `workspace_sidebar_hover.css`
-- `app_include_js` includes shared Desk scripts globally (including
-  `workspace_slug_redirects.js` and `workspace_sidebar_hover.js`)
-- `extend_bootinfo = ["dinext_common.boot.extend_bootinfo"]` passes the
-  `dinext_workspace_sidebar_hover_expand` flag from `site_config` to Desk and removes
-  `Home` from `allowed_workspaces`
+- `website_context` provides the public website favicon and splash image.
+- `app_include_css` loads `common.css`, `workspace_sidebar_hover.css` and `workflow_approval.css`.
+- `app_include_js` loads shared Desk scripts globally, including `workspace_slug_redirects.js`, `workspace_sidebar_hover.js` and `workflow_approval.js`.
+- `extend_bootinfo = ["dinext_common.boot.extend_bootinfo"]` passes `dinext_workspace_sidebar_hover_expand` and `enable_parallel_workflow_approval` to Desk and removes `Home` from `allowed_workspaces`.
 - `after_install = "dinext_common.install.after_install"`
-- `after_migrate` — news feed setup and `configure_workspace_menu`
-- `doc_events.User.after_insert` →
-  `dinext_common.setup.workspace.set_default_workspace_for_new_user`
-- `scheduler_events.daily` →
-  `dinext_common.changelog_feed.sync_dinext_news_feed`
+- `after_migrate` configures the news feed and workspace menu and ensures approval metadata and Desk records.
+- `doc_events.User.after_insert` calls `dinext_common.setup.workspace.set_default_workspace_for_new_user`.
+- The daily scheduler calls `dinext_common.changelog_feed.sync_dinext_news_feed`.
+- The `* * * * *` cron dispatches ordinary and deadline notifications and repairs pending finalizations.
 - `get_changelog_feed = "dinext_common.changelog_feed.get_feed"`
-- `doctype_js = {"Project": "public/js/sticky-datatable.js"}`
-- `has_permission` for `Dinext Workspace Settings`
-- `override_doctype_class` / `override_whitelisted_methods` for the Dinext CoA and
-  the `Home` filter in `get_workspace_sidebar_items`
+- `doctype_js` scopes Project, Workflow, Workflow Action and Notification Settings scripts to their forms.
+- `has_permission` / `permission_query_conditions` protect `Dinext Workspace Settings`, `Workflow Task` and `Workflow Action`.
+- Workflow validation invokes `workflow_approval.metadata.validate_workflow_doc`; source document lifecycle hooks reconcile approval rounds.
+- Overrides cover the Dinext chart of accounts, the workspace sidebar and Workflow RPCs, including signed `apply_action` / `confirm_action`.
+- Migration patches are registered in `dinext_common/patches.txt`, including initial approval setup, assignee migration and guarded cutover.
 
 `site_config.json` options:
 
@@ -618,18 +696,15 @@ Key hooks and settings:
 {
   "dinext_workspace_sidebar_hover_expand": 1,
   "dinext_news_feed_url": "https://docs.dinext.ru",
-  "dinext_hidden_apps": ["erpnext", "hrms"]
+  "dinext_hidden_apps": ["erpnext", "hrms"],
+  "enable_parallel_workflow_approval": 1
 }
 ```
 
-- `dinext_workspace_sidebar_hover_expand` — enable/disable sidebar hover expansion
-  (enabled by default);
-- `dinext_news_feed_url` — base URL publisher News Feed; trailing slash
-  is trimmed; an empty value means `https://docs.dinext.ru`.
-- `dinext_hidden_apps` — the complete list of app names hidden on the
-  `/apps` page and in the app list API. If the key is absent,
-  `erpnext` and `hrms` are hidden; `[]` hides no applications. The name
-  corresponds to `app_name`, for example `crm`, rather than the tile's visible title.
+- `dinext_workspace_sidebar_hover_expand` enables sidebar hover expansion; it defaults to enabled.
+- `dinext_news_feed_url` is the News Feed publisher base URL. The trailing slash is removed; an empty value means `https://docs.dinext.ru`.
+- `dinext_hidden_apps` is the complete list of application names hidden from `/apps` and its API. With no key, `erpnext` and `hrms` are hidden; `[]` hides none. Use `app_name`, such as `crm`, rather than a tile's visible title.
+- `enable_parallel_workflow_approval` enables the shared approval engine. Missing, `0` or `false` keeps standard Frappe Workflow UI. Cutover sets it to `1`. Clear the site cache and refresh Desk after changing it.
 
 After changing `dinext_hidden_apps`, run
 `bench --site your-site.local migrate` — this assigns `dinext_common`
@@ -686,6 +761,10 @@ export fixtures:
 bench --site your-site.local export-fixtures
 ```
 
+### Workflow integration references
+
+The Workflow integration is registered through `scheduler_events.daily`, `scheduler_events.cron`, `doc_events.Workflow.validate` and `doc_events["*"]`. Cron calls `workflow_approval.notifications.dispatch_due_notifications`, `workflow_approval.deadlines.delivery.dispatch_due_deadlines` and `workflow_approval.finalization.repair_pending_finalizations`. Project's existing scoped asset is `doctype_js = {"Project": "public/js/sticky-datatable.js"}`; other form-specific hooks are listed in `hooks.py`. Workspace sidebar overrides include `get_workspace_sidebar_items`. Initial migrations include `patches/v1_0/generalize_parallel_workflow_approvals.py`, `migrate_workflow_approval_assignees_v2.py` and `cutover_parallel_workflow_approvals.py`; the full list is `dinext_common/patches.txt`. Run `clear-cache` after updates. Workspace/report definitions live in `dinext_common/dinext_common/workspace/my_approvals/` and `dinext_common/dinext_common/report/my_approvals/`, with `my_approval_history/` and `approval_monitoring/`.
+
 ## ✅ Requirements
 
 - [Bench](https://github.com/frappe/bench) with Frappe installed.
@@ -732,8 +811,7 @@ npm run test:dinext-table
 npm run test:form-conflict-merge
 ```
 
-Python tests for workspaces, news feed, boot, CoA and Fixture Analysis are in
-`dinext_common/tests/`.
+Python tests for workspaces, the news feed, boot, chart of accounts, Fixture Analysis and `workflow_approval` live in `dinext_common/tests/`.
 
 ## 📄 Documentation
 
@@ -762,6 +840,9 @@ Python tests for workspaces, news feed, boot, CoA and Fixture Analysis are in
 - DinextTable: `dinext_common/public/js/table/README.md`
 - Translations: `dinext_common/translations/ru.csv`
 - Tests: `dinext_common/tests/`
+- Parallel approval: `dinext_common/workflow_approval/`.
+- Approval Desk script: `dinext_common/public/js/workflow_approval.js`.
+- Approval workspace and reports: `dinext_common/dinext_common/workspace/` and `dinext_common/dinext_common/report/`.
 
 ## 📝 Changelog
 
@@ -770,9 +851,11 @@ log is in the specific branch's Git history.
 
 ### 2026-09-10
 
-- Workspaces section seed for the `Settings` record: `list_limit` 3 and `card_columns` 3;
-  Configuration remains at `card_columns` 5. Existing rows are not
-  overwritten.
+- The Settings Workspaces section defaults to `list_limit` 3 and `card_columns` 3; Configuration retains `card_columns` 5. Existing rows are preserved.
+- The shared `dinext_common.workflow_approval` engine adds Workflow Task rounds, Workflow RPC overrides, signed email, cron notifications and finalization repair.
+- My Approvals includes queue/history cards and `My Approvals`, `My Approval History`, `Approval Monitoring` reports.
+- `enable_parallel_workflow_approval` is exposed through site configuration and boot; `cleanup_workflow_approval_rounds` retains terminal audit rounds according to explicit rules.
+- AFL domain UX belongs to `dinext_projects`; UT orchestration belongs to `dinext_timesheets`.
 
 ### 2026-08-14
 
@@ -821,30 +904,31 @@ log is in the specific branch's Git history.
 
 ```text
 dinext_common/
-├── AGENTS.md                         # Agent instructions
-├── README.md                         # This document
+├── AGENTS.md                         # Navigation stub → central dinext-docs
+├── README.md                         # English documentation; full Russian version in README.ru.md
 ├── license.txt                       # GPL-3 license
-├── pyproject.toml                    # Package metadata, Python and ruff
-├── package.json                      # JS test npm scripts
+├── pyproject.toml                    # Package metadata, Python and Ruff
+├── package.json                      # JavaScript test scripts
 ├── .pre-commit-config.yaml           # Local checks
-├── openspec/config.yaml              # OpenSpec configuration
+├── openspec/config.yaml              # Pointer to the dinext-docs Store
 ├── scripts/                          # Form Conflict Merge scenarios
 └── dinext_common/
     ├── hooks.py                      # App configuration, fixtures, Desk hooks
     ├── install.py                    # after_install
     ├── boot.py                       # Desk bootinfo
     ├── changelog_feed.py             # News Feed publisher/consumer
+    ├── workflow_approval/            # Engine, API, notifications, retention
     ├── workspace_hub.py              # Whitelisted hub API
     ├── workspace_hub_lists.py        # Personal DocType lists
     ├── workspace_hub_models.py       # TypedDict hub payload
     ├── fixture_analysis_api.py       # Whitelisted API Fixture Analysis
     ├── modules.txt                   # Desk module name
     ├── patches.txt                   # Migration patch list
-    ├── patches/                      # Single → named settings migration
+    ├── patches/                      # Workspace settings and Workflow approval
     ├── fixtures/                     # Exported Frappe metadata
     ├── translations/ru.csv           # Russian translations
-    ├── public/css/                   # Shared styles, hub, sidebar, AG Grid
-    ├── public/js/                    # Desk JS, hub, table, FCM, charts
+    ├── public/css/                   # Shared styles, hubs, sidebar and AG Grid
+    ├── public/js/                    # Desk JS, hubs, tables, FCM and charts
     ├── public/images/                # Dinext branding
     ├── setup/                        # Workspace menu, hub catalog, CoA
     ├── tests/                        # Python tests
@@ -852,7 +936,8 @@ dinext_common/
         ├── doctype/                  # Settings, News Feed, cleanup, Workflow Task
         ├── fixture_analysis/         # Fixture discovery and diff
         ├── page/fixture_analysis/    # Desk Page
-        ├── workspace/                # Dinext, Settings
+        ├── report/                   # My Approvals, history, monitoring
+        ├── workspace/                # Dinext, Settings and My Approvals
         └── website_theme/            # Dinext Theme
 ```
 
@@ -871,15 +956,15 @@ Main components:
 - `dinext_common/public/js/table/` — DinextTable core.
 - `dinext_common/public/js/form_conflict_merge/` — form conflict merging.
 - `openspec/config.yaml` — Store pointer; does not duplicate specs/changes.
+- `dinext_common/workflow_approval/` owns the engine, API, permissions, notifications, signed links, retention and migration.
+- `dinext_common/public/js/workflow_approval.js` provides the shared approval Desk gate.
+- `openspec/config.yaml` points to the central Store; specs/changes are not duplicated here.
 
 Generated `public/dist/` assets are not included in the current structure description.
 
 ## 🔗 Interaction diagram
 
-Bench loads `hooks.py`. Fixtures form site metadata, while `after_install`
-and `after_migrate` configure the workspace menu and News Feed. Domain applications
-register hub cards in named settings records. The hub renderer
-adds page lists from boot and session route history.
+Bench loads `hooks.py`. Fixtures form site metadata; `after_install` and `after_migrate` configure the workspace menu and News Feed. Domain applications register cards in named settings records. The hub renderer adds page lists from boot and session route history. When `enable_parallel_workflow_approval` is enabled, Desk and Workflow RPCs use `dinext_common.workflow_approval`.
 
 ### Installation and migration
 
@@ -947,6 +1032,25 @@ flowchart LR
   detail --> fieldDiff["Field and text diff"]
   detail --> openForm["Open in System if record is in database"]
 ```
+
+### Parallel approval
+
+```mermaid
+flowchart LR
+  sourceDoc[Source document] --> lifecycle[lifecycle hooks]
+  lifecycle --> engine[workflow_approval.engine]
+  deskJs[workflow_approval.js] --> applyRpc[apply_workflow / vote]
+  applyRpc --> engine
+  engine --> tasks[Workflow Task rounds]
+  tasks --> desk[Workspace My Approvals]
+  engine --> mail[Workflow Action email]
+  domainHooks[workflow_approval_* hooks] --> engine
+  dailyCleanup[Data Cleanup Daily] --> workflowWorker[Data Cleanup Workflow]
+  workflowWorker --> retention[cleanup_workflow_approval_rounds]
+  retention --> tasks
+```
+
+Source documents and Desk actions create or close `Workflow Task` rounds. The workspace and reports read the queue through the API. Domain applications add locking, pending-approver and digest adapters through hooks. Retention removes only terminal rounds permitted by `Workflow Cleanup Rule`.
 
 ### Daily cleanup
 

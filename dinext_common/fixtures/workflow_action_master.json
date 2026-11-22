@@ -1,0 +1,32 @@
+[
+ {
+  "doctype": "Workflow Action Master",
+  "name": "Submit for Approval",
+  "workflow_action_name": "Submit for Approval",
+  "custom_icon": "arrow-up-right"
+ },
+ {
+  "doctype": "Workflow Action Master",
+  "name": "Approve",
+  "workflow_action_name": "Approve",
+  "custom_icon": "check"
+ },
+ {
+  "doctype": "Workflow Action Master",
+  "name": "Reject",
+  "workflow_action_name": "Reject",
+  "custom_icon": "close"
+ },
+ {
+  "doctype": "Workflow Action Master",
+  "name": "Stop Workflow",
+  "workflow_action_name": "Stop Workflow",
+  "custom_icon": "reply"
+ },
+ {
+  "doctype": "Workflow Action Master",
+  "name": "Edit",
+  "workflow_action_name": "Edit",
+  "custom_icon": "edit"
+ }
+]

@@ -46,17 +46,6 @@
  {
   "docstatus": 0,
   "doctype": "Client Script",
-  "dt": "Application For Leave",
-  "enabled": 0,
-  "modified": "2026-09-30 14:43:19.789823",
-  "module": "Dinext Common",
-  "name": "Utility-FormConflictMerge-AFL",
-  "script": "// Managed By: ISS-2025-01286\n\nconst docType = \"Application For Leave\"\n\nfunction form_conflict_merge_install(frm) {\n\tif (!frm || frm.is_new() || frm.doctype !== docType) return;\n\n\tfrappe.require(\"/assets/dinext_common/js/form_conflict_merge.js\", () => {\n\t\tif (!window.dinext_common || !dinext_common.formConflictMerge) {\n\t\t\tconsole.error(\"FormConflictMerge: модуль не загружен\");\n\t\t\treturn;\n\t\t}\n\n\t\tdinext_common.formConflictMerge.install(frm, {\n\t\t\tfields: [],\n\t\t\tconflict_policy: \"server_wins\",\n\t\t\tapply_server_changes_on_realtime: true,\n\t\t\trefresh_docinfo_on_server_apply: true,\n\t\t\twatch_docinfo_keys: [\"assignments\", \"attachments\"],\n\t\t\tpoll_server_changes_interval_ms: 5000,\n\t\t\tdebug_log: true,\n\t\t\tstartup_warmup_ms: 0,\n\t\t});\n\t});\n}\n\nfrappe.ui.form.on(docType, {\n\tonload(frm) {\n\t\tform_conflict_merge_install(frm);\n\t},\n\trefresh(frm) {\n\t\tform_conflict_merge_install(frm);\n\t},\n});\n",
-  "view": "Form"
- },
- {
-  "docstatus": 0,
-  "doctype": "Client Script",
   "dt": "Project",
   "enabled": 0,
   "modified": "2026-09-30 14:43:33.174546",

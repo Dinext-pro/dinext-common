@@ -1,3 +1,6 @@
+from dinext_common.workflow_approval.request_receipts import DEFAULT_RETENTION_DAYS as _receipt_retention_days
+
+
 app_name = "dinext_common"
 app_title = "Dinext Common"
 app_publisher = "Dinext"
@@ -13,6 +16,16 @@ website_context = {
 }
 
 fixtures = [
+    {"doctype": "Property Setter", "filters": [["name", "in", ["Workflow Document State-next_action_email_template-depends_on", "Workflow Document State-main-field_order"]]]},
+    {"doctype": "Notification Type", "filters": [["name", "=", "Workflow"]]},
+    {
+        "doctype": "Workflow State",
+        "filters": [["name", "in", ["Draft", "Editing", "Pending Approval", "Approved", "Rejected"]]],
+    },
+    {
+        "doctype": "Workflow Action Master",
+        "filters": [["name", "in", ["Submit for Approval", "Approve", "Reject", "Stop Workflow", "Edit"]]],
+    },
     "Website Settings",
     "Navbar Settings",
     "Data Cleanup Rules",
@@ -38,6 +51,12 @@ fixtures = [
         "doctype": "Server Script",
         "filters": [
             ["module", "=", "Dinext Common"],
+            ["name", "not in", [
+                "Get my approved WT",
+                "Get my working WT V2",
+                "Workflow Task Processing",
+                "Workflow Task Processing After Save V2",
+            ]],
         ]
     },
     {
@@ -47,9 +66,23 @@ fixtures = [
         ]
     },
     {
+        "doctype": "Email Template",
+        "filters": [
+            ["name", "in", [
+                "Dinext Workflow Action",
+                "Dinext Workflow Correction",
+                "Dinext Workflow Digest",
+                "Dinext Workflow Deadline Digest",
+            ]]
+        ]
+    },
+    {
         "doctype": "Custom HTML Block",
         "filters": [
-            ["name", "in", ["Dinext Hub", "Dinext Settings Hub"]]
+            ["name", "in", [
+                "Dinext Hub",
+                "Dinext Settings Hub",
+            ]]
         ]
     }
 ]
@@ -77,6 +110,7 @@ app_include_css = [
     "/assets/dinext_common/css/common.css",
     "/assets/dinext_common/css/workspace_sidebar_hover.css",
     "/assets/dinext_common/css/dinext-tour.css",
+    "/assets/dinext_common/css/workflow_approval.css?v=20261118-1",
 ]
 app_include_js = [
     "/assets/dinext_common/js/workspace_slug_redirects.js",
@@ -86,6 +120,8 @@ app_include_js = [
     "/assets/dinext_common/js/dinext-desk.js",
     "/assets/dinext_common/js/dashboard_filters_fix.js",
     "/assets/dinext_common/js/workspace_sidebar_hover.js",
+    "/assets/dinext_common/js/workflow_scenarios.js?v=20261120-1",
+    "/assets/dinext_common/js/workflow_approval.js?v=20261120-1",
 ]
 
 # Expose site_config flags to Desk bootinfo
@@ -108,8 +144,14 @@ web_include_css = ["/assets/dinext_common/css/public_auth_header.css"]
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-doctype_js = {"Project" : "public/js/sticky-datatable.js"}
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
+doctype_js = {
+	"Workflow": ["public/js/workflow_scenario_settings.js", "public/js/workflow_fingerprint_settings.js", "public/js/workflow_email_settings.js", "public/js/workflow_deadlines.js"],
+	"Project": "public/js/sticky-datatable.js",
+	"Workflow Action": "public/js/workflow_action_desk.js",
+}
+doctype_list_js = {
+	"Workflow Action": "public/js/workflow_action_list.js",
+}
 # doctype_tree_js = {"Task" : "public/js/frappe-gantt.umd.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
@@ -149,10 +191,33 @@ doctype_js = {"Project" : "public/js/sticky-datatable.js"}
 
 # before_install = "dinext_common.install.before_install"
 after_install = "dinext_common.install.after_install"
+after_sync = [
+	"dinext_common.workflow_approval.migration.retire_legacy_script_apis",
+	"dinext_common.workflow_approval.email_preferences.migrate_preferences",
+	"dinext_common.workflow_approval.request_receipts.register_log_settings",
+]
+before_migrate = [
+	"dinext_common.workflow_approval.scenarios.compat.initialize",
+	"dinext_common.workflow_approval.scenarios.metadata.ensure_fields",
+	"dinext_common.workflow_approval.scenarios.migration.assign_selection_orders",
+	"dinext_common.workflow_approval.localization.guard_label_migration",
+]
 after_migrate = [
+	"dinext_common.workflow_approval.migration.retire_legacy_script_apis",
+	"dinext_common.workflow_approval.permissions.sanitize_restricted_task_titles",
+	"dinext_common.workflow_approval.request_receipts.register_log_settings",
+	"dinext_common.workflow_approval.scenarios.migration.execute",
+	"dinext_common.workflow_approval.deadlines.metadata.ensure_metadata",
+	"dinext_common.workflow_approval.email_preferences.ensure_type",
+	"dinext_common.workflow_approval.email_metadata.ensure_workflow_email_fields",
+	"dinext_common.workflow_approval.email_migration.ensure_email_profiles",
+	"dinext_common.workflow_approval.metadata.ensure_workflow_fingerprint_fields",
 	"dinext_common.changelog_feed.on_after_migrate",
 	"dinext_common.setup.workspace.configure_workspace_menu",
 	"dinext_common.apps.ensure_default_apps",
+	"dinext_common.workflow_approval.metadata.ensure_transition_identity",
+	"dinext_common.workflow_approval.localization.migrate_workflow_labels",
+	"dinext_common.workflow_approval.metadata.ensure_workflow_approval_desk_records",
 ]
 
 # Uninstallation
@@ -191,11 +256,24 @@ after_migrate = [
 # 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
 # }
 #
+permission_query_conditions = {
+	"Number Card": "dinext_common.workflow_approval.permissions.get_approval_number_card_query_conditions",
+	"Workflow Process": "dinext_common.workflow_approval.scenarios.records.process_query_conditions",
+	"Workflow Document Context": "dinext_common.workflow_approval.scenarios.records.context_query_conditions",
+	"Workflow Task": "dinext_common.workflow_approval.permissions.get_workflow_task_permission_query_conditions",
+}
+
 has_permission = {
+	"Prepared Report": "dinext_common.workflow_approval.report_access.has_prepared_report_permission",
+	"File": "dinext_common.workflow_approval.report_access.has_report_attachment_permission",
+	"Workflow Process": "dinext_common.workflow_approval.scenarios.records.has_record_permission",
+	"Workflow Document Context": "dinext_common.workflow_approval.scenarios.records.has_record_permission",
+	"Workflow Task": "dinext_common.workflow_approval.permissions.has_workflow_task_permission",
 	"Dinext Workspace Settings": (
 		"dinext_common.dinext_common.doctype.dinext_workspace_settings"
 		".dinext_workspace_settings.has_permission"
 	),
+	"Number Card": "dinext_common.workflow_approval.permissions.has_public_number_card_permission",
 }
 
 # DocType Class
@@ -203,6 +281,10 @@ has_permission = {
 # Override standard doctype classes
 
 override_doctype_class = {
+	"File": "dinext_common.workflow_approval.report_access.WorkflowReportAttachment",
+	"Email Queue": "dinext_common.workflow_approval.email_queue.DinextWorkflowEmailQueue",
+	"Submission Queue": "dinext_common.workflow_approval.queued_submission.DinextSubmissionQueue",
+	"Workflow": "dinext_common.workflow_approval.scenarios.workflow.DinextWorkflow",
 	"Scheduled Job Type": "dinext_common.overrides.scheduled_job_type.DinextScheduledJobType",
 	"Company": "dinext_common.setup.company.DinextCompany",
 }
@@ -212,11 +294,53 @@ override_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
+	"Report": {"validate": "dinext_common.workflow_approval.report_access.require_live_workflow_report"},
+	"Prepared Report": {"before_insert": "dinext_common.workflow_approval.report_access.stop_prepared_workflow_result"},
+	"DocShare": {"validate": "dinext_common.workflow_approval.permissions.validate_workflow_docshare"},
+	"Number Card": {"validate": "dinext_common.workflow_approval.permissions.set_monitoring_card_visibility"},
+	"Property Setter": {
+		"on_update": "dinext_common.workflow_approval.permissions.sanitize_tasks_after_title_permission_change",
+	},
+	"Workflow Action": {
+		"on_change": "dinext_common.workflow_approval.projections.persist_delivery_snapshot",
+	},
+	"Workspace": {"before_save": "dinext_common.setup.workspace.preserve_approval_control_blocks"},
 	"User": {
 		"after_insert": [
 			"dinext_common.setup.workspace.set_default_workspace_for_new_user",
 			"dinext_common.apps.set_default_app_for_new_user",
 		],
+	},
+	"Email Template": {"before_import": "dinext_common.workflow_approval.email_import.preserve_email_template"},
+	"Workflow": {
+		"before_import": [
+			"dinext_common.workflow_approval.scenarios.metadata.preserve_fixture_settings",
+			"dinext_common.workflow_approval.exclusions.preserve_fixture_exclusions",
+			"dinext_common.workflow_approval.localization.preserve_fixture_transition_ids",
+			"dinext_common.workflow_approval.deadlines.fixtures.preserve_deadline_settings",
+			"dinext_common.workflow_approval.email_import.preserve_workflow_email_settings",
+		],
+		"validate": [
+			"dinext_common.workflow_approval.metadata.validate_workflow_doc",
+		],
+	},
+	"*": {
+		"before_validate": ["dinext_common.workflow_approval.scenarios.service.prepare_source"],
+		"onload": ["dinext_common.workflow_approval.scenarios.api.onload"],
+		"validate": ["dinext_common.workflow_approval.lifecycle.validate_source"],
+		"after_insert": ["dinext_common.workflow_approval.lifecycle.after_source_insert"],
+		"on_update": [
+			"dinext_common.workflow_approval.lifecycle.on_source_update",
+			"dinext_common.workflow_approval.scenarios.compat.native_submission_completed",
+		],
+		"on_update_after_submit": [
+			"dinext_common.workflow_approval.lifecycle.on_source_update_after_submit",
+			"dinext_common.workflow_approval.scenarios.compat.native_submission_completed",
+		],
+		"on_cancel": ["dinext_common.workflow_approval.lifecycle.on_source_cancel"],
+		"on_trash": ["dinext_common.workflow_approval.lifecycle.on_source_trash"],
+		"before_rename": ["dinext_common.workflow_approval.scenarios.service.before_source_rename"],
+		"after_rename": ["dinext_common.workflow_approval.scenarios.service.after_source_rename"],
 	},
 }
 
@@ -227,6 +351,13 @@ scheduler_events = {
 	"daily": [
 		"dinext_common.changelog_feed.sync_dinext_news_feed",
 	],
+	"cron": {
+		"* * * * *": [
+			"dinext_common.workflow_approval.deadlines.delivery.dispatch_due_deadlines",
+			"dinext_common.workflow_approval.notifications.dispatch_due_notifications",
+			"dinext_common.workflow_approval.finalization.repair_pending_finalizations",
+		],
+	},
 }
 
 # What's New consumer (publisher lives on docs / configured site)
@@ -241,13 +372,41 @@ get_changelog_feed = "dinext_common.changelog_feed.get_feed"
 # ------------------------------
 #
 override_whitelisted_methods = {
+	"frappe.desk.search.search_link": "dinext_common.workflow_approval.desk_access.search_link",
+	"frappe.desk.search.search_widget": "dinext_common.workflow_approval.desk_access.search_widget",
+	"frappe.desk.doctype.number_card.number_card.get_cards_for_user": (
+		"dinext_common.workflow_approval.desk_access.get_cards_for_user"
+	),
+	"frappe.desk.reportview.get": "dinext_common.workflow_approval.task_list.get",
+	"frappe.desk.form.load.getdoc": "dinext_common.workflow_approval.monitoring.get_report_document",
 	"frappe.apps.get_apps": "dinext_common.apps.get_apps",
+	"frappe.model.workflow.apply_workflow": (
+		"dinext_common.workflow_approval.api.apply_workflow"
+	),
+	"frappe.model.workflow.bulk_workflow_approval": (
+		"dinext_common.workflow_approval.api.bulk_workflow_approval"
+	),
+	"frappe.model.workflow.get_common_transition_actions": (
+		"dinext_common.workflow_approval.api.get_common_transition_actions"
+	),
+	"frappe.model.workflow.get_transitions": (
+		"dinext_common.workflow_approval.api.get_transitions"
+	),
+	"frappe.workflow.doctype.workflow_action.workflow_action.apply_action": (
+		"dinext_common.workflow_approval.signed_links.apply_action"
+	),
+	"frappe.workflow.doctype.workflow_action.workflow_action.confirm_action": (
+		"dinext_common.workflow_approval.signed_links.confirm_legacy_action"
+	),
 	"erpnext.accounts.doctype.account.chart_of_accounts.chart_of_accounts.get_charts_for_country": (
 		"dinext_common.setup.chart_of_accounts.get_charts_for_country"
 	),
 	"erpnext.accounts.utils.get_coa": "dinext_common.setup.chart_of_accounts.get_coa",
 	"frappe.desk.desktop.get_workspace_sidebar_items": (
 		"dinext_common.setup.workspace.get_workspace_sidebar_items"
+	),
+	"frappe.desk.doctype.kanban_board.kanban_board.get_kanban_boards": (
+		"dinext_common.setup.workspace.get_optional_kanban_boards"
 	),
 }
 #
@@ -265,7 +424,7 @@ override_whitelisted_methods = {
 # Ignore links to specified DocTypes when deleting documents
 # -----------------------------------------------------------
 
-# ignore_links_on_delete = ["Communication", "ToDo"]
+ignore_links_on_delete = ["Workflow Task", "Workflow Process", "Workflow Document Context"]
 
 # Request Events
 # ----------------
@@ -311,7 +470,12 @@ override_whitelisted_methods = {
 # Automatically update python controller files with type annotations for this app.
 # export_python_type_annotations = True
 
-# default_log_clearing_doctypes = {
-# 	"Logging DocType Name": 30  # days to retain logs
-# }
+default_log_clearing_doctypes = {"Workflow Request Receipt": _receipt_retention_days}
 
+
+# Install compatibility once, with request/job-local document selection.
+before_request = ["dinext_common.workflow_approval.scenarios.compat.initialize"]
+after_request = ["dinext_common.workflow_approval.scenarios.compat.cleanup"]
+before_job = ["dinext_common.workflow_approval.scenarios.compat.initialize"]
+after_job = ["dinext_common.workflow_approval.scenarios.compat.cleanup"]
+before_tests = "dinext_common.workflow_approval.scenarios.compat.initialize"

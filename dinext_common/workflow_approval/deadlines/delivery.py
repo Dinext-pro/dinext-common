@@ -1,0 +1,300 @@
+"""Transactional deadline escalation using current policies and permissions."""
+
+import json
+from collections import defaultdict
+from datetime import datetime
+
+import frappe
+from frappe.utils import get_url_to_form, now_datetime
+
+from dinext_common.workflow_approval import notifications as mail
+from dinext_common.workflow_approval.deadlines.extensions import get_extensions
+from dinext_common.workflow_approval.email_access import SCOPE_HEADER, authorized_source, delivery_scope, visible_document
+from dinext_common.workflow_approval.email_presentation import document_title
+from dinext_common.workflow_approval.email_preferences import email_allowed
+from dinext_common.workflow_approval.email_settings import checked, normalize_send_times
+from dinext_common.workflow_approval.email_templates import domain_email_template
+
+DEFAULT_DEADLINE_TEMPLATE = "Dinext Workflow Deadline Digest"
+
+
+def current_policy(task, workflow):
+	return next(
+		(
+			row
+			for row in workflow.transitions
+			if row.custom_transition_uuid == task.deadline_transition_uuid
+			and checked(row.get("custom_deadline_enabled"))
+		),
+		None,
+	)
+
+
+def recipients(task, policy, now):
+	kind = policy.custom_deadline_recipient_type
+	if kind == "User":
+		return [policy.custom_deadline_recipient_user] if policy.custom_deadline_recipient_user else []
+	if kind == "Role":
+		from frappe.utils.user import get_users_with_role
+
+		return get_users_with_role(policy.custom_deadline_recipient_role)
+	handler = get_extensions(task.reference_doctype).get("recipients", {}).get(kind)
+	if not handler:
+		return []
+	return (
+		handler["resolve"](
+			dict(
+				approver=task.approver,
+				doctype=task.reference_doctype,
+				reference_name=task.reference_name,
+				on_date=mail._database_datetime(mail._aware_utc(now)),
+			)
+		)
+		or []
+	)
+
+
+def delivery_slot(task, policy, recipient, now):
+	if policy.custom_deadline_email_mode == "Immediate":
+		return None
+	unit = policy.custom_deadline_interval_unit
+	context = dict(
+		created_at=mail._aware_utc(task.deadline_due_at),
+		now=mail._aware_utc(now),
+		timezone_name=mail._recipient_timezone(recipient),
+		interval=int(policy.custom_deadline_interval_value or 1),
+		send_times=tuple(
+			datetime.strptime(part.strip(), "%H:%M").time()
+			for part in normalize_send_times(policy.custom_deadline_send_times).split(",")
+			if part.strip()
+		)
+		if unit != "Hours"
+		else (),
+		anchor=mail._aware_utc(policy.custom_deadline_schedule_anchor or now),
+	)
+	if unit in ("Hours", "Days"):
+		return mail.latest_due_digest_slot(unit=unit, **context)
+	handler = get_extensions(task.reference_doctype).get("sending_intervals", {}).get(unit)
+	if not handler:
+		return None
+	return handler["latest_slot"](
+		{
+			**context,
+			"recipient": recipient,
+			"approver": task.approver,
+			"doctype": task.reference_doctype,
+			"reference_name": task.reference_name,
+		}
+	)
+
+
+def _eligible(task, workflow, recipient, now):
+	if not checked(workflow.send_email_alert) or not email_allowed(recipient):
+		return False
+	if (
+		task.status != "Working"
+		or task.round_status not in ("Open", "Stalled")
+		or task.deadline_error
+		or not task.deadline_due_at
+	):
+		return False
+	if mail._aware_utc(task.deadline_due_at) >= mail._aware_utc(now):
+		return False
+	policy = current_policy(task, workflow)
+	if not policy or recipient not in recipients(task, policy, now):
+		return False
+	if not frappe.db.get_value("User", recipient, "enabled"):
+		return False
+	source = authorized_source(task, recipient)
+	if source is None:
+		return False
+	from dinext_common.workflow_approval.scenarios import service
+	if service.is_ready():
+		return source
+	from frappe.model.workflow import get_workflow_name
+
+	if (workflow.is_active and get_workflow_name(source.doctype) == workflow.name
+		and source.get(workflow.workflow_state_field) == task.workflow_state):
+		return source
+	return False
+
+
+def send_group(*, workflow, recipient, task_names, slot, now=None):
+	now = now or now_datetime()
+	workflow = frappe.get_doc("Workflow", workflow.name)
+	user = frappe.db.get_value("User", recipient, ["email", "enabled"], as_dict=True)
+	if not user or not user.enabled or not user.email:
+		return
+	tasks = []
+	sources = {}
+	# Lock assignments deterministically. Queue insertion and delivery claim share the transaction.
+	for name in sorted(set(task_names)):
+		task = frappe.get_doc("Workflow Task", name, for_update=True)
+		if source := _eligible(task, workflow, recipient, now):
+			tasks.append(task)
+			sources[task.name] = source
+	if not tasks:
+		return
+	state = tasks[0].workflow_state
+	policy_id = tasks[0].deadline_transition_uuid
+	tasks = [
+		task for task in tasks if task.workflow_state == state and task.deadline_transition_uuid == policy_id
+	]
+	policy = current_policy(tasks[0], workflow)
+	mode = policy.custom_deadline_email_mode
+	if (slot is None) != (mode == "Immediate"):
+		return
+	if slot is not None:
+		tasks = [task for task in tasks if delivery_slot(task, policy, recipient, now) == slot]
+		if not tasks:
+			return
+	sources = {task.name: sources[task.name] for task in tasks}
+	default_template = domain_email_template(tasks, "deadline_template") or DEFAULT_DEADLINE_TEMPLATE
+	template = policy.custom_deadline_email_template or default_template
+	# Mutable template/schedule values must never alter an already-formed incident/slot key.
+	identity = slot.isoformat() + ":" + policy_id if slot else tasks[0].deadline_assignment_id
+	key = mail.make_delivery_key(
+		"Deadline Digest" if slot else "Deadline Immediate", workflow.name, recipient, identity, state=state
+	)
+	if frappe.db.exists("Workflow Deadline Delivery", key):
+		return
+	savepoint = "deadline_delivery_" + key[:12]
+	frappe.db.savepoint(savepoint)
+	try:
+		frappe.get_doc(
+			dict(
+				doctype="Workflow Deadline Delivery",
+				delivery_key=key,
+				recipient=recipient,
+				workflow=workflow.name,
+				workflow_state=state,
+				slot=mail._database_datetime(slot) if slot else None,
+				task_names=json.dumps([task.name for task in tasks]),
+				status="Enqueued",
+			)
+		).insert(ignore_permissions=True)
+	except frappe.DuplicateEntryError:
+		frappe.db.rollback(save_point=savepoint)
+		return
+	try:
+		if mail._queued_delivery(key):
+			return
+		rows = []
+		for task in tasks:
+			source = visible_document(sources[task.name], recipient)
+			row = dict(
+				doctype=task.reference_doctype,
+				name=task.reference_name,
+				title=document_title(source.as_dict()),
+				link=get_url_to_form(task.reference_doctype, task.reference_name),
+				due=task.deadline_due_at,
+				overdue_hours=max(
+					0, (mail._aware_utc(now) - mail._aware_utc(task.deadline_due_at)).total_seconds() / 3600
+				),
+				approver=task.approver,
+				approver_name=frappe.db.get_value("User", task.approver, "full_name") or task.approver,
+				actions=[],
+				count=1,
+				tasks=[task.name],
+			)
+			row.update(mail.digest_item_override(task, source, recipient))
+			row["actions"] = []
+			rows.append(row)
+		context = dict(
+			rows=rows,
+			tasks=[mail.task_context(task, row["title"]) for task, row in zip(tasks, rows, strict=True)],
+			workflow=mail.workflow_context(workflow),
+			workflow_state=state,
+			recipient=recipient,
+			slot=slot,
+			deadline_notice=True,
+			actions=[],
+		)
+		if frappe.db.exists("Email Template", template):
+			subject, message = mail._template_message(template, context, recipient)
+		else:
+			from dinext_common.workflow_approval.email_presentation import render_standard
+
+			subject, message = render_standard(default_template, context, recipient)
+		mail._sendmail_for_user(
+			recipient,
+			recipients=[user.email],
+			sender="Dinext <ikhmel@dinext.ru>",
+			reply_to="ikhmel@dinext.ru",
+			subject=subject,
+			message=message,
+			message_id=key,
+			email_headers={SCOPE_HEADER: delivery_scope(recipient, sources)},
+			reference_doctype="Workflow",
+			reference_name=workflow.name,
+		)
+	except Exception:
+		frappe.db.rollback(save_point=savepoint)
+		raise
+
+
+def dispatch_due_deadlines(now=None):
+	now = now or now_datetime()
+	groups = defaultdict(list)
+	workflows = {}
+	# Scheduler is a trusted system reader; every recipient/document pair is checked again at send.
+	names = frappe.get_all(
+		"Workflow Task",
+		filters={
+			"status": "Working",
+			"round_status": ["in", ["Open", "Stalled"]],
+			"deadline_assignment_id": ["is", "set"],
+		},
+		pluck="name",
+		order_by="name",
+	)
+	for name in names:
+		try:
+			task = frappe.get_doc("Workflow Task", name)
+			if task.deadline_error:
+				from dinext_common.workflow_approval.deadlines.lifecycle import retry_task
+
+				retry_task(task)
+			if (
+				task.deadline_error
+				or not task.deadline_due_at
+				or mail._aware_utc(task.deadline_due_at) >= mail._aware_utc(now)
+			):
+				continue
+			workflow = workflows.setdefault(task.workflow, frappe.get_doc("Workflow", task.workflow))
+			policy = current_policy(task, workflow)
+			if not policy or not checked(workflow.send_email_alert):
+				continue
+			for recipient in sorted(set(recipients(task, policy, now))):
+				if not _eligible(task, workflow, recipient, now):
+					continue
+				slot = delivery_slot(task, policy, recipient, now)
+				if policy.custom_deadline_email_mode == "Digest" and not slot:
+					continue
+				key = (
+					workflow.name,
+					task.workflow_state,
+					recipient,
+					task.deadline_transition_uuid,
+					slot,
+					task.deadline_assignment_id if slot is None else "",
+				)
+				groups[key].append(task.name)
+		except Exception:
+			frappe.log_error(
+				title="Workflow deadline dispatch failed",
+				reference_doctype="Workflow Task",
+				reference_name=name,
+			)
+	for key, names in groups.items():
+		workflow, state, recipient, _policy_id, slot, _assignment = key
+		try:
+			send_group(
+				workflow=workflows[workflow], recipient=recipient, task_names=names, slot=slot, now=now
+			)
+		except Exception:
+			frappe.log_error(
+				title="Workflow deadline delivery failed",
+				reference_doctype="Workflow",
+				reference_name=workflow,
+			)

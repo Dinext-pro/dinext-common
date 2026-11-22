@@ -1,0 +1,95 @@
+{
+ "actions": [],
+ "autoname": "prompt",
+ "creation": "2026-11-11 01:55:01.470176",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "reference_doctype",
+  "reference_name",
+  "source_created_at",
+  "active_process",
+  "last_process",
+  "routing_error",
+  "error_workflow"
+ ],
+ "fields": [
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Reference DocType",
+   "options": "DocType",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "in_list_view": 1,
+   "label": "Reference",
+   "options": "reference_doctype",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "source_created_at",
+   "fieldtype": "Datetime",
+   "label": "Source Created At",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "active_process",
+   "fieldtype": "Link",
+   "label": "Active Process",
+   "options": "Workflow Process",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "last_process",
+   "fieldtype": "Link",
+   "label": "Last Process",
+   "options": "Workflow Process",
+   "read_only": 1
+  },
+  {
+   "fieldname": "routing_error",
+   "fieldtype": "Long Text",
+   "label": "Workflow Selection Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_workflow",
+   "fieldtype": "Link",
+   "label": "Invalid Workflow",
+   "options": "Workflow",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-11-11 01:59:22.894905",
+ "modified_by": "Administrator",
+ "module": "Dinext Common",
+ "name": "Workflow Document Context",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "read": 1,
+   "report": 1,
+   "role": "All",
+   "select": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

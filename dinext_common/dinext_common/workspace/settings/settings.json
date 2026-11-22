@@ -18,7 +18,7 @@
  "is_hidden": 0,
  "label": "Settings",
  "links": [],
- "modified": "2026-08-11 01:59:40.887049",
+ "modified": "2026-10-04 18:07:00.465220",
  "modified_by": "Administrator",
  "module": "Dinext Common",
  "name": "Settings",
@@ -35,7 +35,7 @@
    "role": "Workspace Manager"
   }
  ],
- "sequence_id": 2.0,
+ "sequence_id": 4.0,
  "shortcuts": [],
  "title": "Settings"
 }

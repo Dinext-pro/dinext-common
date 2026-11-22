@@ -1,0 +1,42 @@
+[
+  {
+    "raw": "&nb\nsp;",
+    "normalized": "&nbsp;"
+  },
+  {
+    "raw": "&n\u200bbsp;",
+    "normalized": "&nbsp;"
+  },
+  {
+    "raw": "\u200b\u0000",
+    "normalized": ""
+  },
+  {
+    "raw": "&#\n0;",
+    "normalized": "&#0;"
+  },
+  {
+    "raw": "&#x\u000080;",
+    "normalized": "&#x80;"
+  },
+  {
+    "raw": "&#0;",
+    "normalized": "\ufffd"
+  },
+  {
+    "raw": "<\u0000b>Reason</\u0000b>",
+    "normalized": "Reason"
+  },
+  {
+    "raw": "&lt;\u0000b&gt;&lt;/b&gt;",
+    "normalized": ""
+  },
+  {
+    "raw": "&#38;lt;b&#38;gt;&#38;lt;/b&#38;gt;",
+    "normalized": "&lt;b&gt;&lt;/b&gt;"
+  },
+  {
+    "raw": "&amp;lt;b&amp;gt;&amp;lt;/b&amp;gt;",
+    "normalized": "&lt;b&gt;&lt;/b&gt;"
+  }
+]

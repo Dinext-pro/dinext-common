@@ -1,16 +1,5 @@
-import frappe
+"""Internal compatibility import for the source-aware approval adapter."""
 
-@frappe.whitelist()
-def get_transitions(
-	doc, user = None, workflow = None, raise_exception: bool = False
-) -> list[dict]:
-    from frappe.model.workflow import get_transitions as og_get_transitions
-    cur_user = frappe.session.user
-    if user:
-        frappe.set_user(user)
+from dinext_common.workflow_approval.api import get_transitions
 
-    try:
-        return og_get_transitions(doc, workflow, raise_exception)
-    finally:
-        if user:
-            frappe.set_user(cur_user)
+__all__ = ["get_transitions"]
