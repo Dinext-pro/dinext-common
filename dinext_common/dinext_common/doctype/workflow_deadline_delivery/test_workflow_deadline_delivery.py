@@ -1,6 +1,7 @@
 """Retention of deadline deliveries through standard Frappe Log Settings."""
 
 import json
+from datetime import timedelta
 from unittest.mock import patch
 
 import frappe
@@ -30,6 +31,10 @@ class TestWorkflowDeadlineDelivery(FrappeTestCase):
 		self.assertEqual(entries[0].days, 7)
 		settings.set("logs_to_clear", entries)
 		return settings, entries[0]
+
+	def _elapsed_days_ago(self, days):
+		# Hourly schedules count elapsed UTC hours across a site clock change.
+		return notifications._database_datetime(notifications._aware_utc(self.now) - timedelta(days=days))
 
 	def _task(self, name, assignment, *, active=True):
 		frappe.get_doc({
@@ -107,7 +112,7 @@ class TestWorkflowDeadlineDelivery(FrappeTestCase):
 				"custom_deadline_email_mode": "Digest",
 				"custom_deadline_interval_unit": interval_unit,
 				"custom_deadline_interval_value": 240,
-				"custom_deadline_schedule_anchor": add_days(self.now, -28),
+				"custom_deadline_schedule_anchor": self._elapsed_days_ago(28),
 			}],
 		})
 		workflow.db_insert()
@@ -147,8 +152,8 @@ class TestWorkflowDeadlineDelivery(FrappeTestCase):
 			}}}),
 		})
 		immediate = self._delivery(missing, age=8)
-		current = self._delivery(missing, age=8, slot=add_days(self.now, -8))
-		older = self._delivery(missing, age=18, slot=add_days(self.now, -18))
+		current = self._delivery(missing, age=8, slot=self._elapsed_days_ago(8))
+		older = self._delivery(missing, age=18, slot=self._elapsed_days_ago(18))
 		with patch.object(frappe.db, "commit"):
 			settings.clear_logs()
 			self.assertTrue(frappe.db.exists(DOCTYPE, immediate))
@@ -158,7 +163,7 @@ class TestWorkflowDeadlineDelivery(FrappeTestCase):
 			frappe.db.set_value("Workflow Transition", workflow.transitions[0].name,
 				"custom_transition_uuid", "replacement-policy")
 			frappe.clear_document_cache("Workflow", self.workflow)
-			unrelated = self._delivery(missing, age=8, slot=add_days(self.now, -8), policy="unrelated")
+			unrelated = self._delivery(missing, age=8, slot=self._elapsed_days_ago(8), policy="unrelated")
 			settings.clear_logs()
 			self.assertTrue(frappe.db.exists(DOCTYPE, current))
 			self.assertFalse(frappe.db.exists(DOCTYPE, unrelated))
@@ -174,8 +179,8 @@ class TestWorkflowDeadlineDelivery(FrappeTestCase):
 		self._task(active, active)
 		# A previously included task has disappeared. Another active task can still use the slot.
 		old_task = frappe.generate_hash(length=24)
-		current = self._delivery(old_task, age=8, slot=add_days(self.now, -8))
-		superseded = self._delivery(old_task, age=18, slot=add_days(self.now, -18))
+		current = self._delivery(old_task, age=8, slot=self._elapsed_days_ago(8))
+		superseded = self._delivery(old_task, age=18, slot=self._elapsed_days_ago(18))
 		with patch.object(frappe.db, "commit"):
 			settings.clear_logs()
 			self.assertTrue(frappe.db.exists(DOCTYPE, current))
@@ -204,7 +209,7 @@ class TestWorkflowDeadlineDelivery(FrappeTestCase):
 		self._digest_workflow("Working Days")
 		active = frappe.generate_hash(length=24)
 		self._task(active, active)
-		old = self._delivery(active, age=8, slot=add_days(self.now, -8))
+		old = self._delivery(active, age=8, slot=self._elapsed_days_ago(8))
 		extensions = {"sending_intervals": {"Working Days": {"latest_slot": lambda context: None}}}
 		with patch.object(frappe.db, "commit"):
 			with patch.object(delivery, "get_extensions", return_value={}):
