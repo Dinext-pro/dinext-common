@@ -5,7 +5,12 @@
     "dependencies": [
       "erpnext"
     ],
-    "ci_sha": "581bfa8fc07a00bb80bd7b8891b53d1d14cb6cb3"
+    "ci_sha": "974a05948c8af54fd76f17b73ed3ca19fe5023b2",
+    "test_dependencies": [
+      "hrms",
+      "doctype_permission",
+      "frappe_comment_xt"
+    ]
   },
   "dinext_deputies": {
     "repository": "https://github.com/Dinext-pro/dinext-deputies.git",
@@ -15,7 +20,7 @@
       "dinext_projects",
       "dinext_common"
     ],
-    "ci_sha": "bc5cef1b127b6e8b61c3b70402ce4bffeab4fadb"
+    "ci_sha": "4db30b090b9924dc226a6f5b6b60f0bc298bfa83"
   },
   "dinext_git": {
     "repository": "https://github.com/Dinext-pro/dinext-git.git",
@@ -36,7 +41,7 @@
       "dinext_common",
       "dinext_projects"
     ],
-    "ci_sha": "cf11466d5c72964af0c90a0ae6e901a80e1a4454"
+    "ci_sha": "e29b258bd3df92600efdcec808d9d7525c7e4d99"
   },
   "dinext_project_scope": {
     "repository": "https://github.com/Dinext-pro/dinext-project-scope.git",
@@ -54,7 +59,7 @@
       "dinext_common",
       "dinext_projects"
     ],
-    "ci_sha": "c182059565aca00353d5b5f3fa58a871ed39d085"
+    "ci_sha": "479cdd42d8f63468a65d398aced1c8544063d536"
   },
   "dinext_project_tasks_gantt": {
     "repository": "https://github.com/Dinext-pro/dinext-project-tasks-gantt.git",
@@ -65,7 +70,7 @@
       "dinext_projects",
       "project_workload_assignment"
     ],
-    "ci_sha": "3aceebb17d2ea327e1957af4dbdbd202682319e0"
+    "ci_sha": "0518d5b0c47a2811fc9dc4178d162ecf11772dbe"
   },
   "dinext_projects": {
     "repository": "https://github.com/Dinext-pro/dinext-projects.git",
@@ -75,7 +80,7 @@
       "doctype_permission",
       "erpnext"
     ],
-    "ci_sha": "233939d1088ede6d7f86f0ec0f7c94c5c2cbf9e4"
+    "ci_sha": "d0faf6b64a2d7b0bd075bfe48dd06fb8455e08d3"
   },
   "dinext_projects_pl": {
     "repository": "https://github.com/Dinext-pro/dinext-projects-pl.git",
@@ -85,7 +90,7 @@
       "doctype_permission",
       "dinext_projects"
     ],
-    "ci_sha": "996ac70ae1c1470d722d4b6ce2f578453587a0d6",
+    "ci_sha": "a498f84ef82e2e59275f8853dcbc42af3da0cfbd",
     "test_dependencies": [
       "hrms"
     ]
@@ -110,7 +115,7 @@
       "dinext_timesheets",
       "doctype_permission"
     ],
-    "ci_sha": "42513bfc718d7bbbd2bc08a61ee09bbfb72b1f8c"
+    "ci_sha": "63cdf48f1e413a3f8af81f3a17dfa4f8452f1399"
   },
   "wiki": {
     "repository": "https://github.com/Dinext-pro/dinext_wiki.git",
@@ -131,7 +136,7 @@
     "repository": "https://github.com/Dinext-pro/dinext_platform.git",
     "branch": "dinext/main/v15",
     "dependencies": [],
-    "ci_sha": "8c05aa33a2aa988ab7088809a1969e8ed84f5cb7"
+    "ci_sha": "3b73839e0c5080f638d007fe96e2da02225d6674"
   },
   "dinext_timesheets": {
     "repository": "https://github.com/Dinext-pro/dinext-timesheets.git",
@@ -142,13 +147,13 @@
       "dinext_projects_pl",
       "doctype_permission"
     ],
-    "ci_sha": "9e03b3d4b1b1b6fbe56302dfcdca0bda27415539"
+    "ci_sha": "7f986126e2ff3bc141276b3e2d11632bcc3121e2"
   },
   "erpnext": {
     "repository": "https://github.com/Dinext-pro/dinext_erp.git",
     "branch": "dinext/main/v15",
     "dependencies": [],
-    "ci_sha": "bf4e2cac9fc015965b32bf49ad9e607da41d2229"
+    "ci_sha": "548e80297397ba5d3ca4fb111a923fe784a37f4e"
   },
   "hrms": {
     "repository": "https://github.com/Dinext-pro/hrms.git",
@@ -156,7 +161,7 @@
     "dependencies": [
       "erpnext"
     ],
-    "ci_sha": "1b2060cc91bce2edb20be3f4e3fb08f4188f84a3"
+    "ci_sha": "b8cdb4431d6322477c4ed7c04d164fe00972298a"
   },
   "builder": {
     "repository": "https://github.com/Dinext-pro/builder.git",
@@ -176,7 +181,7 @@
     "repository": "https://github.com/Dinext-pro/doctype_permission.git",
     "branch": "dinext/main/main",
     "dependencies": [],
-    "ci_sha": "27d443d913b05ce029ce00fba0bf0951bf8fb3f1"
+    "ci_sha": "f5424c591ff0a5b696f570808302e24c9917a2e4"
   },
   "frappe_assistant_core": {
     "repository": "https://github.com/Dinext-pro/frappe_assistant_core.git",
@@ -266,6 +271,7 @@
     "test_dependencies": [
       "dinext_projects_pl",
       "dinext_timesheets"
-    ]
+    ],
+    "ci_sha": "a8b176aee6d1fc714c123b13409c7966fb2449d0"
   }
 }

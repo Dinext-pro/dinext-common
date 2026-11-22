@@ -15,22 +15,24 @@ from xml.etree import ElementTree
 
 SITE = "ci.test"
 BASE_URL = "http://localhost:8000"
-DEPENDENCIES = {
-    "frappe": "3b73839e0c5080f638d007fe96e2da02225d6674",
-    "erpnext": "548e80297397ba5d3ca4fb111a923fe784a37f4e",
-    "hrms": "b8cdb4431d6322477c4ed7c04d164fe00972298a",
-    "doctype_permission": "392ba35bac23b312996a774a0f2f800c0c5489c3",
-    "frappe_comment_xt": "9b2e6b44a291f1cbdcf0808ffa34f250dbd0dfc6",
-    "dinext_projects": "d0faf6b64a2d7b0bd075bfe48dd06fb8455e08d3",
-    "dinext_projects_pl": "a498f84ef82e2e59275f8853dcbc42af3da0cfbd",
-    "dinext_timesheets": "7f986126e2ff3bc141276b3e2d11632bcc3121e2",
-    "dinext_deputies": "4db30b090b9924dc226a6f5b6b60f0bc298bfa83",
-    "project_workload_assignment": "63cdf48f1e413a3f8af81f3a17dfa4f8452f1399",
-    "dinext_project_tasks_gantt": "0518d5b0c47a2811fc9dc4178d162ecf11772dbe",
-    "dinext_project_stage_gate": "479cdd42d8f63468a65d398aced1c8544063d536",
-    "dinext_project_evaluation": "e29b258bd3df92600efdcec808d9d7525c7e4d99",
-    "dinext_goals": "a8b176aee6d1fc714c123b13409c7966fb2449d0",
-}
+WORKFLOW_APPS = (
+    "frappe",
+    "erpnext",
+    "hrms",
+    "doctype_permission",
+    "frappe_comment_xt",
+    "dinext_projects",
+    "dinext_projects_pl",
+    "dinext_timesheets",
+    "dinext_deputies",
+    "project_workload_assignment",
+    "dinext_project_tasks_gantt",
+    "dinext_project_stage_gate",
+    "dinext_project_evaluation",
+    "dinext_goals",
+)
+CATALOG = json.loads(Path(__file__).with_name("public-apps.json").read_text())
+DEPENDENCIES = {app: CATALOG[app]["ci_sha"] for app in WORKFLOW_APPS}
 SPECS = {
     "dinext_common": (
         "approval_deadline_chart.js",
