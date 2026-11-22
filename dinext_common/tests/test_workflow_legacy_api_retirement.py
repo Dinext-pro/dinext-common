@@ -19,9 +19,13 @@ class TestWorkflowLegacyApiRetirement(unittest.TestCase):
 		legacy = migration.cutover_records("remove")
 		self.assertFalse({row["name"] for row in rows} & set(legacy["Server Script"]))
 		self.assertFalse({row.get("api_method") for row in rows} & set(legacy["Legacy API"]))
+		self.assertNotIn("IssueAssignUserGroup", {row["name"] for row in rows})
 		fixture = next(item for item in hooks.fixtures if isinstance(item, dict) and item["doctype"] == "Server Script")
 		excluded_names = next(values for field, operator, values in fixture["filters"] if (field, operator) == ("name", "not in"))
-		self.assertEqual(set(excluded_names), set(migration._SHARED_LEGACY_RECORDS["Server Script"]))
+		self.assertEqual(
+			set(excluded_names),
+			set(migration._SHARED_LEGACY_RECORDS["Server Script"]) | {"IssueAssignUserGroup"},
+		)
 
 	def test_only_the_old_api_records_are_disabled_once(self):
 		with (
