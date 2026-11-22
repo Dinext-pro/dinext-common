@@ -27,7 +27,7 @@ NOW = "2026-01-01 00:00:00"
 class TestWorkflowEmailMigration(unittest.TestCase):
     def test_policy_is_supplied_by_owner(self):
         workflow = Row(
-            states=[Row(state=name) for name in ("Editing", "Review", "Rejected", "Revise")],
+            states=[Row(state=name, send_email=1) for name in ("Editing", "Review", "Rejected", "Revise")],
             transitions=[Row(state=name, allow_self_approval=1) for name in ("Rejected", "Revise")],
         )
         email_migration.configure_workflow(workflow, profile={"migration": POLICY}, now=NOW)
@@ -37,6 +37,30 @@ class TestWorkflowEmailMigration(unittest.TestCase):
         self.assertEqual(workflow.states[3].next_action_email_template, "Owner Correction")
         self.assertFalse(hasattr(workflow.transitions[0], "send_email_to_creator"))
         self.assertEqual(workflow.transitions[1].send_email_to_creator, 1)
+
+    def test_framework_legacy_time_does_not_skip_initial_policy(self):
+        workflow = Row(
+            send_email_alert=0, custom_group_send_time="13:42:27",
+            states=[Row(state="Review")], transitions=[],
+        )
+        email_migration.configure_workflow(workflow, profile={"migration": POLICY}, now=NOW)
+        self.assertEqual(workflow.send_email_alert, 1)
+        self.assertEqual(workflow.custom_group_send_times, "09:30")
+        self.assertEqual(workflow.custom_group_schedule_anchor, NOW)
+        self.assertEqual(workflow.states[0].send_email, 1)
+        self.assertEqual(workflow.custom_email_profile_version, 1)
+
+    def test_preserves_legacy_time_for_an_active_digest(self):
+        workflow = Row(
+            send_email_alert=1, custom_group_workflow_action_emails=1,
+            custom_group_interval_unit="Days", custom_group_interval_value=2, custom_group_send_time="13:42:00",
+            states=[Row(state="Review", send_email=0)], transitions=[],
+        )
+        email_migration.configure_workflow(workflow, profile={"migration": POLICY}, now=NOW)
+        self.assertEqual(workflow.custom_group_send_time, "13:42:00")
+        self.assertEqual(workflow.custom_group_interval_value, 2)
+        self.assertEqual(workflow.states[0].send_email, 0)
+        self.assertEqual(workflow.custom_email_profile_version, 1)
 
     def test_preserves_existing_schedule_and_explicit_state_override(self):
         workflow = Row(

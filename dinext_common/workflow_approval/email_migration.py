@@ -35,13 +35,14 @@ def native_state_template(row, parent_template):
 
 def _has_configured_mail(workflow):
 	"""Recognize an existing schedule, selected templates or an explicit parent setting."""
+	# Frappe supplies a current time for Time fields even without a configured digest.
 	return any(
 		value(workflow, field)
 		for field in (
 			"custom_group_schedule_anchor", "custom_group_send_times", "custom_group_email_template",
 			"custom_workflow_action_email_template",
 		)
-	) or str(value(workflow, "custom_group_send_time") or "") not in ("", "00:00:00", "0:00:00") or any(
+	) or any(
 		checked(value(workflow, field))
 		for field in ("custom_group_workflow_action_emails", "custom_attach_document_pdf")
 	)
@@ -77,7 +78,7 @@ def configure_workflow(workflow, *, profile, now):
 					checked(value(row, "custom_group_workflow_action_emails"))
 				),
 			}
-		enabled = checked(value(row, "send_email")) or (not template and row.state in states)
+		enabled = checked(value(row, "send_email")) if template else row.state in states
 		assign(row, "send_email", int(enabled))
 		assign(row, "custom_email_settings_override", int(bool(state_override)))
 		for field in PROFILE_FIELDS:

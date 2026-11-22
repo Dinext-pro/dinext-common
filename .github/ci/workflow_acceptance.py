@@ -49,6 +49,8 @@ SERVER_TESTS = {
     "dinext_common": {
         "test_workflow_request_receipt": (),
         "dinext_common.dinext_common.doctype.workflow_deadline_delivery.test_workflow_deadline_delivery": (),
+        "test_workflow_email_migration": (),
+        "test_workflow_email_refinements": ("test_native_correction_preserves_comment_lines_in_both_parts",),
         "test_workflow_approval_api": (),
         "test_workflow_approval_engine": (),
         "test_workflow_approval_integration": (),
