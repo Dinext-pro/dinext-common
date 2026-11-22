@@ -22,14 +22,21 @@ describe("Delegated Workflow decision audit", () => {
 
 	it("shows the deputy and effective approver on the task, timeline and history report", () => {
 		cy.login(fixture.deputy, fixture.password);
-		cy.openDesk();
-		cy.call("frappe.core.doctype.user.user.impersonate", {
-			user: fixture.approver,
-			reason: "Synthetic Workflow audit",
+		cy.request("/app").then(({ body }) => {
+			const csrfToken = body.match(/frappe\.csrf_token = "([^"]+)"/)?.[1];
+			expect(Boolean(csrfToken), "Desk CSRF token").to.eq(true);
+			return cy.request({
+				url: "/api/method/frappe.core.doctype.user.user.impersonate",
+				method: "POST",
+				body: { user: fixture.approver, reason: "Synthetic Workflow audit" },
+				headers: { "X-Frappe-CSRF-Token": csrfToken },
+				log: false,
+			});
 		});
 		cy.request("/api/method/frappe.auth.get_logged_user").its("body.message").should("eq", fixture.approver);
 
 		cy.openDesk("/app/workflow-task/" + encodeURIComponent(fixture.task));
+		cy.window().its("frappe.session.user").should("eq", fixture.approver);
 		cy.window().should((win) => {
 			expect(win.cur_frm?.doc?.name).to.eq(fixture.task);
 			expect(win.cur_frm.doc.approver).to.eq(fixture.approver);

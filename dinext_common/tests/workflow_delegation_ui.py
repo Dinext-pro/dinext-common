@@ -64,7 +64,8 @@ def cleanup(marker: str) -> None:
 	for user in (deputy, approver):
 		frappe.delete_doc_if_exists("User", user, force=True)
 	for doctype in ("DocPerm", "Custom DocPerm"):
-		frappe.db.delete(doctype, {"role": marker})
+		frappe.db.delete(doctype, {"role": ("in", [marker, marker + " Desk"])})
+	frappe.delete_doc_if_exists("Role", marker + " Desk", force=True)
 	if frappe.db.exists("DocType", "DocType Permission Condition"):
 		frappe.db.delete("DocType Permission Condition", {"role": marker})
 	frappe.delete_doc_if_exists("Role", marker, force=True)
@@ -89,7 +90,15 @@ def seed(marker: str) -> dict:
 		approver_label = f"Audit Approver {marker}"
 		_ensure_role(marker)
 		_grant_read_permissions(marker, marker)
-		_ensure_user(deputy, deputy_label, ["Projects User"])
+		deputy_role = marker + " Desk"
+		_ensure_role(deputy_role)
+		layer = "Custom DocPerm" if frappe.db.exists("Custom DocPerm", {"parent": "Kanban Board"}) else "DocPerm"
+		frappe.get_doc({
+			"doctype": layer, "parent": "Kanban Board", "parenttype": "DocType", "parentfield": "permissions",
+			"role": deputy_role, "read": 1, "permlevel": 0, "if_owner": 1,
+		}).db_insert()
+		frappe.clear_cache(doctype="Kanban Board")
+		_ensure_user(deputy, deputy_label, ["Projects User", deputy_role])
 		_ensure_user(approver, approver_label, ["System Manager", marker])
 		frappe.get_doc({
 			"doctype": "User Delegate",

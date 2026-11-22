@@ -44,7 +44,7 @@ def seed():
         'permlevel':0,'read':1,'write':1,'create':1,'delete':1})
     permission.db_insert()
     frappe.get_doc({'doctype':'Workflow','workflow_name':NAME,'document_type':'User Timesheet Position',
-        'workflow_state_field':'workflow_state','is_active':0,'send_email_alert':1,
+        'workflow_state_field':'status','is_active':0,'send_email_alert':1,
         'custom_group_workflow_action_emails':1,'custom_group_interval_unit':'Days',
         'custom_group_interval_value':1,'custom_group_send_times':'08:00, 17:00',
         'custom_group_email_template':'Dinext Workflow Digest',

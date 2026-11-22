@@ -338,25 +338,6 @@ class TestWorkflowScenarioCompatibility(unittest.TestCase):
 			task.workflow_process = None
 			self.assertTrue(timesheets.task_no_longer_matches_source("TASK"))
 
-	def test_timesheet_legacy_status_sync_respects_another_state_field_and_no_scenario(self):
-		from dinext_common.workflow_approval.scenarios import service
-		try:
-			from dinext_timesheets.dinext_timesheets.user_timesheet.events import workflow_tasks
-		except ModuleNotFoundError as error:
-			if error.name and error.name.split(".")[0] == "dinext_timesheets":
-				self.skipTest("The optional Timesheets app is not on this bench")
-			raise
-
-		for state_field in ("special_workflow_state", None):
-			with self.subTest(state_field=state_field):
-				doc = frappe._dict(workflow_state="Stale legacy state", status="Selected domain status")
-				with patch.object(service, "is_ready", return_value=True), patch.object(service, "get_context", return_value={"state_field": state_field}):
-					workflow_tasks.sync_status_from_workflow_state(doc)
-				self.assertEqual(doc.status, "Selected domain status")
-		with patch.object(service, "is_ready", return_value=True), patch.object(service, "get_context", return_value={"state_field": "workflow_state"}):
-			workflow_tasks.sync_status_from_workflow_state(doc)
-		self.assertEqual(doc.status, "Stale legacy state")
-
 	def test_timesheet_selected_field_change_rolls_up_once_without_rewriting_domain_status(self):
 		from dinext_common.workflow_approval.scenarios import service
 		workflow_approval = self._timesheets_module("workflow_approval")

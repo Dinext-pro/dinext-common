@@ -19,11 +19,11 @@ DEPENDENCIES = {
     "frappe": "3b73839e0c5080f638d007fe96e2da02225d6674",
     "erpnext": "548e80297397ba5d3ca4fb111a923fe784a37f4e",
     "hrms": "b8cdb4431d6322477c4ed7c04d164fe00972298a",
-    "doctype_permission": "882eefaea7a67f7128cc41cb4e1d67f2123e104c",
+    "doctype_permission": "cce3d7dff4803a5d85e29707e447ae21a27f4b42",
     "frappe_comment_xt": "9b2e6b44a291f1cbdcf0808ffa34f250dbd0dfc6",
     "dinext_projects": "534345d00bb10489c74f64048bfb74bba6593c60",
     "dinext_projects_pl": "6b6852fd63bb863344b5183216f5ce0521e66338",
-    "dinext_timesheets": "7ece17d45424961090f159270c9256b04ce5c1a3",
+    "dinext_timesheets": "0d0cc6737ed4f31d67f30da5abcf6f5f0ac640a5",
     "dinext_deputies": "ed5798add9aaa5c80f51f634316adb8a191d5126",
     "project_workload_assignment": "18a0845b25f3759a607760ca5aa6316e68f0f006",
     "dinext_project_tasks_gantt": "c9650bf6986c8e276c1899139b2e90d1253bfc45",
@@ -40,7 +40,7 @@ SPECS = {
     "dinext_timesheets": (
         "timesheet_team_lead.js", "worker_calendar_deadlines.js", "ut_form_workflow_position_failures.js",
         "ut_empty_approval.js", "workflow_scenario_timesheets.js",
-        "application_for_leave.js", "afl_workflow_comment_banner.js",
+        "application_for_leave.js", "afl_workflow_comment_banner.js", "workflow_transition_style.js",
     ),
     "project_workload_assignment": ("workload_absence_navigation.js",),
 }
@@ -51,6 +51,7 @@ SERVER_TESTS = {
         "test_workflow_approval_engine": (),
         "test_workflow_approval_integration": (),
         "test_workflow_approval_permissions": (),
+        "test_workflow_approval_source_batches": (),
         "test_workflow_approval_desk": (),
         "test_workflow_native_access": (),
         "test_my_approvals_audit": (),
@@ -131,6 +132,7 @@ def configure_runner(support, config, common_sha):
         "enable_parallel_workflow_approval": 1,
         "workflow_email_test_site": 1,
         "workflow_scenarios_test_site": 1,
+        "workflow_style_test_site": 1,
         "host_name": BASE_URL,
     }
     code = code.split(tests_anchor, 1)[0]
