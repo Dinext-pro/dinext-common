@@ -1,0 +1,50 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Email Template",
+  "enabled": 0,
+  "modified": "2026-11-09 03:52:30.181191",
+  "name": "Dinext Workflow Deadline Digest",
+  "reference_doctype": null,
+  "response": null,
+  "response_html": "{% include \"templates/emails/dinext_workflow.html\" %}",
+  "subject": "{{ header_title }}: {{ summary }}",
+  "use_html": 1
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Email Template",
+  "enabled": 0,
+  "modified": "2026-11-09 03:52:30.135872",
+  "name": "Dinext Workflow Correction",
+  "reference_doctype": null,
+  "response": null,
+  "response_html": "{% include \"templates/emails/dinext_workflow.html\" %}",
+  "subject": "{{ header_title }}: {{ subject_document_title or document_title|truncate(100) }}",
+  "use_html": 1
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Email Template",
+  "enabled": 0,
+  "modified": "2026-11-09 03:52:30.106537",
+  "name": "Dinext Workflow Action",
+  "reference_doctype": null,
+  "response": null,
+  "response_html": "{% include \"templates/emails/dinext_workflow.html\" %}",
+  "subject": "{{ header_title }}: {{ subject_document_title or document_title|truncate(100) }}",
+  "use_html": 1
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Email Template",
+  "enabled": 0,
+  "modified": "2026-11-09 03:52:30.124816",
+  "name": "Dinext Workflow Digest",
+  "reference_doctype": null,
+  "response": null,
+  "response_html": "{% include \"templates/emails/dinext_workflow.html\" %}",
+  "subject": "{{ header_title }}: {{ summary }}",
+  "use_html": 1
+ }
+]

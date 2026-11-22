@@ -54,7 +54,7 @@ jobs:
   acceptance:
     name: Acceptance
     needs: acceptance-scope
-    if: >-
-      ${{ github.event_name == 'pull_request' && !cancelled() &&
-      (needs.acceptance-scope.result != 'success' || needs.acceptance-scope.outputs.run != 'false') }}
+    if: github.event_name == 'pull_request' && !cancelled()
     uses: ./.github/workflows/dinext-acceptance.yml
+    with:
+      run_sidebar: ${{ needs.acceptance-scope.result != 'success' || needs.acceptance-scope.outputs.run != 'false' }}

@@ -4,5 +4,9 @@
   "mode": "frappe-app",
   "gitflow": true,
   "frontend_tests": false,
-  "skip_test_records": false
+  "skip_test_records": false,
+  "post_install": [
+    "dinext_project_tasks_gantt",
+    "dinext_deputies"
+  ]
 }

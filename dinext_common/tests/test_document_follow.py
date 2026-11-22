@@ -36,11 +36,14 @@ class FollowFixture:
 			"secret-table": frappe._dict(fieldtype="Table", options="Task Item", permlevel=1),
 		}
 		self.meta.get_field.side_effect = fields.get
+		self.meta.get_permitted_fieldnames.return_value = ["subject"]
+		self.meta.get_permlevel_access.side_effect = lambda **kwargs: self.permlevels
 		self.child_meta = MagicMock()
 		self.child_meta.get_field.side_effect = {
 			"description": frappe._dict(fieldtype="Data", permlevel=0),
 			"child-secret": frappe._dict(fieldtype="Data", permlevel=1),
 		}.get
+		self.child_meta.get_permitted_fieldnames.return_value = ["description"]
 		self.db = MagicMock()
 		self.db.get_value.side_effect = self.get_value
 		self.db.exists.side_effect = lambda dt, filters: (filters["parent"], filters["user"]) in self.mentions
@@ -50,7 +53,12 @@ class FollowFixture:
 		self.start_patch("frappe.get_doc", side_effect=self.get_doc)
 		self.query = self.start_patch("frappe.get_all", side_effect=self.get_all)
 		self.permission = self.start_patch("frappe.has_permission", side_effect=self.has_permission)
-		self.start_patch("frappe.get_meta", return_value=self.child_meta)
+		self.start_patch(
+			"frappe.core.doctype.comment.comment.has_controller_permissions", return_value=True
+		)
+		self.start_patch(
+			"frappe.get_meta", side_effect=lambda doctype: self.meta if doctype == "Task" else self.child_meta
+		)
 		self.start_patch("frappe.utils.now_datetime", return_value=NOW)
 		self.start_patch("frappe.utils.nowdate", return_value=NOW.date().isoformat())
 		self.start_patch("dinext_common.document_follow._", side_effect=lambda value: value)
@@ -106,6 +114,7 @@ class FollowFixture:
 				if not {
 					"=": lambda: actual == value,
 					"!=": lambda: actual != value,
+					"in": lambda: actual in value,
 					">": lambda: actual > value,
 					"<": lambda: actual < value,
 				}[operator]():
@@ -113,6 +122,8 @@ class FollowFixture:
 					break
 			if allowed:
 				result.append(comment)
+		if kwargs.get("pluck") == "comment_type":
+			return list(dict.fromkeys(row.comment_type for row in result))
 		return result
 
 	def comment(self, name, visibility="Visible to everyone", **kwargs):

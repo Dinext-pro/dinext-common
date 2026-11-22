@@ -120,7 +120,7 @@
 "Show Attention","Показывать требующие внимания",""
 "Attention Filter","Фильтр внимания",""
 "List Filter","Фильтр выборки",""
-"Standard Frappe filter JSON array, for example [[\"status\",\"=\",\"Open\"]]","Стандартный JSON-массив фильтров Frappe, например [[\"status\",\"=\",\"Open\"]]",""
+"Standard Frappe filter JSON array, for example [[""status"",""="",""Open""]]","Стандартный JSON-массив фильтров Frappe, например [[""status"",""="",""Open""]]",""
 "My Items","Мои элементы",""
 "Quick Create","Быстрое создание",""
 "Assigned to Me","Назначенные мне",""
@@ -225,3 +225,426 @@
 "Plan","План",""
 "Tasks","Задачи",""
 "Public","Общее пространство","Workspace Category"
+"Apply","Выполнить",""
+"Apply {0}","Выполнить: {0}",""
+"Applying workflow action…","Выполняется действие согласования…",""
+"Comment","Комментарий",""
+"Comment required for {0}","Для действия «{0}» требуется комментарий",""
+"Completed At","Выполнено",""
+"Created","Создано",""
+"Document","Документ",""
+"Failed","Ошибки",""
+"Loading…","Загрузка…",""
+"Monitoring","Мониторинг",""
+"My approval history","Моя история согласований",""
+"My approval queue","Моя очередь согласований",""
+"My Approval History","История согласований",""
+"Approval Monitoring","Мониторинг согласований",""
+"Approval Load","Нагрузка согласующих",""
+"Approval Duration","Сроки согласований",""
+"Open tasks by approver","Открытые задачи по согласующим",""
+"Open task age by approver","Возраст открытых задач по согласующим",""
+"Open rounds by document type","Открытые раунды по видам документов",""
+"Approval duration by document type","Срок согласования по видам документов",""
+"Open count","Число открытых",""
+"Open age","Возраст открытых",""
+"Open rounds","Открытые раунды",""
+"Completed duration","Срок завершения",""
+"Open tasks","Открытые задачи",""
+"Approver","Согласующий",""
+"Group By","Группировка",""
+"Group","Группа",""
+"Manual Decisions","Ручные решения",""
+"Automatic Decisions","Автоматические решения",""
+"Average age (hours)","Средний возраст (часы)",""
+"Maximum age (hours)","Максимальный возраст (часы)",""
+"Average duration (hours)","Средний срок (часы)",""
+"Maximum duration (hours)","Максимальный срок (часы)",""
+"Oldest Document","Самый старый документ",""
+"Maximum","Максимум",""
+"Attention","Сбои",""
+"Round Status","Статус раунда",""
+"My approvals requiring attention","Согласования, требующие внимания",""
+"My completed approvals","Мои выполненные согласования",""
+"My open approvals","Мои активные согласования",""
+"No pending approvals","Нет ожидающих согласований",""
+"Pending","Ожидают",""
+"Pending approvers","Ожидаются согласования от",""
+"Approval round needs a rebuild","Раунд согласования требует пересборки",""
+"Votes that will be carried","Голоса, которые будут перенесены",""
+"Votes that will be dropped","Голоса, которые не будут перенесены",""
+"Approval round reset by {0}: {1}. Carried: {2}. Dropped: {3}.","Раунд согласования пересобран пользователем {0}: {1}. Перенесены: {2}. Сняты: {3}.",""
+"{0} voted {1}","{0} проголосовал {1}",""
+"Could not load approval status","Не удалось загрузить статус согласования",""
+"Reset round","Пересобрать раунд",""
+"Pending approvals by document type","Ожидающие согласования по типам документов",""
+"Result","Результат",""
+"State","Статус",""
+"Succeeded","Успешно",""
+"Task","Задача согласования",""
+"Workflow result","Результат согласования",""
+"Workflow action recorded","Решение по согласованию сохранено",""
+"Action","Действие",""
+"Apply selected","Выполнить для выбранных",""
+"Apply selected approvals","Выполнить выбранные согласования",""
+"Available Actions","Доступные действия",""
+"Created Today","Создано сегодня",""
+"Open source document","Открыть исходный документ",""
+"Select at least one approval","Выберите хотя бы одно согласование",""
+"Selected approvals have no common action","У выбранных согласований нет общего действия",""
+"Transition UUID","UUID перехода",""
+"Workflow operation accepted","Операция согласования принята",""
+"Source document deleted","Исходный документ удалён",""
+My Approvals,Мои согласования,
+Approval Control,Контроль,
+Awaiting My Decision,Ожидают моего решения,
+New Approvals Today,Новые сегодня,
+My Decisions in the Last 30 Days,Мои решения за 30 дней,
+Automatic Decisions in the Last 30 Days,Автоматически выполнено за 30 дней,
+Open Approval Rounds,Открытые раунды,
+Approval Issues,Сбои,
+Longest Approval Wait,Самое долгое ожидание,
+Decisions in the Last 30 Days,Решений за 30 дней,
+My Approval Queue,Моя очередь,
+"Personal queue, history and approval monitoring.","Персональная очередь, история и контроль согласований.",
+Age (days),Возраст (дней),
+Age (hours),Возраст (часов),
+Active Tasks,Активные задачи,
+Completion Source,Способ завершения,
+Pending Approvers,Ожидаемые согласующие,
+Reused From,Повторно использовано из,
+Succeeded: {0}; failed: {1},Успешно: {0}. Ошибок: {1},
+From Date,Дата начала,
+To Date,Дата окончания,
+Workflow,Процесс согласования,
+Progress,Прогресс,
+Created On,Создано за дату,
+Completed Since,Завершено с,
+Minimum Age (days),Минимальный возраст (дней),
+"Rebuild all","Пересобрать все",""
+"Rebuilding…","Пересборка…",""
+"Rebuild approval rounds","Пересборка согласования",""
+"Approval round","Раунд согласования",""
+"Some approvals could not be rebuilt","Не удалось пересобрать часть согласований",""
+"Approval rounds need a rebuild: {0}","Требуется пересборка раундов согласования: {0}",""
+"Select between 1 and 500 approval rounds to rebuild","Выберите от 1 до 500 раундов согласования для пересборки",""
+"Approval needs rebuilding","Нужна пересборка согласования",""
+Draft,Черновик
+Editing,Редактирование
+Pending Approval,На согласовании
+Approved,Согласовано
+Rejected,Отклонено
+Submit for Approval,Передать на согласование
+Approve,Согласовать
+Reject,Отклонить
+Stop Workflow,Остановить согласование
+Edit,Редактировать
+Approval Content Snapshot,Снимок данных для согласования
+Fields Excluded from Snapshot,"Поля, исключаемые из снимка"
+Field Path,Поле
+Row {0}: select a field to exclude from the snapshot.,"Строка {0}: выберите поле, исключаемое из снимка."
+Row {0}: field path {1} is not available for {2}.,Строка {0}: поле {1} недоступно для типа документа {2}.
+Row {0}: field path {1} is duplicated.,Строка {0}: поле {1} указано повторно.
+"Loading workflow actions…","Загружаются действия согласования…",""
+"Could not load workflow actions","Не удалось загрузить действия согласования",""
+"No common workflow actions","Для выбранных документов нет общих действий согласования",""
+"Processed {0} of {1}","Обработано {0} из {1}",""
+"Applying: {0}","Обработка: {0}","Workflow"
+"Action expected from: {0}","Ожидается действие от: {0}",""
+"The workflow result could not be confirmed","Не удалось подтвердить результат согласования",""
+"The background workflow operation failed","Фоновая операция согласования завершилась с ошибкой",""
+"Could not reload the workflow document","Не удалось обновить документ согласования",""
+Digest Send Times,Время отправки сводок,
+"Recipient-local times, for example: 08:00, 17:00","Время получателя, например: 08:00, 17:00",
+Email Settings Source,Источник настроек рассылки,
+Override Workflow Email Settings,Переопределить настройки рассылки Workflow,
+From Workflow,Из Workflow,
+State settings,Настройки состояния,
+Use Workflow Settings,Использовать настройки Workflow,
+Digest times must be comma-separated HH:MM values,Укажите время сводок в формате ЧЧ:ММ через запятую,
+Approval required,Требуется согласование,
+Correction required,Требуется исправление,
+Timesheet correction required,Требуется исправление таймшита,
+Timesheets awaiting approval,Таймшиты на согласовании,
+position(s),позиций,
+Notification Suppressed,Уведомление пропущено,
+Email Profile Version,Версия настроек рассылки,
+Workflow email settings migration,Перенос настроек рассылки Workflow,
+Automatic workflow transition,Автоматический переход процесса,
+Open document,Открыть документ,
+Position,Позиция,
+Workflow state can only be changed through an active Workflow Task,Состояние процесса можно изменить только через действующую задачу согласования
+Workflow approval is stalled for {0},Согласование {0} остановлено
+Specify the transition UUID. More than one workflow action matches.,Укажите UUID перехода: найдено несколько подходящих действий процесса.
+Workflow action is not available for this task,Это действие процесса недоступно для задачи
+Workflow Task does not exist,Задача согласования не существует
+Only the snapshotted approver can complete this task,"Выполнить задачу может только согласующий, указанный в снимке"
+The snapshotted approver is disabled,"Согласующий, указанный в снимке, отключён"
+Workflow Task is no longer active,Задача согласования больше не действует
+The source document has no active Workflow,У исходного документа нет действующего процесса
+The source workflow state has changed,Состояние процесса исходного документа изменилось
+Workflow transition configuration changed,Настройки перехода процесса изменились
+Reached transition has no completed approver,"У перехода, достигшего порога, нет проголосовавшего согласующего"
+Workflow core did not create the expected Submission Queue,Механизм процесса не создал ожидаемую очередь проведения
+Domain transition has no eligible actor,Нет пользователя с правом выполнить переход
+The requested domain transition is not permitted,Запрошенный переход запрещён
+Workflow approval round manifest is invalid,Манифест раунда согласования некорректен
+Workflow transition has no eligible approvers,Нет согласующих с правом выполнить переход
+Source workflow state changed,Состояние процесса исходного документа изменилось
+{0} voted {1}{2},{0} выбрал(а) {1}{2}
+Workflow approval is stalled because no action can reach its threshold.,Согласование остановлено: ни одно действие не может набрать нужное число голосов.
+Workflow core validation rejected the winning transition,"Проверка процесса отклонила переход, набравший нужное число голосов"
+Workflow finalization failed and requires a manager rebuild.,Не удалось завершить согласование. Требуется пересоздание раунда администратором.
+Source content changed,Содержимое исходного документа изменилось
+{0} automatically reused action {1},{0}: действие {1} зачтено автоматически
+Another transition reached its threshold,Другой переход набрал нужное число голосов
+No unique configured domain transition from {0} to {1},Не найден единственный настроенный переход из {0} в {1}
+Workflow Action is no longer open,Действие процесса уже закрыто
+This approval link belongs to another user,Эта ссылка согласования предназначена другому пользователю
+This approval command is expired or was already used.,Срок действия команды согласования истёк или она уже использована.
+The referenced document is no longer available.,Указанный документ больше недоступен.
+Apply workflow action {0}?,Выполнить действие процесса {0}?
+Document was modified after the email was sent.,Документ изменён после отправки письма.
+Pending workflow approvals,Ожидающие согласования
+Workflow digest is {0} bytes; configured maximum is {1},Размер сводки согласований — {0} байт; допустимый максимум — {1}
+Workflow approval for {0},Согласование {0}
+Finalizing round no longer has a reached transition,В завершаемом раунде больше нет перехода с нужным числом голосов
+Source document was deleted during finalization,Исходный документ удалён во время завершения согласования
+none,нет
+This workflow operation requires POST,Для этой операции процесса требуется POST-запрос
+System Manager role is required,Требуется роль системного администратора
+No unique active Workflow Task is available for this action,Для этого действия не найдена единственная действующая задача согласования
+A persisted source document is required,Сначала сохраните исходный документ
+Bulk approval supports at most 500 documents,За один раз можно согласовать не более 500 документов
+Bulk approval payload is too large,Объём данных массового согласования слишком велик
+Bulk approval supports at most 500 tasks,За один раз можно обработать не более 500 задач согласования
+Bulk approval only supports up to 500 documents.,За один раз можно согласовать не более 500 документов.
+Expected a source type and a list of document names,Укажите тип исходных документов и список их имён
+Approval round does not exist,Раунд согласования не существует
+Approval round cannot be reset,Этот раунд согласования нельзя пересоздать
+{0} Reset by {1}: {2},{0} Пересоздал(а) {1}: {2}
+Finalization is not failed,Завершение согласования не находится в состоянии ошибки
+"Card filters require doc, state, and route","Для фильтров карточки требуются doc, state и route"
+Expected a JSON list,Ожидается список в формате JSON
+Each bulk item must be an object,Каждый элемент массовой операции должен быть объектом
+Task and transition are required,Укажите задачу и переход
+No active Workflow Task,Нет действующей задачи согласования
+Approval round reset by {0}: {1},Раунд согласования пересоздал(а) {0}: {1}
+Approval finalization retried by {0},Повторное завершение согласования запустил(а) {0}
+The workflow item could not be processed,Не удалось обработать элемент процесса
+Stalled,Остановлен
+Conflicted,Конфликт
+Pending Approver,Ожидаемый согласующий
+Minimum Age (hours),Минимальное время ожидания (часы)
+Signed Link,По подписанной ссылке
+Bulk,Массовое действие
+Automatic Unchanged,Автоматически: без изменений
+Finalizing,Завершается
+Transitioned,Переход выполнен
+Finalization Status,Статус завершения
+Not Required,Не требуется
+Approval Round ID,Идентификатор раунда согласования
+Source Snapshot,Снимок исходного документа
+Source Created At,Дата создания исходного документа
+Source Title,Заголовок исходного документа
+Source Owner,Автор исходного документа
+Source Deleted At,Дата удаления исходного документа
+Transition Semantic Hash,Хеш настроек перехода
+Approval Policy,Правило согласования
+Any,Любой
+Required Approvals,Требуемое число согласований
+Carried,Перенесено
+Reused From Workflow Task,Исходная задача повторно зачтённого решения
+Cancelled At,Дата отмены
+Cancellation Reason,Причина отмены
+Content Fingerprint,Отпечаток содержимого
+Entry Fingerprint,Отпечаток при входе
+Entry Fingerprint Version,Версия отпечатка при входе
+Content Fingerprint Version,Версия отпечатка содержимого
+Technical,Технические данные
+Round Manifest,Манифест раунда
+Failure Metadata,Сведения об ошибке
+Correlation ID,Идентификатор связи
+All Users,Все пользователи
+Transition Row,Строка перехода
+Allowed Role,Разрешённая роль
+Comment Is Required,Комментарий обязателен
+Auto Complete Unchanged,Автозачёт без изменений
+Eligible Approvers,Допущенные согласующие
+Workflow Task can only be created by the approval engine,Задачу согласования может создать только механизм согласования
+Workflow Task is an immutable approval audit record,Задача согласования — неизменяемая запись журнала согласования
+Workflow Task can only be deleted by configured retention,Задачу согласования можно удалить только по настроенным правилам хранения
+A comment is required for this workflow action,Для этого действия процесса требуется комментарий
+Workflow comments cannot exceed 4000 characters,Комментарий процесса не может превышать 4000 символов
+Manual,Вручную,Approval completion source
+Bulk,Массовое действие,Approval completion source
+Signed Link,По подписанной ссылке,Approval completion source
+Automatic Unchanged,Автоматически: без изменений,Approval completion source
+Carried,Перенесено,Approval completion source
+Update Dinext Platform to support final permission query conditions before reading Workflow Tasks.,Для просмотра задач согласования обновите Dinext Platform до версии с поддержкой итоговых условий доступа.
+Workflow comments cannot exceed {0} characters,Комментарий процесса не может превышать {0} символов
+Sent by,Отправлено
+Notification settings,Настройки уведомлений
+Workflow mail recipient authorization could not be verified.,Не удалось подтвердить права получателя письма согласования.
+SMTP connection lost. Delivery is uncertain. A retry may deliver a duplicate with the same Message-ID.,Соединение SMTP прервалось. Доставка могла состояться. Повторная отправка может доставить копию с тем же Message-ID.
+Former user,Бывший пользователь
+Approval deadline exceeded,Нарушен срок согласования
+Please review the comment and correct the document.,Прочитайте комментарий и исправьте документ.
+A document is awaiting your decision.,Документ ожидает вашего решения.
+The following documents are still awaiting a decision.,Эти документы всё ещё ожидают решения.
+Review the documents below. Each action applies to its own document.,Рассмотрите документы ниже. Каждое действие относится к своему документу.
+Overdue hours,Часы просрочки
+Positions,Позиции
+Timesheets,Таймшиты
+Documents,Документы
+Timesheet,Таймшит
+Deadline,Срок
+Approval Deadline,Срок согласования
+Enable Approval Deadline,Контролировать срок согласования
+Deadline Interval,Величина срока
+Deadline Interval Type,Единица срока
+Deadline Recipient Type,Способ определения получателя
+Deadline Recipient,Получатель уведомления
+Deadline Recipient Role,Роль получателя уведомления
+Deadline Notification Mode,Режим уведомления о просрочке
+Deadline Email Template,Шаблон уведомления о просрочке
+Deadline Digest Interval Type,Единица интервала сводки просрочек
+Deadline Digest Interval,Интервал сводки просрочек
+Deadline Digest Send Times,Время отправки сводки просрочек
+Deadline Schedule Anchor,Начало отсчёта расписания просрочек
+Immediate,Отдельное письмо
+Digest,Сводка
+Working Days,Рабочие дни
+Worker Group Manager,Руководитель группы сотрудника
+Approval deadlines require a mandatory target state,Срок согласования можно задать только для обязательного целевого состояния
+Deadline recipient is required,Укажите получателя уведомления о просрочке
+Deadline recipient role is required,Укажите роль получателя уведомления о просрочке
+Choose an immediate notification or digest,Выберите отдельное письмо или сводку
+Deadline interval must be positive,Величина срока должна быть больше нуля
+Deadline interval must be a positive whole number,Величина срока должна быть целым числом больше нуля
+Original assignment time is unknown,Исходное время назначения неизвестно
+Deadline policy snapshot is missing,Не сохранены исходные настройки срока
+Deadline extension must return a timezone-aware datetime,Расчёт срока должен вернуть дату и время с часовым поясом
+Approval Deadline Discipline,Дисциплина согласования
+Overdue Approval Assignments,Просроченные согласования
+On-time Approvals,Согласования в срок
+Approvals Completed Late,Согласования с опозданием
+Approval Deadline Errors,Ошибки расчёта сроков
+Approval Deadline Discipline Trend,Динамика дисциплины согласования
+On Time,В срок
+Completed Late,С опозданием
+Unknown,Нет достоверных данных
+Assignments,Назначения
+"On-time approvals, %","Согласования в срок, %"
+Assigned At,Назначено
+Decision At,Решение принято
+"Delay, hours","Опоздание, ч"
+Deadline Calculation Error,Ошибка расчёта срока
+No observations,Нет наблюдений
+Not specified,Не указано
+Detail,Подробно
+Timesheet Deadline Discipline,Дисциплина таймшитов
+On-time Timesheet Submissions,"Таймшиты, отправленные в срок"
+On-time Timesheet Approvals,"Таймшиты, согласованные в срок"
+Overdue Timesheet Approvals,Таймшиты с просроченным согласованием
+Overdue Timesheet Positions,Просроченные позиции таймшитов
+Timesheet Hours Awaiting Approval,Часы таймшитов на согласовании
+Submission Deadline,Срок отправки
+First Complete Submission,Первая полная отправка
+Submission Discipline,Дисциплина отправки
+Resubmissions,Повторные отправки
+Overdue Positions,Просроченные позиции
+Worker calendar does not cover the deadline start,Календарь сотрудника не охватывает дату назначения
+Worker calendar does not cover the deadline,Календарь сотрудника не охватывает срок согласования
+Worker is missing for user {0},Для пользователя {0} не найдена карточка сотрудника
+Worker holiday calendar is missing,В карточке сотрудника не указан календарь
+Worker calendar does not cover the notification schedule,Календарь сотрудника не охватывает расписание уведомлений
+Workflow Approval Email,Письма процесса согласования
+Deadline Assignment,Назначение с контролем срока
+Original Assignment,Исходное назначение
+Deadline Start,Начало отсчёта срока
+Deadline Transition,Переход с контролем срока
+Deadline Timezone,Часовой пояс срока
+Deadline Policy Snapshot,Исходные настройки срока
+Responsible approver,Согласующий
+Earliest missed deadline,Самый ранний нарушенный срок
+Workflow Scenario,Сценарий согласования,
+Selection Order,Порядок выбора,
+Activation Condition,Условие запуска,
+"The matching Workflow with the lowest number is selected. Numbers must be unique within the document type, including inactive Workflows.","Выбирается подходящий Workflow с наименьшим номером. Номер должен быть уникальным для DocType, включая неактивные схемы.",
+Safe Python expression using doc. Leave blank to always match. A running process keeps its Workflow until completion.,Безопасное Python-выражение с переменной doc. Пустое условие выполняется всегда. Запущенный процесс сохраняет свою схему до завершения.,
+Workflow Process,Процесс согласования,
+Workflow Document Context,Контекст согласования документа,
+Process Status,Состояние процесса,
+Prepared,Подготовлен,
+Running,Выполняется,
+Completed,Завершён,
+Archived,В архиве,
+Initial State,Начальное состояние,
+Current State,Текущее состояние,
+Started At,Начало,
+Started By,Запустил,
+Workflow Definition Revision,Версия настройки Workflow,
+Workflow Selection Error,Ошибка выбора Workflow,
+Invalid Workflow,Некорректная схема Workflow,
+Workflow setup failed,Ошибка настройки Workflow,
+Workflow process records can only be changed by the Workflow engine,Записи процессов согласования изменяет только движок Workflow,
+Another Workflow scenario was selected before the first action,До первого действия выбрана другая схема согласования,
+The Workflow Task belongs to another document instance,Задача Workflow относится к другому экземпляру документа,
+The Workflow process has changed. Refresh the document before acting.,Процесс согласования изменился. Обновите документ перед выполнением действия.,
+The Workflow process is no longer active,Процесс согласования уже не активен,
+Workflow process identity changed during completion,При завершении изменился идентификатор процесса согласования,
+Workflow {0} has no initial state,В Workflow {0} не задано начальное состояние,
+Workflow {0} cannot start in state {1} with document status {2},Workflow {0} нельзя запустить в состоянии {1} при docstatus {2},
+Several legacy Workflow processes exist for {0} {1},Для документа {0} {1} обнаружено несколько прежних процессов Workflow,
+Cannot evaluate the activation condition for Workflow {0}: {1},Не удалось вычислить условие запуска Workflow {0}: {1},
+Workflow selection order must be a positive integer,Порядок выбора Workflow должен быть положительным целым числом,
+Workflow selection order {0} is already used by {1},Порядок выбора Workflow {0} уже используется схемой {1},
+Invalid Workflow activation condition: {0},Некорректное условие запуска Workflow: {0},
+No matching Workflow for this document,Для этого документа не найден подходящий процесс согласования,
+"Each Workflow target must specify document, Workflow, process, task and transition","Для каждой цели необходимо указать документ, Workflow, процесс, задачу и переход",
+Workflow targets do not match the selected documents,Цели Workflow не соответствуют выбранным документам,
+The Workflow target no longer matches the selected document,Цель Workflow уже не соответствует выбранному документу,
+Automatic Workflow processing paused at the cascade limit. A new user action is required.,Автоматическая обработка Workflow приостановлена после достижения лимита переходов. Требуется новое действие пользователя.,
+The document creation timestamp cannot be changed during Workflow processing,Во время обработки Workflow нельзя изменять время создания документа,
+Finish the active Workflow processes before merging documents,Перед объединением документов завершите активные процессы Workflow,
+Automatic Workflow processing paused. A new user action is required.,Автоматическая обработка Workflow приостановлена. Требуется новое действие пользователя.,
+Unknown deadline interval: {0},Неизвестный интервал дедлайна: {0}
+Unknown deadline recipient type: {0},Неизвестный тип получателя уведомления о сроке: {0}
+Unknown deadline sending interval: {0},Неизвестный интервал отправки уведомлений о сроке: {0}
+Duplicate workflow deadline extension: {0},Повторное расширение дедлайна процесса: {0}
+Notification Delivery Snapshot,Снимок доставки уведомления
+Workflow notification history is incomplete,История доставки уведомлений процесса неполная
+Delivery evidence is missing for {0} legacy tasks; historical immediate mail was skipped.,Для прежних заданий ({0}) нет сведений о доставке; исторические отдельные письма не отправлялись.
+Digest send time is required for daily delivery,Укажите время отправки ежедневной сводки
+Workflow Request Receipt,Результат запроса Workflow,
+This Workflow request was already used with different parameters,Этот запрос Workflow уже выполнен с другими параметрами,
+The Workflow request has expired. Refresh the document before acting.,Срок хранения результата запроса Workflow истёк. Обновите документ перед действием.,
+"Could not open an approval round for {0} {1} in Workflow {2} at {3}. No eligible approvers for {4}.","Не удалось открыть раунд согласования для {0} {1} в процессе {2} на этапе «{3}». Нет согласующих для переходов {4}.",""
+"{0} → {1} (role {2})","{0} → {1} (роль {2})","Workflow"
+"Workflow action was not applied","Действие согласования не выполнено",""
+"Workflow action queued","Действие поставлено в очередь",""
+"Workflow status has changed","Состояние согласования изменилось",""
+"Workflow action could not finish","Действие согласования не завершилось",""
+"Workflow action is still queued. Reload to check its status.","Действие ещё в очереди. Обновите страницу, чтобы проверить состояние.",""
+"Some workflow actions are still queued. Open the document to check its status.","Некоторые действия ещё в очереди. Откройте документ, чтобы проверить его состояние.",""
+"This approval action is no longer available.","Это действие согласования больше недоступно.",""
+"Workflow confirmation unavailable","Подтверждение согласования временно недоступно",""
+"Please try this approval action again in a moment.","Повторите действие через некоторое время.",""
+"Invalid document revision","Не удалось определить версию документа",""
+"The document has changed. Refresh it before confirming your decision.","Документ изменился. Обновите его перед подтверждением решения.",""
+"The approval rules have changed. Refresh the document before confirming.","Правила согласования изменились. Обновите документ перед подтверждением.",""
+"The workflow document is no longer available","Документ согласования больше недоступен",""
+"The workflow is busy. Refresh the document and try the action again.","Согласование занято другим запросом. Обновите документ и повторите действие.",""
+"The vote will be recorded when background submission completes.","Голос будет записан после завершения фонового проведения.",""
+The background submission no longer has an active job.,Фоновое проведение больше не связано с активным заданием.
+Opening workflow action,Открывается действие согласования
+Enable JavaScript to open the approval preview.,Включите JavaScript для предпросмотра решения.
+Queue page,Страница очереди
+Enter 0 to show all results,Введите 0 для показа всех результатов
+Pending on this page,На согласовании на этой странице
+Performed By,Выполнил
+Acted As,От чьего имени
+{0} voted {1} on behalf of {2}{3},{0} выполнил действие {1} от имени {2}{3}
+{0} was recorded for {1} via an email link{2},Действие {0} записано за {1} по ссылке из письма{2}
+This Workflow request belongs to another performer,Этот запрос Workflow выполнил другой пользователь

@@ -1,0 +1,183 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-11-11 01:54:54.668411",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "reference_doctype",
+  "reference_name",
+  "source_created_at",
+  "workflow",
+  "source_key",
+  "active_source_key",
+  "status",
+  "initial_state",
+  "current_state",
+  "definition_revision",
+  "started_at",
+  "completed_at",
+  "started_by",
+  "cascade_id",
+  "automatic_transition_count",
+  "automatic_visited_states",
+  "legacy_task_names"
+ ],
+ "fields": [
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Reference DocType",
+   "options": "DocType",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "in_list_view": 1,
+   "label": "Reference",
+   "options": "reference_doctype",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "source_created_at",
+   "fieldtype": "Datetime",
+   "label": "Source Created At",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "workflow",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Workflow",
+   "options": "Workflow",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "source_key",
+   "fieldtype": "Data",
+   "label": "Source Instance Key",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "active_source_key",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Active Source Instance Key",
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "default": "Prepared",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Process Status",
+   "options": "Prepared\nRunning\nCompleted\nCancelled\nArchived",
+   "read_only": 1,
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "initial_state",
+   "fieldtype": "Data",
+   "label": "Initial State",
+   "read_only": 1
+  },
+  {
+   "fieldname": "current_state",
+   "fieldtype": "Data",
+   "label": "Current State",
+   "read_only": 1
+  },
+  {
+   "fieldname": "definition_revision",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Workflow Definition Revision",
+   "read_only": 1
+  },
+  {
+   "fieldname": "started_at",
+   "fieldtype": "Datetime",
+   "label": "Started At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "completed_at",
+   "fieldtype": "Datetime",
+   "label": "Completed At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "started_by",
+   "fieldtype": "Link",
+   "label": "Started By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cascade_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Automatic Cascade ID",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "automatic_transition_count",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Automatic Transition Count",
+   "non_negative": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "automatic_visited_states",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Automatic Visited States",
+   "read_only": 1
+  },
+  {
+   "fieldname": "legacy_task_names",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Migrated Workflow Tasks",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-11-11 01:59:19.293589",
+ "modified_by": "Administrator",
+ "module": "Dinext Common",
+ "name": "Workflow Process",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "read": 1,
+   "report": 1,
+   "role": "All",
+   "select": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

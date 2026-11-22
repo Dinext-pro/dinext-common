@@ -1,0 +1,1977 @@
+"""Whitelisted task-based API and compatibility adapters."""
+
+from __future__ import annotations
+
+import json
+from collections import defaultdict
+from contextlib import contextmanager
+from typing import Any, NotRequired, TypedDict
+from uuid import uuid4
+
+import frappe
+from frappe import _
+from frappe.utils import add_days, get_datetime, getdate, now_datetime
+
+from dinext_common.workflow_approval import acting, engine, request_receipts
+from dinext_common.workflow_approval.comments import WorkflowCommentResponse, get_latest_round_comments
+from dinext_common.workflow_approval.validation import discard_collected_comment_messages
+from dinext_common.workflow_approval.pending import (
+	PendingApproverTask,
+	get_required_state_pending_tasks,
+	required_target_task_names,
+)
+from dinext_common.workflow_approval.permissions import (
+	get_monitorable_workflows,
+	get_task_read_checker,
+	has_workflow_task_permission,
+	prepare_source_permissions,
+)
+
+QUEUE_FIELDS = [
+	"name",
+	"creation",
+	"reference_doctype",
+	"reference_name",
+	"source_title",
+	"source_created_at",
+	"source_owner",
+	"workflow",
+	"workflow_process",
+	"workflow_state",
+	"approval_round_id",
+	"status",
+	"round_status",
+	"approver",
+	"user",
+	"completed_at",
+	"cancelled_at",
+	"cancellation_reason",
+	"source_deleted_at",
+	"action",
+	"next_state",
+	"completion_source",
+	"reused_from_workflow_task",
+	"policy",
+	"threshold",
+	"round_manifest",
+	"vote_comment",
+]
+
+HISTORY_FIELDS = [*QUEUE_FIELDS, "performed_by", "performed_as"]
+
+TASK_ACCESS_FIELDS = (
+	"name",
+	"workflow_process",
+	"source_created_at",
+	"round_status",
+	"workflow",
+	"approver",
+	"user",
+	"reference_doctype",
+	"reference_name",
+	"doc",
+	"wt_docname",
+	"source_deleted_at",
+)
+MONITORING_STATUSES = ("Open", "Stalled", "Conflicted")
+MONITORED_TASK_FIELDS = (
+	"approval_round_id",
+	"creation",
+	"source_title",
+	"status",
+	"completed_at",
+	"completion_source",
+)
+PERSONAL_TASK_ORDER = "modified desc, name asc"
+BULK_VOTE_METHOD = "dinext_common.workflow_approval.api.bulk_vote"
+BULK_JOB_METHOD = "dinext_common.workflow_approval.api.run_background_bulk"
+BULK_PROGRESS_EVENT = "dinext_workflow_progress"
+MAX_BULK_DOCUMENTS = 500
+
+
+def _require_post() -> None:
+	request = getattr(frappe.local, "request", None)
+	if request is not None and request.method != "POST":
+		raise frappe.PermissionError(_("This workflow operation requires POST"))
+
+
+def _require_system_manager() -> None:
+	if frappe.session.user != "Administrator" and "System Manager" not in frappe.get_roles():
+		raise frappe.PermissionError(_("System Manager role is required"))
+
+
+def _as_list(value: str | list[Any]) -> list[Any]:
+	if isinstance(value, str):
+		try:
+			value = json.loads(value)
+		except json.JSONDecodeError:
+			raise frappe.ValidationError(_("Expected a JSON list")) from None
+	if not isinstance(value, list):
+		raise frappe.ValidationError(_("Expected a JSON list"))
+	return value
+
+
+def _document_names(doctype: str, value: str | list[str]) -> list[str]:
+	names = _as_list(value)
+	if not doctype or any(not isinstance(name, str) or not name for name in names):
+		raise frappe.ValidationError(_("Expected a source type and a list of document names"))
+	return list(dict.fromkeys(names))
+
+
+def _source_identity(doc: object) -> tuple[str, str]:
+	if isinstance(doc, str):
+		doc = frappe.parse_json(doc)
+	if isinstance(doc, dict):
+		return str(doc.get("doctype") or ""), str(doc.get("name") or "")
+	return str(getattr(doc, "doctype", "") or ""), str(getattr(doc, "name", "") or "")
+
+
+def _find_task_for_action(
+	doctype: str,
+	name: str,
+	action: str,
+	user: str,
+	transition_uuid: str | None = None,
+	*,
+	require_unique_task: bool = False,
+) -> str:
+	task_names = frappe.get_all(
+		"Workflow Task",
+		filters={
+			"reference_doctype": doctype,
+			"reference_name": name,
+			"approver": user,
+			"status": "Working",
+			"round_status": "Open",
+		},
+		pluck="name",
+		order_by="creation desc, name asc",
+		limit=2,
+	)
+	if require_unique_task and len(task_names) != 1:
+		raise engine.WorkflowApprovalConflictError(
+			_("No unique active Workflow Task is available for this action")
+		)
+	child_filters: dict[str, Any] = {"parent": None}
+	if transition_uuid:
+		child_filters = {"transition_uuid": transition_uuid}
+	elif action:
+		child_filters = {"action": action}
+	matches = [
+		task_name
+		for task_name in task_names
+		if frappe.db.exists(
+			"Available Workflow Transitions",
+			{"parent": task_name, **child_filters},
+		)
+	]
+	if len(matches) != 1:
+		raise engine.WorkflowApprovalConflictError(
+			_("No unique active Workflow Task is available for this action")
+		)
+	return matches[0]
+
+
+def _prior_task_for_request(doctype: str, name: str, request_id: str) -> str | None:
+	row = frappe.db.get_value("Workflow Task", {
+		"reference_doctype": doctype, "reference_name": name,
+		"approver": frappe.session.user, "correlation_id": request_id,
+	}, ["name", "status", "request_receipt_recorded", "performed_by", "performed_as"], as_dict=True)
+	if row and (row.status == "Completed" or row.request_receipt_recorded):
+		if row.request_receipt_recorded and not row.performed_as:
+			# Reconciliation can record a request without completing a vote.
+			return row.name
+		if acting.Performer(row.performed_by, row.performed_as).deputy == acting.current().deputy:
+			return row.name
+	return None
+
+
+def _vote_source_action(
+	doctype: str,
+	name: str,
+	action: str,
+	*,
+	transition_uuid: str | None = None,
+	comment: object = None,
+	request_id: str | None = None,
+	completion_source: str = "Manual",
+	workflow: str | None = None,
+	process_id: str | None = None,
+	task_name: str | None = None,
+	receipt_managed: bool = False,
+	expected_creation: str | None = None,
+	expected_modified: str | None = None,
+	expected_transition_hash: str | None = None,
+) -> engine.VoteResult:
+	if request_id and not receipt_managed:
+		receipt = request_receipts.get(request_receipts.request_key("Vote", request_id))
+		if receipt:
+			target = json.loads(receipt.targets)[0]
+			if (
+				target["doctype"] != doctype or target["name"] != name
+				or (task_name and target["task_name"] != task_name)
+				or (workflow and target.get("workflow") != workflow)
+				or (process_id and target.get("process_id") != process_id)
+			):
+				raise engine.WorkflowApprovalConflictError(_("The Workflow target no longer matches the selected document"))
+			return engine.cast_vote(target["task_name"], transition_uuid=transition_uuid, action=action,
+				comment=comment, request_id=request_id, completion_source=completion_source)
+
+	explicit_task_name = task_name
+	# A retry may arrive after terminal completion prepared another identical
+	# process. Resolve the original request before looking for a Working task.
+	if request_id and not task_name:
+		task_name = _prior_task_for_request(doctype, name, request_id)
+	task_name = task_name or _find_task_for_action(
+		doctype, name, action, frappe.session.user, transition_uuid=transition_uuid,
+		require_unique_task=completion_source == "Bulk",
+	)
+	if workflow or process_id or explicit_task_name:
+		pointer = frappe.db.get_value("Workflow Task", task_name,
+			["reference_doctype", "reference_name", "workflow", "workflow_process"], as_dict=True)
+		if not pointer or pointer.reference_doctype != doctype or pointer.reference_name != name:
+			raise engine.WorkflowApprovalConflictError(_("The Workflow target no longer matches the selected document"))
+		if (workflow and pointer.workflow != workflow) or (process_id and pointer.workflow_process != process_id):
+			raise engine.WorkflowApprovalConflictError(_("The Workflow process has changed. Refresh the document before acting."))
+	return engine.cast_vote(
+		task_name, transition_uuid=transition_uuid, action=action, comment=comment,
+		request_id=request_id, completion_source=completion_source,
+		receipt_managed=receipt_managed, expected_creation=expected_creation,
+		expected_modified=expected_modified,
+		expected_transition_hash=expected_transition_hash,
+	)
+
+
+@contextmanager
+def _round_error_response():
+	try:
+		yield
+	except engine.NoEligibleApproversError as error:
+		if getattr(frappe.local, "response", None) is not None:
+			frappe.local.response["workflow_error"] = error.details
+		frappe.msgprint(
+			frappe.utils.escape_html(str(error)),
+			title=_("Workflow action was not applied"),
+			indicator="red",
+		)
+		raise
+	except (engine.WorkflowDomainRollbackError, engine.WorkflowSourceChangedError) as error:
+		frappe.msgprint(
+			frappe.utils.escape_html(str(error)),
+			title=_("Workflow action was not applied"),
+			indicator="red",
+		)
+		raise
+	except (frappe.QueryDeadlockError, frappe.QueryTimeoutError):
+		if getattr(frappe.local, "request", None) is None:
+			raise
+		frappe.throw(
+			_("The workflow is busy. Refresh the document and try the action again."),
+			engine.WorkflowTemporarilyUnavailableError,
+		)
+
+
+@frappe.whitelist(methods=["POST"])
+def vote(
+	task_name: str,
+	transition_uuid: str | None = None,
+	action: str | None = None,
+	comment: object = None,
+	request_id: str | None = None,
+) -> engine.VoteResult:
+	_require_post()
+	with _round_error_response():
+		return engine.cast_vote(
+			task_name,
+			transition_uuid=transition_uuid,
+			action=action,
+			comment=comment,
+			request_id=request_id,
+			completion_source="Manual",
+		)
+
+
+@frappe.whitelist()
+def get_vote_status(task_name: str) -> dict[str, Any]:
+	"""Read the current outcome without replaying the original decision."""
+	task = frappe.get_doc("Workflow Task", task_name)
+	task.check_permission("read")
+	source = frappe.get_doc(task.reference_doctype, task.reference_name)
+	source.check_permission("read")
+	if get_datetime(task.source_created_at) != get_datetime(source.creation):
+		raise frappe.DoesNotExistError(_("The workflow document is no longer available"))
+	result = dict(engine._vote_result(task, source, transitioned=task.round_status == "Transitioned"))
+	if queue_name := result.get("pending_submission"):
+		submission_status = frappe.db.get_value("Submission Queue", queue_name, "status")
+		if submission_status in {"Failed", "Finished"}:
+			result.pop("pending_submission")
+		result["submission_status"] = submission_status
+	return result
+
+
+@frappe.whitelist(methods=["POST"])
+def apply_workflow(
+	doc: object,
+	action: str,
+	comment: object = None,
+	request_id: str | None = None,
+	transition_uuid: str | None = None,
+	workflow: str | None = None,
+	process_id: str | None = None,
+	task_name: str | None = None,
+	expected_transition_hash: str | None = None,
+) -> engine.VoteResult:
+	"""Replace direct Frappe apply_workflow with one task vote."""
+	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
+
+	if not is_engine_enabled():
+		from frappe.model.workflow import apply_workflow as core_apply_workflow
+
+		return core_apply_workflow(doc, action)
+	_require_post()
+	if isinstance(doc, str):
+		try:
+			doc = frappe.parse_json(doc)
+		except ValueError:
+			raise frappe.ValidationError(_("A persisted source document is required")) from None
+	doctype, name = _source_identity(doc)
+	if not doctype or not name:
+		raise frappe.ValidationError(_("A persisted source document is required"))
+	with _round_error_response():
+		return _vote_source_action(
+			doctype,
+			name,
+			action,
+			transition_uuid=transition_uuid,
+			comment=comment,
+			request_id=request_id,
+			workflow=workflow, process_id=process_id, task_name=task_name,
+			expected_modified=str(doc.get("modified") or "") if hasattr(doc, "get") else None,
+			expected_transition_hash=expected_transition_hash,
+		)
+
+
+def publish_workflow_progress(request_id: str, count: int, total: int) -> None:
+	from frappe.realtime import get_user_room
+
+	frappe.publish_realtime(
+		BULK_PROGRESS_EVENT,
+		{"request_id": request_id, "count": count, "total": total},
+		room=get_user_room(frappe.session.user),
+	)
+
+
+class BulkTargetFormInput(TypedDict):
+	name: str
+	workflow: str
+	process_id: str
+	task_name: str
+	transition_uuid: str
+	transition_semantic_hash: NotRequired[str]
+
+
+class BulkTaskFormInput(TypedDict, total=False):
+	task_name: str
+	transition_uuid: str
+	action: str
+	comment: str
+
+
+class BulkItemResponse(TypedDict, total=False):
+	name: str
+	task_name: str
+	result: engine.VoteResult
+	error: str
+	error_type: str
+	workflow_error: NotRequired[engine.WorkflowRoundError]
+
+
+class BulkVoteResponse(TypedDict):
+	succeeded: list[BulkItemResponse]
+	failed: list[BulkItemResponse]
+
+
+class BulkJobResponse(TypedDict, total=False):
+	status: str
+	result: BulkVoteResponse
+
+
+class BulkJobToken(TypedDict):
+	job_id: str
+
+
+def _parse_bulk_targets(targets: str | list[dict[str, Any]] | None, names: list[str]) -> dict[str, BulkTargetFormInput]:
+	if targets is None:
+		return {}
+	rows = _as_list(targets)
+	required = ("name", "workflow", "process_id", "task_name", "transition_uuid")
+	if any(not isinstance(row, dict) or any(not isinstance(row.get(field), str) or not row[field] for field in required) for row in rows):
+		raise frappe.ValidationError(_("Each Workflow target must specify document, Workflow, process, task and transition"))
+	by_name = {row["name"]: {field: row[field] for field in required} for row in rows}
+	if len(by_name) != len(rows) or set(by_name) != set(names):
+		raise frappe.ValidationError(_("Workflow targets do not match the selected documents"))
+	for row in rows:
+		if "transition_semantic_hash" not in row:
+			continue
+		transition_hash = row["transition_semantic_hash"]
+		if not isinstance(transition_hash, str) or not transition_hash:
+			raise frappe.ValidationError(_("Invalid workflow transition revision"))
+		by_name[row["name"]]["transition_semantic_hash"] = transition_hash
+	return by_name
+
+
+def _source_batch(doctype, names, action, comment, transition_uuid, targets):
+	docnames = _document_names(doctype, names)
+	if len(docnames) > MAX_BULK_DOCUMENTS:
+		raise frappe.ValidationError(_("Bulk approval supports at most 500 documents"))
+	targets_by_name = _parse_bulk_targets(targets, docnames)
+	return docnames, targets_by_name, [
+		doctype, docnames, action, str(comment or ""),
+		transition_uuid, targets_by_name,
+	]
+
+
+def _read_batch_target(doctype, name, task_name) -> request_receipts.ReceiptTarget | None:
+	try:
+		source = frappe.get_doc(doctype, name)
+	except frappe.DoesNotExistError:
+		return None
+	if not source.has_permission("read"):
+		return None
+	return request_receipts.target(source, task_name)
+
+
+def _reserve_source_batch(doctype, names, action, transition_uuid, targets, request_id, parameters, *, job_id=None):
+	key = request_receipts.request_key("Bulk Vote", request_id)
+	receipt = request_receipts.get(key)
+	if receipt:
+		request_receipts.verify(receipt, parameters)
+		return receipt
+	if names and frappe.db.exists("Workflow Task", {
+		"reference_doctype": doctype, "reference_name": ("in", names), "approver": frappe.session.user,
+		"request_receipt_recorded": 1,
+		"correlation_id": ("in", [f"{request_id}:{name}" for name in names]),
+	}):
+		# An expired partial batch must never discover new tasks for its other positions.
+		raise engine.WorkflowApprovalConflictError(_("The Workflow request has expired. Refresh the document before acting."))
+	snapshot = []
+	for name in names:
+		item = targets.get(name, {})
+		task_name = item.get("task_name") or _prior_task_for_request(doctype, name, f"{request_id}:{name}")
+		if not task_name:
+			try:
+				task_name = _find_task_for_action(
+					doctype, name, action, frappe.session.user, item.get("transition_uuid") or transition_uuid,
+					require_unique_task=True,
+				)
+			except engine.WorkflowApprovalConflictError:
+				pass
+		snapshot.append(_read_batch_target(doctype, name, task_name))
+	return request_receipts.reserve(
+		"Bulk Vote", request_id, parameters, snapshot, item_results=[None] * len(names), job_id=job_id,
+	)
+
+
+def _bulk_failure(identity: BulkItemResponse, error: Exception) -> BulkItemResponse:
+	redacted = isinstance(error, (frappe.DoesNotExistError, frappe.PermissionError))
+	result: BulkItemResponse = {
+		**identity,
+		"error": _("The workflow item could not be processed") if redacted else str(error),
+		"error_type": "Unavailable" if redacted else error.__class__.__name__,
+	}
+	if isinstance(error, engine.NoEligibleApproversError):
+		result["workflow_error"] = error.details
+	return result
+
+
+def _run_bulk(items, apply, *, receipt=None, parameters=None, progress=None) -> BulkVoteResponse:
+	key = receipt.name if receipt else None
+	snapshot = json.loads(receipt.targets) if receipt else []
+	if receipt:
+		request_receipts.verify(receipt, parameters)
+		if receipt.status == "Failed":
+			raise engine.WorkflowApprovalConflictError(_("The background workflow operation failed"))
+		if receipt.response is not None:
+			return request_receipts.replay(receipt, parameters)
+		# Subsequent items each commit independently, so keep the envelope durable first.
+		frappe.db.commit()
+	results = []
+	for index, identity in enumerate(items):
+		if key:
+			receipt = request_receipts.lock(key)
+			if receipt.response is not None:
+				return request_receipts.replay(receipt, parameters)
+			stored = json.loads(receipt.item_results)
+			if stored[index] is not None:
+				results.append(stored[index])
+				continue
+		message_count = len(frappe.local.message_log or [])
+		try:
+			target = snapshot[index] if key else None
+			if key and target is None:
+				raise frappe.PermissionError
+			result = {**identity, "result": apply(index, target)}
+		except Exception as error:
+			frappe.db.rollback()
+			discard_collected_comment_messages(error, message_count)
+			result = _bulk_failure(identity, error)
+			if key:
+				receipt = request_receipts.lock(key)
+				if receipt.response is not None:
+					return request_receipts.replay(receipt, parameters)
+				stored = json.loads(receipt.item_results)
+				# A parallel retry can finish the item while this transaction rolls back.
+				result = stored[index] or result
+		if key:
+			stored[index] = result
+			frappe.db.set_value(request_receipts.DOCTYPE, key, "item_results", json.dumps(stored, ensure_ascii=False))
+		if key or "result" in result:
+			frappe.db.commit()
+		results.append(result)
+		if progress:
+			progress(index)
+	if key:
+		receipt = request_receipts.lock(key)
+		if receipt.response is not None:
+			return request_receipts.replay(receipt, parameters)
+		results = json.loads(receipt.item_results)
+	outcome = {
+		"succeeded": [row for row in results if "result" in row],
+		"failed": [row for row in results if "error" in row],
+	}
+	if key:
+		request_receipts.finish(key, outcome)
+	return outcome
+
+
+@frappe.whitelist(methods=["POST"])
+def bulk_vote(
+	doctype: str,
+	names: str | list[str],
+	action: str,
+	comment: object = None,
+	request_id: str | None = None,
+	transition_uuid: str | None = None,
+	track_progress: bool = False,
+	targets: str | list[dict[str, Any]] | None = None,
+) -> BulkVoteResponse:
+	"""Commit each successful vote and return itemized outcomes."""
+	_require_post()
+	docnames, target_by_name, parameters = _source_batch(doctype, names, action, comment, transition_uuid, targets)
+	track_progress = str(track_progress).lower() in {"1", "true"}
+	receipt = _reserve_source_batch(
+		doctype, docnames, action, transition_uuid, target_by_name, request_id, parameters,
+	) if request_id else None
+
+	return _execute_source_batch(
+		doctype, docnames, action, comment, request_id, transition_uuid,
+		track_progress, target_by_name, receipt, parameters,
+	)
+
+
+def _execute_source_batch(
+	doctype, docnames, action, comment, request_id, transition_uuid,
+	track_progress, target_by_name, receipt, parameters,
+) -> BulkVoteResponse:
+	from frappe.model.workflow import show_progress
+
+	def apply(index, snapshot):
+		name = docnames[index]
+		if not track_progress:
+			show_progress(docnames, _("Applying: {0}").format(action), index + 1, name)
+		target = target_by_name.get(name, {})
+		if snapshot and not snapshot["task_name"]:
+			raise engine.WorkflowApprovalConflictError(_("No unique active Workflow Task is available for this action"))
+		return _vote_source_action(
+			doctype, name, action, transition_uuid=target.get("transition_uuid") or transition_uuid,
+			workflow=target.get("workflow"), process_id=target.get("process_id"),
+			task_name=snapshot["task_name"] if snapshot else target.get("task_name"), comment=comment,
+			request_id=f"{request_id}:{name}" if request_id else None, completion_source="Bulk",
+			receipt_managed=bool(receipt), expected_creation=snapshot["source_created_at"] if snapshot else None,
+			expected_transition_hash=target.get("transition_semantic_hash"),
+		)
+
+	def progress(index):
+		publish_workflow_progress(request_id, index + 1, len(docnames))
+
+	return _run_bulk(
+		[{"name": name} for name in docnames], apply, receipt=receipt, parameters=parameters,
+		progress=progress if track_progress and request_id and len(docnames) > 1 else None,
+	)
+
+
+@frappe.whitelist(methods=["POST"])
+def bulk_task_vote(
+	items: str | list[dict[str, Any]],
+	comment: object = None,
+	request_id: str | None = None,
+) -> BulkVoteResponse:
+	"""Vote checked report rows independently with permission-safe outcomes."""
+	_require_post()
+	parsed = _as_list(items)
+	if len(json.dumps(parsed, ensure_ascii=False)) > 1_000_000:
+		raise frappe.ValidationError(_("Bulk approval payload is too large"))
+	deduplicated: dict[tuple[str, str], BulkTaskFormInput] = {}
+	for item in parsed:
+		if not isinstance(item, dict):
+			raise frappe.ValidationError(_("Each bulk item must be an object"))
+		key = (str(item.get("task_name") or ""), str(item.get("transition_uuid") or ""))
+		if not all(key):
+			raise frappe.ValidationError(_("Task and transition are required"))
+		deduplicated.setdefault(key, {
+			"task_name": key[0], "transition_uuid": key[1], "action": item.get("action"),
+			"comment": str(item.get("comment", comment) or ""),
+		})
+	if len(deduplicated) > MAX_BULK_DOCUMENTS:
+		raise frappe.ValidationError(_("Bulk approval supports at most 500 tasks"))
+	rows = list(deduplicated.values())
+	receipt = None
+	if request_id:
+		receipt = request_receipts.get(request_receipts.request_key("Bulk Task Vote", request_id))
+		if not receipt:
+			snapshot = []
+			for row in rows:
+				task = frappe.db.get_value("Workflow Task", row["task_name"],
+					["reference_doctype", "reference_name"], as_dict=True)
+				snapshot.append(_read_batch_target(task.reference_doctype, task.reference_name, row["task_name"]) if task else None)
+			receipt = request_receipts.reserve("Bulk Task Vote", request_id, rows, snapshot, item_results=[None] * len(rows))
+
+	def apply(index, snapshot):
+		row = rows[index]
+		return engine.cast_vote(
+			row["task_name"], transition_uuid=row["transition_uuid"],
+			action=row["action"], comment=row["comment"],
+			request_id=f"{request_id}:{index}" if request_id else None, completion_source="Bulk",
+			receipt_managed=bool(receipt), expected_creation=snapshot["source_created_at"] if snapshot else None,
+		)
+
+	return _run_bulk([{"task_name": row["task_name"]} for row in rows], apply, receipt=receipt, parameters=rows)
+
+
+def run_background_bulk(*, receipt_key=None, initiator=None, deputy=None, **arguments) -> BulkVoteResponse:
+	"""Use the original session identities, including on worker retries."""
+	previous_user = frappe.session.user
+	initiator = initiator or previous_user
+	if previous_user != initiator:
+		frappe.set_user(initiator)
+	try:
+		with acting.use(acting.Performer(deputy or initiator, initiator)):
+			if not receipt_key:
+				return bulk_vote(**arguments)
+			try:
+				return _run_reserved_source_batch(receipt_key, arguments)
+			except Exception:
+				frappe.db.rollback()
+				receipt = request_receipts.get(receipt_key, for_update=True)
+				if receipt and receipt.status == "Working" and request_receipts.belongs_to_current_user(receipt):
+					request_receipts.finish(receipt_key, None, failed=True)
+					frappe.db.commit()
+				raise
+	finally:
+		if previous_user != initiator:
+			frappe.set_user(previous_user)
+
+
+def _run_reserved_source_batch(key, arguments) -> BulkVoteResponse:
+	request_id = arguments["request_id"]
+	receipt = request_receipts.get(key)
+	if not receipt or not receipt.job_id or request_receipts.request_key("Bulk Vote", request_id) != key:
+		raise engine.WorkflowApprovalConflictError(_("The Workflow request has expired. Refresh the document before acting."))
+	if not frappe.db.get_value("User", frappe.session.user, "enabled"):
+		raise frappe.PermissionError
+	doctype, action = arguments["doctype"], arguments["action"]
+	comment, transition_uuid = arguments["comment"], arguments["transition_uuid"]
+	names, targets, parameters = _source_batch(
+		doctype, arguments["names"], action, comment, transition_uuid, arguments["targets"],
+	)
+	return _execute_source_batch(
+		doctype, names, action, comment, request_id, transition_uuid, arguments["track_progress"],
+		targets, receipt, parameters,
+	)
+
+
+@frappe.whitelist(methods=["POST"])
+def bulk_workflow_approval(
+	docnames: str | list[str],
+	doctype: str,
+	action: str,
+	comment: object = None,
+	request_id: str | None = None,
+	transition_uuid: str | None = None,
+	track_progress: bool = False,
+	targets: str | list[dict[str, Any]] | None = None,
+) -> BulkVoteResponse | BulkJobToken | None:
+	"""Apply a small selection inline or return its background job token."""
+	from frappe.utils.background_jobs import get_job
+
+	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
+
+	if not is_engine_enabled():
+		from frappe.model.workflow import bulk_workflow_approval as core_bulk_workflow_approval
+
+		return core_bulk_workflow_approval(docnames, doctype, action)
+	_require_post()
+	names, target_by_name, parameters = _source_batch(doctype, docnames, action, comment, transition_uuid, targets)
+	track_progress = str(track_progress).lower() in {"1", "true"}
+	args = {
+		"doctype": doctype, "names": names, "action": action, "comment": comment,
+		"request_id": request_id, "transition_uuid": transition_uuid,
+		"track_progress": track_progress, "targets": targets,
+	}
+	if len(names) < 20:
+		return bulk_vote(**args)
+
+	job_id = uuid4().hex
+	if request_id:
+		receipt = _reserve_source_batch(
+			doctype, names, action, transition_uuid, target_by_name, request_id, parameters, job_id=job_id,
+		)
+		request_receipts.verify(receipt, parameters)
+		if not receipt.job_id:
+			raise engine.WorkflowApprovalConflictError(_("This Workflow request was already used with different parameters"))
+		job_id = receipt.job_id
+		frappe.db.commit()
+		receipt = request_receipts.lock(receipt.name)
+		if receipt.status != "Working" or get_job(job_id):
+			return {"job_id": job_id}
+		args.update(receipt_key=receipt.name, initiator=receipt.initiator)
+	args.update(initiator=frappe.session.user, deputy=acting.current().deputy)
+	job = frappe.enqueue(BULK_JOB_METHOD, queue="short", timeout=1000, job_id=job_id, **args)
+	if isinstance(job, dict):
+		return job
+	if not track_progress:
+		frappe.msgprint(_("Bulk {0} is enqueued in background.").format(action), alert=True)
+	return {"job_id": job_id}
+
+
+@frappe.whitelist()
+def get_bulk_workflow_job(job_id: str) -> BulkJobResponse:
+	"""Expose only the requesting user's bulk approval result on this site."""
+	from frappe.utils.background_jobs import get_job
+
+	if len(job_id) != 32 or any(char not in "0123456789abcdef" for char in job_id):
+		return {"status": "unavailable"}
+	receipt = frappe.db.get_value(request_receipts.DOCTYPE, {"job_id": job_id},
+		["initiator", "deputy", "status", "response", "targets"], as_dict=True)
+	if receipt:
+		if not request_receipts.belongs_to_current_user(receipt):
+			return {"status": "unavailable"}
+		request_receipts.check_targets(json.loads(receipt.targets))
+		if receipt.status == "Completed":
+			return {"status": "finished", "result": json.loads(receipt.response)}
+		if receipt.status == "Failed":
+			return {"status": "failed"}
+
+	job = get_job(job_id)
+	if (
+		not job
+		or job.kwargs.get("method") not in (BULK_VOTE_METHOD, BULK_JOB_METHOD)
+		or (not receipt and job.kwargs.get("method") == BULK_JOB_METHOD and job.kwargs.get("kwargs", {}).get("request_id"))
+		or job.kwargs.get("user") != frappe.session.user
+		or job.kwargs.get("kwargs", {}).get("deputy") != acting.current().deputy
+		or job.kwargs.get("site") != frappe.local.site
+	):
+		return {"status": "unavailable"}
+
+	status = job.get_status()
+	if status == "finished":
+		result = job.return_value()
+		if isinstance(result, dict):
+			return {"status": "finished", "result": result}
+		return {"status": "unavailable"}
+	if status in {"failed", "stopped", "canceled"}:
+		return {"status": "failed"}
+	return {"status": "pending"}
+
+def _iter_task_rows(filters, *, fields, order_by, limit, predicate=None, monitored_only=False):
+	fields = list(dict.fromkeys((*fields, *TASK_ACCESS_FIELDS)))
+	user = frappe.session.user
+	if monitored_only and user != "Administrator" and "System Manager" not in frappe.get_roles(user):
+		workflows = get_monitorable_workflows(user)
+		if filters.get("workflow"):
+			workflows = [workflow for workflow in workflows if workflow == filters["workflow"]]
+		if not workflows:
+			return
+		filters = {**filters, "workflow": ("in", workflows)}
+	source_permissions = {}
+	can_read = get_task_read_checker(
+		user, monitored_only=monitored_only, require_source=True, source_permissions=source_permissions
+	)
+	batch_size = 500
+	page_size = min(limit, batch_size) if limit and limit > 0 else batch_size
+	start = 0
+	while True:
+		rows = frappe.get_all(
+			"Workflow Task",
+			filters=filters,
+			fields=fields,
+			order_by=order_by,
+			limit_start=start,
+			limit_page_length=page_size,
+		)
+		from dinext_common.workflow_approval.scenarios.service import current_task_rows
+		selected = current_task_rows(rows)
+		selected = [row for row in selected if predicate(row)] if predicate else selected
+		prepare_source_permissions(selected, user, source_permissions)
+		readable = (row for row in selected if can_read(row))
+		if limit is not None and limit < 0:
+			yield from list(readable)[:limit]
+			return
+		for row in readable:
+			yield row
+			if limit:
+				limit -= 1
+				if not limit:
+					return
+		if len(rows) < page_size:
+			return
+		start += page_size
+		page_size = batch_size
+
+
+def _select_task_rows(filters, *, fields, order_by, limit, predicate=None, monitored_only=False):
+	return list(_iter_task_rows(
+		filters, fields=fields, order_by=order_by, limit=limit, predicate=predicate, monitored_only=monitored_only,
+	))
+
+
+def _available_task_transitions(task_names: list[str]) -> dict[str, list[dict[str, Any]]]:
+	transitions = defaultdict(list)
+	for child in frappe.get_all(
+		"Available Workflow Transitions",
+		filters={
+			"parent": ("in", task_names),
+			"parenttype": "Workflow Task",
+			"parentfield": "available_workflow_transitions",
+		},
+		fields=[
+			"parent", "transition_uuid", "action", "next_state", "allowed_role",
+			"comment_is_required", "transition_semantic_hash",
+		],
+		order_by="idx asc",
+		limit_page_length=0,
+	):
+		transitions[child.parent].append(
+			{
+				"transition_uuid": child.transition_uuid,
+				"action": child.action,
+				"next_state": child.next_state,
+				"allowed": child.allowed_role,
+				"comment_is_required": bool(child.comment_is_required),
+				"transition_semantic_hash": child.transition_semantic_hash,
+			}
+		)
+	return transitions
+
+
+def _transition_target(task, transition) -> WorkflowTransitionTarget:
+	target: WorkflowTransitionTarget = {
+		"name": task.reference_name, "workflow": task.get("workflow"),
+		"process_id": task.get("workflow_process"), "task_name": task.name,
+		"transition_uuid": transition["transition_uuid"], "next_state": transition["next_state"],
+	}
+	if transition_hash := transition.get("transition_semantic_hash"):
+		target["transition_semantic_hash"] = transition_hash
+	return target
+
+
+def _queue_transition_targets(task, transitions):
+	if task.get("status") != "Working" or task.get("round_status") != "Open":
+		return transitions
+	if not task.get("workflow") or not task.get("workflow_process"):
+		return transitions
+	return [
+		{**row, "targets": [_transition_target(task, row)]} if row["transition_uuid"] else row
+		for row in transitions
+	]
+
+
+def _filtered_tasks(filters, *, limit=None, offset=0, include_transitions=False, predicate=None, fields=QUEUE_FIELDS):
+	rows = _select_task_rows(
+		filters, fields=fields, order_by=PERSONAL_TASK_ORDER,
+		limit=(limit + offset) if limit else limit, predicate=predicate,
+	)[offset:]
+	if not include_transitions:
+		return [frappe._dict({field: row.get(field) for field in fields}) for row in rows]
+	if not rows:
+		return []
+	transitions = _available_task_transitions([row["name"] for row in rows])
+	return [
+		frappe._dict(
+			{field: row.get(field) for field in QUEUE_FIELDS},
+			available_transitions=_queue_transition_targets(row, transitions[row["name"]]),
+		)
+		for row in rows
+	]
+
+
+def _queue_day_filter(created_on=None):
+	from dinext_common.workflow_approval.notifications import (
+		_aware_utc,
+		_recipient_timezone,
+		get_timezone,
+	)
+
+	zone = get_timezone(_recipient_timezone(frappe.session.user))
+	day = getdate(created_on) if created_on else _aware_utc(now_datetime()).astimezone(zone).date()
+	return day, lambda row: _aware_utc(row.creation).astimezone(zone).date() == day
+
+
+def _personal_queue_filters(filters):
+	values = frappe._dict(filters or {})
+	task_filters = {
+		"approver": frappe.session.user,
+		"status": "Working",
+		"round_status": "Open",
+		"source_deleted_at": ("is", "not set"),
+	}
+	for field in ("workflow", "reference_doctype", "workflow_state"):
+		if values.get(field):
+			task_filters[field] = values[field]
+	predicate = None
+	if values.get("created_on") or values.get("created_today"):
+		day, predicate = _queue_day_filter(values.get("created_on"))
+		# Database timestamps use the site time zone. Keep the exact day test in the viewer's zone.
+		task_filters["creation"] = ("between", (get_datetime(add_days(day, -2)), get_datetime(add_days(day, 3))))
+	return task_filters, predicate
+
+
+def get_personal_queue(filters=None, *, limit=None, offset=0, include_transitions=False, fields=QUEUE_FIELDS):
+	task_filters, predicate = _personal_queue_filters(filters)
+	return _filtered_tasks(
+		task_filters, limit=limit, offset=offset,
+		include_transitions=include_transitions, predicate=predicate, fields=fields
+	)
+
+
+@frappe.whitelist()
+def get_my_queue(limit: int = 500) -> list[dict[str, Any]]:
+	return get_personal_queue(limit=int(limit), include_transitions=True)
+
+
+@frappe.whitelist()
+def get_my_source_transitions(doctype: str, names: str | list[str]) -> dict[str, list[dict[str, Any]]]:
+	"""Return exact personal transitions in one permission-filtered task/child batch."""
+	docnames = _document_names(doctype, names)
+	if len(docnames) > MAX_BULK_DOCUMENTS:
+		raise frappe.ValidationError(_("Bulk approval supports at most 500 documents"))
+	if not docnames:
+		return {}
+	rows = _select_task_rows({"reference_doctype": doctype, "reference_name": ("in", docnames),
+		"approver": frappe.session.user, "status": "Working", "round_status": "Open",
+		"source_deleted_at": ("is", "not set")},
+		fields=["name", "reference_name", "workflow", "workflow_process"], order_by="name asc", limit=None)
+	transitions = _available_task_transitions([row.name for row in rows])
+	groups = defaultdict(list)
+	for row in rows:
+		groups[row.reference_name].append(row)
+	return {name: _common_transition_targets(tasks, transitions)
+		for name, tasks in groups.items() if len(tasks) == 1}
+
+
+def get_personal_history(filters=None, *, limit=None, include_transitions=False, fields=HISTORY_FIELDS):
+	values = frappe._dict(filters or {})
+	task_filters = {
+		"approver": frappe.session.user,
+		"status": "Completed" if values.completed_since else ("in", ("Completed", "Cancelled")),
+	}
+	if values.completed_since:
+		task_filters["completed_at"] = (">=", get_datetime(values.completed_since))
+	for field in ("workflow", "reference_doctype", "action", "completion_source"):
+		if values.get(field):
+			task_filters[field] = values[field]
+	return _filtered_tasks(task_filters, limit=limit, include_transitions=include_transitions, fields=fields)
+
+
+@frappe.whitelist()
+def get_my_history(limit: int = 500) -> list[dict[str, Any]]:
+	return get_personal_history(limit=int(limit), include_transitions=True)
+
+
+@frappe.whitelist()
+def get_source_approval_history(
+	doctype: str,
+	name: str,
+	limit: int = 500,
+) -> list[dict[str, Any]]:
+	source = frappe.get_doc(doctype, name)
+	source.check_permission("read")
+	rows = frappe.get_all(
+		"Workflow Task",
+		filters={
+			"reference_doctype": doctype,
+			"reference_name": name,
+			"source_created_at": source.creation,
+			"status": ("in", ("Completed", "Cancelled")),
+		},
+		fields=HISTORY_FIELDS,
+		order_by="modified desc, name desc",
+		limit=min(int(limit), 1000),
+	)
+	users = dict(
+		frappe.get_all(
+			"User",
+			filters={"name": ("in", sorted({row.approver for row in rows}))},
+			fields=["name", "full_name"],
+			as_list=True,
+		)
+	) if rows else {}
+	for row in rows:
+		row["approver_name"] = users.get(row.approver) or row.approver
+	return rows
+
+
+@frappe.whitelist()
+def get_pending_approvers(doctype: str, name: str) -> list[dict[str, Any]]:
+	source = frappe.get_doc(doctype, name)
+	source.check_permission("read")
+	rows = None
+	for adapter_path in frappe.get_hooks("workflow_approval_pending_approvers") or []:
+		adapter = frappe.get_attr(adapter_path)
+		result = adapter(doctype, name)
+		if result is not None:
+			rows = result
+			break
+	if rows is None:
+		rows = [
+			{key: row[key] for key in ("approver", "approval_round_id", "workflow_state")}
+			for row in get_required_state_pending_tasks(doctype, [name])
+		]
+
+	names = dict(
+		frappe.get_all(
+			"User",
+			filters={"name": ("in", sorted({row["approver"] for row in rows}))},
+			fields=["name", "full_name"],
+			as_list=True,
+		)
+	) if rows else {}
+	for row in rows:
+		row["approver_name"] = names.get(row["approver"]) or row["approver"]
+	return rows
+
+
+def describe_rebuild_rounds(
+	reference_doctype: str,
+	reference_names: list[str],
+) -> list[dict[str, Any]]:
+	"""Describe every stalled or conflicted round for the given documents.
+
+	The caller decides which documents belong together. This function does not
+	know about a particular DocType.
+	"""
+	if not reference_doctype or not reference_names:
+		return []
+	rows = frappe.get_all(
+		"Workflow Task",
+		filters={
+			"reference_doctype": reference_doctype,
+			"reference_name": ("in", list(reference_names)),
+			"round_status": ("in", ("Open", "Stalled", "Conflicted")),
+		},
+		fields=[
+			"name",
+			"approval_round_id",
+			"round_status",
+			"reference_name",
+			"source_title",
+			"failure_metadata",
+			"creation",
+		],
+		order_by="creation desc, name desc",
+	)
+	can_reset = _caller_is_system_manager()
+	seen: set[str] = set()
+	rounds: list[dict[str, Any]] = []
+	for row in rows:
+		round_id = row.approval_round_id
+		if not round_id or round_id in seen:
+			continue
+		seen.add(round_id)
+		metadata = engine.configuration_metadata(row)
+		round_status = row.round_status
+		if round_status == "Open":
+			metadata = engine.preview_configuration_conflict(frappe.get_doc("Workflow Task", row.name))
+			if not metadata:
+				continue
+			round_status = "Conflicted"
+		rounds.append(
+			{
+				"round_id": round_id,
+				"round_status": round_status,
+				"reference_name": row.reference_name,
+				"source_title": row.source_title or row.reference_name,
+				"configuration_change": metadata,
+				"can_reset": can_reset,
+			}
+		)
+	return rounds
+
+
+def _banner_from_rows(
+	rows: list[object],
+	*,
+	rounds: list[dict[str, Any]] | None = None,
+	pending: list[PendingApproverTask] | None = None,
+) -> dict[str, Any]:
+	if not rows and not rounds:
+		return {
+			"round_id": None,
+			"round_status": None,
+			"pending_approvers": [],
+			"can_reset": _caller_is_system_manager(),
+			"configuration_change": None,
+			"rounds": rounds or [],
+		}
+	approvers = sorted({row["approver"] for row in pending or []})
+	names = (
+		dict(
+			frappe.get_all(
+				"User",
+				filters={"name": ("in", approvers)},
+				fields=["name", "full_name"],
+				as_list=True,
+			)
+		)
+		if approvers
+		else {}
+	)
+	pending_approvers = [
+		{"approver": approver, "approver_name": names.get(approver) or approver}
+		for approver in approvers
+	]
+	stalled = rounds or []
+	if stalled:
+		first = stalled[0]
+		return {
+			"round_id": first["round_id"],
+			"round_status": first["round_status"],
+			"pending_approvers": pending_approvers,
+			"can_reset": first["can_reset"],
+			"configuration_change": first["configuration_change"],
+			"rounds": stalled,
+		}
+	return {
+		"round_id": rows[0].approval_round_id,
+		"round_status": "Open",
+		"pending_approvers": pending_approvers,
+		"can_reset": False,
+		"configuration_change": None,
+		"rounds": [],
+	}
+
+
+def _active_round_rows(reference_doctype: str, reference_names: list[str]) -> list[object]:
+	if not reference_names:
+		return []
+	return frappe.get_all(
+		"Workflow Task",
+		filters={
+			"reference_doctype": reference_doctype,
+			"reference_name": ("in", reference_names),
+			"round_status": ("in", ("Open", "Stalled", "Conflicted")),
+		},
+		fields=[
+			"approval_round_id",
+			"round_status",
+			"approver",
+			"status",
+			"creation",
+			"failure_metadata",
+			"workflow_process",
+			"source_created_at",
+		],
+		order_by="creation desc, name desc",
+		limit=100,
+	)
+
+
+def _form_references(source) -> tuple[str, list[str]] | None:
+	"""Resolve references from the installed application that owns the aggregate."""
+	providers = frappe.get_hooks("workflow_approval_form_references", default={}).get(source.doctype)
+	if providers:
+		return frappe.get_attr(providers[-1])(source)
+	return None
+
+
+@frappe.whitelist()
+def get_workflow_comments(doctype: str, name: str) -> list[WorkflowCommentResponse]:
+	"""Read required comments from the source's most recent decision rounds."""
+	source = frappe.get_doc(doctype, name)
+	source.check_permission("read")
+	resolved = _form_references(source)
+	if resolved is None:
+		return get_latest_round_comments(doctype, [name])
+	reference_doctype, reference_names = resolved
+	references = [
+		{"reference_doctype": reference_doctype, "reference_name": reference_name}
+		for reference_name in reference_names
+	]
+	permissions = {}
+	prepare_source_permissions(references, frappe.session.user, permissions)
+	readable = [
+		reference_name for reference_name in reference_names
+		if (
+			permissions[(reference_doctype, reference_name)]
+			if (reference_doctype, reference_name) in permissions
+			else frappe.has_permission(reference_doctype, "read", doc=reference_name)
+		)
+	]
+	return get_latest_round_comments(reference_doctype, readable)
+
+
+
+def _read_round_failure(value: str | None) -> dict | None:
+	try:
+		metadata = json.loads(value or "{}")
+	except (TypeError, ValueError):
+		return None
+	if not isinstance(metadata, dict) or metadata.get("reason") != "no_eligible_approvers":
+		return None
+	details = metadata.get("workflow_error")
+	if isinstance(details, dict) and details.get("code") == "no_eligible_approvers":
+		return metadata
+	return None
+
+
+def _queued_round_errors(source, rows) -> list[engine.WorkflowRoundError]:
+	from dinext_common.workflow_approval.scenarios import service
+
+	errors = {}
+	context = None
+	for row in rows:
+		if row.round_status not in {"Open", "Stalled"} or not (failure := _read_round_failure(row.get("failure_metadata"))):
+			continue
+		if failure.get("initiator") != frappe.session.user and not _caller_is_system_manager():
+			continue
+		details = failure["workflow_error"]
+		if details.get("doctype") != source.doctype or details.get("name") != source.name:
+			continue
+		if get_datetime(row.source_created_at) != get_datetime(source.creation):
+			continue
+		if service.is_ready():
+			if context is None:
+				context = service.get_context(source)
+			if row.workflow_process != context["process_id"]:
+				continue
+		errors[row.approval_round_id] = details
+	return list(errors.values())
+
+
+@frappe.whitelist()
+def get_form_approval_banner(doctype: str, name: str) -> dict[str, Any]:
+	"""Return pending approvers alongside any round rebuild indicators."""
+	source = frappe.get_doc(doctype, name)
+	source.check_permission("read")
+	reference_doctype, reference_names = _form_references(source) or (doctype, [name])
+	if not reference_names:
+		return {
+			"round_id": None,
+			"round_status": None,
+			"pending_approvers": [],
+			"can_reset": False,
+			"configuration_change": None,
+			"rounds": [],
+		}
+	rows = _active_round_rows(reference_doctype, reference_names)
+	rounds = describe_rebuild_rounds(reference_doctype, reference_names)
+	pending = get_required_state_pending_tasks(reference_doctype, reference_names)
+	result = _banner_from_rows(rows, rounds=rounds, pending=pending)
+	if reference_doctype == doctype and reference_names == [name]:
+		if errors := _queued_round_errors(source, rows):
+			result["workflow_errors"] = errors
+	return result
+
+
+def _caller_is_system_manager() -> bool:
+	if frappe.session.user == "Administrator":
+		return True
+	return "System Manager" in set(frappe.get_roles())
+
+
+@frappe.whitelist()
+def get_transitions(
+	doc: object,
+	workflow: object | None = None,
+	raise_exception: bool = False,
+) -> list[dict[str, Any]]:
+	"""Expose only transition options on the caller's active task."""
+	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
+
+	if not is_engine_enabled():
+		from frappe.model.workflow import get_transitions as core_get_transitions
+
+		return core_get_transitions(doc, workflow, raise_exception)
+	doctype, name = _source_identity(doc)
+	if not doctype or not name:
+		return []
+	filters = {
+		"reference_doctype": doctype, "reference_name": name, "approver": frappe.session.user,
+		"status": "Working", "round_status": "Open",
+	}
+	from dinext_common.workflow_approval.scenarios import service
+	if service.is_ready():
+		source = frappe.get_doc(doctype,name)
+		source.check_permission("read")
+		context = service.get_context(source)
+		if not context["process_id"]:
+			return []
+		filters.update(workflow=context["workflow"], workflow_process=context["process_id"], source_created_at=source.creation)
+	task_names = frappe.get_all(
+		"Workflow Task",
+		filters=filters,
+		pluck="name",
+		limit=2,
+	)
+	if len(task_names) != 1:
+		if raise_exception:
+			raise engine.WorkflowApprovalConflictError(_("No active Workflow Task"))
+		return []
+	task = frappe.get_doc("Workflow Task", task_names[0])
+	task.check_permission("read")
+	return [
+		{
+			"state": row.state,
+			"action": row.action,
+			"next_state": row.next_state,
+			"allowed": row.allowed_role,
+			"custom_transition_uuid": row.transition_uuid,
+			"custom_comment_is_required": row.comment_is_required,
+			"transition_semantic_hash": row.transition_semantic_hash,
+			"workflow": task.workflow, "process_id": task.get("workflow_process"), "task_name": task.name,
+		}
+		for row in task.available_workflow_transitions
+	]
+
+
+class WorkflowTransitionTarget(TypedDict):
+	name: str
+	workflow: str
+	process_id: str | None
+	task_name: str
+	transition_uuid: str
+	next_state: str
+	transition_semantic_hash: NotRequired[str]
+
+
+def _common_transition_targets(tasks: list[Any], transitions: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+	"""Preserve UUID intersection within a schema; mixed schemas match one action."""
+	if not tasks:
+		return []
+	mixed = len({task.get("workflow") for task in tasks}) > 1
+	maps = []
+	for task in tasks:
+		by_key: dict[str, list[dict[str, Any]]] = defaultdict(list)
+		for row in transitions.get(task.name, []):
+			if row.get("transition_uuid") and row.get("action") and row.get("next_state"):
+				by_key[row["action"] if mixed else row["transition_uuid"]].append(row)
+		maps.append({key: rows[0] for key, rows in by_key.items() if len(rows) == 1})
+	keys = set(maps[0])
+	for item in maps[1:]:
+		keys.intersection_update(item)
+	result = []
+	for key in maps[0]:
+		if key not in keys:
+			continue
+		rows = [mapping[key] for mapping in maps]
+		if len({row["action"] for row in rows}) != 1 or (not mixed and len({row["next_state"] for row in rows}) != 1):
+			continue
+		targets = [_transition_target(task, row) for task, row in zip(tasks, rows)]
+		combined = {"action": rows[0]["action"],
+			"comment_is_required": any(row.get("comment_is_required") for row in rows), "targets": targets}
+		for field in ("transition_uuid", "next_state", "allowed"):
+			values = {row.get(field) for row in rows}
+			combined[field] = next(iter(values)) if len(values) == 1 else None
+		result.append(combined)
+	return result
+
+
+@frappe.whitelist()
+def get_common_list_transitions(doctype: str, names: str | list[str]) -> list[dict[str, Any]]:
+	"""Return the caller's unambiguous transitions across the exact checked selection."""
+	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
+
+	if not is_engine_enabled():
+		return []
+	docnames = _document_names(doctype, names)
+	if not docnames:
+		return []
+	if len(docnames) > MAX_BULK_DOCUMENTS:
+		raise frappe.ValidationError(_("Bulk approval supports at most 500 documents"))
+
+	rows = _select_task_rows(
+		{
+			"approver": frappe.session.user,
+			"reference_doctype": doctype,
+			"reference_name": ("in", docnames),
+			"round_status": "Open",
+			"status": "Working",
+			"source_deleted_at": ("is", "not set"),
+		},
+		fields=["name", "reference_name", "workflow", "workflow_process"],
+		order_by="name asc",
+		limit=None,
+	)
+	task_by_source = {row.reference_name: row.name for row in rows}
+	if len(rows) != len(docnames) or len(task_by_source) != len(docnames):
+		return []
+
+	transitions = _available_task_transitions([task_by_source[name] for name in docnames])
+	by_name = {row.reference_name: row for row in rows}
+	return _common_transition_targets([by_name[name] for name in docnames], transitions)
+
+
+@frappe.whitelist()
+def get_common_transition_actions(
+	docs: str | list[dict[str, Any]],
+	doctype: str,
+) -> list[str]:
+	from dinext_common.workflow_approval.lifecycle import is_engine_enabled
+
+	if not is_engine_enabled():
+		from frappe.model.workflow import (
+			get_common_transition_actions as core_get_common_transition_actions,
+		)
+
+		return core_get_common_transition_actions(docs, doctype)
+	documents = _as_list(docs)
+	names = [str(document.get("name") or "") for document in documents if isinstance(document, dict)]
+	if len(names) != len(documents) or any(not name for name in names):
+		return []
+	return sorted({row["action"] for row in get_common_list_transitions(doctype, names)})
+
+
+@frappe.whitelist(methods=["POST"])
+def reset_round(round_id: str, reason: object) -> dict[str, Any]:
+	"""Audited System Manager reset for stalled or conflicted rounds."""
+	_require_post()
+	_require_system_manager()
+	normalized_reason = engine.normalize_comment(reason, required=True)
+	return _reset_round(round_id, normalized_reason)
+
+
+def _reset_round(round_id: str, normalized_reason: str) -> dict[str, Any]:
+	"""Reset one round after the public entrypoint normalized the reason."""
+	_require_system_manager()
+	task_names = engine._round_task_names(round_id)
+	if not task_names:
+		raise frappe.DoesNotExistError(_("Approval round does not exist"))
+	task = frappe.get_doc("Workflow Task", task_names[0])
+	engine._lock_domain_dependencies(task.reference_doctype, task.reference_name)
+	source = frappe.get_doc(
+		task.reference_doctype,
+		task.reference_name,
+		for_update=True,
+	)
+	task = frappe.get_doc("Workflow Task", task_names[0], for_update=True)
+	from dinext_common.workflow_approval.scenarios import service
+	if service.is_ready():
+		service.start_cascade(source, manual=True)
+	if task.round_status not in {"Stalled", "Conflicted", "Open"}:
+		raise engine.WorkflowApprovalConflictError(_("Approval round cannot be reset"))
+	reset_reason = _("{0} Reset by {1}: {2}").format(
+		"System Manager",
+		frappe.session.user,
+		normalized_reason,
+	)
+	if engine.configuration_metadata(task) or engine.preview_configuration_conflict(
+		task, source=source, for_update=True
+	):
+		rebuilt = engine.rebuild_configuration_conflict(source, round_id, reset_reason)
+		source.add_comment(
+			"Workflow",
+			_("Approval round reset by {0}: {1}. Carried: {2}. Dropped: {3}.").format(
+				frappe.bold(frappe.utils.escape_html(frappe.session.user)),
+				frappe.utils.escape_html(normalized_reason),
+				_vote_audit(rebuilt["carried"]),
+				_vote_audit(rebuilt["dropped"]),
+			),
+		)
+		return {"round_id": round_id, "new_tasks": rebuilt["new_tasks"]}
+	engine._cancel_round(round_id, reset_reason)
+	source.add_comment(
+		"Workflow",
+		_("Approval round reset by {0}: {1}").format(
+			frappe.bold(frappe.utils.escape_html(frappe.session.user)),
+			frappe.utils.escape_html(normalized_reason),
+		),
+	)
+	return {
+		"round_id": round_id,
+		"new_tasks": engine.reconcile_source(source),
+	}
+
+
+class RebuildRoundFailure(TypedDict):
+	round_id: str
+	error: str
+
+
+class RebuildRoundsResult(TypedDict):
+	succeeded: list[str]
+	failed: list[RebuildRoundFailure]
+
+
+@frappe.whitelist(methods=["POST"])
+def reset_rounds(round_ids: str | list[str], reason: object) -> RebuildRoundsResult:
+	"""Rebuild a group with one reason and independent results for each round."""
+	_require_post()
+	_require_system_manager()
+	normalized_reason = engine.normalize_comment(reason, required=True)
+	identifiers = list(dict.fromkeys(str(value) for value in _as_list(round_ids)))
+	if not identifiers or len(identifiers) > 500:
+		frappe.throw(_("Select between 1 and 500 approval rounds to rebuild"))
+	result: RebuildRoundsResult = {"succeeded": [], "failed": []}
+	for round_id in identifiers:
+		try:
+			_reset_round(round_id, normalized_reason)
+			frappe.db.commit()
+			result["succeeded"].append(round_id)
+		except Exception as exc:
+			frappe.db.rollback()
+			result["failed"].append({"round_id": round_id, "error": str(exc)})
+	return result
+
+
+def _vote_audit(votes: list[object]) -> str:
+	labels = [
+		_("{0} voted {1}").format(
+			frappe.utils.escape_html(getattr(vote, "approver", None) or vote.get("approver")),
+			frappe.utils.escape_html(_(getattr(vote, "action", None) or vote.get("action"))),
+		)
+		for vote in votes
+	]
+	return ", ".join(labels) if labels else _("none")
+
+
+@frappe.whitelist(methods=["POST"])
+def retry_finalization(round_id: str) -> dict[str, Any]:
+	"""Audited System Manager retry for a failed durable finalization."""
+	_require_post()
+	_require_system_manager()
+	from dinext_common.workflow_approval.finalization import retry_round
+
+	retry_round(round_id)
+	return {"round_id": round_id, "status": "retried"}
+
+
+def _number_card(
+	value: int,
+	route: str,
+	route_options: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+	result = {
+		"value": value,
+		"fieldtype": "Int",
+		"route": ["query-report", route],
+	}
+	if route_options:
+		result["route_options"] = route_options
+	return result
+
+
+@frappe.whitelist()
+def open_approval_count() -> dict[str, Any]:
+	return _queue_card({})
+
+
+@frappe.whitelist()
+def new_approval_count() -> dict[str, Any]:
+	day, _ = _queue_day_filter()
+	filters = {"created_on": str(day)}
+	return _queue_card(filters)
+
+
+def _queue_card(filters):
+	route_options = dict.fromkeys(
+		("created_today", "created_on", "workflow", "reference_doctype", "workflow_state", "action", "minimum_age"),
+		"",
+	)
+	task_filters, predicate = _personal_queue_filters(filters)
+	rows = _iter_task_rows(
+		task_filters, fields=("creation",) if predicate else (), order_by=PERSONAL_TASK_ORDER,
+		limit=None, predicate=predicate,
+	)
+	return _number_card(
+		sum(1 for _ in rows),
+		"My Approvals",
+		{**route_options, **filters, "ignore_prepared_report": True},
+	)
+
+
+def _completed_approval_card(*, automatic_only=False):
+	filters = {"completed_since": str(add_days(now_datetime(), -30))}
+	if automatic_only:
+		filters["completion_source"] = "Automatic Unchanged"
+	route_options = dict.fromkeys(
+		("workflow", "reference_doctype", "action", "completion_source", "from_date", "to_date"), ""
+	)
+	return _number_card(
+		len(get_personal_history(filters, fields=())),
+		"My Approval History",
+		{**route_options, **filters, "ignore_prepared_report": True},
+	)
+
+
+@frappe.whitelist()
+def completed_approval_count() -> dict[str, Any]:
+	return _completed_approval_card()
+
+
+@frappe.whitelist()
+def automatic_approval_count() -> dict[str, Any]:
+	return _completed_approval_card(automatic_only=True)
+
+
+@frappe.whitelist()
+def attention_approval_count() -> dict[str, Any]:
+	rows = _filtered_tasks(
+		{"approver": frappe.session.user, "round_status": ("in", ("Stalled", "Conflicted"))},
+		limit=10000,
+	)
+	return _number_card(len(rows), "My Approvals")
+
+
+def _control_rounds(round_status):
+	rounds = {}
+	for row in _monitoring_candidates(("approval_round_id", "round_status", "creation"), 10000):
+		rounds.setdefault(row.approval_round_id, row)
+	return [row for row in rounds.values() if _round_status_matches(row.round_status, round_status)]
+
+
+@frappe.whitelist()
+def open_control_round_count() -> dict[str, Any]:
+	rows = _control_rounds("Open")
+	return _number_card(len(rows), "Approval Monitoring", {"round_status": "Open"})
+
+
+@frappe.whitelist()
+def attention_control_round_count() -> dict[str, Any]:
+	rows = []
+	if frappe.db.exists(
+		"Workflow Task",
+		{"round_status": ("in", ("Stalled", "Conflicted")), "source_deleted_at": ("is", "not set")},
+	):
+		rows = _control_rounds("Attention")
+	return _number_card(
+		len(rows),
+		"Approval Monitoring",
+		{"round_status": "Attention"},
+	)
+
+
+@frappe.whitelist()
+def longest_control_wait() -> dict[str, Any]:
+	from frappe.utils import now_datetime, time_diff_in_hours
+
+	from dinext_common.workflow_approval.control import longest_open_round_days
+
+	now = now_datetime()
+	rows = _control_rounds("Open")
+	result = _number_card(
+		longest_open_round_days(max(0, time_diff_in_hours(now, row.creation)) for row in rows),
+		"Approval Monitoring",
+		{"round_status": "Open"},
+	)
+	result["fieldtype"] = "Float"
+	return result
+
+
+@frappe.whitelist()
+def control_decision_count() -> dict[str, Any]:
+	from dinext_common.workflow_approval.control import aggregate_duration, manual_total
+
+	since = add_days(now_datetime(), -30)
+	tasks = get_monitored_tasks(
+		{"status": "Completed", "completed_since": since},
+	)
+	rows = aggregate_duration(tasks, "Document Type", {})
+	return _number_card(
+		manual_total(rows),
+		"Approval Duration",
+		{
+			"completed_since": str(since),
+			"from_date": "",
+			"workflow": "",
+			"reference_doctype": "",
+			"to_date": str(getdate(now_datetime())),
+			"group_by": "Document Type",
+			"chart": "Completed duration",
+		},
+	)
+
+
+@frappe.whitelist()
+def get_approval_dashboard() -> dict[str, Any]:
+	"""Return personal queue/history/chart and source-safe monitoring rows."""
+	queue = get_my_queue()
+	history = get_my_history()
+	by_doctype: dict[str, int] = {}
+	for row in queue:
+		doctype = row["reference_doctype"]
+		by_doctype[doctype] = by_doctype.get(doctype, 0) + 1
+
+	monitoring = get_monitoring_rows(limit=1000)
+	return {
+		"queue": queue,
+		"history": history,
+		"by_doctype": [
+			{"doctype": doctype, "count": count}
+			for doctype, count in sorted(by_doctype.items())
+		],
+		"can_monitor": bool(get_monitorable_workflows()),
+		"monitoring": monitoring,
+	}
+
+
+def _monitoring_candidates(fields, limit):
+	return _select_task_rows(
+		{"round_status": ("in", MONITORING_STATUSES), "source_deleted_at": ("is", "not set")},
+		fields=fields,
+		order_by="creation asc, name asc",
+		limit=int(limit),
+		monitored_only=True,
+	)
+
+
+@frappe.whitelist()
+def get_monitoring_rows(
+	filters: str | dict[str, Any] | None = None,
+	limit: int = 10000,
+) -> list[dict[str, Any]]:
+	values = frappe.parse_json(filters) if isinstance(filters, str) else dict(filters or {})
+	grouped: dict[str, dict[str, Any]] = {}
+	for row in _monitoring_candidates(QUEUE_FIELDS, limit):
+		payload = grouped.setdefault(
+			row.approval_round_id,
+			{
+				**{field: row.get(field) for field in QUEUE_FIELDS if field != "source_deleted_at"},
+				"pending_approvers": [],
+				"active_task_count": 0,
+				"available_actions": [],
+				"transition_uuids": [],
+			},
+		)
+		manifest = frappe.parse_json(row.round_manifest) or {}
+		for transition in manifest.get("transitions") or []:
+			if transition.get("action") not in payload["available_actions"]:
+				payload["available_actions"].append(transition.get("action"))
+			if transition.get("transition_uuid") not in payload["transition_uuids"]:
+				payload["transition_uuids"].append(transition.get("transition_uuid"))
+		if row.status == "Working":
+			payload["pending_approvers"].append(row.approver or row.user)
+			payload["active_task_count"] += 1
+	result = []
+	from frappe.utils import now_datetime, time_diff_in_hours
+
+	for row in grouped.values():
+		row["pending_approvers"] = ", ".join(
+			sorted({approver for approver in row["pending_approvers"] if approver})
+		)
+		row["available_actions"] = ", ".join(
+			sorted(filter(None, row["available_actions"]))
+		)
+		row["transition_uuids"] = ", ".join(
+			sorted(filter(None, row["transition_uuids"]))
+		)
+		row["age_hours"] = max(
+			0,
+			time_diff_in_hours(now_datetime(), row["creation"]),
+		)
+		if _monitor_row_matches(row, values):
+			result.append(frappe._dict(row))
+	return result
+
+
+def _monitor_row_matches(row: dict[str, Any], filters: dict[str, Any]) -> bool:
+	return all(
+		(
+			not filters.get("workflow") or row["workflow"] == filters["workflow"],
+			not filters.get("reference_doctype")
+			or row["reference_doctype"] == filters["reference_doctype"],
+			not filters.get("workflow_state")
+			or row["workflow_state"] == filters["workflow_state"],
+			not filters.get("round_status")
+			or _round_status_matches(row.get("round_status"), filters["round_status"]),
+			not filters.get("action")
+			or filters["action"] in row["available_actions"].split(", "),
+			not filters.get("transition_uuid")
+			or filters["transition_uuid"] in row["transition_uuids"].split(", "),
+			not filters.get("pending_approver")
+			or filters["pending_approver"] in row["pending_approvers"].split(", "),
+			not filters.get("minimum_age_hours")
+			or row["age_hours"] >= float(filters["minimum_age_hours"]),
+		)
+	)
+
+
+def _round_status_matches(status: str | None, expected: str) -> bool:
+	choice = canonical_choice(
+		expected,
+		("Open", "Stalled", "Conflicted", "Attention"),
+	)
+	if choice == "Attention":
+		return status in {"Stalled", "Conflicted"}
+	return status == choice
+
+
+def canonical_choice(value: str | None, choices: tuple[str, ...]) -> str:
+	"""Match a filter value in the request language or in English."""
+	text = str(value or "").strip()
+	if not text:
+		return choices[0]
+	for choice in choices:
+		if text == choice or text == _(choice):
+			return choice
+	return text
+
+
+def approver_display_names(approvers: list[str]) -> dict[str, str]:
+	idents = sorted({approver for approver in approvers if approver})
+	if not idents:
+		return {}
+	rows = frappe.get_all(
+		"User",
+		filters={"name": ("in", idents)},
+		fields=["name", "full_name"],
+	)
+	return {
+		row.name: (row.full_name or row.name)
+		for row in rows
+	}
+
+
+def get_monitored_tasks(
+	filters: str | dict[str, Any] | None = None,
+	limit: int = 10000,
+) -> list[dict[str, Any]]:
+	"""Return source-readable tasks from workflows the user monitors."""
+	values = frappe.parse_json(filters) if isinstance(filters, str) else dict(filters or {})
+	task_filters: dict[str, Any] = {}
+	if values.get("status"):
+		task_filters["status"] = values["status"]
+	if values.get("round_status"):
+		choice = canonical_choice(
+			values["round_status"],
+			("Open", "Stalled", "Conflicted", "Attention"),
+		)
+		if choice == "Attention":
+			task_filters["round_status"] = ("in", ["Stalled", "Conflicted"])
+		else:
+			task_filters["round_status"] = choice
+	if values.get("completed_since"):
+		task_filters["completed_at"] = (">=", values["completed_since"])
+	if values.get("workflow"):
+		task_filters["workflow"] = values["workflow"]
+	if values.get("reference_doctype"):
+		task_filters["reference_doctype"] = values["reference_doctype"]
+	task_filters["source_deleted_at"] = ("is", "not set")
+	return _select_task_rows(
+		task_filters,
+		fields=MONITORED_TASK_FIELDS,
+		order_by="creation asc, name asc",
+		limit=int(limit),
+		monitored_only=True,
+	)
+
+
+def _card_state_values(state: str) -> list[str]:
+	"""Equivalent state labels accepted by existing approval cards."""
+	groups = (
+		("Approved", "Согласовано", "Согласован"),
+		("Pending Approval", "На согласовании"),
+	)
+	for group in groups:
+		if state in group:
+			return list(group)
+	return [state]
+
+
+@frappe.whitelist()
+def get_legacy_number_card_result(filters: str | dict[str, Any]) -> dict[str, Any]:
+	"""Resolve stored cards with the same state filters as the owning module."""
+	values = frappe.parse_json(filters) if isinstance(filters, str) else dict(filters)
+	configured_fields = (
+		frappe.get_hooks("workflow_approval_number_card_state_fields", default={})
+		if getattr(frappe.local, "site", None) else {}
+	)
+	fields = configured_fields.get(values.get("doc")) or ["workflow_state"]
+	return calculate_approval_number_card(values, source_state_field=fields[-1])
+
+
+def calculate_approval_number_card(
+	values: dict[str, Any], *, source_state_field: str
+) -> dict[str, Any]:
+	"""Count the readable sources in the same population as the destination list."""
+	doctype = values.get("doc")
+	state = values.get("state")
+	route = values.get("route")
+	if not doctype or not state or not route:
+		raise frappe.ValidationError(_("Card filters require doc, state, and route"))
+	completed = state in {"Согласовано", "Согласован", "Approved"}
+	task_filters: dict[str, Any] = {
+		"approver": frappe.session.user,
+		"reference_doctype": doctype,
+		"status": "Completed" if completed else "Working",
+		"round_status": "Transitioned" if completed else "Open",
+		"source_deleted_at": ["is", "not set"],
+		"next_state" if completed else "workflow_state": ["in", _card_state_values(state)],
+	}
+	# Read only the fields needed for source authorization and pending target selection.
+	rows = frappe.get_all(
+		"Workflow Task",
+		filters=task_filters,
+		fields=[
+			"name", "workflow", "reference_name", "reference_doctype", "approver",
+			"approval_round_id", "source_deleted_at",
+		],
+		limit_page_length=0,
+	)
+	if completed and rows:
+		latest_round = {}
+		# Round metadata is an internal authorization input, never returned to the caller.
+		for task in frappe.get_all(
+			"Workflow Task",
+			filters={
+				"reference_doctype": doctype,
+				"reference_name": ["in", list({row.reference_name for row in rows})],
+				"source_deleted_at": ["is", "not set"],
+			},
+			fields=["reference_name", "approval_round_id"],
+			order_by="creation desc, name desc",
+			limit_page_length=0,
+		):
+			latest_round.setdefault(task.reference_name, task.approval_round_id)
+		rows = [row for row in rows if row.approval_round_id == latest_round.get(row.reference_name)]
+	if not completed:
+		required = required_target_task_names(rows)
+		rows = [row for row in rows if row.name in required]
+	unique = {row.reference_name: row for row in rows}
+	names = [
+		name for name, row in unique.items() if has_workflow_task_permission(row, "read", frappe.session.user)
+	]
+	if names:
+		filters = {
+			"name": ["in", names],
+			"docstatus": ["!=", 2],
+			source_state_field: ["in", _card_state_values(state)],
+		}
+		if source_state_field != "workflow_state" and frappe.get_meta(doctype).has_field("workflow_state"):
+			filters["workflow_state"] = ["in", _card_state_values(state)]
+		previous_cmd = frappe.form_dict.get("cmd")
+		try:
+			# Include the destination list's display rules without bypassing source permissions.
+			frappe.form_dict.cmd = "frappe.desk.reportview.get"
+			names = frappe.get_list(doctype, filters=filters, pluck="name", limit_page_length=0)
+		finally:
+			if previous_cmd is None:
+				frappe.form_dict.pop("cmd", None)
+			else:
+				frappe.form_dict.cmd = previous_cmd
+	names = sorted(set(names))
+	return {
+		"value": len(names),
+		"fieldtype": "Data",
+		"route_options": {"name": ["in", names]} if names else {"name": ["is", "not set"]},
+		"route": ["list", route],
+	}

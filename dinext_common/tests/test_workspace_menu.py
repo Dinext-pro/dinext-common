@@ -26,6 +26,7 @@ from dinext_common.setup.workspace import (
 	DINEXT_DOCUMENTATION_CARD,
 	DINEXT_HUB_BLOCK,
 	DINEXT_WORKSPACE,
+	MY_APPROVALS_WORKSPACE,
 	SETTINGS_CHILDREN,
 	SETTINGS_ROLES,
 	SETTINGS_WORKSPACE,
@@ -180,6 +181,7 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		for ws in workspaces:
 			if ws.for_user or ws.name in (
 				DINEXT_WORKSPACE,
+				MY_APPROVALS_WORKSPACE,
 				SETTINGS_WORKSPACE,
 				*get_settings_children(),
 			):
@@ -473,9 +475,10 @@ class TestDinextWorkspaceMenu(FrappeTestCase):
 		settings.reload()
 		self.assertEqual(
 			{(row.element_type, row.target) for row in settings.items},
-			{("URL", DINEXT_DOCUMENTATION_CARD["target"])},
+			{("URL", DINEXT_DOCUMENTATION_CARD["target"]), ("Workspace", MY_APPROVALS_WORKSPACE)},
 		)
-		self.assertEqual(settings.items[0].label, "Documentation")
+		documentation = next(row for row in settings.items if row.element_type == "URL")
+		self.assertEqual(documentation.label, "Documentation")
 
 	def test_common_registers_documentation_card_without_overwriting_admin_edits(self):
 		configure_workspace_menu()

@@ -40,6 +40,16 @@ DINEXT_DOCUMENTATION_CARD = {
 	"description": "Guides and reference material for working with Dinext.",
 	"icon": "help",
 }
+MY_APPROVALS_WORKSPACE = "My Approvals"
+MY_APPROVALS_ICON = "es-line-success"
+MY_APPROVALS_CARD = {
+	"section": "My Work",
+	"element_type": "Workspace",
+	"target": MY_APPROVALS_WORKSPACE,
+	"label": MY_APPROVALS_WORKSPACE,
+	"description": "Personal queue, history and approval monitoring.",
+	"icon": MY_APPROVALS_ICON,
+}
 
 
 def omit_replaced_workspaces(pages):
@@ -70,8 +80,82 @@ def get_workspace_sidebar_items():
 	from frappe.desk.desktop import get_workspace_sidebar_items as original
 
 	payload = original() or {}
-	payload["pages"] = omit_replaced_workspaces(payload.get("pages") or [])
+	payload["pages"] = filter_workspace_navigation(payload.get("pages") or [])
 	return payload
+
+
+@frappe.whitelist()
+def get_optional_kanban_boards(doctype: str):
+	"""Keep the Desk view switcher usable when it has no readable boards."""
+	from frappe.desk.doctype.kanban_board.kanban_board import get_kanban_boards
+
+	message_count = len(frappe.local.message_log)
+	previous_error = frappe.flags.error_message
+	try:
+		return get_kanban_boards(doctype)
+	except frappe.PermissionError:
+		del frappe.local.message_log[message_count:]
+		frappe.flags.error_message = previous_error
+		return []
+
+
+def _can_see_approval_control():
+	from dinext_common.workflow_approval.permissions import get_monitorable_workflows
+
+	return "System Manager" in frappe.get_roles() or bool(get_monitorable_workflows())
+
+
+def _is_approval_control_block(block):
+	return block.get("id", "").startswith("control-")
+
+
+def filter_workspace_navigation(pages):
+	"""Project the approval control section only for monitorable workflows."""
+	pages = omit_replaced_workspaces(pages)
+	if not any(_workspace_page_field(page, "name") == MY_APPROVALS_WORKSPACE for page in pages):
+		return pages
+	if _can_see_approval_control():
+		return pages
+
+	result = []
+	for page in pages:
+		if _workspace_page_field(page, "name") == MY_APPROVALS_WORKSPACE and page.get("content"):
+			blocks = json.loads(page["content"])
+			page = {
+				**page,
+				"content": json.dumps([block for block in blocks if not _is_approval_control_block(block)]),
+			}
+		result.append(page)
+	return result
+
+
+def preserve_approval_control_blocks(doc, method=None):
+	"""Retain blocks hidden from a Workspace Manager's layout editor."""
+	if doc.name != MY_APPROVALS_WORKSPACE:
+		return
+	previous = doc.get_doc_before_save()
+	if not previous or doc.content == previous.content or _can_see_approval_control():
+		return
+	before = json.loads(previous.content or "[]")
+	after = json.loads(doc.content or "[]")
+	if any(_is_approval_control_block(block) for block in after):
+		return
+	visible_ids = {block.get("id") for block in after}
+	hidden_before = {}
+	trailing = []
+	for block in before:
+		if _is_approval_control_block(block):
+			trailing.append(block)
+		elif trailing and block.get("id") in visible_ids:
+			hidden_before[block["id"]] = trailing
+			trailing = []
+	if hidden_before or trailing:
+		restored = []
+		for block in after:
+			restored.extend(hidden_before.get(block.get("id"), ()))
+			restored.append(block)
+		doc.content = json.dumps([*restored, *trailing], ensure_ascii=False)
+
 
 
 def get_settings_children() -> tuple[str, ...]:
@@ -251,10 +335,11 @@ def ensure_default_dinext_hub_settings() -> None:
 	if not frappe.db.exists("DocType", "Dinext Workspace Settings"):
 		return
 
-	ensure_workspace_settings(DINEXT_HUB_SETTINGS)
+	settings = ensure_workspace_settings(DINEXT_HUB_SETTINGS)
 	ensure_workspace_settings(SETTINGS_HUB_SETTINGS, roles=SETTINGS_ROLES)
+	_update_my_approvals_icon(settings)
 	register_hub_items(
-		[DINEXT_DOCUMENTATION_CARD],
+		[DINEXT_DOCUMENTATION_CARD, MY_APPROVALS_CARD],
 		source_app="dinext_common",
 		settings_name=DINEXT_HUB_SETTINGS,
 	)
@@ -279,6 +364,22 @@ def ensure_default_dinext_hub_settings() -> None:
 		settings_name=SETTINGS_HUB_SETTINGS,
 	)
 	_disable_settings_hub_page_lists()
+
+
+def _update_my_approvals_icon(settings) -> None:
+	"""Replace the unsupported previous defaults without resetting custom icons."""
+	if frappe.db.get_value("Workspace", MY_APPROVALS_WORKSPACE, "icon") == "task-checked":
+		frappe.db.set_value("Workspace", MY_APPROVALS_WORKSPACE, "icon", MY_APPROVALS_ICON)
+
+	for row in settings.items:
+		if (
+			row.element_type == "Workspace"
+			and row.target == MY_APPROVALS_WORKSPACE
+			and row.icon == "task-checked"
+			and (not row.source_app or row.source_app == "dinext_common")
+		):
+			row.db_set("icon", MY_APPROVALS_ICON)
+			frappe.clear_document_cache(settings.doctype, settings.name)
 
 
 def _disable_settings_hub_page_lists() -> None:
@@ -317,7 +418,7 @@ def hide_non_dinext_workspaces() -> None:
 
 	keep_visible = set(get_settings_children())
 	for workspace in workspaces:
-		if workspace.for_user:
+		if workspace.for_user or workspace.name == MY_APPROVALS_WORKSPACE:
 			continue
 
 		if workspace.name in keep_visible:
