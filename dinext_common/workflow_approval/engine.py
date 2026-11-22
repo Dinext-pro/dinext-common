@@ -777,7 +777,7 @@ def _add_stalled_diagnostic(doc: object, message: str) -> None:
 	)
 
 
-def _completed_vote_rows(round_id: str) -> list[dict[str, Any]]:
+def _completed_vote_rows(round_id: str, *, for_update: bool = True) -> list[dict[str, Any]]:
 	return frappe.db.get_values(
 		"Workflow Task",
 		{"approval_round_id": round_id, "status": "Completed"},
@@ -790,7 +790,7 @@ def _completed_vote_rows(round_id: str) -> list[dict[str, Any]]:
 			"vote_comment",
 		],
 		as_dict=True,
-		for_update=True,
+		for_update=for_update,
 		order_by="name asc",
 	)
 
@@ -800,6 +800,8 @@ def _classify_round(
 	workflow: object,
 	state: str,
 	round_id: str,
+	*,
+	for_update: bool = True,
 ) -> dict[str, list[dict[str, Any]]]:
 	current = [
 		_transition_dict(transition)
@@ -809,7 +811,7 @@ def _classify_round(
 	return classify_round_configuration(
 		manifest.get("transitions") or [],
 		current,
-		_completed_vote_rows(round_id),
+		_completed_vote_rows(round_id, for_update=for_update),
 	)
 
 
@@ -831,8 +833,9 @@ def preview_configuration_conflict(
 	task: object,
 	*,
 	source: object | None = None,
+	for_update: bool = False,
 ) -> dict[str, Any] | None:
-	"""Describe live drift before a failed request or source save persists it."""
+	"""Preview configuration drift. Only a mutating caller needs locked votes."""
 	if _value(task, "round_status") != "Open":
 		return None
 	if source is None:
@@ -846,7 +849,9 @@ def preview_configuration_conflict(
 	workflow_name, workflow, _state_field, state = context
 	if workflow_name != task.workflow or state != task.workflow_state:
 		return None
-	classification = _classify_round(_parse_manifest(task), workflow, state, task.approval_round_id)
+	classification = _classify_round(
+		_parse_manifest(task), workflow, state, task.approval_round_id, for_update=for_update
+	)
 	return configuration_change_metadata(classification) if classification["void"] else None
 
 

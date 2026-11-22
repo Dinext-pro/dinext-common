@@ -47,10 +47,11 @@ class TestRebuildRoundConflict(unittest.TestCase):
 		workflow = SimpleNamespace(transitions=[current])
 		with (
 			patch.object(engine, "_workflow_context", return_value=("WF", workflow, "status", "Pending")),
-			patch.object(engine, "_completed_vote_rows", return_value=[vote]),
+			patch.object(engine, "_completed_vote_rows", return_value=[vote]) as completed_votes,
 			patch.object(engine, "_mark_conflicted") as mark,
 		):
 			result = engine.preview_configuration_conflict(task, source=object())
+			completed_votes.assert_called_once_with("ROUND-1", for_update=False)
 			self.assertEqual(result["reason"], "configuration_changed")
 			self.assertEqual(result["void"][0]["approvers"], ["alice@example.com"])
 			self.assertEqual(task.round_status, "Open")
@@ -102,7 +103,7 @@ class TestRebuildRoundConflict(unittest.TestCase):
 			patch.object(api.engine, "configuration_metadata", return_value=None),
 			patch.object(
 				api.engine, "preview_configuration_conflict", return_value={"reason": "configuration_changed"}
-			),
+			) as preview,
 			patch.object(
 				api.engine,
 				"rebuild_configuration_conflict",
@@ -113,6 +114,7 @@ class TestRebuildRoundConflict(unittest.TestCase):
 			result = api.reset_round("R1", "Reason")
 		self.assertEqual(result["new_tasks"], ["NEW"])
 		start_cascade.assert_called_once_with(source, manual=True)
+		preview.assert_called_once_with(task, source=source, for_update=True)
 		rebuild.assert_called_once()
 		cancel.assert_not_called()
 

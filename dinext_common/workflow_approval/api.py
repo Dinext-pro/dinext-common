@@ -1474,7 +1474,9 @@ def _reset_round(round_id: str, normalized_reason: str) -> dict[str, Any]:
 		frappe.session.user,
 		normalized_reason,
 	)
-	if engine.configuration_metadata(task) or engine.preview_configuration_conflict(task, source=source):
+	if engine.configuration_metadata(task) or engine.preview_configuration_conflict(
+		task, source=source, for_update=True
+	):
 		rebuilt = engine.rebuild_configuration_conflict(source, round_id, reset_reason)
 		source.add_comment(
 			"Workflow",

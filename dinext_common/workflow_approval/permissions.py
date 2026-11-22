@@ -105,7 +105,7 @@ def _has_source_read_permission(task: object, user: str) -> bool:
 				from frappe.model.document import Document
 
 				if get_controller(doctype).has_permission is not Document.has_permission:
-					return bool(frappe.get_doc(doctype, name).has_permission("read", user=user))
+					return bool(frappe.get_doc(doctype, name).has_permission("read"))
 				if _uses_standard_document_loader(doctype, meta, user):
 					source = frappe.get_doc(doctype, name)
 				elif not frappe.db.exists(doctype, name):
