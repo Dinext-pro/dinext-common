@@ -89,4 +89,22 @@ describe("My Approvals workspace", () => {
 		cy.noPermissionDialog();
 		cy.get(".modal:visible").should("not.exist");
 	});
+
+	it("shows permitted deadline rows when the approver has no assigned group", () => {
+		cy.login(fixture.approver, fixture.password);
+		cy.openDesk("/app/query-report/Approval%20Deadline%20Discipline");
+		cy.window().should((win) => {
+			const report = win.frappe.query_report;
+			const row = report.data.find(({ reference_name }) => reference_name === fixture.prefix + "Today");
+			expect(row?.approver_name).to.eq("Approval QA English");
+			expect(row.user_group).not.to.be.ok;
+			expect(report.columns.map(({ fieldname }) => fieldname)).to.include("user_group");
+		});
+		cy.window().then((win) => win.frappe.query_report.set_filter_value("group_by", "user_group"));
+		cy.window().should((win) => {
+			const row = win.frappe.query_report.data.find(({ group }) => group === win.__("Not specified"));
+			expect(row?.overdue).to.eq(1);
+		});
+		cy.noPermissionDialog();
+	});
 });

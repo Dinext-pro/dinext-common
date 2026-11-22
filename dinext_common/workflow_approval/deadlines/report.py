@@ -17,22 +17,16 @@ def execute(filters=None):
 	rows = result["rows"] + [
 		row for row in result["all_rows"] if row["discipline_status"] in ("Error", "Unknown")
 	]
+	if filters.get("result"):
+		rows = [row for row in rows if row["discipline_status"] == filters.result]
+	approvers = {row["approver"] for row in rows if row.get("approver")}
 	groups = {}
-	if frappe.db.exists("DocType", "Worker") and frappe.has_permission("Worker", "read"):
-		users = list({row["approver"] for row in rows})
-		groups = (
-			{
-				row.wuser: row.wuser_group
-				for row in frappe.get_list(
-					"Worker",
-					filters={"wuser": ["in", users]},
-					fields=["wuser", "wuser_group"],
-					limit_page_length=0,
-				)
-			}
-			if users
-			else {}
-		)
+	if approvers:
+		requested = tuple(sorted(approvers))
+		for path in frappe.get_hooks("workflow_approval_approver_group_providers"):
+			for approver, group in frappe.get_attr(path)(requested).items():
+				if approver in approvers and group:
+					groups.setdefault(approver, group)
 	for row in rows:
 		row.update(
 			approver_name=full_name(row["approver"]),
@@ -41,8 +35,6 @@ def execute(filters=None):
 			result_label=_(row["discipline_status"]),
 			deadline_error=display_deadline_error(row.get("deadline_error")),
 		)
-	if filters.get("result"):
-		rows = [row for row in rows if row["discipline_status"] == filters.result]
 	group = filters.get("group_by")
 	if group in ("approver", "user_group", "workflow", "workflow_state"):
 		buckets = defaultdict(list)
@@ -78,16 +70,18 @@ def execute(filters=None):
 		]
 	else:
 		data = rows
+		# These labels come from permission-filtered rows. Static links would
+		# make Frappe require read access to the linked configuration doctypes.
 		columns = [
 			dict(fieldname=field, label=_(label), fieldtype=kind, width=width, **extra)
 			for field, label, kind, width, extra in [
-				("reference_doctype", "Document Type", "Link", 150, {"options": "DocType"}),
+				("reference_doctype", "Document Type", "Data", 150, {}),
 				("reference_name", "Document", "Dynamic Link", 180, {"options": "reference_doctype"}),
 				("source_title", "Title", "Data", 200, {}),
-				("workflow", "Workflow", "Link", 160, {"options": "Workflow"}),
+				("workflow", "Workflow", "Data", 160, {}),
 				("state_label", "State", "Data", 150, {}),
 				("approver_name", "Approver", "Data", 180, {}),
-				("user_group", "User Group", "Link", 150, {"options": "User Group"}),
+				("user_group", "User Group", "Data", 150, {}),
 				("deadline_started_at", "Assigned At", "Datetime", 165, {}),
 				("deadline_due_at", "Deadline", "Datetime", 165, {}),
 				("completed_at", "Decision At", "Datetime", 165, {}),

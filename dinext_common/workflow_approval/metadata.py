@@ -394,31 +394,7 @@ def ensure_workflow_approval_desk_records() -> None:
 		),
 	}
 	for name, (label, method, color) in cards.items():
-		values = {
-			"label": label,
-			"method": method,
-			"color": color,
-			"type": "Custom",
-			"document_type": "Workflow Task",
-			"currency": "",
-			"show_percentage_stats": 0,
-			"show_full_number": 1,
-		}
-		if frappe.db.exists("Number Card", name):
-			card = frappe.get_doc("Number Card", name)
-			card.update(values)
-			card.save(ignore_permissions=True)
-		else:
-			frappe.get_doc(
-				{
-					"doctype": "Number Card",
-					"name": name,
-					"is_public": 1,
-					"is_standard": 1,
-					"module": "Dinext Common",
-					**values,
-				}
-			).insert(ignore_permissions=True)
+		_ensure_number_card(name, label, method, color, is_public=1)
 	for obsolete in (
 		"My approvals requiring attention",
 		"My Approvals Requiring Attention",
@@ -482,7 +458,23 @@ def _ensure_queue_action_filter() -> None:
 	frappe.clear_document_cache("Report", QUEUE_SHORTCUT)
 
 
-def _ensure_number_card(name: str, label: str, method: str, color: str) -> None:
+def _ensure_number_card(name: str, label: str, method: str, color: str, *, is_public: int = 0) -> None:
+	if frappe.db.exists("Number Card", name):
+		card = frappe.get_doc("Number Card", name)
+		if not (card.is_standard and card.module == "Dinext Common" and card.type == "Custom" and card.method == method):
+			return
+		updates = {}
+		if card.document_type == "User Timesheet Position":
+			updates["document_type"] = "Workflow Task"
+		if not is_public:
+			if card.is_public:
+				updates["is_public"] = 0
+			if card.owner != "Administrator":
+				updates["owner"] = "Administrator"
+		if updates:
+			frappe.db.set_value("Number Card", name, updates, update_modified=False)
+		return
+
 	values = {
 		"label": label,
 		"method": method,
@@ -493,16 +485,11 @@ def _ensure_number_card(name: str, label: str, method: str, color: str) -> None:
 		"show_percentage_stats": 0,
 		"show_full_number": 0 if name == LONGEST_WAIT_CARD else 1,
 	}
-	if frappe.db.exists("Number Card", name):
-		card = frappe.get_doc("Number Card", name)
-		card.update({"is_public": 0, "owner": "Administrator"})
-		card.save(ignore_permissions=True)
-		return
 	card = frappe.get_doc(
 		{
 			"doctype": "Number Card",
 			"name": name,
-			"is_public": 0,
+			"is_public": is_public,
 			"owner": "Administrator",
 			"is_standard": 1,
 			"module": "Dinext Common",
@@ -634,6 +621,8 @@ def validate_workflow_configuration(workflow: object) -> None:
 	from dinext_common.workflow_approval.email_settings import prepare_email_profiles
 
 	previous = workflow.get_doc_before_save() if hasattr(workflow, "get_doc_before_save") else None
+	if previous is None and getattr(workflow, "flags", None) and frappe.flags.in_fixtures:
+		previous = workflow.flags.get("workflow_before_fixture_import")
 	prepare_email_profiles(workflow, previous, now=frappe.utils.now_datetime)
 	from dinext_common.workflow_approval.deadlines.metadata import prepare_settings
 	prepare_settings(workflow, previous=previous)

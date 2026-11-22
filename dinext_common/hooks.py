@@ -55,6 +55,7 @@ fixtures = [
         "filters": [
             ["module", "=", "Dinext Common"],
             ["name", "not in", [
+                "IssueAssignUserGroup",
                 "Get my approved WT",
                 "Get my working WT V2",
                 "Workflow Task Processing",
