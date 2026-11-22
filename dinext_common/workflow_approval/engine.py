@@ -717,21 +717,29 @@ def _repair_open_round_tasks(
 	from dinext_common.workflow_approval.policy import make_task_name
 
 	task_transitions = _task_transitions_from_manifest(manifest)
-	existing = {
-		row.name: row
-		for row in frappe.db.get_values(
-			"Workflow Task",
-			{"approval_round_id": active.approval_round_id},
-			["name", "status", "cancellation_reason"],
-			order_by="name asc",
-			for_update=True,
-			as_dict=True,
-		)
-	}
+	rows = frappe.db.get_values(
+		"Workflow Task",
+		{"approval_round_id": active.approval_round_id},
+		["name", "approver", "status", "cancellation_reason"],
+		order_by="name asc",
+		for_update=True,
+		as_dict=True,
+	)
+	existing = {row.name: row for row in rows}
+	legacy_by_approver = {}
+	if active.approval_round_id.startswith("legacy-"):
+		for row in rows:
+			if not row.approver or row.approver in legacy_by_approver:
+				raise WorkflowApprovalConflictError(_("Ambiguous legacy Workflow Task assignment"))
+			legacy_by_approver[row.approver] = row
 	missing_approvers = set()
 	for approver, transitions in task_transitions.items():
 		task_name = make_task_name(active.approval_round_id, approver)
 		task = existing.get(task_name)
+		if task is not None and task.approver != approver:
+			raise WorkflowApprovalConflictError(_("Workflow Task assignment does not match its identifier"))
+		if task is None:
+			task = legacy_by_approver.get(approver)
 		if task is None:
 			missing_approvers.add(approver)
 		elif task.status == "Cancelled" and active.round_status == "Open":
