@@ -2108,6 +2108,12 @@ def validate_source_change(doc: object) -> None:
 
 def archive_source(doc: object) -> None:
 	"""Keep task history while severing links and cancelling active work."""
+	required_fields = {
+		"reference_doctype", "reference_name", "approval_round_id", "round_status",
+		"finalization_status", "source_deleted_at",
+	}
+	if not required_fields.issubset(frappe.db.get_db_table_columns("tabWorkflow Task")):
+		return
 	from dinext_common.workflow_approval.scenarios import service
 	service.archive_source(doc)
 	from frappe.workflow.doctype.workflow_action.workflow_action import clear_workflow_actions

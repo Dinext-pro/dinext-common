@@ -279,6 +279,8 @@ class DinextSubmissionQueue(SubmissionQueue):
 	def background_submission(self, to_be_queued_doc, action_for_queuing):
 		if frappe.db.get_value("Submission Queue", self.name, "status") != "Queued":
 			return
+		if "submission_queue" not in frappe.db.get_db_table_columns("tabWorkflow Task"):
+			return super().background_submission(to_be_queued_doc, action_for_queuing)
 		names = frappe.get_all("Workflow Task", filters={"submission_queue": self.name}, pluck="name")
 		for name in names:
 			task = frappe.get_doc("Workflow Task", name)

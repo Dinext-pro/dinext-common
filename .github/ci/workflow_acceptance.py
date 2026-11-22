@@ -62,6 +62,7 @@ SERVER_TESTS = {
         "test_my_approvals_permissions_integration": (),
         "test_workflow_approval_migration": (),
         "test_workflow_legacy_api_retirement": (),
+        "test_workflow_site_schema_compat": (),
         "test_workflow_queued_round_failure": (),
         "test_workflow_approval_concurrency": (),
         "test_workflow_approval_signed_links": (),
