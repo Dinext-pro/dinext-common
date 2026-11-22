@@ -14,7 +14,10 @@ context("Workflow progress releases Desk interaction", () => {
 	});
 	beforeEach(() => {
 		cy.login(fixture.user, fixture.password);
-		cy.openDesk("/app");
+		// Frappe freezes Desk while the workspace hub script loads.
+		cy.intercept("POST", "**/api/method/dinext_common.workspace_hub.get_workspace_hub").as("workspaceHub");
+		cy.openDesk("/app/dinext");
+		cy.wait("@workspaceHub").its("response.statusCode").should("eq", 200);
 		cy.get("#freeze").should("not.exist");
 		cy.window().should((win) => expect(win.frappe.dom.freeze_count).to.eq(0));
 	});
