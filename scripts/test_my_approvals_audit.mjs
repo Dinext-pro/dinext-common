@@ -69,7 +69,7 @@ frappe.ui.Dialog = class {
   constructor(options) {
     this.options = options;
     this.fields_dict = {comment: {$input: {on() {}}, set_focus() {}}};
-    this.$wrapper = {on() {}};
+    this.$wrapper = {on() {}, one() {}};
   }
   get_value() { return nested; }
   get_primary_btn() { return {prop() {}}; }

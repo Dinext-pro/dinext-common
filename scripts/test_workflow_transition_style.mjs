@@ -45,6 +45,14 @@ const element = () => ({
     this.visible = visible;
     return this;
   },
+  toggleClass(name, enabled) {
+    if (enabled) this.classes.add(name);
+    else this.classes.delete(name);
+    return this;
+  },
+  find() {
+    return this;
+  },
   closest() {
     return this;
   },
@@ -181,6 +189,7 @@ const state = new States();
 state.frm = {
   doc: { doctype: "Example", name: "EX-1", owner: "other@example.com" },
   page: {
+    actions_btn_group: element(),
     clear_actions_menu: () => labels.splice(0),
     add_action_item: (text, callback) => labels.push({ text, callback }),
   },
@@ -354,7 +363,7 @@ frappe.ui.Dialog = class {
     this.options = options; reportDialog = this;
     this.values = {action: options.fields.find((field) => field.fieldname === "action").default || "", comment: ""};
     this.fields_dict = {comment: {$input: {on() {}}, set_focus() {}}};
-    this.$wrapper = {on() {}};
+    this.$wrapper = {on() {}, one() {}};
   }
   get_value(name) { return this.values[name]; }
   set_df_property(field, property, value) { this.fields_dict[field].df ||= {}; this.fields_dict[field].df[property] = value; }
