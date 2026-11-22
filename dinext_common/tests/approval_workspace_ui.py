@@ -17,7 +17,11 @@ WORKFLOW = PREFIX + "Issue"
 
 
 def _guard():
-	ci_test = frappe.local.site == "ci.test" and frappe.flags.in_test and frappe.conf.allow_tests
+	ci_test = (
+		frappe.local.site == "ci.test"
+		and frappe.conf.allow_tests
+		and frappe.conf.workflow_scenarios_test_site
+	)
 	if (frappe.local.site not in {"localhost", "test_site"} and not ci_test) or frappe.session.user != "Administrator":
 		raise frappe.PermissionError("This fixture is restricted to the isolated test administrator")
 

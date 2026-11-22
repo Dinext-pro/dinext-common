@@ -263,6 +263,10 @@ def main():
         "from frappe.model.db_query import DatabaseQuery; "
         "assert not hasattr(DatabaseQuery, 'final_permission_query_conditions_version')",
     ], cwd=bench, check=True)
+    if "my_approvals_workspace.js" in SPECS.get(app, ()):
+        subprocess.run([
+            "bench", "--site", SITE, "execute", "dinext_common.tests.approval_workspace_ui._guard",
+        ], cwd=bench, check=True, timeout=30)
     failures = run_server(bench, app, artifacts)
     if app == "dinext_common":
         for consumer in ("project_workload_assignment", "dinext_project_tasks_gantt"):
