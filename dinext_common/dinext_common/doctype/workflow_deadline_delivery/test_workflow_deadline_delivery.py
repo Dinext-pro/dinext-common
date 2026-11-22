@@ -44,9 +44,9 @@ class TestWorkflowDeadlineDelivery(FrappeTestCase):
 			"deadline_due_at": add_days(self.now, -30),
 		}).db_insert()
 
-	def _delivery(self, assignment, age, *, slot=None):
+	def _delivery(self, assignment, age, *, slot=None, policy=POLICY):
 		mode = "Deadline Digest" if slot else "Deadline Immediate"
-		identity = f"{notifications._aware_utc(slot).isoformat()}:{POLICY}" if slot else assignment
+		identity = f"{notifications._aware_utc(slot).isoformat()}:{policy}" if slot else assignment
 		key = notifications.make_delivery_key(mode, self.workflow, RECIPIENT, identity, state=STATE)
 		frappe.get_doc({
 			"doctype": DOCTYPE,
@@ -114,6 +114,58 @@ class TestWorkflowDeadlineDelivery(FrappeTestCase):
 		for transition in workflow.transitions:
 			transition.db_insert()
 		return workflow
+
+	def test_withdrawn_assignment_keeps_its_delivery_when_restored(self):
+		from dinext_common.workflow_approval import engine
+
+		settings, _entry = self._log_settings()
+		name = frappe.generate_hash(length=24)
+		self._task(name, name)
+		key = self._delivery(name, age=8)
+		engine._retire_working_task(name)
+		with patch.object(frappe.db, "commit"):
+			settings.clear_logs()
+			withdrawn = frappe.get_doc("Workflow Task", name)
+			self.assertEqual(withdrawn.status, "Cancelled")
+			engine._restore_withdrawn_task(withdrawn, [])
+			self.assertEqual(frappe.db.get_value("Workflow Task", name, "status"), "Working")
+			settings.clear_logs()
+			self.assertTrue(frappe.db.exists(DOCTYPE, key))
+
+	def test_active_round_manifest_keeps_absent_approver_immediate_and_digest_keys(self):
+		settings, _entry = self._log_settings()
+		workflow = self._digest_workflow("Hours")
+		name, missing, round_id = [frappe.generate_hash(length=24) for _ in range(3)]
+		self._task(name, name)
+		frappe.db.set_value("Workflow Task", name, {
+			"approval_round_id": round_id,
+			"deadline_assignment_id": None,
+			"round_manifest": json.dumps({"deadline_assignments": {"absent-approver": {
+				"deadline_assignment_id": missing,
+				"deadline_due_at": str(add_days(self.now, -30)),
+				"deadline_transition_uuid": POLICY,
+			}}}),
+		})
+		immediate = self._delivery(missing, age=8)
+		current = self._delivery(missing, age=8, slot=add_days(self.now, -8))
+		older = self._delivery(missing, age=18, slot=add_days(self.now, -18))
+		with patch.object(frappe.db, "commit"):
+			settings.clear_logs()
+			self.assertTrue(frappe.db.exists(DOCTYPE, immediate))
+			self.assertTrue(frappe.db.exists(DOCTYPE, current))
+			self.assertFalse(frappe.db.exists(DOCTYPE, older))
+			# The transition itself can disappear and return with the same UUID.
+			frappe.db.set_value("Workflow Transition", workflow.transitions[0].name,
+				"custom_transition_uuid", "replacement-policy")
+			frappe.clear_document_cache("Workflow", self.workflow)
+			unrelated = self._delivery(missing, age=8, slot=add_days(self.now, -8), policy="unrelated")
+			settings.clear_logs()
+			self.assertTrue(frappe.db.exists(DOCTYPE, current))
+			self.assertFalse(frappe.db.exists(DOCTYPE, unrelated))
+			frappe.db.set_value("Workflow Task", name, "round_status", "Transitioned")
+			settings.clear_logs()
+			self.assertFalse(frappe.db.exists(DOCTYPE, immediate))
+			self.assertFalse(frappe.db.exists(DOCTYPE, current))
 
 	def test_cleanup_keeps_the_current_slot_for_a_digest_with_a_long_interval(self):
 		settings, _entry = self._log_settings()

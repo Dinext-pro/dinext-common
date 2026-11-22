@@ -5,7 +5,7 @@ from collections import defaultdict
 
 import frappe
 from frappe.model.document import Document
-from frappe.utils import add_days, cint, now_datetime
+from frappe.utils import add_days, cint, create_batch, now_datetime
 
 DOCTYPE = "Workflow Deadline Delivery"
 DEFAULT_RETENTION_DAYS = 7
@@ -41,7 +41,6 @@ def register_log_settings() -> None:
 
 def _finished_deliveries(rows, now):
 	from dinext_common.workflow_approval.deadlines.delivery import delivery_key
-	from dinext_common.workflow_approval.engine import ACTIVE_ROUND_STATUSES
 
 	groups = defaultdict(list)
 	for row in rows:
@@ -52,31 +51,14 @@ def _finished_deliveries(rows, now):
 	for (workflow, state, recipient), deliveries in groups.items():
 		scope = (workflow, state)
 		if scope not in active_by_state:
-			active_by_state[scope] = frappe.get_all(
-				"Workflow Task",
-				filters={
-					"workflow": workflow,
-					"workflow_state": state,
-					"status": "Working",
-					"round_status": ("in", ACTIVE_ROUND_STATUSES),
-					"deadline_assignment_id": ("is", "set"),
-				},
-				fields=[
-					"deadline_assignment_id",
-					"deadline_due_at",
-					"deadline_transition_uuid",
-					"approver",
-					"reference_doctype",
-					"reference_name",
-				],
-			)
+			active_by_state[scope] = _restorable_assignments(workflow, state)
 		tasks = active_by_state[scope]
 		immediate_keys = {
 			delivery_key(workflow, state, recipient, task.deadline_assignment_id) for task in tasks
 		}
 		digest_keys = set()
 		if tasks and any(row.slot for row in deliveries):
-			digest_keys = _active_digest_keys(workflow, state, recipient, tasks, now)
+			digest_keys = _active_digest_keys(workflow, state, recipient, tasks, now, deliveries)
 		for row in deliveries:
 			if row.slot:
 				if digest_keys is None or row.name in digest_keys:
@@ -87,8 +69,50 @@ def _finished_deliveries(rows, now):
 	return finished
 
 
-def _active_digest_keys(workflow, state, recipient, tasks, now):
+def _restorable_assignments(workflow, state):
+	from dinext_common.workflow_approval.engine import ACTIVE_ROUND_STATUSES, _parse_manifest
+
+	rows = frappe.get_all(
+		"Workflow Task",
+		filters={"workflow": workflow, "workflow_state": state, "round_status": ("in", ACTIVE_ROUND_STATUSES)},
+		fields=[
+			"name", "status", "approval_round_id", "deadline_assignment_id", "deadline_due_at",
+			"deadline_transition_uuid", "approver", "reference_doctype", "reference_name",
+		],
+		order_by="name asc",
+	)
+
+	# An amendment can restore a withdrawn personal row without changing its assignment.
+	assignments = [row for row in rows if row.deadline_assignment_id and row.status in ("Working", "Cancelled")]
+	representatives = {}
+	for row in rows:
+		if row.approval_round_id:
+			representatives.setdefault(row.approval_round_id, row.name)
+	# The engine copies the same manifest to each row. Read it once per active round.
+	# a later rebuild can recreate an absent approver using that frozen assignment.
+	for names in create_batch(list(representatives.values()), BATCH_SIZE):
+		for row in frappe.get_all(
+			"Workflow Task", filters={"name": ("in", names)},
+			fields=["round_manifest", "reference_doctype", "reference_name"],
+		):
+			for approver, snapshot in _parse_manifest(row).get("deadline_assignments", {}).items():
+				if snapshot.get("deadline_assignment_id"):
+					assignments.append(frappe._dict(
+						snapshot, approver=approver, reference_doctype=row.reference_doctype,
+						reference_name=row.reference_name,
+					))
+	# A manifest normally repeats the current row. Recalculate a recipient's schedule
+	# twice only when the recoverable facts actually differ (e.g. a repaired due date).
+	return {
+		(task.deadline_assignment_id, str(task.deadline_due_at), task.deadline_transition_uuid,
+		 task.approver, task.reference_doctype, task.reference_name): task
+		for task in assignments
+	}.values()
+
+
+def _active_digest_keys(workflow, state, recipient, tasks, now, deliveries):
 	from dinext_common.workflow_approval.deadlines.delivery import current_policy, delivery_key, delivery_slot
+	from dinext_common.workflow_approval.notifications import _aware_utc
 
 	try:
 		route = frappe.get_cached_doc("Workflow", workflow)
@@ -101,7 +125,17 @@ def _active_digest_keys(workflow, state, recipient, tasks, now):
 			# A failed deadline calculation may leave the policy ID unset as well.
 			return None
 		policy = current_policy(task, route, include_disabled=True)
-		if not policy or policy.custom_deadline_email_mode != "Digest":
+		if not policy:
+			# A withdrawn transition may be restored with the same UUID and schedule.
+			if not task.deadline_transition_uuid:
+				return None
+			for row in deliveries:
+				if row.slot and row.name == delivery_key(
+					workflow, state, recipient, task.deadline_transition_uuid, slot=_aware_utc(row.slot),
+				):
+					keys.add(row.name)
+			continue
+		if policy.custom_deadline_email_mode != "Digest":
 			continue
 		try:
 			slot = delivery_slot(task, policy, recipient, now, require_provider=True)
