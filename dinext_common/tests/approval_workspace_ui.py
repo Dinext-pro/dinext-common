@@ -17,8 +17,13 @@ WORKFLOW = PREFIX + "Issue"
 
 
 def _guard():
-	if frappe.local.site not in {"localhost", "test_site"} or frappe.session.user != "Administrator":
-		raise frappe.PermissionError("This fixture is restricted to the local test administrator")
+	ci_test = (
+		frappe.local.site == "ci.test"
+		and frappe.conf.allow_tests
+		and frappe.conf.workflow_scenarios_test_site
+	)
+	if (frappe.local.site not in {"localhost", "test_site"} and not ci_test) or frappe.session.user != "Administrator":
+		raise frappe.PermissionError("This fixture is restricted to the isolated test administrator")
 
 
 def cleanup():
@@ -71,7 +76,10 @@ def _grant_fixture_read(doctype):
 	for rule in frappe.get_all("DocType Permission", filters={"ref_doctype": doctype}, pluck="name"):
 		condition = {
 			"Issue": f"`tabIssue`.`name` like '{PREFIX}%'",
-			"Report": "`tabReport`.`name` in ('My Approvals', 'My Approval History', 'Approval Monitoring', 'Approval Load', 'Approval Duration')",
+			"Report": (
+				"`tabReport`.`name` in ('My Approvals', 'My Approval History', 'Approval Monitoring', "
+				"'Approval Load', 'Approval Duration', 'Approval Deadline Discipline')"
+			),
 			"Kanban Board": "1=0",
 		}[doctype]
 		frappe.get_doc(
@@ -166,6 +174,10 @@ def seed():
 				"completed_at": stamp if status == "Completed" else None,
 				"cancelled_at": stamp if status == "Cancelled" else None,
 				"completion_source": completion,
+				"deadline_assignment_id": name if suffix == "Today" else None,
+				"deadline_started_at": add_days(now, -2) if suffix == "Today" else None,
+				"deadline_due_at": add_days(now, -1) if suffix == "Today" else None,
+				"deadline_timezone": frappe.utils.get_system_timezone() if suffix == "Today" else None,
 			}
 		).db_insert()
 	frappe.clear_cache(user=APPROVER)

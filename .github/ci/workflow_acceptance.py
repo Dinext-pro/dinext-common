@@ -42,6 +42,7 @@ SPECS = {
         "workflow_progress_unlock.js",
         "workflow_request_receipts.js",
         "workflow_deadline_delivery_retention.js",
+        "my_approvals_workspace.js",
     ),
     "dinext_timesheets": (
         "timesheet_team_lead.js", "worker_calendar_deadlines.js", "ut_form_workflow_position_failures.js",
@@ -65,6 +66,9 @@ SERVER_TESTS = {
         "test_workflow_scenario_records": (),
         "test_my_approvals_permissions_integration": (),
         "test_workflow_approval_migration": (),
+        "test_workflow_deadline_report": (),
+        "test_workflow_email_migration": (),
+        "test_workflow_email_integration": (),
         "test_workflow_legacy_api_retirement": (),
         "test_workflow_site_schema_compat": (),
         "test_workflow_queued_round_failure": (),
@@ -87,6 +91,7 @@ SERVER_TESTS = {
     },
     "dinext_projects": {
         "test_application_for_leave": (),
+        "test_issue_assignment": (),
         "test_workflow_deadlines": (),
     },
     "dinext_timesheets": {
@@ -258,6 +263,10 @@ def main():
         "from frappe.model.db_query import DatabaseQuery; "
         "assert not hasattr(DatabaseQuery, 'final_permission_query_conditions_version')",
     ], cwd=bench, check=True)
+    if "my_approvals_workspace.js" in SPECS.get(app, ()):
+        subprocess.run([
+            "bench", "--site", SITE, "execute", "dinext_common.tests.approval_workspace_ui._guard",
+        ], cwd=bench, check=True, timeout=30)
     failures = run_server(bench, app, artifacts)
     if app == "dinext_common":
         for consumer in ("project_workload_assignment", "dinext_project_tasks_gantt"):

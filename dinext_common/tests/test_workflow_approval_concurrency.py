@@ -531,6 +531,30 @@ class TestWorkflowApprovalProcessConcurrency(FrappeTestCase):
 			)
 		)
 
+	def test_reconcile_preserves_preexisting_task_ids_in_adopted_round(self):
+		source = self._make_source("Process concurrency legacy task identity")
+		sample = self._task_for_user(source.name, self.users[0])
+		original_round_id = sample.approval_round_id
+		legacy_round_id = "legacy-open-" + frappe.generate_hash(length=32)
+		names = set(frappe.get_all("Workflow Task", filters={"approval_round_id": original_round_id}, pluck="name"))
+		self.assertGreaterEqual(len(names), 2)
+		for name in names:
+			frappe.db.set_value("Workflow Task", name, "approval_round_id", legacy_round_id, update_modified=False)
+		frappe.db.commit()
+
+		for _attempt in range(2):
+			outcomes, _transition_count = self._run_processes(
+				_process_reconcile, [(source.name,), (source.name,)],
+			)
+			self.assertFalse(any(outcome["failed"] for outcome in outcomes), outcomes)
+			self.assertEqual([outcome["task_names"] for outcome in outcomes], [sorted(names)] * 2)
+			frappe.db.rollback()
+			rows = frappe.get_all("Workflow Task", filters={"approval_round_id": legacy_round_id},
+				fields=["name", "approver", "status"])
+			self.assertEqual({row.name for row in rows}, names)
+			self.assertEqual(len({row.approver for row in rows}), len(rows))
+			self.assertTrue(all(row.status == "Working" for row in rows))
+
 	def test_concurrent_reconcile_repairs_partial_round_once_and_is_idempotent(self):
 		from dinext_common.workflow_approval.policy import make_task_name
 
