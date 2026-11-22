@@ -41,6 +41,7 @@ SPECS = {
         "workflow_delegation_audit.js",
         "workflow_progress_unlock.js",
         "workflow_request_receipts.js",
+        "workflow_deadline_delivery_retention.js",
     ),
     "dinext_timesheets": (
         "timesheet_team_lead.js", "worker_calendar_deadlines.js", "ut_form_workflow_position_failures.js",
@@ -52,6 +53,7 @@ SPECS = {
 SERVER_TESTS = {
     "dinext_common": {
         "test_workflow_request_receipt": (),
+        "dinext_common.dinext_common.doctype.workflow_deadline_delivery.test_workflow_deadline_delivery": (),
         "test_workflow_approval_api": (),
         "test_workflow_approval_engine": (),
         "test_workflow_approval_integration": (),
@@ -78,7 +80,10 @@ SERVER_TESTS = {
         "test_workflow_scenario_compat": (),
         "test_workflow_scenario_lifecycle": (),
         "test_workflow_scenario_reselection_integration": (),
-        "test_workflow_deadline_integration": ("test_signed_comment_uses_live_rule_and_invalid_input_keeps_retry",),
+        "test_workflow_deadline_integration": (
+            "test_signed_comment_uses_live_rule_and_invalid_input_keeps_retry",
+            "test_old_digest_selected_before_rollover_is_not_recreated_after_lookup",
+        ),
     },
     "dinext_projects": {
         "test_application_for_leave": (),

@@ -302,6 +302,27 @@ class TestDeadlineIntegration(Base):
 			send_group(**kwargs)
 			self.assertEqual(send.call_count, 1)
 
+	def test_old_digest_selected_before_rollover_is_not_recreated_after_lookup(self):
+		from datetime import datetime, timezone
+
+		from dinext_common.workflow_approval import notifications as mail
+		from dinext_common.workflow_approval.deadlines import delivery
+
+		_source, task = self.digest_source_task()
+		workflow = frappe.get_doc("Workflow", self.workflow_name)
+		workflow.send_email_alert = 1
+		workflow.save(ignore_permissions=True)
+		frappe.db.set_value("Workflow Task", task.name, "deadline_due_at", "2026-01-01 00:00:00")
+		slot = (datetime.now(timezone.utc) + timedelta(days=2)).replace(hour=5, minute=0, second=0, microsecond=0)
+		before_rollover = mail._database_datetime(slot + timedelta(minutes=1))
+		after_rollover = mail._database_datetime(slot + timedelta(hours=10))
+		with (
+			patch.object(delivery, "now_datetime", side_effect=[before_rollover, after_rollover]),
+			patch.object(mail, "_sendmail_for_user") as send,
+		):
+			delivery.send_group(workflow=workflow, recipient=self.user, task_names=[task.name], slot=slot)
+			send.assert_not_called()
+
 	def test_queue_and_delivery_claim_rollback_together_and_retry_forms_one_mime(self):
 		from datetime import datetime, timezone
 
