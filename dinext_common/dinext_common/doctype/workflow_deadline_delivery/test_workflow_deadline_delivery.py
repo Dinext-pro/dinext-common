@@ -1,7 +1,7 @@
 """Retention of deadline deliveries through standard Frappe Log Settings."""
 
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import frappe
@@ -9,6 +9,7 @@ from frappe.core.doctype.log_settings.log_settings import _supports_log_clearing
 from frappe.tests.utils import FrappeTestCase
 from frappe.utils import add_days, now_datetime
 
+from dinext_common.dinext_common.doctype.workflow_deadline_delivery import workflow_deadline_delivery
 from dinext_common.workflow_approval import notifications
 
 DOCTYPE = "Workflow Deadline Delivery"
@@ -96,7 +97,7 @@ class TestWorkflowDeadlineDelivery(FrappeTestCase):
 			self.assertFalse(frappe.db.exists(DOCTYPE, fresh))
 			self.assertTrue(frappe.db.exists(DOCTYPE, protected))
 
-	def _digest_workflow(self, interval_unit):
+	def _digest_workflow(self, interval_unit, *, anchor=None):
 		order = frappe.db.get_value(
 			"Workflow", {"document_type": "ToDo"}, "custom_selection_order", order_by="custom_selection_order desc"
 		)
@@ -112,7 +113,7 @@ class TestWorkflowDeadlineDelivery(FrappeTestCase):
 				"custom_deadline_email_mode": "Digest",
 				"custom_deadline_interval_unit": interval_unit,
 				"custom_deadline_interval_value": 240,
-				"custom_deadline_schedule_anchor": self._elapsed_days_ago(28),
+				"custom_deadline_schedule_anchor": anchor or self._elapsed_days_ago(28),
 			}],
 		})
 		workflow.db_insert()
@@ -173,15 +174,21 @@ class TestWorkflowDeadlineDelivery(FrappeTestCase):
 			self.assertFalse(frappe.db.exists(DOCTYPE, current))
 
 	def test_cleanup_keeps_the_current_slot_for_a_digest_with_a_long_interval(self):
-		settings, _entry = self._log_settings()
-		workflow = self._digest_workflow("Hours")
-		active = frappe.generate_hash(length=24)
-		self._task(active, active)
-		# A previously included task has disappeared. Another active task can still use the slot.
-		old_task = frappe.generate_hash(length=24)
-		current = self._delivery(old_task, age=8, slot=self._elapsed_days_ago(8))
-		superseded = self._delivery(old_task, age=18, slot=self._elapsed_days_ago(18))
-		with patch.object(frappe.db, "commit"):
+		self.now = datetime(2026, 11, 22, 14, 48)
+		with (
+			patch.object(notifications, "get_system_timezone", return_value="America/New_York"),
+			patch.object(workflow_deadline_delivery, "now_datetime", return_value=self.now),
+			patch.object(frappe.db, "commit"),
+		):
+			settings, _entry = self._log_settings()
+			workflow = self._digest_workflow("Hours", anchor=datetime(2026, 10, 25, 14, 48))
+			active = frappe.generate_hash(length=24)
+			self._task(active, active)
+			# A previously included task has disappeared. Another active task can still use the slot.
+			old_task = frappe.generate_hash(length=24)
+			# The 240-hour slots after the October 25 14:48 anchor land at 13:48 after DST ends.
+			current = self._delivery(old_task, age=8, slot=datetime(2026, 11, 14, 13, 48))
+			superseded = self._delivery(old_task, age=18, slot=datetime(2026, 11, 4, 13, 48))
 			settings.clear_logs()
 			self.assertTrue(frappe.db.exists(DOCTYPE, current))
 			self.assertFalse(frappe.db.exists(DOCTYPE, superseded))
