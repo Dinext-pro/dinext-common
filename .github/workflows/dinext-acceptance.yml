@@ -1,6 +1,10 @@
 name: Dinext acceptance
 on:
-  workflow_call: {}
+  workflow_call:
+    inputs:
+      run_sidebar:
+        type: boolean
+        default: true
   workflow_dispatch: {}
 permissions:
   contents: read
@@ -68,6 +72,7 @@ jobs:
           retention-days: 14
   sidebar:
     name: Sidebar Cypress
+    if: github.event_name != 'pull_request' || inputs.run_sidebar
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
