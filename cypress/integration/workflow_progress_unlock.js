@@ -59,6 +59,11 @@ context("Workflow progress releases Desk interaction", () => {
 			}
 			expect(error.message).to.eq("Workflow request failed");
 			expect(page.wrapper[0].inert).to.eq(false);
+			expect(win.frappe.cur_progress == null, "progress cleared").to.eq(true);
+		});
+		// Initial Desk requests and asset loads can hold their own freeze while
+		// the workflow dialog is closing. A leaked workflow freeze never clears.
+		cy.window().should((win) => {
 			expect(win.frappe.dom.freeze_count).to.eq(0);
 			expect(win.$(".modal-backdrop").length).to.eq(0);
 			expect(win.document.body.classList.contains("modal-open")).to.eq(false);

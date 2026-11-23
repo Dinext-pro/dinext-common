@@ -1,5 +1,7 @@
+from contextlib import ExitStack
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest import TestCase
+from unittest.mock import Mock, patch
 from urllib.parse import urlsplit
 
 import frappe
@@ -104,3 +106,107 @@ class TestWorkflowApprovalSignedLinks(FrappeTestCase):
 			signed_links.confirm_action("test-command")
 		self.assertEqual(page.call_args.kwargs["http_status_code"], 503)
 		cast_vote.assert_not_called()
+
+
+class TestLegacySignedActionAliases(TestCase):
+	def setUp(self):
+		self.workflow = "Synthetic position approval"
+		self.user = "reviewer@example.test"
+		self.row = frappe._dict(state="Review", action="Edit", next_state="Draft", transition_uuid="edit-id")
+		self.task = frappe._dict(name="old-task", workflow=self.workflow, workflow_state="Review",
+			workflow_process="process", approver=self.user, available_workflow_transitions=[self.row])
+		self.process = frappe._dict(legacy_task_names='["old-task"]')
+		stack = ExitStack()
+		self.addCleanup(stack.close)
+		def mock(*args, **kwargs):
+			return stack.enter_context(patch(*args, **kwargs))
+
+		mock("frappe.local", SimpleNamespace(flags=frappe._dict(in_test=False), lang="en"))
+		mock("frappe.translate.get_all_translations", return_value={})
+		self.signature = mock(
+			"dinext_common.workflow_approval.signed_links.verify_request", return_value=True
+		)
+		mock("dinext_common.workflow_approval.lifecycle.is_engine_enabled", return_value=True)
+		self.scenarios_ready = mock("dinext_common.workflow_approval.scenarios.service.is_ready", return_value=True)
+		mock("dinext_common.workflow_approval.signed_links._source_workflow", return_value=self.workflow)
+		mock("dinext_common.workflow_approval.localization._localization_hooks",
+			return_value={self.workflow: ["example.rules"]})
+		mock("frappe.get_attr", return_value=lambda: {
+			"states": {"Old Review": "Review"},
+			"legacy_signed_action_aliases": (("Review", "Stop Workflow", "Edit", "Draft"),),
+		})
+		mock("frappe.get_doc", side_effect=lambda dt, name: {
+			("Workflow Task", self.task.name): self.task, ("Workflow Process", "process"): self.process,
+		}[(dt, name)])
+		self.task_names = [self.task.name]
+		mock("frappe.get_all", side_effect=lambda dt, filters, **kwargs:
+			self.task_names if filters["approver"] == self.task.approver else [])
+		db = Mock()
+		db.exists.side_effect = lambda dt, filters: any(
+			row.action == filters.get("action") for row in self.task.available_workflow_transitions)
+		db.get_value.return_value = "2026-01-01"
+		mock("frappe.db", db)
+		mock("dinext_common.workflow_approval.signed_links._open_action",
+			return_value=frappe._dict(custom_delivery_key="key"))
+		self.preview = mock("dinext_common.workflow_approval.signed_links._render_preview")
+		self.expired = mock("dinext_common.workflow_approval.signed_links._show_expired_link")
+
+	def apply(self):
+		signed_links.apply_action("Остановить Воркфлоу", "Note", "sample", "Old Review", self.user)
+
+	def confirm(self):
+		signed_links.confirm_legacy_action("Note", "sample", self.user, "Остановить Воркфлоу")
+
+	def test_both_signed_entry_points_resolve_the_adopted_transition(self):
+		self.apply()
+		self.preview.assert_called_once_with("old-task", "edit-id", self.user, "Review", None, "key")
+		self.preview.reset_mock()
+		self.confirm()
+		self.preview.assert_called_once_with("old-task", "edit-id", self.user, "Review", "2026-01-01", "key")
+
+	def test_exact_action_takes_precedence(self):
+		self.task.available_workflow_transitions.append(frappe._dict(
+			state="Review", action="Stop Workflow", next_state="Stopped", transition_uuid="stop-id"))
+		self.apply()
+		self.assertEqual(self.preview.call_args.args[1], "stop-id")
+
+	def test_alias_requires_unique_child_matching_registered_route(self):
+		for field, value in (("state", "Other"), ("next_state", "Other"), ("action", "Other")):
+			with self.subTest(field=field), patch.dict(self.row, {field: value}):
+				with self.assertRaises(signed_links.engine.WorkflowApprovalConflictError):
+					self.confirm()
+		self.task.available_workflow_transitions.append(self.row.copy())
+		with self.assertRaises(signed_links.engine.WorkflowApprovalConflictError):
+			self.confirm()
+		self.preview.assert_not_called()
+
+	def test_alias_is_confined_to_signed_actor_and_workflow(self):
+		for key, value in (("approver", "other@example.test"), ("workflow", "Other"), ("workflow_state", "Other")):
+			with self.subTest(key=key), patch.dict(self.task, {key: value}):
+				with self.assertRaises(signed_links.engine.WorkflowApprovalConflictError):
+					self.confirm()
+		self.preview.assert_not_called()
+
+	def test_alias_rejects_a_different_signed_state_or_multiple_tasks(self):
+		with self.assertRaises(signed_links.engine.WorkflowApprovalConflictError):
+			signed_links.apply_action("Stop Workflow", "Note", "sample", "Other", self.user)
+		self.task_names.append("second-task")
+		with self.assertRaises(signed_links.engine.WorkflowApprovalConflictError):
+			self.confirm()
+		self.preview.assert_not_called()
+
+	def test_alias_requires_adoption_metadata(self):
+		self.scenarios_ready.return_value = False
+		self.confirm()
+		self.expired.assert_called_once()
+		self.preview.assert_not_called()
+
+	def test_new_task_and_invalid_signature_cannot_use_alias(self):
+		self.signature.return_value = False
+		self.apply()
+		self.confirm()
+		self.signature.return_value = True
+		self.process.legacy_task_names = "[]"
+		self.confirm()
+		self.expired.assert_called_once()
+		self.preview.assert_not_called()

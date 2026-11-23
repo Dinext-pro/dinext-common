@@ -126,16 +126,8 @@ def _source_identity(doc: object) -> tuple[str, str]:
 	return str(getattr(doc, "doctype", "") or ""), str(getattr(doc, "name", "") or "")
 
 
-def _find_task_for_action(
-	doctype: str,
-	name: str,
-	action: str,
-	user: str,
-	transition_uuid: str | None = None,
-	*,
-	require_unique_task: bool = False,
-) -> str:
-	task_names = frappe.get_all(
+def _active_task_names_for_approver(doctype: str, name: str, user: str) -> list[str]:
+	return frappe.get_all(
 		"Workflow Task",
 		filters={
 			"reference_doctype": doctype,
@@ -148,6 +140,18 @@ def _find_task_for_action(
 		order_by="creation desc, name asc",
 		limit=2,
 	)
+
+
+def _find_task_for_action(
+	doctype: str,
+	name: str,
+	action: str,
+	user: str,
+	transition_uuid: str | None = None,
+	*,
+	require_unique_task: bool = False,
+) -> str:
+	task_names = _active_task_names_for_approver(doctype, name, user)
 	if require_unique_task and len(task_names) != 1:
 		raise engine.WorkflowApprovalConflictError(
 			_("No unique active Workflow Task is available for this action")

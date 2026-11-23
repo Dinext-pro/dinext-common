@@ -38,10 +38,14 @@ def _localization_rules():
 	}
 
 
-def _state_names(workflow):
+def workflow_label_rules(workflow):
 	if paths := _localization_hooks().get(workflow):
-		return frappe.get_attr(paths[-1])().get("states", {})
+		return frappe.get_attr(paths[-1])()
 	return {}
+
+
+def _state_names(workflow):
+	return workflow_label_rules(workflow).get("states", {})
 
 
 def state_name(workflow, value):
