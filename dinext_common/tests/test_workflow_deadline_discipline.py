@@ -81,10 +81,9 @@ class TestApprovalDiscipline(unittest.TestCase):
 
 		with (
 			patch.object(frappe, "session", frappe._dict(user="Administrator"), create=True),
-			patch.object(frappe.local, "flags", frappe._dict(in_test=False), create=True),
 			patch.object(discipline, "metrics", return_value={"on_time_percent": 30.7692}),
 		):
-			card = discipline.on_time_card()
+			card = discipline._card("on_time_percent", percent=True)
 
 		self.assertEqual(card["value"], 30.8)
 		self.assertEqual(card["fieldtype"], "Percent")
@@ -97,11 +96,10 @@ class TestApprovalDiscipline(unittest.TestCase):
 
 		with (
 			patch.object(frappe, "session", frappe._dict(user="Administrator"), create=True),
-			patch.object(frappe.local, "flags", frappe._dict(in_test=False), create=True),
 			patch.object(frappe, "_", side_effect=lambda value: value),
 			patch.object(discipline, "metrics", return_value={"on_time_percent": None}),
 		):
-			card = discipline.on_time_card()
+			card = discipline._card("on_time_percent", percent=True)
 
 		self.assertEqual(card["value"], "No observations")
 		self.assertEqual(card["fieldtype"], "Data")
