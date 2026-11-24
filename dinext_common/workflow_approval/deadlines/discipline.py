@@ -207,6 +207,7 @@ def _card(key, *, percent=False):
 	return {
 		"value": round(value, 1) if value is not None else frappe._("No observations"),
 		"fieldtype": ("Percent" if percent else "Int") if value is not None else "Data",
+		**({"precision": 1} if percent and value is not None else {}),
 		"route": ["query-report", "Approval Deadline Discipline"],
 		"route_options": {},
 	}

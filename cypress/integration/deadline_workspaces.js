@@ -65,6 +65,45 @@ describe("Standard deadline workspace controls", () => {
             });
         }
     }
+    it("groups the discipline shortcut with the control reports", () => {
+        const user = fixture.locales.find(locale => locale.language === "en").user;
+        cy.login(user, fixture.password);
+        cy.visit("/app/my-approvals");
+        cy.get(".layout-main-section .ce-block").should(blocks => {
+            const row = [...blocks];
+            const shortcut = label => row.findIndex(block =>
+                block.querySelector(".shortcut-widget-box")?.getAttribute("aria-label") === label
+            );
+            expect(shortcut("Approval Load")).to.be.greaterThan(-1);
+            expect(shortcut("Approval Duration")).to.equal(shortcut("Approval Load") + 1);
+            expect(shortcut("Approval Deadline Discipline")).to.equal(shortcut("Approval Duration") + 1);
+        });
+        cy.contains(".shortcut-widget-box", "Approval Deadline Discipline").click();
+        cy.location("pathname").should("include", "/query-report/Approval%20Deadline%20Discipline");
+    });
+
+    it("uses one decimal place in the on-time percentage widget", () => {
+        const user = fixture.locales.find(locale => locale.language === "en").user;
+        cy.login(user, fixture.password);
+        cy.intercept("POST", "**/api/method/dinext_common.workflow_approval.deadlines.discipline.on_time_card", {
+            message: {
+                value: 30.8,
+                fieldtype: "Percent",
+                precision: 1,
+                route: ["query-report", "Approval Deadline Discipline"],
+                route_options: {},
+            },
+        }).as("onTime");
+        cy.visit("/app/my-approvals");
+        cy.wait("@onTime");
+        cy.window().then(win => {
+            const expected = win.format_number(30.8, null, 1) + "%";
+            cy.contains(".number-widget-box", "On-time Approvals").find(".number").should("have.text", expected);
+        });
+        cy.contains(".number-widget-box", "On-time Approvals").find(".widget-body").click();
+        cy.location("pathname").should("include", "/query-report/Approval%20Deadline%20Discipline");
+    });
+
     it("explains empty percentages for an ordinary worker", () => {
         cy.login(fixture.ordinary_user, fixture.password);
         for (const route of ["my-approvals", "my-timesheets"]) {
