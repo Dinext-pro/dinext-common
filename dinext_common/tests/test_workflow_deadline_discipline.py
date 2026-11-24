@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 
 
 class TestApprovalDiscipline(unittest.TestCase):
@@ -73,3 +74,48 @@ class TestApprovalDiscipline(unittest.TestCase):
 		result = summarize(rows, from_date="2026-11-01", to_date="2026-11-30", now=datetime(2026, 11, 9))
 		self.assertIsNone(result["on_time_percent"])
 		self.assertEqual(result["errors"], 1)
+
+	def test_on_time_card_uses_one_decimal_without_changing_the_numeric_value(self):
+		import frappe
+		from dinext_common.workflow_approval.deadlines import discipline
+
+		with (
+			patch.object(frappe, "session", frappe._dict(user="Administrator"), create=True),
+			patch.object(frappe.local, "flags", frappe._dict(in_test=False), create=True),
+			patch.object(discipline, "metrics", return_value={"on_time_percent": 30.7692}),
+		):
+			card = discipline.on_time_card()
+
+		self.assertEqual(card["value"], 30.8)
+		self.assertEqual(card["fieldtype"], "Percent")
+		self.assertEqual(card.get("precision"), 1)
+		self.assertEqual(card["route"], ["query-report", "Approval Deadline Discipline"])
+
+	def test_on_time_card_without_observations_remains_text(self):
+		import frappe
+		from dinext_common.workflow_approval.deadlines import discipline
+
+		with (
+			patch.object(frappe, "session", frappe._dict(user="Administrator"), create=True),
+			patch.object(frappe.local, "flags", frappe._dict(in_test=False), create=True),
+			patch.object(frappe, "_", side_effect=lambda value: value),
+			patch.object(discipline, "metrics", return_value={"on_time_percent": None}),
+		):
+			card = discipline.on_time_card()
+
+		self.assertEqual(card["value"], "No observations")
+		self.assertEqual(card["fieldtype"], "Data")
+		self.assertNotIn("precision", card)
+
+	def test_deadline_shortcut_upgrade_preserves_other_blocks(self):
+		from dinext_common.patches.v1_0.align_approval_deadline_shortcut import DEADLINE, DURATION, align_blocks
+
+		duration = {"type": "shortcut", "data": {"shortcut_name": DURATION}}
+		deadline = {"type": "shortcut", "data": {"shortcut_name": DEADLINE}}
+		other = {"type": "paragraph", "data": {"text": "Custom note"}}
+		before = [duration, other, deadline]
+		expected = [duration, deadline, other]
+
+		self.assertEqual(align_blocks(before), expected)
+		self.assertEqual(align_blocks(expected), expected)
+		self.assertEqual(align_blocks([other, deadline]), [other, deadline])

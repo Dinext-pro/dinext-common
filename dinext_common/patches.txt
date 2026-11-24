@@ -20,3 +20,4 @@ dinext_common.patches.v1_0.refine_deadline_chart
 dinext_common.patches.v1_0.enable_workflow_scenarios
 dinext_common.patches.v1_0.retain_workflow_notification_delivery
 dinext_common.patches.v1_0.show_approval_deadline_chart_markers
+dinext_common.patches.v1_0.align_approval_deadline_shortcut
